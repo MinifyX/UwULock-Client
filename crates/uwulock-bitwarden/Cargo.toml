@@ -1,0 +1,45 @@
+[package]
+name = "uwulock-bitwarden"
+description = "Talks to Bitwarden and Vaultwarden: login, sync, and the crypto to open what comes back"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+aes.workspace = true
+argon2.workspace = true
+base64.workspace = true
+cbc.workspace = true
+hkdf.workspace = true
+hmac.workspace = true
+pbkdf2.workspace = true
+rand.workspace = true
+rsa.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha1.workspace = true
+sha2.workspace = true
+subtle.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+zeroize.workspace = true
+url = "2"
+# rustls with both the bundled roots and the system's own store: a homelab
+# Vaultwarden behind a private CA works once that CA is trusted by the system.
+reqwest = { version = "0.12", default-features = false, features = [
+  "json",
+  "rustls-tls",
+  "rustls-tls-native-roots",
+] }
+
+[dev-dependencies]
+tokio = { workspace = true }
+base64 = { workspace = true }
+rand = { workspace = true }
+rsa = { workspace = true }
+serde_json = { workspace = true }
+url = "2"
+zeroize = { workspace = true }

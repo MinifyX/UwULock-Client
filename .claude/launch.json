@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "uwulock-setup-ui",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@uwulock/setup", "dev"],
+      "port": 1430
+    },
+    {
+      "name": "uwulock-desktop-ui",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@uwulock/desktop", "dev"],
+      "port": 1420
+    }
+  ]
+}

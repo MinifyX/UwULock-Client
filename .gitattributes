@@ -1,0 +1,17 @@
+# The repository is LF, everywhere, on every platform — the same thing
+# .editorconfig tells editors. Without this, Git on Windows checks every file
+# out as CRLF and the first commit from a Mac or a Linux box looks like the
+# whole tree changed.
+* text=auto eol=lf
+
+# Binary, so Git neither converts them nor tries to diff them as text.
+*.png binary
+*.ico binary
+*.icns binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+
+# Generated and reviewed as a whole, not line by line.
+pnpm-lock.yaml -diff
+Cargo.lock -diff

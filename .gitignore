@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+target/
+*.tsbuildinfo
+apps/*/src-tauri/gen/schemas/
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Keys, certificates and passwords never belong in this public repository
+*.key
+*.pem
+*.ppk
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.password
+*.secret
+id_rsa*
+id_ed25519*
+id_ecdsa*
+
+# Local vault and session database
+*.db
+*.db-shm
+*.db-wal
+
+# Editors and OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Private security-test notes (repro steps, PoCs) — never commit
+security-test-notes.local.md
+
+# End-to-end run artefacts: logs, throwaway database, screenshots
+apps/desktop/e2e/.run/
+apps/desktop/e2e/shots/
+
+# Agent worktrees
+.claude/worktrees/
+
+
+# Vault exports can carry real data. The app keeps its own files in the
+# data folder, never in here; the toy server makes up its vault.
+*.csv

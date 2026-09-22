@@ -1,0 +1,48 @@
+[package]
+name = "uwulock-desktop"
+description = "UwULock desktop app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "uwulock_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+uwulock-bitwarden.workspace = true
+
+arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
+base64.workspace = true
+minisign-verify = "0.2"
+parking_lot.workspace = true
+semver = "1"
+serde.workspace = true
+sha2.workspace = true
+url = "2"
+serde_json.workspace = true
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-updater = "2"
+tokio = { workspace = true }
+tracing.workspace = true
+uuid.workspace = true
+zeroize.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = [
+  "Win32_Foundation",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_LibraryLoader",
+  "Win32_System_Threading",
+] }
+
+# A package update is handed to the package manager from a private scratch folder.
+[target.'cfg(target_os = "linux")'.dependencies]
+tempfile = "3"
