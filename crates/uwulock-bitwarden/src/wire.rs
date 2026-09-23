@@ -122,21 +122,11 @@ pub struct Token {
     /// Handed out when "remember this device" was asked for with two-step login.
     #[serde(default, rename = "twofactortoken")]
     pub two_factor_token: Option<String>,
-    #[serde(default, rename = "kdf", deserialize_with = "flexible_u32")]
-    pub kdf: Option<u32>,
-    #[serde(default, rename = "kdfiterations", deserialize_with = "flexible_u32")]
-    pub kdf_iterations: Option<u32>,
-    #[serde(default, rename = "kdfmemory", deserialize_with = "flexible_u32")]
-    pub kdf_memory: Option<u32>,
-    #[serde(default, rename = "kdfparallelism", deserialize_with = "flexible_u32")]
-    pub kdf_parallelism: Option<u32>,
 }
 
 /// A refused token request.
 #[derive(Debug, Default, Deserialize)]
 pub struct TokenError {
-    #[serde(default)]
-    pub error: Option<String>,
     #[serde(default)]
     pub error_description: Option<String>,
     /// Provider number → its details (the masked email for email codes).
@@ -170,8 +160,6 @@ pub struct Sync {
 #[derive(Debug, Default, Deserialize)]
 pub struct Profile {
     #[serde(default)]
-    pub id: String,
-    #[serde(default)]
     pub name: Option<String>,
     #[serde(default)]
     pub email: String,
@@ -190,12 +178,6 @@ pub struct Organization {
     pub name: Option<String>,
     #[serde(default)]
     pub key: Option<String>,
-    #[serde(default = "yes")]
-    pub enabled: bool,
-}
-
-fn yes() -> bool {
-    true
 }
 
 #[derive(Debug, Default, Deserialize)]
