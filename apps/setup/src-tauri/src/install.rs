@@ -269,7 +269,7 @@ pub fn stop_app(layout: &Layout, dir: &Path) -> Result<(), String> {
     system::stop_processes(&dir.join(LEGACY_EXE))
 }
 
-/// UwULock is open. Closing it ends every open remote session, so the setup
+/// UwULock is open. Closing it locks every open vault, so the setup
 /// asks first.
 pub fn app_running(layout: &Layout, dir: &Path) -> bool {
     !layout.sandbox
@@ -279,7 +279,7 @@ pub fn app_running(layout: &Layout, dir: &Path) -> bool {
 }
 
 /// Removes the files and the registry entry of the old standard installer.
-/// Hosts, vault and settings stay: they live in the app data folders.
+/// Accounts, cached vaults and settings stay: they live in the app data folders.
 fn remove_legacy(layout: &Layout, new_dir: &Path) -> Result<(), String> {
     let Some(installed) = layout.installed().filter(|installed| installed.legacy) else {
         return Ok(());
@@ -549,12 +549,12 @@ mod tests {
         assert!(command.ends_with("\" --uninstall"));
 
         std::fs::create_dir_all(&layout.roaming_data).unwrap();
-        std::fs::write(layout.roaming_data.join("uwulock.db"), b"hosts").unwrap();
+        std::fs::write(layout.roaming_data.join("accounts.json"), b"{}").unwrap();
         uninstall(layout, &dir, true, &mut |_, _| {}).unwrap();
         assert!(!dir.exists());
         assert!(
-            layout.roaming_data.join("uwulock.db").exists(),
-            "hosts and vault are kept"
+            layout.roaming_data.join("accounts.json").exists(),
+            "accounts and vaults are kept"
         );
         assert!(layout.open(UNINSTALL_KEY).is_none());
         assert!(layout.open(SETUP_KEY).is_none());
@@ -563,7 +563,7 @@ mod tests {
         uninstall(layout, &dir, false, &mut |_, _| {}).unwrap();
         assert!(
             !layout.roaming_data.exists(),
-            "hosts and vault are deleted on request"
+            "accounts and vaults are deleted on request"
         );
     }
 }
