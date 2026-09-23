@@ -16,8 +16,23 @@ export function failure(error: unknown): Failure {
 
 export type ServerKind = 'bitwarden-us' | 'bitwarden-eu' | 'self-hosted';
 
+/** One account in the switcher. */
+export type AccountBrief = {
+  id: string;
+  label: string;
+  email: string;
+  name: string | null;
+  server: string;
+  serverKind: ServerKind;
+  unlocked: boolean;
+  active: boolean;
+  lastSync: number | null;
+};
+
 export type Status = {
   state: 'logged-out' | 'locked' | 'unlocked';
+  accountId: string | null;
+  label: string | null;
   email: string | null;
   name: string | null;
   server: string | null;
@@ -27,6 +42,7 @@ export type Status = {
   syncing: boolean;
   syncError: string | null;
   sessionExpired: boolean;
+  accounts: AccountBrief[];
 };
 
 export type TwoFactorMethod = {
@@ -110,6 +126,48 @@ export type ItemDetail = {
 
 export type TotpCode = { code: string; remaining: number; period: number };
 
+/**
+ * What the editor sends back. A secret it never had — a password nobody
+ * looked at, a card number, a hidden field — stays `null`, and Rust keeps the
+ * value the item already has; `''` clears it.
+ */
+export type Draft = {
+  kind: ItemKind;
+  name: string;
+  notes?: string | null;
+  favorite: boolean;
+  reprompt: boolean;
+  folderId: string | null;
+  login?: {
+    username?: string | null;
+    password?: string | null;
+    totp?: string | null;
+    uris: { uri: string; match: number | null }[];
+  };
+  card?: {
+    cardholderName?: string | null;
+    brand?: string | null;
+    number?: string | null;
+    expMonth?: string | null;
+    expYear?: string | null;
+    code?: string | null;
+  };
+  /** By field name; a name that isn't in here keeps its value. */
+  identity?: Record<string, string>;
+  sshKey?: {
+    privateKey?: string | null;
+    publicKey?: string | null;
+    fingerprint?: string | null;
+  };
+  fields: {
+    name: string | null;
+    kind: FieldKind;
+    value?: string | null;
+    /** Which field of the item this one was, for a value the editor never saw. */
+    from: number | null;
+  }[];
+};
+
 export type GeneratorOptions = {
   length: number;
   lowercase: boolean;
@@ -135,7 +193,11 @@ export const loginSendEmail = () => invoke<void>('login_send_email');
 export const loginCancel = () => invoke<void>('login_cancel');
 export const unlock = (password: string) => invoke<Status>('unlock', { password });
 export const lock = () => invoke<void>('lock');
-export const logout = () => invoke<void>('logout');
+/** Without an id: the account on screen. The others stay. */
+export const logout = (id?: string) => invoke<Status>('logout', { id: id ?? null });
+export const switchAccount = (id: string) => invoke<Status>('switch_account', { id });
+export const renameAccount = (id: string, label: string) =>
+  invoke<Status>('rename_account', { id, label });
 export const touch = () => invoke<void>('touch');
 export const setSecurity = (autoLockMinutes: number | null, clipboardSeconds: number | null) =>
   invoke<void>('set_security', { autoLockMinutes, clipboardSeconds });
@@ -152,6 +214,21 @@ export const copyGenerated = (text: string) => invoke<void>('copy_generated', { 
 export const totpCode = (id: string) => invoke<TotpCode>('totp_code', { id });
 export const generatePassword = (options: GeneratorOptions) =>
   invoke<{ password: string; bits: number }>('generate_password', { options });
+
+/** Without an id: a new item. Returns the item's id. */
+export const saveItem = (id: string | null, draft: Draft) =>
+  invoke<string>('save_item', { id, draft });
+export const setFavorite = (id: string, favorite: boolean) =>
+  invoke<void>('set_favorite', { id, favorite });
+export const setItemFolder = (id: string, folderId: string | null) =>
+  invoke<void>('set_item_folder', { id, folderId });
+export const deleteItem = (id: string, permanent: boolean) =>
+  invoke<void>('delete_item', { id, permanent });
+export const restoreItem = (id: string) => invoke<void>('restore_item', { id });
+/** Without an id: a new folder. */
+export const saveFolder = (id: string | null, name: string) =>
+  invoke<string>('save_folder', { id, name });
+export const deleteFolder = (id: string) => invoke<void>('delete_folder', { id });
 export const openItemUri = (id: string, index: number) =>
   invoke<void>('open_item_uri', { id, index });
 export const openWebVault = () => invoke<void>('open_web_vault');

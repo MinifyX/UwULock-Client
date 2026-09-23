@@ -505,6 +505,165 @@ impl Client {
         parse_sync(&response.body)?;
         Ok(response.body)
     }
+
+    // ── Writing ────────────────────────────────────────────
+    //
+    // Every save carries the revision UwULock last saw, so a server that has a
+    // newer copy of the item refuses instead of letting the older one win.
+    // What comes back is the item as the server now has it, which the caller
+    // puts into its own copy of the vault.
+
+    /// A new item. `collection_ids` is for an item that belongs to an
+    /// organisation; a personal item takes an empty list.
+    pub async fn create_cipher(
+        &self,
+        access_token: &str,
+        cipher: wire::CipherRequest,
+        collection_ids: &[String],
+    ) -> Result<Value, Error> {
+        let api = self.server.api();
+        let request = if cipher.organization_id.is_some() {
+            self.request(reqwest::Method::POST, format!("{api}/ciphers/create"))
+                .json(&wire::ShareRequest {
+                    cipher,
+                    collection_ids: collection_ids.to_vec(),
+                })
+        } else {
+            self.request(reqwest::Method::POST, format!("{api}/ciphers"))
+                .json(&cipher)
+        };
+        self.write(request.bearer_auth(access_token)).await
+    }
+
+    pub async fn update_cipher(
+        &self,
+        access_token: &str,
+        id: &str,
+        cipher: wire::CipherRequest,
+    ) -> Result<Value, Error> {
+        self.write(
+            self.request(
+                reqwest::Method::PUT,
+                format!("{}/ciphers/{}", self.server.api(), escape(id)),
+            )
+            .bearer_auth(access_token)
+            .json(&cipher),
+        )
+        .await
+    }
+
+    /// Into the trash, where the server keeps it for 30 days.
+    pub async fn trash_cipher(&self, access_token: &str, id: &str) -> Result<(), Error> {
+        self.write(
+            self.request(
+                reqwest::Method::PUT,
+                format!("{}/ciphers/{}/delete", self.server.api(), escape(id)),
+            )
+            .bearer_auth(access_token),
+        )
+        .await
+        .map(drop)
+    }
+
+    pub async fn restore_cipher(&self, access_token: &str, id: &str) -> Result<Value, Error> {
+        self.write(
+            self.request(
+                reqwest::Method::PUT,
+                format!("{}/ciphers/{}/restore", self.server.api(), escape(id)),
+            )
+            .bearer_auth(access_token),
+        )
+        .await
+    }
+
+    /// Gone for good.
+    pub async fn delete_cipher(&self, access_token: &str, id: &str) -> Result<(), Error> {
+        self.write(
+            self.request(
+                reqwest::Method::DELETE,
+                format!("{}/ciphers/{}", self.server.api(), escape(id)),
+            )
+            .bearer_auth(access_token),
+        )
+        .await
+        .map(drop)
+    }
+
+    /// `name` is already encrypted under the user key.
+    pub async fn create_folder(&self, access_token: &str, name: String) -> Result<Value, Error> {
+        self.write(
+            self.request(
+                reqwest::Method::POST,
+                format!("{}/folders", self.server.api()),
+            )
+            .bearer_auth(access_token)
+            .json(&wire::FolderRequest { name }),
+        )
+        .await
+    }
+
+    pub async fn rename_folder(
+        &self,
+        access_token: &str,
+        id: &str,
+        name: String,
+    ) -> Result<Value, Error> {
+        self.write(
+            self.request(
+                reqwest::Method::PUT,
+                format!("{}/folders/{}", self.server.api(), escape(id)),
+            )
+            .bearer_auth(access_token)
+            .json(&wire::FolderRequest { name }),
+        )
+        .await
+    }
+
+    /// Removes the folder. The items in it stay, without a folder.
+    pub async fn delete_folder(&self, access_token: &str, id: &str) -> Result<(), Error> {
+        self.write(
+            self.request(
+                reqwest::Method::DELETE,
+                format!("{}/folders/{}", self.server.api(), escape(id)),
+            )
+            .bearer_auth(access_token),
+        )
+        .await
+        .map(drop)
+    }
+
+    /// Sends a write and returns what the server made of it, as it wrote it —
+    /// keys and all, so the answer can go straight into the cached vault.
+    async fn write(&self, request: reqwest::RequestBuilder) -> Result<Value, Error> {
+        let response = send(request).await?;
+        if response.status == 401 {
+            return Err(Error::SessionExpired);
+        }
+        if !response.ok() {
+            return Err(response.write_error());
+        }
+        if response.body.trim().is_empty() {
+            return Ok(Value::Null);
+        }
+        serde_json::from_str(&response.body).map_err(|e| Error::Server {
+            status: response.status,
+            message: format!("the server's answer isn't JSON: {e}"),
+        })
+    }
+}
+
+/// An id goes into a path; a server that hands out something odd shouldn't be
+/// able to steer the request somewhere else. Ids are UUIDs, so this rarely has
+/// anything to do.
+fn escape(id: &str) -> String {
+    id.bytes()
+        .map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (byte as char).to_string()
+            }
+            other => format!("%{other:02X}"),
+        })
+        .collect()
 }
 
 /// A sync, from the text [`Client::sync`] returned (or a cached copy of it).
@@ -591,6 +750,28 @@ impl Response {
                 message
             },
         }
+    }
+
+    /// A refused write. The one case that isn't a plain error is the item
+    /// having changed elsewhere since the last sync — then the server keeps
+    /// the newer copy, and UwULock says so instead of trying again.
+    fn write_error(&self) -> Error {
+        let error = self.error();
+        let message = error.to_string().to_lowercase();
+        if self.status == 400
+            && (message.contains("out of date")
+                || message.contains("has changed")
+                || message.contains("resync"))
+        {
+            return Error::Conflict;
+        }
+        if self.status == 403 || self.status == 404 {
+            return Error::Refused(match &error {
+                Error::Server { message, .. } if !message.is_empty() => message.clone(),
+                _ => "the server didn't allow this change".into(),
+            });
+        }
+        error
     }
 }
 

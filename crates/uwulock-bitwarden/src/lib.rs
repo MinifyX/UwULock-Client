@@ -35,6 +35,10 @@ pub enum Error {
     /// The session is gone: logged out elsewhere, password changed, device removed.
     #[error("the session has expired")]
     SessionExpired,
+    /// The item changed somewhere else since the last sync. The server keeps
+    /// the newer copy rather than letting this save overwrite it.
+    #[error("the item has changed on the server since the last sync")]
+    Conflict,
     /// A MAC didn't match: the wrong key, which usually means the wrong master password.
     #[error("wrong key")]
     WrongKey,

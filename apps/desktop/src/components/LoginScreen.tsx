@@ -20,6 +20,8 @@ import { PasswordInput } from './PasswordInput';
 type Props = {
   /** Logging in again after the session expired: server and email are known. */
   again?: Status | null;
+  /** A second account, next to the ones already on this device. */
+  adding?: boolean;
   onDone: (status: Status) => void;
   onCancel?: () => void;
 };
@@ -39,12 +41,12 @@ const METHOD_LABEL: Record<TwoFactorMethod['kind'], string> = {
  * it, the two-step code. The master password is turned into the master key
  * and its hash right in Rust; only the hash goes to the server.
  */
-export function LoginScreen({ again, onDone, onCancel }: Props) {
+export function LoginScreen({ again, adding, onDone, onCancel }: Props) {
   useLanguage();
   const settings = useSettings();
   const [kind, setKind] = useState<ServerKind>(again?.serverKind ?? settings.lastServerKind);
-  const [url, setUrl] = useState(again?.serverUrl ?? settings.lastServerUrl);
-  const [email, setEmail] = useState(again?.email ?? settings.lastEmail);
+  const [url, setUrl] = useState(again?.serverUrl ?? (adding ? '' : settings.lastServerUrl));
+  const [email, setEmail] = useState(again?.email ?? (adding ? '' : settings.lastEmail));
   const [password, setPassword] = useState('');
   const [step, setStep] = useState<LoginStep | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -96,16 +98,24 @@ export function LoginScreen({ again, onDone, onCancel }: Props) {
       <section className="welcome-art" aria-hidden>
         <NyuScene name={step ? 'keys' : 'welcome'} className="welcome-scene" />
         <p className="welcome-title">
-          {again ? t('Einmal neu anmelden, bitte') : t('Hallo! Ich bin Nyu ✧')}
+          {again
+            ? t('Einmal neu anmelden, bitte')
+            : adding
+              ? t('Noch ein Konto ✧')
+              : t('Hallo! Ich bin Nyu ✧')}
         </p>
         <p className="welcome-text">
           {again
             ? t(
                 'Der Server kennt die Sitzung dieses Geräts nicht mehr. Nach der Anmeldung geht es weiter wie vorher.',
               )
-            : t(
-                'UwULock öffnet deinen Tresor von Vaultwarden oder Bitwarden. Dein Master-Passwort verlässt dieses Gerät nie – der Server bekommt nur einen Hash davon.',
-              )}
+            : adding
+              ? t(
+                  'Privat und Arbeit nebeneinander: Jedes Konto behält seinen Server, seinen Tresor und sein eigenes Master-Passwort. Umgeschaltet wird unten links.',
+                )
+              : t(
+                  'UwULock öffnet deinen Tresor von Vaultwarden oder Bitwarden. Dein Master-Passwort verlässt dieses Gerät nie – der Server bekommt nur einen Hash davon.',
+                )}
         </p>
       </section>
 
@@ -188,7 +198,7 @@ export function LoginScreen({ again, onDone, onCancel }: Props) {
             <p className="welcome-beta">
               <Icon name="sparkles" size={14} />
               {t(
-                'Beta: Ansehen, Suchen, Kopieren und Einmal-Codes. Bearbeiten kommt in einer der nächsten Versionen.',
+                'Beta: Ansehen, Suchen, Bearbeiten, Einmal-Codes und mehrere Konten. Anhänge und Sends kommen noch.',
               )}
             </p>
           </form>

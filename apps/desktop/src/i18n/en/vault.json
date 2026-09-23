@@ -80,7 +80,6 @@
   "Geändert {when}": "Changed {when}",
   "Erstellt {when}": "Created {when}",
   "Passwort geändert {when}": "Password changed {when}",
-  "Bearbeiten kommt in einer der nächsten Betas.": "Editing comes in one of the next betas.",
   "Im Web-Tresor öffnen": "Open in the web vault",
   "Dein Tresor ist gesperrt": "Your vault is locked",
   "Entsperrt …": "Unlocking …",
@@ -98,7 +97,6 @@
   "Anmelden": "Log in",
   "Die Adresse, unter der du deinen Web-Tresor öffnest.": "The address you open your web vault at.",
   "E-Mail-Adresse": "Email address",
-  "Beta: Ansehen, Suchen, Kopieren und Einmal-Codes. Bearbeiten kommt in einer der nächsten Versionen.": "Beta: viewing, searching, copying and one-time codes. Editing comes in one of the next versions.",
   "Der Code wurde nicht angenommen.": "The code wasn't accepted.",
   "Zweistufige Anmeldung": "Two-step login",
   "Dein Konto verlangt eine Methode, die UwULock noch nicht kann ({methods}). Richte im Web-Tresor zusätzlich eine Authenticator-App oder E-Mail-Codes ein.": "Your account asks for a method UwULock can't do yet ({methods}). Add an authenticator app or email codes in the web vault as well.",
@@ -141,7 +139,6 @@
   "Synchronisiert ✧": "Synced ✧",
   "Synchronisiert …": "Syncing …",
   "Web-Tresor": "Web vault",
-  "Für alles, was diese Beta noch nicht kann: Einträge anlegen und bearbeiten, Anhänge, Organisationen verwalten.": "For everything this beta can't do yet: creating and editing items, attachments, managing organizations.",
   "Löscht die Anmeldung und die verschlüsselte Kopie des Tresors von diesem Gerät. Auf dem Server bleibt alles, wie es ist.": "Deletes the login and the encrypted copy of the vault from this device. Everything on the server stays as it is.",
   "Abmelden …": "Log out …",
   "Spricht das Protokoll von Bitwarden und Vaultwarden, mit derselben Verschlüsselung wie die offiziellen Apps. Nicht verbunden mit Bitwarden Inc.": "Speaks the protocol of Bitwarden and Vaultwarden, with the same encryption as the official apps. Not affiliated with Bitwarden Inc.",
@@ -164,7 +161,6 @@
   "Organisation": "Organization",
   "Nichts gefunden für „{query}“.": "Nothing found for “{query}”.",
   "Hier ist nichts. (˘ω˘)": "Nothing here. (˘ω˘)",
-  "Dein Tresor ist noch leer. Neue Einträge legst du vorerst im Web-Tresor an.": "Your vault is still empty. Create new items in the web vault for now.",
   "Sync fehlgeschlagen": "Sync failed",
   "Synchronisiert {when}": "Synced {when}",
   "Der Server muss per https:// erreichbar sein. Unverschlüsseltes http:// geht nur zu diesem Rechner (localhost).": "The server must be reachable over https://. Unencrypted http:// only works to this computer (localhost).",
@@ -193,5 +189,7 @@
   "gerade eben": "just now",
   "Server": "Server",
   "Server-Adresse": "Server address",
-  "Auf diesem Gerät merken": "Remember on this device"
+  "Auf diesem Gerät merken": "Remember on this device",
+  "Beta: Ansehen, Suchen, Bearbeiten, Einmal-Codes und mehrere Konten. Anhänge und Sends kommen noch.": "Beta: viewing, searching, editing, one-time codes and several accounts. Attachments and sends are still to come.",
+  "Für alles, was diese Beta noch nicht kann: Anhänge, Sends, Organisationen verwalten.": "For everything this beta can't do yet: attachments, sends, managing organizations."
 }

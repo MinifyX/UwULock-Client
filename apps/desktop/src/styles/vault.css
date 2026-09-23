@@ -1033,3 +1033,263 @@ button {
   background: var(--uwu-pink-tint);
   color: var(--uwu-pink-ink);
 }
+
+/* ── Editing ───────────────────────────────────────────── */
+
+/* The list head keeps room for the way to a new item. */
+.new-item {
+  padding: 3px 10px 3px 8px;
+  font-size: 12px;
+  border-radius: var(--uwu-radius-pill);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.nav-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.icon-button.tiny {
+  width: 20px;
+  height: 20px;
+}
+
+/* The tools next to an item's name: favourite, trash, edit. */
+.detail-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.detail-tools .primary {
+  padding: 6px 12px;
+}
+
+button.danger-text {
+  color: var(--uwu-alarm);
+}
+
+.editor {
+  display: grid;
+  gap: 14px;
+}
+
+.editor-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.editor-row > .field,
+.editor-row > input,
+.editor-row > select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* A row's remove button sits on the line of the inputs, not above them. */
+.editor-row > .icon-button {
+  flex: none;
+  margin-bottom: 4px;
+}
+
+.editor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.editor-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--uwu-hairline);
+  border-radius: var(--uwu-radius-control);
+  background: var(--uwu-elevated);
+}
+
+.editor-list legend {
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--uwu-muted);
+}
+
+.add-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+button.add-row {
+  justify-self: start;
+  gap: 6px;
+  font-size: 12.5px;
+}
+
+.linked-note {
+  flex: 1;
+  font-size: 12.5px;
+}
+
+.editor-switches {
+  display: grid;
+  gap: 8px;
+}
+
+/* A value the editor may not have: its label carries the eye and the dice. */
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--uwu-muted);
+  line-height: 1.45;
+}
+
+.field-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.field-hint[data-tone='warn'] {
+  color: var(--uwu-alarm);
+}
+
+/* Inputs the editor adds next to the ones the app already had. */
+.field textarea,
+.field select,
+.editor-row > input,
+.editor-row > select {
+  font: inherit;
+  font-size: 13px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--uwu-radius-control);
+  border: 1px solid var(--uwu-border);
+  background: var(--uwu-canvas);
+  color: var(--uwu-ink);
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 60px;
+  line-height: 1.5;
+}
+
+.field textarea.mono,
+.field input.mono {
+  font-family: var(--uwu-mono);
+}
+
+/* ── Accounts ──────────────────────────────────────────── */
+
+.account-switch {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.account-switch:hover:not(:disabled) {
+  background: transparent;
+  color: inherit;
+}
+
+.account-switch:hover .account-email {
+  color: var(--uwu-pink-ink);
+}
+
+.account-chevron {
+  flex: none;
+  color: var(--uwu-muted);
+}
+
+.lock-accounts {
+  display: grid;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.lock-account-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  font-size: 12.5px;
+}
+
+.lock-account-row small {
+  margin-left: auto;
+  color: var(--uwu-muted);
+}
+
+/* ── Menus ─────────────────────────────────────────────── */
+/* The switcher, the folder actions and the way to a new item all use it. */
+
+.context-menu {
+  position: fixed;
+  z-index: 40;
+  min-width: 210px;
+  padding: 5px;
+  border-radius: 12px;
+  border: 1px solid var(--uwu-border);
+  background: var(--uwu-surface);
+  box-shadow: 0 16px 40px -16px rgba(20, 16, 22, 0.5);
+  display: grid;
+  animation: menu-in 120ms ease both;
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+.context-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-weight: 500;
+  text-align: left;
+}
+
+.context-menu button:hover:not(:disabled),
+.context-menu button:focus-visible {
+  background: var(--uwu-pink-tint);
+  color: var(--uwu-pink-ink);
+  outline: none;
+}
+
+.context-menu button[data-danger] {
+  color: var(--uwu-alarm);
+}
+
+.context-menu hr {
+  margin: 4px 6px;
+  border: 0;
+  border-top: 1px solid var(--uwu-hairline);
+}
+
+/* Keeps the labels in line when an entry has no icon. */
+.icon-gap {
+  width: 15px;
+}

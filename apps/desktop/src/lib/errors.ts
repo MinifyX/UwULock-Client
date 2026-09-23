@@ -27,6 +27,12 @@ export function errorText(error: unknown): string {
       return t('Das Master-Passwort ist falsch.');
     case 'session-expired':
       return t('Die Sitzung ist abgelaufen. Bitte melde dich neu an.');
+    case 'conflict':
+      return t(
+        'Dieser Eintrag wurde woanders geändert. UwULock hat nichts überschrieben – synchronisiere und bearbeite ihn noch einmal.',
+      );
+    case 'reprompt':
+      return t('Dieser Eintrag fragt zuerst nach deinem Master-Passwort.');
     case 'server':
       return t('Der Server hat mit einem Fehler geantwortet: {reason}', { reason: m });
     case 'unsupported':

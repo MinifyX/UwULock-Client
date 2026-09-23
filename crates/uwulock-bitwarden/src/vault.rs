@@ -1,9 +1,14 @@
 //! The sync, opened: every item, folder and collection decrypted with the
-//! account's keys.
+//! account's keys — and sealed again when something is saved.
 //!
 //! An item whose key or name doesn't open is kept, marked `broken`, so it
 //! doesn't silently vanish from the list; a single field that doesn't open is
 //! left empty and marks the item too.
+//!
+//! An item carries what it takes to put it back: the key its values live
+//! under, and the pieces UwULock doesn't show (passkeys, linked fields, the
+//! checksum of an address). [`Item::seal`] hands all of it back, so saving a
+//! name never costs a passkey.
 
 use std::collections::HashMap;
 use zeroize::Zeroizing;
@@ -14,7 +19,12 @@ use crate::Error;
 
 pub type Secret = Zeroizing<String>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+/// A value the server never saw as empty: Bitwarden leaves such a field out.
+fn some(value: &Option<Secret>) -> Option<&Secret> {
+    value.as_ref().filter(|v| !v.is_empty())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ItemKind {
     Login,
@@ -35,9 +45,19 @@ impl ItemKind {
             _ => return None,
         })
     }
+
+    pub fn to_wire(self) -> u8 {
+        match self {
+            ItemKind::Login => 1,
+            ItemKind::Note => 2,
+            ItemKind::Card => 3,
+            ItemKind::Identity => 4,
+            ItemKind::SshKey => 5,
+        }
+    }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Login {
     pub username: Option<Secret>,
     pub password: Option<Secret>,
@@ -45,19 +65,29 @@ pub struct Login {
     pub totp: Option<Secret>,
     pub uris: Vec<LoginUri>,
     pub password_revision_date: Option<String>,
-    /// Passkeys stored with the login. Counted only: UwULock can't use them yet.
-    pub passkeys: usize,
+    /// Passkeys stored with the login, as the server sent them. UwULock can't
+    /// use them yet, and hands them back untouched.
+    pub passkeys: Option<Vec<serde_json::Value>>,
+    pub autofill_on_page_load: Option<bool>,
 }
 
-#[derive(Debug)]
+impl Login {
+    pub fn passkey_count(&self) -> usize {
+        self.passkeys.as_ref().map_or(0, Vec::len)
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct LoginUri {
     pub uri: Secret,
     /// Bitwarden's match detection: 0 domain, 1 host, 2 starts with, 3 exact,
     /// 4 regex, 5 never. `None` follows the account's default.
     pub match_kind: Option<u32>,
+    /// Only valid for this exact address; dropped when the address changes.
+    pub checksum: Option<String>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Card {
     pub cardholder_name: Option<Secret>,
     pub brand: Option<Secret>,
@@ -67,7 +97,7 @@ pub struct Card {
     pub code: Option<Secret>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Identity {
     pub title: Option<Secret>,
     pub first_name: Option<Secret>,
@@ -89,14 +119,14 @@ pub struct Identity {
     pub license_number: Option<Secret>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct SshKey {
     pub private_key: Option<Secret>,
     pub public_key: Option<Secret>,
     pub fingerprint: Option<Secret>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum FieldKind {
     Text,
@@ -106,20 +136,42 @@ pub enum FieldKind {
     Linked,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Field {
     pub name: Option<Secret>,
     pub value: Option<Secret>,
     pub kind: FieldKind,
+    /// Which value of the item a linked field points at. Kept as it came.
+    pub linked_id: Option<u32>,
 }
 
-#[derive(Debug)]
+impl FieldKind {
+    fn from_wire(kind: Option<u32>) -> Self {
+        match kind {
+            Some(1) => FieldKind::Hidden,
+            Some(2) => FieldKind::Boolean,
+            Some(3) => FieldKind::Linked,
+            _ => FieldKind::Text,
+        }
+    }
+
+    pub fn to_wire(self) -> u32 {
+        match self {
+            FieldKind::Text => 0,
+            FieldKind::Hidden => 1,
+            FieldKind::Boolean => 2,
+            FieldKind::Linked => 3,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct PasswordHistory {
     pub password: Secret,
     pub last_used: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Item {
     pub id: String,
     pub kind: ItemKind,
@@ -144,6 +196,215 @@ pub struct Item {
     pub attachments: usize,
     /// Something in it didn't decrypt.
     pub broken: bool,
+    /// The item's own key, if it has one: newer items keep their values under
+    /// a key of their own, which itself is wrapped under the user or
+    /// organisation key.
+    pub key: Option<SymmetricKey>,
+    /// That key as the server keeps it, to hand back on a save.
+    pub wrapped_key: Option<String>,
+    /// Set while the item is archived. A save that leaves it out un-archives.
+    pub archived_date: Option<String>,
+    /// Which kind of note this is (0 is the only one Bitwarden has).
+    pub note_kind: Option<u32>,
+}
+
+impl Item {
+    /// A new item of `kind`, with nothing in it yet.
+    pub fn new(kind: ItemKind) -> Item {
+        Item {
+            id: String::new(),
+            kind,
+            name: Secret::default(),
+            notes: None,
+            folder_id: None,
+            organization_id: None,
+            collection_ids: Vec::new(),
+            favorite: false,
+            reprompt: false,
+            revision_date: None,
+            creation_date: None,
+            deleted: false,
+            login: (kind == ItemKind::Login).then(Login::default),
+            card: (kind == ItemKind::Card).then(Card::default),
+            identity: (kind == ItemKind::Identity).then(Identity::default),
+            ssh_key: (kind == ItemKind::SshKey).then(SshKey::default),
+            fields: Vec::new(),
+            password_history: Vec::new(),
+            attachments: 0,
+            broken: false,
+            key: None,
+            wrapped_key: None,
+            archived_date: None,
+            note_kind: (kind == ItemKind::Note).then_some(0),
+        }
+    }
+
+    /// The item as the server takes it back, every value encrypted again.
+    ///
+    /// `outer` is the key the item belongs under — the account's user key, or
+    /// the organisation's. An item with a key of its own keeps using that one
+    /// for its values; everything else UwULock doesn't touch travels along.
+    ///
+    /// A broken item is never sealed: half of it didn't open, and saving it
+    /// would write that half away. See [`Item::can_save`].
+    pub fn seal(&self, outer: &SymmetricKey) -> Result<wire::CipherRequest, Error> {
+        if self.broken {
+            return Err(Error::Refused(
+                "this item didn't fully decrypt, so UwULock won't write it back".into(),
+            ));
+        }
+        let key = self.key.as_ref().unwrap_or(outer);
+        let seal = |value: &Option<Secret>| {
+            some(value).map(|v| EncString::encrypt(v.as_bytes(), key).to_string())
+        };
+        let login = self.login.as_ref().map(|l| wire::LoginRequest {
+            username: seal(&l.username),
+            password: seal(&l.password),
+            totp: seal(&l.totp),
+            uris: l
+                .uris
+                .iter()
+                .filter(|u| !u.uri.is_empty())
+                .map(|u| wire::LoginUriRequest {
+                    uri: Some(EncString::encrypt(u.uri.as_bytes(), key).to_string()),
+                    match_kind: u.match_kind,
+                    uri_checksum: u.checksum.clone(),
+                })
+                .collect(),
+            password_revision_date: l.password_revision_date.clone(),
+            fido2_credentials: l.passkeys.clone(),
+            autofill_on_page_load: l.autofill_on_page_load,
+        });
+        let card = self.card.as_ref().map(|c| wire::CardRequest {
+            cardholder_name: seal(&c.cardholder_name),
+            brand: seal(&c.brand),
+            number: seal(&c.number),
+            exp_month: seal(&c.exp_month),
+            exp_year: seal(&c.exp_year),
+            code: seal(&c.code),
+        });
+        let identity = self.identity.as_ref().map(|i| wire::IdentityRequest {
+            title: seal(&i.title),
+            first_name: seal(&i.first_name),
+            middle_name: seal(&i.middle_name),
+            last_name: seal(&i.last_name),
+            username: seal(&i.username),
+            company: seal(&i.company),
+            email: seal(&i.email),
+            phone: seal(&i.phone),
+            address1: seal(&i.address1),
+            address2: seal(&i.address2),
+            address3: seal(&i.address3),
+            postal_code: seal(&i.postal_code),
+            city: seal(&i.city),
+            state: seal(&i.state),
+            country: seal(&i.country),
+            ssn: seal(&i.ssn),
+            passport_number: seal(&i.passport_number),
+            license_number: seal(&i.license_number),
+        });
+        let ssh_key = self.ssh_key.as_ref().map(|s| wire::SshKeyRequest {
+            private_key: seal(&s.private_key),
+            public_key: seal(&s.public_key),
+            key_fingerprint: seal(&s.fingerprint),
+        });
+        let fields = self
+            .fields
+            .iter()
+            .map(|f| wire::FieldRequest {
+                name: seal(&f.name),
+                value: seal(&f.value),
+                kind: f.kind.to_wire(),
+                linked_id: f.linked_id,
+            })
+            .collect::<Vec<_>>();
+        let history = self
+            .password_history
+            .iter()
+            .filter(|h| !h.password.is_empty())
+            .map(|h| wire::PasswordHistoryRequest {
+                password: EncString::encrypt(h.password.as_bytes(), key).to_string(),
+                last_used_date: h
+                    .last_used
+                    .clone()
+                    .unwrap_or_else(|| "1970-01-01T00:00:00.000Z".into()),
+            })
+            .collect::<Vec<_>>();
+
+        Ok(wire::CipherRequest {
+            kind: self.kind.to_wire(),
+            name: EncString::encrypt(self.name.as_bytes(), key).to_string(),
+            notes: seal(&self.notes),
+            favorite: self.favorite,
+            reprompt: u8::from(self.reprompt),
+            folder_id: self.folder_id.clone(),
+            organization_id: self.organization_id.clone(),
+            key: self.wrapped_key.clone(),
+            login,
+            card,
+            identity,
+            secure_note: (self.kind == ItemKind::Note).then(|| wire::SecureNoteRequest {
+                kind: self.note_kind.unwrap_or(0),
+            }),
+            ssh_key,
+            fields: (!fields.is_empty()).then_some(fields),
+            password_history: (!history.is_empty()).then_some(history),
+            last_known_revision_date: self.revision_date.clone(),
+            archived_date: self.archived_date.clone(),
+        })
+    }
+
+    /// Sets a login's password and keeps the one before it, the way
+    /// Bitwarden's clients do: newest first, five at most. `now` is an ISO
+    /// date, the one the item's password revision gets too.
+    pub fn set_password(&mut self, password: Secret, now: &str) {
+        let Some(login) = self.login.as_mut() else {
+            return;
+        };
+        let previous = login.password.replace(password.clone());
+        match previous {
+            Some(old) if !old.is_empty() && old != password => {
+                login.password_revision_date = Some(now.to_string());
+                self.password_history.insert(
+                    0,
+                    PasswordHistory {
+                        password: old,
+                        last_used: Some(now.to_string()),
+                    },
+                );
+                self.password_history.truncate(5);
+            }
+            // Nothing was there, or nothing changed: no history entry.
+            _ => {
+                if login.password_revision_date.is_none() && !password.is_empty() {
+                    login.password_revision_date = Some(now.to_string());
+                }
+            }
+        }
+    }
+
+    /// Whether UwULock may write this item back. A server that keeps the SSH
+    /// key material only when all three parts are there would otherwise empty
+    /// the item.
+    pub fn can_save(&self) -> Result<(), Error> {
+        if self.broken {
+            return Err(Error::Refused(
+                "this item didn't fully decrypt, so UwULock won't write it back".into(),
+            ));
+        }
+        if self.name.trim().is_empty() {
+            return Err(Error::Refused("an item needs a name".into()));
+        }
+        if let Some(ssh) = &self.ssh_key {
+            let parts = [&ssh.private_key, &ssh.public_key, &ssh.fingerprint];
+            if parts.iter().any(|part| some(part).is_none()) {
+                return Err(Error::Refused(
+                    "an SSH key needs its private key, its public key and its fingerprint".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -176,11 +437,27 @@ pub struct Vault {
     pub organizations: Vec<Organization>,
     /// Items of a kind UwULock doesn't know, or organisations whose key didn't open.
     pub skipped: usize,
+    /// The organisations' keys, kept for saving items that belong to one.
+    org_keys: HashMap<String, SymmetricKey>,
 }
 
 impl Vault {
     pub fn item(&self, id: &str) -> Option<&Item> {
         self.items.iter().find(|item| item.id == id)
+    }
+
+    /// The key an item belongs under: the organisation's, or the account's own.
+    pub fn outer_key<'a>(
+        &'a self,
+        organization_id: Option<&str>,
+        user_key: &'a SymmetricKey,
+    ) -> Result<&'a SymmetricKey, Error> {
+        match organization_id {
+            None => Ok(user_key),
+            Some(id) => self.org_keys.get(id).ok_or_else(|| {
+                Error::Refused("this item belongs to an organisation UwULock has no key for".into())
+            }),
+        }
     }
 
     /// Opens a sync with the account's user key.
@@ -194,7 +471,7 @@ impl Vault {
         };
 
         let mut skipped = 0;
-        let mut org_keys: HashMap<&str, SymmetricKey> = HashMap::new();
+        let mut org_keys: HashMap<String, SymmetricKey> = HashMap::new();
         let mut organizations = Vec::new();
         for org in &sync.profile.organizations {
             let key = match (&org.key, &private) {
@@ -206,7 +483,7 @@ impl Vault {
             };
             match key {
                 Ok(key) => {
-                    org_keys.insert(org.id.as_str(), key);
+                    org_keys.insert(org.id.clone(), key);
                     organizations.push(Organization {
                         id: org.id.clone(),
                         name: org.name.clone().unwrap_or_default(),
@@ -236,7 +513,7 @@ impl Vault {
             .collections
             .iter()
             .filter_map(|collection| {
-                let key = org_keys.get(collection.organization_id.as_str())?;
+                let key = org_keys.get(&collection.organization_id)?;
                 Some(Collection {
                     id: collection.id.clone(),
                     organization_id: collection.organization_id.clone(),
@@ -256,7 +533,7 @@ impl Vault {
                 continue;
             };
             let outer = match &cipher.organization_id {
-                Some(org) => match org_keys.get(org.as_str()) {
+                Some(org) => match org_keys.get(org) {
                     Some(key) => key,
                     None => {
                         skipped += 1;
@@ -276,6 +553,7 @@ impl Vault {
             collections,
             organizations,
             skipped,
+            org_keys,
         })
     }
 }
@@ -324,11 +602,13 @@ fn open_item(cipher: &wire::Cipher, kind: ItemKind, outer: &SymmetricKey) -> Ite
                 Some(LoginUri {
                     uri: open(&uri.uri)?,
                     match_kind: uri.match_kind,
+                    checksum: uri.checksum.clone(),
                 })
             })
             .collect(),
         password_revision_date: login.password_revision_date.clone(),
-        passkeys: login.fido2_credentials.as_ref().map_or(0, Vec::len),
+        passkeys: login.fido2_credentials.clone(),
+        autofill_on_page_load: login.autofill_on_page_load,
     });
     let card = cipher.card.as_ref().map(|card| Card {
         cardholder_name: open(&card.cardholder_name),
@@ -370,12 +650,8 @@ fn open_item(cipher: &wire::Cipher, kind: ItemKind, outer: &SymmetricKey) -> Ite
         .map(|field| Field {
             name: open(&field.name),
             value: open(&field.value),
-            kind: match field.kind {
-                Some(1) => FieldKind::Hidden,
-                Some(2) => FieldKind::Boolean,
-                Some(3) => FieldKind::Linked,
-                _ => FieldKind::Text,
-            },
+            kind: FieldKind::from_wire(field.kind),
+            linked_id: field.linked_id,
         })
         .collect();
     let password_history = cipher
@@ -411,5 +687,9 @@ fn open_item(cipher: &wire::Cipher, kind: ItemKind, outer: &SymmetricKey) -> Ite
         password_history,
         attachments: cipher.attachments.as_ref().map_or(0, Vec::len),
         broken,
+        key: item_key,
+        wrapped_key: cipher.key.clone(),
+        archived_date: cipher.archived_date.clone(),
+        note_kind: cipher.secure_note.as_ref().and_then(|note| note.kind),
     }
 }

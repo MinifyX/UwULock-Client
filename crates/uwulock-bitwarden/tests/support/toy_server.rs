@@ -1,6 +1,13 @@
 //! A toy Bitwarden server: just enough of Vaultwarden's API for UwULock to
-//! log in, pass two-step login, refresh and sync — with a vault encrypted the
-//! way Bitwarden's apps encrypt one, so decrypting it proves the real thing.
+//! log in, pass two-step login, refresh, sync and save — with a vault
+//! encrypted the way Bitwarden's apps encrypt one, so decrypting it proves the
+//! real thing.
+//!
+//! The writing side follows Vaultwarden's: an item's login, card, identity,
+//! note or SSH object is stored exactly as it arrives and comes back that way,
+//! a save without the type's object is refused, and a save that names an older
+//! revision than the stored one is refused as out of date. So a test that
+//! saves and syncs shows what the real server would have kept.
 //!
 //! Account `nyu@uwu.local`, master password `uwu-nyu-nyu-nyu`. Two-step login
 //! with an authenticator (secret [`TOTP_SECRET`]) or the email code `123456`.
@@ -168,6 +175,11 @@ fn sample_vault(
     github["notes"] = enc("Recovery codes are in the safe under the cat bed.", user);
     github["passwordHistory"] =
         json!([{ "password": enc("hunter2", user), "lastUsedDate": "2025-01-01T00:00:00.000Z" }]);
+    // Things UwULock doesn't show but must hand back on a save.
+    github["login"]["fido2Credentials"] = json!([{ "credentialId": "passkey-1",
+        "userName": enc("nyu-the-cat", user), "counter": enc("0", user), "discoverable": enc("true", user) }]);
+    github["login"]["autofillOnPageLoad"] = json!(true);
+    github["login"]["uris"][0]["uriChecksum"] = enc("checksum-of-the-github-address", user);
 
     let mut vaultwarden = login(
         "c-vaultwarden",
@@ -195,7 +207,9 @@ fn sample_vault(
     nas["fields"] = json!([
         { "name": enc("Admin-PIN", &item_key), "value": enc("4711", &item_key), "type": 1, "linkedId": null },
         { "name": enc("Standort", &item_key), "value": enc("Keller, Regal 2", &item_key), "type": 0, "linkedId": null },
-        { "name": enc("2FA aktiv", &item_key), "value": enc("true", &item_key), "type": 2, "linkedId": null }
+        { "name": enc("2FA aktiv", &item_key), "value": enc("true", &item_key), "type": 2, "linkedId": null },
+        // A field that points at the item's own username.
+        { "name": enc("Benutzer", &item_key), "value": null, "type": 3, "linkedId": 100 }
     ]);
 
     let mut router = login(
@@ -344,6 +358,17 @@ fn serve(mut stream: TcpStream, state: &Mutex<State>) -> std::io::Result<()> {
 }
 
 fn route(request: &Request, path: &str, state: &mut State) -> (u16, Value) {
+    let segments: Vec<&str> = path.trim_matches('/').split('/').collect();
+    // Items and folders need the session; the endpoints used during the login
+    // itself (the email code) don't have one yet.
+    if let ["api", rest @ ..] = segments.as_slice() {
+        if matches!(rest.first(), Some(&"ciphers") | Some(&"folders")) {
+            if !authorized(request, state) {
+                return (401, json!({ "message": "Unauthorized" }));
+            }
+            return vault_route(request, rest, state);
+        }
+    }
     match (request.method.as_str(), path) {
         ("POST", "/identity/accounts/prelogin") => {
             let (kdf, iterations, memory, parallelism) = match state.options.kdf {
@@ -362,12 +387,7 @@ fn route(request: &Request, path: &str, state: &mut State) -> (u16, Value) {
         ("POST", "/identity/connect/token") => token(request, state),
         ("POST", "/api/two-factor/send-email-login") => (200, json!({})),
         ("GET", "/api/sync") => {
-            let bearer = request
-                .headers
-                .get("authorization")
-                .and_then(|h| h.strip_prefix("Bearer "))
-                .unwrap_or_default();
-            if state.access_tokens.iter().any(|t| t == bearer) {
+            if authorized(request, state) {
                 (200, state.sync.clone())
             } else {
                 (401, json!({ "message": "Unauthorized" }))
@@ -375,6 +395,241 @@ fn route(request: &Request, path: &str, state: &mut State) -> (u16, Value) {
         }
         _ => (404, json!({ "message": "Not found" })),
     }
+}
+
+fn authorized(request: &Request, state: &State) -> bool {
+    let bearer = request
+        .headers
+        .get("authorization")
+        .and_then(|h| h.strip_prefix("Bearer "))
+        .unwrap_or_default();
+    state.access_tokens.iter().any(|t| t == bearer)
+}
+
+/// Saving: items and folders, as Vaultwarden takes them.
+fn vault_route(request: &Request, rest: &[&str], state: &mut State) -> (u16, Value) {
+    let body = || -> Value { serde_json::from_slice(&request.body).unwrap_or(Value::Null) };
+    match (request.method.as_str(), rest) {
+        ("POST", ["ciphers"]) => save_cipher(state, None, body(), &[]),
+        ("POST", ["ciphers", "create"]) => {
+            let body = body();
+            let collections: Vec<String> = body["collectionIds"]
+                .as_array()
+                .map(|ids| {
+                    ids.iter()
+                        .filter_map(|id| id.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default();
+            save_cipher(state, None, body["cipher"].clone(), &collections)
+        }
+        ("PUT", ["ciphers", id]) | ("POST", ["ciphers", id]) => {
+            save_cipher(state, Some(id), body(), &[])
+        }
+        ("PUT", ["ciphers", id, "delete"]) => match cipher_mut(state, id) {
+            Some(cipher) => {
+                cipher["deletedDate"] = json!(stamp());
+                cipher["revisionDate"] = json!(stamp());
+                (200, Value::Null)
+            }
+            None => not_found(),
+        },
+        ("PUT", ["ciphers", id, "restore"]) => match cipher_mut(state, id) {
+            Some(cipher) => {
+                cipher["deletedDate"] = Value::Null;
+                cipher["revisionDate"] = json!(stamp());
+                let answer = cipher.clone();
+                (200, answer)
+            }
+            None => not_found(),
+        },
+        ("DELETE", ["ciphers", id]) => {
+            let ciphers = state.sync["ciphers"].as_array_mut().unwrap();
+            let before = ciphers.len();
+            ciphers.retain(|cipher| cipher["id"] != json!(id));
+            if ciphers.len() == before {
+                not_found()
+            } else {
+                (200, Value::Null)
+            }
+        }
+        ("POST", ["folders"]) => {
+            state.counter += 1;
+            let folder = json!({
+                "id": format!("f-new-{}", state.counter),
+                "name": body()["name"].clone(),
+                "revisionDate": stamp(),
+                "object": "folder",
+            });
+            state.sync["folders"]
+                .as_array_mut()
+                .unwrap()
+                .push(folder.clone());
+            (200, folder)
+        }
+        ("PUT", ["folders", id]) => {
+            let name = body()["name"].clone();
+            match state.sync["folders"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|folder| folder["id"] == json!(id))
+            {
+                Some(folder) => {
+                    folder["name"] = name;
+                    folder["revisionDate"] = json!(stamp());
+                    let answer = folder.clone();
+                    (200, answer)
+                }
+                None => not_found(),
+            }
+        }
+        ("DELETE", ["folders", id]) => {
+            let folders = state.sync["folders"].as_array_mut().unwrap();
+            let before = folders.len();
+            folders.retain(|folder| folder["id"] != json!(id));
+            if folders.len() == before {
+                return not_found();
+            }
+            // The items in it keep their place, without a folder.
+            for cipher in state.sync["ciphers"].as_array_mut().unwrap() {
+                if cipher["folderId"] == json!(id) {
+                    cipher["folderId"] = Value::Null;
+                }
+            }
+            (200, Value::Null)
+        }
+        _ => not_found(),
+    }
+}
+
+fn not_found() -> (u16, Value) {
+    (
+        404,
+        json!({ "message": "Not found", "ErrorModel": { "Message": "Not found" } }),
+    )
+}
+
+fn refused(message: &str) -> (u16, Value) {
+    (
+        400,
+        json!({ "message": message, "ErrorModel": { "Message": message, "Object": "error" } }),
+    )
+}
+
+/// Every change gets its own revision date, in order — two saves in the same
+/// millisecond must not look like the same revision.
+fn stamp() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let step = NEXT.fetch_add(1, Ordering::SeqCst);
+    format!(
+        "2026-09-23T{:02}:{:02}:{:02}.000Z",
+        12 + step / 3600,
+        (step / 60) % 60,
+        step % 60
+    )
+}
+
+fn cipher_mut<'a>(state: &'a mut State, id: &str) -> Option<&'a mut Value> {
+    state.sync["ciphers"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|cipher| cipher["id"] == json!(id))
+}
+
+/// A new item, or a changed one. Like Vaultwarden: the type's own object is
+/// stored as it arrives, and a save that names an older revision is refused.
+fn save_cipher(
+    state: &mut State,
+    id: Option<&str>,
+    mut data: Value,
+    collections: &[String],
+) -> (u16, Value) {
+    let kind = data["type"].as_u64().unwrap_or(0);
+    let type_key = match kind {
+        1 => "login",
+        2 => "secureNote",
+        3 => "card",
+        4 => "identity",
+        5 => "sshKey",
+        _ => return refused("Invalid type"),
+    };
+    if !data[type_key].is_object() {
+        return refused("Data missing");
+    }
+    if data["name"].as_str().unwrap_or_default().is_empty() {
+        return refused("The name field is required.");
+    }
+
+    let existing = id.and_then(|id| {
+        state.sync["ciphers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .position(|cipher| cipher["id"] == json!(id))
+    });
+    match existing {
+        Some(index) => {
+            let stored = state.sync["ciphers"][index]["revisionDate"].clone();
+            let known = data["lastKnownRevisionDate"].clone();
+            if !known.is_null() && known != stored {
+                return refused(
+                    "The client copy of this cipher is out of date. Resync the client and try again.",
+                );
+            }
+        }
+        None if id.is_some() => return not_found(),
+        None => {}
+    }
+
+    state.counter += 1;
+    let now = stamp();
+    let mut cipher = json!({
+        "object": "cipherDetails",
+        "id": id.map(str::to_string).unwrap_or_else(|| format!("c-new-{}", state.counter)),
+        "organizationId": data["organizationId"].clone(),
+        "folderId": data["folderId"].clone(),
+        "type": kind,
+        "name": data["name"].clone(),
+        "notes": data["notes"].clone(),
+        "favorite": data["favorite"].as_bool().unwrap_or(false),
+        "reprompt": data["reprompt"].as_u64().unwrap_or(0),
+        "key": data["key"].clone(),
+        "fields": data["fields"].clone(),
+        "passwordHistory": data["passwordHistory"].clone(),
+        "attachments": Value::Null,
+        "revisionDate": now,
+        "archivedDate": data["archivedDate"].clone(),
+        "collectionIds": Value::Array(collections.iter().map(|c| json!(c)).collect()),
+        "deletedDate": Value::Null,
+    });
+    cipher[type_key] = data[type_key].take();
+
+    match existing {
+        Some(index) => {
+            let ciphers = state.sync["ciphers"].as_array_mut().unwrap();
+            // What only the server knows stays with the server's copy.
+            for kept in [
+                "creationDate",
+                "collectionIds",
+                "attachments",
+                "deletedDate",
+            ] {
+                cipher[kept] = ciphers[index][kept].clone();
+            }
+            ciphers[index] = cipher.clone();
+        }
+        None => {
+            cipher["creationDate"] = json!(now);
+            state.sync["ciphers"]
+                .as_array_mut()
+                .unwrap()
+                .push(cipher.clone());
+        }
+    }
+    (200, cipher)
 }
 
 fn token(request: &Request, state: &mut State) -> (u16, Value) {

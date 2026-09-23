@@ -57,9 +57,8 @@ bitwarden.com or bitwarden.eu — with the same encryption the official apps use
 - **Playful.** Nyu, the cat, is a padlock now. Security warnings are never
   playful.
 
-> **Status: first beta.** 0.1.0-beta.1 reads your vault: log in (with two-step
-> login), browse, search, copy, one-time codes. It does not change anything on
-> the server yet.
+> **Status: beta.** Released is 0.1.0-beta.1, which only reads. In the branch
+> since then: editing, and several accounts side by side.
 >
 > **What works.**
 >
@@ -70,15 +69,21 @@ bitwarden.com or bitwarden.eu — with the same encryption the official apps use
 > - Logins, cards, identities, secure notes and SSH keys; folders,
 >   organisations and collections, favourites, the trash. Items with their own
 >   key and items that ask for the master password again.
+> - Create, edit and delete items, folders and favourites; the trash and back
+>   out of it. A password you don't look at never passes through the window,
+>   and what UwULock doesn't show — passkeys, linked fields — is handed back
+>   to the server untouched.
+> - Several accounts on one device: a private Vaultwarden and one at work,
+>   each with its own vault, its own session and its own master password.
 > - One-time codes (TOTP, also Steam) counting down right in the item.
 > - Search, keyboard shortcuts like Bitwarden's (Ctrl+U, Ctrl+P, Ctrl+T), a
->   password generator.
+>   password generator, also right inside the password field.
 > - Auto-lock, clipboard clearing, sync on unlock and every five minutes.
 > - Its own installer with Nyu, signed automatic updates, German and English.
 >
-> **What doesn't, yet.** Creating and editing items, attachments, sends,
-> passkeys, Duo and FIDO2 as second step, SSO, unlocking with Windows Hello.
-> The [roadmap](docs/roadmap.md) has the order.
+> **What doesn't, yet.** Attachments, sends, passkeys, moving items into an
+> organisation, Duo and FIDO2 as second step, SSO, unlocking with Windows
+> Hello. The [roadmap](docs/roadmap.md) has the order.
 
 ## Install
 

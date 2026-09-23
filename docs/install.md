@@ -114,9 +114,12 @@ portable folder works.
   up in the clipboard history.
 - The vault **locks by itself** after 15 minutes without input, and always
   when UwULock quits.
-- **This beta only reads.** Creating and editing items, attachments and sends
-  are still done in the web vault; UwULock picks the changes up with the next
-  sync.
+- **Editing** is right there: the pencil on an item, **New** above the list,
+  the star for a favourite, the bin for the trash. A password you don't look
+  at stays where it is. Attachments and sends are still done in the web vault.
+- **Several accounts** live side by side — a private Vaultwarden and one at
+  work. The card at the bottom left switches between them and adds one; each
+  keeps its own vault and its own master password, and locking locks them all.
 
 ## Updates
 
@@ -138,10 +141,12 @@ folder doesn't update itself.
 | App settings (look, security, …)              | `%LOCALAPPDATA%\app.uwulock.desktop\` | `~/Library/WebKit/app.uwulock.desktop`              | `~/.local/share/app.uwulock.desktop` |
 | The program                                   | `%LOCALAPPDATA%\Programs\UwULock\`    | `/Applications/UwULock.app`                         | `/usr/bin/uwulock-desktop`           |
 
-`account.json` holds the server, your email and the keys as the server wraps
-them — useless without the master password. `vault.json` is the last sync,
-exactly as the server sent it: every name, username, password and note in it
-is still encrypted by Bitwarden. **Log out** (Settings → Account) removes both.
+Every account has a folder of its own under `accounts/`. Its `account.json`
+holds the server, your email and the keys as the server wraps them — useless
+without the master password. `vault.json` next to it is the last sync, exactly
+as the server sent it: every name, username, password and note in it is still
+encrypted by Bitwarden. **Log out** (the account card, bottom left) removes
+that one folder; the other accounts stay.
 
 ## If something goes wrong
 
@@ -294,8 +299,14 @@ die portable Version.
   Windows nie im Zwischenablage-Verlauf.
 - Der Tresor **sperrt sich selbst** nach 15 Minuten ohne Eingabe, und immer,
   wenn UwULock beendet wird.
-- **Diese Beta liest nur.** Einträge anlegen und bearbeiten, Anhänge und Sends
-  gehen noch im Web-Tresor; UwULock holt die Änderungen mit dem nächsten Sync.
+- **Bearbeiten** geht direkt: der Stift am Eintrag, **Neu** über der Liste,
+  der Stern für Favoriten, der Papierkorb zum Wegwerfen. Ein Passwort, das du
+  nicht ansiehst, bleibt, wie es ist. Anhänge und Sends gehen weiter im
+  Web-Tresor.
+- **Mehrere Konten** liegen nebeneinander – der private Vaultwarden und der
+  auf der Arbeit. Die Karte unten links wechselt zwischen ihnen und fügt eins
+  hinzu; jedes hat seinen eigenen Tresor und sein eigenes Master-Passwort, und
+  Sperren sperrt alle.
 
 ## Updates
 
@@ -317,11 +328,13 @@ bleiben. Der portable Ordner aktualisiert sich nicht selbst.
 | App-Einstellungen (Aussehen, Sicherheit, …)            | `%LOCALAPPDATA%\app.uwulock.desktop\` | `~/Library/WebKit/app.uwulock.desktop`              | `~/.local/share/app.uwulock.desktop` |
 | Das Programm                                           | `%LOCALAPPDATA%\Programs\UwULock\`    | `/Applications/UwULock.app`                         | `/usr/bin/uwulock-desktop`           |
 
+Jedes Konto hat einen eigenen Ordner unter `accounts/`. Dessen
 `account.json` enthält Server, E-Mail und die Schlüssel so, wie der Server sie
-verpackt — ohne Master-Passwort nutzlos. `vault.json` ist der letzte Sync,
-genau wie der Server ihn geschickt hat: Jeder Name, Benutzername, jedes
+verpackt — ohne Master-Passwort nutzlos. `vault.json` daneben ist der letzte
+Sync, genau wie der Server ihn geschickt hat: Jeder Name, Benutzername, jedes
 Passwort und jede Notiz darin ist noch von Bitwarden verschlüsselt.
-**Abmelden** (Einstellungen → Konto) entfernt beides.
+**Abmelden** (Kontokarte unten links) entfernt diesen einen Ordner; die
+anderen Konten bleiben.
 
 ## Wenn etwas nicht klappt
 

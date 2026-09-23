@@ -2,7 +2,8 @@ import { listen } from '@tauri-apps/api/event';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   copyField,
-  syncNow,
+  deleteFolder,
+  saveFolder,
   vaultItems,
   vaultOverview,
   type ItemKind,
@@ -11,13 +12,18 @@ import {
   type Status,
 } from '../lib/api';
 import { errorText } from '../lib/errors';
-import { ago, copiedText } from '../lib/format';
+import { copiedText } from '../lib/format';
 import { N_, t, useLanguage } from '../lib/i18n';
+import { KIND_LABEL } from '../lib/items';
 import { useSettings } from '../lib/settings';
 import { toast } from '../lib/toast';
+import { AccountCard } from './AccountCard';
+import { ContextMenu, type MenuItem } from './ContextMenu';
 import { Icon, type IconName } from './Icon';
 import { ItemDetail } from './ItemDetail';
+import { ItemEditor } from './ItemEditor';
 import { ItemTile } from './ItemTile';
+import { Modal } from './Modal';
 import { NyuScene } from './nyu/scenes';
 
 export type Filter =
@@ -61,9 +67,13 @@ type Props = {
   status: Status;
   /** The search field, for Ctrl+F from the app. */
   searchRef: React.RefObject<HTMLInputElement>;
+  onAddAccount: () => void;
 };
 
-export function VaultScreen({ status, searchRef }: Props) {
+/** What the editor is open for: an item to change, or a new one of that kind. */
+type Editing = { summary: ItemSummary | null; kind: ItemKind };
+
+export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
   useLanguage();
   const settings = useSettings();
   const [items, setItems] = useState<ItemSummary[]>([]);
@@ -72,6 +82,13 @@ export function VaultScreen({ status, searchRef }: Props) {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [editing, setEditing] = useState<Editing | null>(null);
+  const [newMenu, setNewMenu] = useState<{ x: number; y: number } | null>(null);
+  const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; id: string } | null>(null);
+  const [folderDialog, setFolderDialog] = useState<null | { id: string | null; name: string }>(
+    null,
+  );
+  const [folderToDelete, setFolderToDelete] = useState<{ id: string; name: string } | null>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
   const reload = useCallback(async () => {
@@ -86,11 +103,13 @@ export function VaultScreen({ status, searchRef }: Props) {
     }
   }, []);
 
+  // Also on a switch: the other account's items must not stay on screen while
+  // its sync is still on its way.
   useEffect(() => {
     void reload();
     const stop = listen('vault-changed', () => void reload());
     return () => void stop.then((unlisten) => unlisten());
-  }, [reload]);
+  }, [reload, status.accountId]);
 
   const counts = useMemo(() => {
     const live = items.filter((i) => !i.deleted);
@@ -193,6 +212,24 @@ export function VaultScreen({ status, searchRef }: Props) {
     </li>
   );
 
+  const folderActions = (id: string): MenuItem[] => {
+    const folder = overview?.folders.find((f) => f.id === id);
+    if (!folder) return [];
+    return [
+      {
+        label: t('Umbenennen'),
+        icon: 'pencil',
+        onSelect: () => setFolderDialog({ id, name: folder.name }),
+      },
+      {
+        label: t('Löschen'),
+        icon: 'trash',
+        danger: true,
+        onSelect: () => setFolderToDelete({ id, name: folder.name }),
+      },
+    ];
+  };
+
   const noFolder = counts.folder(null);
 
   return (
@@ -210,15 +247,47 @@ export function VaultScreen({ status, searchRef }: Props) {
           )}
         </ul>
 
-        {overview && (overview.folders.length > 0 || noFolder > 0) && (
+        {overview && (
           <>
-            <h2>{t('Ordner')}</h2>
+            <h2 className="nav-heading">
+              {t('Ordner')}
+              <button
+                className="icon-button tiny"
+                title={t('Neuer Ordner')}
+                aria-label={t('Neuer Ordner')}
+                onClick={() => setFolderDialog({ id: null, name: '' })}
+              >
+                <Icon name="folderPlus" size={14} />
+              </button>
+            </h2>
             <ul className="nav-list">
               {[...overview.folders]
                 .sort((a, b) => a.name.localeCompare(b.name))
-                .map((f) =>
-                  nav({ kind: 'folder', id: f.id }, 'folder', f.name, counts.folder(f.id)),
-                )}
+                .map((f) => (
+                  <li
+                    key={f.id}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setFolderMenu({ x: event.clientX, y: event.clientY, id: f.id });
+                    }}
+                  >
+                    <button
+                      className="nav-row"
+                      aria-current={
+                        !query.trim() && same(filter, { kind: 'folder', id: f.id })
+                          ? 'true'
+                          : undefined
+                      }
+                      onClick={() => pick({ kind: 'folder', id: f.id })}
+                    >
+                      <Icon name="folder" size={16} />
+                      <span className="nav-label">{f.name}</span>
+                      {counts.folder(f.id) > 0 && (
+                        <span className="nav-count">{counts.folder(f.id)}</span>
+                      )}
+                    </button>
+                  </li>
+                ))}
               {overview.folders.length > 0 &&
                 noFolder > 0 &&
                 nav({ kind: 'folder', id: null }, 'folder', t('Ohne Ordner'), noFolder)}
@@ -250,7 +319,7 @@ export function VaultScreen({ status, searchRef }: Props) {
         )}
 
         <span className="spacer" />
-        <SyncCard status={status} />
+        <AccountCard status={status} onAddAccount={onAddAccount} />
       </nav>
 
       <section className="list-pane" aria-label={title}>
@@ -281,6 +350,20 @@ export function VaultScreen({ status, searchRef }: Props) {
           <p className="list-title">
             <span>{title}</span>
             <span className="list-count">{visible.length}</span>
+            <span className="spacer" />
+            <button
+              className="new-item"
+              aria-haspopup="menu"
+              aria-expanded={Boolean(newMenu)}
+              title={t('Neuer Eintrag')}
+              onClick={(event) => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                setNewMenu({ x: rect.right - 180, y: rect.bottom + 4 });
+              }}
+            >
+              <Icon name="plus" size={15} />
+              {t('Neu')}
+            </button>
           </p>
         </div>
 
@@ -350,9 +433,7 @@ export function VaultScreen({ status, searchRef }: Props) {
                     ? t('Nichts gefunden für „{query}“.', { query: query.trim() })
                     : items.length
                       ? t('Hier ist nichts. (˘ω˘)')
-                      : t(
-                          'Dein Tresor ist noch leer. Neue Einträge legst du vorerst im Web-Tresor an.',
-                        )}
+                      : t('Dein Tresor ist noch leer. Leg oben rechts den ersten Eintrag an.')}
                 </p>
               </>
             )}
@@ -362,60 +443,159 @@ export function VaultScreen({ status, searchRef }: Props) {
 
       <section className="detail-pane">
         {current ? (
-          <ItemDetail key={current.id} summary={current} overview={overview} />
+          <ItemDetail
+            key={current.id}
+            summary={current}
+            overview={overview}
+            onEdit={() => setEditing({ summary: current, kind: current.kind })}
+          />
         ) : (
           <div className="detail-empty">
             {loaded && <NyuScene name="vault" className="empty-scene" />}
           </div>
         )}
       </section>
+
+      {newMenu && (
+        <ContextMenu
+          x={newMenu.x}
+          y={newMenu.y}
+          label={t('Neuer Eintrag')}
+          onClose={() => setNewMenu(null)}
+          items={TYPES.map((type) => ({
+            label: t(KIND_LABEL[type.type]),
+            icon: type.icon,
+            onSelect: () => setEditing({ summary: null, kind: type.type }),
+          }))}
+        />
+      )}
+
+      {folderMenu && (
+        <ContextMenu
+          x={folderMenu.x}
+          y={folderMenu.y}
+          label={t('Ordner')}
+          onClose={() => setFolderMenu(null)}
+          items={folderActions(folderMenu.id)}
+        />
+      )}
+
+      {folderDialog && (
+        <FolderDialog
+          folder={folderDialog}
+          onClose={() => setFolderDialog(null)}
+          onSaved={() => {
+            setFolderDialog(null);
+            void reload();
+          }}
+        />
+      )}
+
+      {folderToDelete && (
+        <Modal
+          title={t('Ordner löschen?')}
+          onCancel={() => setFolderToDelete(null)}
+          footer={
+            <>
+              <span className="spacer" />
+              <button
+                className="danger"
+                data-secondary
+                onClick={() => {
+                  const id = folderToDelete.id;
+                  setFolderToDelete(null);
+                  void deleteFolder(id)
+                    .then(() => {
+                      if (filter.kind === 'folder' && filter.id === id) setFilter({ kind: 'all' });
+                      toast(t('Ordner gelöscht.'));
+                    })
+                    .catch((e) => toast(errorText(e), 'error'));
+                }}
+              >
+                {t('Löschen')}
+              </button>
+              <button className="primary" data-autofocus onClick={() => setFolderToDelete(null)}>
+                {t('Abbrechen')}
+              </button>
+            </>
+          }
+        >
+          <p className="dialog-lead">
+            {t('„{name}“ verschwindet. Die Einträge darin bleiben – dann ohne Ordner.', {
+              name: folderToDelete.name,
+            })}
+          </p>
+        </Modal>
+      )}
+
+      {editing && (
+        <ItemEditor
+          key={editing.summary?.id ?? `new-${editing.kind}`}
+          summary={editing.summary}
+          kind={editing.kind}
+          overview={overview}
+          onClose={() => setEditing(null)}
+          onSaved={(id) => {
+            setEditing(null);
+            setSelected(id);
+            void reload();
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function SyncCard({ status }: { status: Status }) {
+function FolderDialog({
+  folder,
+  onClose,
+  onSaved,
+}: {
+  folder: { id: string | null; name: string };
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   useLanguage();
-  const [, force] = useState(0);
-  // "vor 3 Min." keeps itself up to date.
-  useEffect(() => {
-    const timer = window.setInterval(() => force((n) => n + 1), 30_000);
-    return () => window.clearInterval(timer);
-  }, []);
-  const initial = (status.name || status.email || '?').trim().charAt(0).toUpperCase();
+  const [name, setName] = useState(folder.name);
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    if (!name.trim() || busy) return;
+    setBusy(true);
+    try {
+      await saveFolder(folder.id, name.trim());
+      onSaved();
+    } catch (e) {
+      toast(errorText(e), 'error');
+      setBusy(false);
+    }
+  };
   return (
-    <div className="account-card">
-      <span className="avatar" aria-hidden>
-        {initial}
-      </span>
-      <span className="account-text">
-        <span className="account-email" title={status.email ?? ''}>
-          {status.email}
-        </span>
-        <span
-          className="account-sync"
-          data-tone={status.syncError ? 'error' : undefined}
-          title={status.server ?? undefined}
-        >
-          {status.syncing
-            ? t('Synchronisiert …')
-            : status.syncError
-              ? t('Sync fehlgeschlagen')
-              : t('Synchronisiert {when}', { when: ago(status.lastSync) })}
-        </span>
-      </span>
-      <button
-        className="icon-button"
-        disabled={status.syncing}
-        aria-label={t('Jetzt synchronisieren')}
-        title={status.syncError ?? t('Jetzt synchronisieren')}
-        onClick={() =>
-          void syncNow()
-            .then(() => toast(t('Synchronisiert ✧')))
-            .catch((e) => toast(errorText(e), 'error'))
-        }
-      >
-        <Icon name="refresh" size={15} className={status.syncing ? 'spin' : undefined} />
-      </button>
-    </div>
+    <Modal
+      title={folder.id ? t('Ordner umbenennen') : t('Neuer Ordner')}
+      onCancel={onClose}
+      footer={
+        <>
+          <button className="quiet" data-secondary onClick={onClose}>
+            {t('Abbrechen')}
+          </button>
+          <span className="spacer" />
+          <button className="primary" disabled={!name.trim() || busy} onClick={() => void save()}>
+            {folder.id ? t('Übernehmen') : t('Anlegen')}
+          </button>
+        </>
+      }
+    >
+      <label className="field">
+        <span>{t('Name')}</span>
+        <input
+          type="text"
+          value={name}
+          maxLength={100}
+          autoFocus
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && void save()}
+        />
+      </label>
+    </Modal>
   );
 }

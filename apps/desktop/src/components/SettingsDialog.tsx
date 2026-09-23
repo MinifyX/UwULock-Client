@@ -275,7 +275,7 @@ function Account({ status, onClose }: { status: Status; onClose: () => void }) {
       <Row
         label={t('Web-Tresor')}
         description={t(
-          'Für alles, was diese Beta noch nicht kann: Einträge anlegen und bearbeiten, Anhänge, Organisationen verwalten.',
+          'Für alles, was diese Beta noch nicht kann: Anhänge, Sends, Organisationen verwalten.',
         )}
       >
         <button onClick={() => void openWebVault().catch(() => undefined)}>{t('Öffnen')}</button>

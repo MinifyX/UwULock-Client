@@ -2,12 +2,18 @@
 //
 //   node apps/desktop/e2e/run.mjs
 //
-// Builds and starts the toy Vaultwarden (`dev_vaultwarden`, with two-step
-// login on), starts the app in dev mode against a throwaway data folder with
-// WebView2's DevTools port open on 127.0.0.1, runs phase A — log in with an
-// email code, browse and search the vault, reveal and copy, a one-time code,
-// a re-prompted item, lock and unlock, log out — and stops everything again.
-// Screenshots land in apps/desktop/e2e/shots/.
+// Builds and starts two toy Vaultwardens (`dev_vaultwarden`, the first with
+// two-step login on), starts the app in dev mode against a throwaway data
+// folder with WebView2's DevTools port open on 127.0.0.1, and runs:
+//
+//   phase A — log in with an email code, browse and search the vault, reveal
+//             and copy, a one-time code, a re-prompted item, lock and unlock,
+//             log out
+//   phase B — make an item, edit it without seeing its password, generate one,
+//             a hidden field, a folder, the trash and back, and a second
+//             account next to the first
+//
+// Then it stops everything again. Screenshots land in apps/desktop/e2e/shots/.
 //
 // Windows only: it drives WebView2 over the Chrome DevTools Protocol.
 
@@ -21,7 +27,9 @@ const desktop = join(here, '..');
 const repo = join(desktop, '..', '..');
 const runDir = join(here, '.run');
 const toyExe = join(repo, 'target', 'debug', 'examples', 'dev_vaultwarden.exe');
+// Two servers: the private one and the one at work, as the switcher sees them.
 const TOY_ADDR = '127.0.0.1:8097';
+const TOY_ADDR_2 = '127.0.0.1:8098';
 
 rmSync(runDir, { recursive: true, force: true });
 mkdirSync(runDir, { recursive: true });
@@ -76,10 +84,17 @@ try {
     cwd: repo,
     env: { ...process.env, UWU_2FA: '1', UWU_TOY_ADDR: TOY_ADDR },
   });
-  await until(
-    () => existsSync(toy.log) && readFileSync(toy.log, 'utf8').includes('toy Vaultwarden on'),
-    'the toy Vaultwarden',
-  );
+  const toy2 = start('toy-vaultwarden-2', toyExe, [], {
+    cwd: repo,
+    env: { ...process.env, UWU_2FA: '0', UWU_TOY_ADDR: TOY_ADDR_2 },
+  });
+  for (const server of [toy, toy2]) {
+    await until(
+      () =>
+        existsSync(server.log) && readFileSync(server.log, 'utf8').includes('toy Vaultwarden on'),
+      'the toy Vaultwarden',
+    );
+  }
 
   console.log('▸ starting UwULock (pnpm tauri dev)');
   start('app', 'pnpm', ['tauri', 'dev'], {
@@ -104,6 +119,8 @@ try {
   }, 'the app');
 
   ok = await phase('phase-a.mjs', [`http://${TOY_ADDR}`]);
+  // Phase A leaves the app logged out, which is where phase B starts.
+  ok = (await phase('phase-b.mjs', [`http://${TOY_ADDR}`, `http://${TOY_ADDR_2}`])) && ok;
 } catch (error) {
   console.error(error);
 } finally {

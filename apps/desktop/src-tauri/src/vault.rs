@@ -1,30 +1,37 @@
-//! The vault, as the page sees it: logging in, unlocking, locking, syncing,
-//! and the items.
+//! The vault, as the page sees it: the accounts, logging in, unlocking,
+//! locking, syncing, the items and saving them.
 //!
 //! Secrets stay here. The list and an item's details carry names, usernames,
 //! addresses and notes; a password, a card number, a hidden field or a
 //! private key only goes to the page when someone clicks the eye
 //! ([`reveal_field`]), and copying ([`copy_field`]) goes from here straight to
-//! the clipboard. Locking drops every decrypted value and the session.
+//! the clipboard. Editing works the same way round: the page sends back what
+//! was typed, and what nobody touched is taken from the item that is already
+//! here — so a password nobody looked at is never in the window.
+//!
+//! Several accounts live here at once — a Vaultwarden at home, one at work.
+//! One of them is the open one; the others keep their own keys, their own
+//! vault and their own session. Locking drops every decrypted value of every
+//! account.
 
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::HashSet;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, State};
 use uwulock_bitwarden::api::{parse_sync, PasswordLogin, TwoFactorAnswer};
 use uwulock_bitwarden::crypto::{self, decrypt_user_key};
-use uwulock_bitwarden::vault::{FieldKind, Item, ItemKind, Secret};
+use uwulock_bitwarden::vault::{Field, FieldKind, Item, ItemKind, LoginUri, Secret};
+use uwulock_bitwarden::wire;
 use uwulock_bitwarden::{
     generator, totp, Client, Device, EncString, Error, Kdf, LoginOutcome, Server, Session,
     SymmetricKey, Vault,
 };
 use zeroize::Zeroizing;
 
-use crate::account::{Account, Storage};
+use crate::account::{Account, Storage, Stored};
 use crate::clipboard::Clipboard;
 
 const SYNC_EVERY: Duration = Duration::from_secs(5 * 60);
@@ -56,6 +63,7 @@ impl From<Error> for Failure {
             Error::Server { .. } => "server",
             Error::Refused(_) => "refused",
             Error::SessionExpired => "session-expired",
+            Error::Conflict => "conflict",
             Error::WrongKey => "wrong-password",
             Error::Crypto(_) => "crypto",
             Error::Unsupported(_) => "unsupported",
@@ -90,14 +98,26 @@ struct Security {
     clipboard: Option<Duration>,
 }
 
+/// What went wrong for one account, as the account card shows it.
+#[derive(Debug, Default, Clone)]
+struct Trouble {
+    sync_error: Option<String>,
+    /// The server no longer accepts this device's session: log in again.
+    session_expired: bool,
+}
+
 pub(crate) struct VaultState {
     storage: Storage,
-    account: Mutex<Option<Account>>,
-    unlocked: RwLock<Option<Unlocked>>,
+    /// Every account on this device, in the order they are shown.
+    accounts: Mutex<Vec<Stored>>,
+    /// The one whose vault is on screen.
+    active: Mutex<Option<String>>,
+    /// The accounts that are open, by id. An account that was switched away
+    /// from stays open until something locks it.
+    unlocked: RwLock<HashMap<String, Unlocked>>,
     pending: Mutex<Option<PendingLogin>>,
-    syncing: AtomicBool,
-    session_expired: AtomicBool,
-    sync_error: Mutex<Option<String>>,
+    syncing: Mutex<HashSet<String>>,
+    troubles: Mutex<HashMap<String, Trouble>>,
     security: Mutex<Security>,
     last_activity: Mutex<Instant>,
     clipboard: Arc<Clipboard>,
@@ -105,15 +125,18 @@ pub(crate) struct VaultState {
 
 impl VaultState {
     pub fn new(storage: Storage) -> Self {
-        let account = storage.load_account();
+        let accounts = storage.accounts();
+        let active = storage
+            .active()
+            .or_else(|| accounts.first().map(|a| a.id.clone()));
         VaultState {
             storage,
-            account: Mutex::new(account),
-            unlocked: RwLock::new(None),
+            accounts: Mutex::new(accounts),
+            active: Mutex::new(active),
+            unlocked: RwLock::new(HashMap::new()),
             pending: Mutex::new(None),
-            syncing: AtomicBool::new(false),
-            session_expired: AtomicBool::new(false),
-            sync_error: Mutex::new(None),
+            syncing: Mutex::new(HashSet::new()),
+            troubles: Mutex::new(HashMap::new()),
             security: Mutex::new(Security {
                 auto_lock: Some(Duration::from_secs(15 * 60)),
                 clipboard: Some(Duration::from_secs(30)),
@@ -135,29 +158,93 @@ impl VaultState {
         Ok(Client::new(server, self.device())?)
     }
 
+    /// The account on screen.
+    fn active_id(&self) -> Result<String> {
+        self.active
+            .lock()
+            .clone()
+            .ok_or_else(|| Failure::new("logged-out", "No account on this device."))
+    }
+
+    fn account(&self, id: &str) -> Result<Account> {
+        self.accounts
+            .lock()
+            .iter()
+            .find(|stored| stored.id == id)
+            .map(|stored| stored.account.clone())
+            .ok_or_else(|| Failure::new("logged-out", "No such account on this device."))
+    }
+
+    fn active_account(&self) -> Result<(String, Account)> {
+        let id = self.active_id()?;
+        let account = self.account(&id)?;
+        Ok((id, account))
+    }
+
+    /// Changes an account and writes it back to disk.
+    fn update_account(&self, id: &str, change: impl FnOnce(&mut Account)) {
+        let mut accounts = self.accounts.lock();
+        let Some(stored) = accounts.iter_mut().find(|stored| stored.id == id) else {
+            return;
+        };
+        change(&mut stored.account);
+        if let Err(error) = self.storage.save_account(id, &stored.account) {
+            tracing::warn!(%error, "couldn't save the account");
+        }
+    }
+
+    fn trouble(&self, id: &str) -> Trouble {
+        self.troubles.lock().get(id).cloned().unwrap_or_default()
+    }
+
+    fn set_trouble(&self, id: &str, trouble: Trouble) {
+        self.troubles.lock().insert(id.to_string(), trouble);
+    }
+
+    /// Locks every account: no key, no session, no clipboard.
     fn lock_now(&self) {
-        *self.unlocked.write() = None;
+        self.unlocked.write().clear();
         *self.pending.lock() = None;
         self.clipboard.clear_now();
     }
 
-    /// Runs `f` on the open vault. Doesn't count as activity: the page polls
-    /// (the one-time code, every second) and must not keep the vault open by
-    /// that alone. Activity is what the user does — see [`touch`].
+    /// Runs `f` on the open vault of the account on screen. Doesn't count as
+    /// activity: the page polls (the one-time code, every second) and must not
+    /// keep the vault open by that alone. Activity is what the user does —
+    /// see [`touch`].
     fn with_unlocked<T>(&self, f: impl FnOnce(&mut Unlocked) -> Result<T>) -> Result<T> {
+        let id = self.active_id().map_err(|_| Failure::locked())?;
         let mut guard = self.unlocked.write();
-        let unlocked = guard.as_mut().ok_or_else(Failure::locked)?;
+        let unlocked = guard.get_mut(&id).ok_or_else(Failure::locked)?;
         f(unlocked)
     }
 }
 
 // ── Status ─────────────────────────────────────────────────
 
+/// One account in the switcher.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountBrief {
+    id: String,
+    label: String,
+    email: String,
+    name: Option<String>,
+    server: String,
+    server_kind: &'static str,
+    /// Its vault is open — switching to it asks for nothing.
+    unlocked: bool,
+    active: bool,
+    last_sync: Option<u64>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Status {
-    /// `logged-out`, `locked` or `unlocked`.
+    /// `logged-out`, `locked` or `unlocked` — for the account on screen.
     state: &'static str,
+    account_id: Option<String>,
+    label: Option<String>,
     email: Option<String>,
     name: Option<String>,
     server: Option<String>,
@@ -168,33 +255,67 @@ pub struct Status {
     sync_error: Option<String>,
     /// The server no longer accepts this device's session: log in again.
     session_expired: bool,
+    /// Every account on this device, the open one included.
+    accounts: Vec<AccountBrief>,
+}
+
+fn server_kind(server: &Server) -> &'static str {
+    match server {
+        Server::BitwardenUs => "bitwarden-us",
+        Server::BitwardenEu => "bitwarden-eu",
+        Server::SelfHosted { .. } => "self-hosted",
+    }
 }
 
 fn status_of(state: &VaultState) -> Status {
-    let account = state.account.lock().clone();
-    let unlocked = state.unlocked.read().is_some();
+    let accounts = state.accounts.lock().clone();
+    let active = state.active.lock().clone();
+    let open = state.unlocked.read();
+    let syncing = state.syncing.lock().clone();
+    let account = active
+        .as_ref()
+        .and_then(|id| accounts.iter().find(|stored| &stored.id == id))
+        .map(|stored| stored.account.clone());
+    let unlocked = active.as_ref().is_some_and(|id| open.contains_key(id));
+    let trouble = active
+        .as_ref()
+        .map(|id| state.trouble(id))
+        .unwrap_or_default();
+
     Status {
         state: match (&account, unlocked) {
             (None, _) => "logged-out",
             (Some(_), false) => "locked",
             (Some(_), true) => "unlocked",
         },
+        account_id: account.as_ref().and(active.clone()),
+        label: account.as_ref().map(Account::title),
         email: account.as_ref().map(|a| a.email.clone()),
         name: account.as_ref().and_then(|a| a.name.clone()),
         server: account.as_ref().map(|a| a.server.label()),
-        server_kind: account.as_ref().map(|a| match a.server {
-            Server::BitwardenUs => "bitwarden-us",
-            Server::BitwardenEu => "bitwarden-eu",
-            Server::SelfHosted { .. } => "self-hosted",
-        }),
+        server_kind: account.as_ref().map(|a| server_kind(&a.server)),
         server_url: account.as_ref().and_then(|a| match &a.server {
             Server::SelfHosted { url } => Some(url.clone()),
             _ => None,
         }),
         last_sync: account.as_ref().and_then(|a| a.last_sync),
-        syncing: state.syncing.load(Ordering::SeqCst),
-        sync_error: state.sync_error.lock().clone(),
-        session_expired: state.session_expired.load(Ordering::SeqCst),
+        syncing: active.as_ref().is_some_and(|id| syncing.contains(id)),
+        sync_error: trouble.sync_error,
+        session_expired: trouble.session_expired,
+        accounts: accounts
+            .iter()
+            .map(|stored| AccountBrief {
+                label: stored.account.title(),
+                email: stored.account.email.clone(),
+                name: stored.account.name.clone(),
+                server: stored.account.server.label(),
+                server_kind: server_kind(&stored.account.server),
+                unlocked: open.contains_key(&stored.id),
+                active: active.as_deref() == Some(stored.id.as_str()),
+                last_sync: stored.account.last_sync,
+                id: stored.id.clone(),
+            })
+            .collect(),
     }
 }
 
@@ -390,19 +511,19 @@ async fn login_step(
     }
 }
 
-/// The remember token of the account this device had, if it's the same one.
-/// It is sealed under the user key, which a fresh login doesn't have yet — so
-/// it only helps while the vault is unlocked (logging in again after the
+/// The remember token this device already has for that account, if any. It is
+/// sealed under the user key, which a fresh login doesn't have yet — so it
+/// only helps while that account is unlocked (logging in again after the
 /// session expired).
 fn remembered_token(state: &VaultState, client: &Client, email: &str) -> Option<Zeroizing<String>> {
-    let account = state.account.lock().clone()?;
-    if account.email != email || &account.server != client.server() {
-        return None;
-    }
+    let stored = state.accounts.lock().iter().find_map(|stored| {
+        (stored.account.email == email && &stored.account.server == client.server())
+            .then(|| stored.clone())
+    })?;
     let unlocked = state.unlocked.read();
     Account::unseal(
-        &account.protected_remember_token,
-        &unlocked.as_ref()?.user_key,
+        &stored.account.protected_remember_token,
+        &unlocked.get(&stored.id)?.user_key,
     )
 }
 
@@ -425,17 +546,17 @@ async fn finish_login(
         })?;
     drop(pending.master_key);
 
-    // Keep the old remember token unless the server handed out a new one.
-    let previous_remember = {
-        let account = state.account.lock();
+    // The same account may already be on this device: logging in again after
+    // the session expired keeps its folder, its label and its remember token.
+    let id = state.storage.id_for(&pending.server, &pending.email);
+    let previous = state.account(&id).ok();
+    let previous_remember = previous.as_ref().and_then(|account| {
         let unlocked = state.unlocked.read();
-        match (account.as_ref(), unlocked.as_ref()) {
-            (Some(a), Some(u)) if a.email == pending.email && a.server == pending.server => {
-                Account::unseal(&a.protected_remember_token, &u.user_key)
-            }
-            _ => None,
-        }
-    };
+        Account::unseal(
+            &account.protected_remember_token,
+            &unlocked.get(&id)?.user_key,
+        )
+    });
     let remember = session.remember_token.clone().or(previous_remember);
 
     let mut account = Account {
@@ -443,6 +564,7 @@ async fn finish_login(
         server: pending.server.clone(),
         email: pending.email.clone(),
         name: None,
+        label: previous.and_then(|account| account.label),
         kdf: pending.kdf,
         protected_user_key: protected,
         protected_refresh_token: session
@@ -462,20 +584,33 @@ async fn finish_login(
 
     state
         .storage
-        .save_account(&account)
+        .save_account(&id, &account)
         .map_err(|e| Failure::new("io", format!("Couldn't save the account: {e}")))?;
-    if let Err(error) = state.storage.save_cache(&text) {
+    if let Err(error) = state.storage.save_cache(&id, &text) {
         tracing::warn!(%error, "couldn't cache the vault");
     }
-    *state.account.lock() = Some(account);
-    *state.unlocked.write() = Some(Unlocked {
-        user_key,
-        vault,
-        session: Some(session),
-        reprompt_ok: HashSet::new(),
-    });
-    state.session_expired.store(false, Ordering::SeqCst);
-    *state.sync_error.lock() = None;
+    let _ = state.storage.set_active(Some(&id));
+    {
+        let mut accounts = state.accounts.lock();
+        match accounts.iter_mut().find(|stored| stored.id == id) {
+            Some(stored) => stored.account = account,
+            None => accounts.push(Stored {
+                id: id.clone(),
+                account,
+            }),
+        }
+    }
+    state.unlocked.write().insert(
+        id.clone(),
+        Unlocked {
+            user_key,
+            vault,
+            session: Some(session),
+            reprompt_ok: HashSet::new(),
+        },
+    );
+    *state.active.lock() = Some(id.clone());
+    state.set_trouble(&id, Trouble::default());
     state.touch();
     tracing::info!(server = %pending.server.label(), "logged in");
     emit_status(app);
@@ -491,11 +626,7 @@ pub(crate) async fn unlock(
     password: String,
 ) -> Result<Status> {
     let password = Zeroizing::new(password);
-    let account = state
-        .account
-        .lock()
-        .clone()
-        .ok_or_else(|| Failure::new("logged-out", "No account on this device."))?;
+    let (id, account) = state.active_account()?;
     let protected: EncString = account.protected_user_key.parse()?;
 
     let master_key =
@@ -525,15 +656,12 @@ pub(crate) async fn unlock(
                 derive_off_thread(password.clone(), account.email.clone(), kdf).await?;
             let key = decrypt_user_key(&master_key, &protected)
                 .map_err(|_| Failure::new("wrong-password", "The master password is wrong."))?;
-            if let Some(stored) = state.account.lock().as_mut() {
-                stored.kdf = kdf;
-                let _ = state.storage.save_account(stored);
-            }
+            state.update_account(&id, |account| account.kdf = kdf);
             key
         }
     };
 
-    let vault = match state.storage.load_cache() {
+    let vault = match state.storage.load_cache(&id) {
         Some(text) => match parse_sync(&text).and_then(|sync| Vault::open(&sync, &user_key)) {
             Ok(vault) => vault,
             Err(error) => {
@@ -543,12 +671,15 @@ pub(crate) async fn unlock(
         },
         None => Vault::default(),
     };
-    *state.unlocked.write() = Some(Unlocked {
-        user_key,
-        vault,
-        session: None,
-        reprompt_ok: HashSet::new(),
-    });
+    state.unlocked.write().insert(
+        id,
+        Unlocked {
+            user_key,
+            vault,
+            session: None,
+            reprompt_ok: HashSet::new(),
+        },
+    );
     state.touch();
     tracing::info!("unlocked");
     emit_status(&app);
@@ -556,6 +687,7 @@ pub(crate) async fn unlock(
     Ok(status_of(&state))
 }
 
+/// Locks every account at once — one click, nothing left open behind it.
 #[tauri::command]
 pub(crate) fn lock(app: AppHandle, state: State<'_, VaultState>) {
     state.lock_now();
@@ -563,20 +695,77 @@ pub(crate) fn lock(app: AppHandle, state: State<'_, VaultState>) {
     emit_status(&app);
 }
 
-/// Logging out: the account, the session and the cached vault leave this device.
+/// Logging out: that account, its session and its cached vault leave this
+/// device. Without an id it's the account on screen; the others stay.
 #[tauri::command]
-pub(crate) fn logout(app: AppHandle, state: State<'_, VaultState>) -> Result<()> {
-    state.lock_now();
+pub(crate) fn logout(
+    app: AppHandle,
+    state: State<'_, VaultState>,
+    id: Option<String>,
+) -> Result<Status> {
+    let id = match id {
+        Some(id) => id,
+        None => state.active_id()?,
+    };
+    state.unlocked.write().remove(&id);
+    *state.pending.lock() = None;
+    state.clipboard.clear_now();
     state
         .storage
-        .forget()
+        .forget(&id)
         .map_err(|e| Failure::new("io", format!("Couldn't remove the account: {e}")))?;
-    *state.account.lock() = None;
-    state.session_expired.store(false, Ordering::SeqCst);
-    *state.sync_error.lock() = None;
+    state.accounts.lock().retain(|stored| stored.id != id);
+    state.troubles.lock().remove(&id);
+    if state.active.lock().as_deref() == Some(id.as_str()) {
+        let next = state
+            .accounts
+            .lock()
+            .first()
+            .map(|stored| stored.id.clone());
+        let _ = state.storage.set_active(next.as_deref());
+        *state.active.lock() = next;
+    }
     tracing::info!("logged out");
     emit_status(&app);
-    Ok(())
+    Ok(status_of(&state))
+}
+
+/// Brings another account's vault on screen. One that is still open shows up
+/// straight away; one that isn't asks for its master password.
+#[tauri::command]
+pub(crate) fn switch_account(
+    app: AppHandle,
+    state: State<'_, VaultState>,
+    id: String,
+) -> Result<Status> {
+    state.account(&id)?;
+    state.touch();
+    let _ = state.storage.set_active(Some(&id));
+    *state.active.lock() = Some(id.clone());
+    emit_status(&app);
+    if state.unlocked.read().contains_key(&id) {
+        // Its vault may be a few minutes old; bring it up to date in the back.
+        spawn_sync(app.clone());
+    }
+    Ok(status_of(&state))
+}
+
+/// What an account is called in the switcher. An empty name goes back to the
+/// server's address.
+#[tauri::command]
+pub(crate) fn rename_account(
+    app: AppHandle,
+    state: State<'_, VaultState>,
+    id: String,
+    label: String,
+) -> Result<Status> {
+    state.account(&id)?;
+    let label = label.trim().to_string();
+    state.update_account(&id, |account| {
+        account.label = (!label.is_empty()).then_some(label)
+    });
+    emit_status(&app);
+    Ok(status_of(&state))
 }
 
 #[tauri::command]
@@ -618,22 +807,29 @@ fn spawn_sync(app: AppHandle) {
 }
 
 async fn sync(app: &AppHandle) -> Result<()> {
+    let id = app.state::<VaultState>().active_id()?;
+    sync_account(app, &id).await
+}
+
+async fn sync_account(app: &AppHandle, id: &str) -> Result<()> {
     let state = app.state::<VaultState>();
-    if state.syncing.swap(true, Ordering::SeqCst) {
+    // One sync per account at a time.
+    if !state.syncing.lock().insert(id.to_string()) {
         return Ok(());
     }
     emit_status(app);
-    let result = sync_inner(&state).await;
-    state.syncing.store(false, Ordering::SeqCst);
+    let result = sync_inner(&state, id).await;
+    state.syncing.lock().remove(id);
     match &result {
-        Ok(()) => *state.sync_error.lock() = None,
+        Ok(()) => state.set_trouble(id, Trouble::default()),
         Err(error) if error.kind == "locked" => {}
-        Err(error) => {
-            if error.kind == "session-expired" {
-                state.session_expired.store(true, Ordering::SeqCst);
-            }
-            *state.sync_error.lock() = Some(error.message.clone());
-        }
+        Err(error) => state.set_trouble(
+            id,
+            Trouble {
+                sync_error: Some(error.message.clone()),
+                session_expired: error.kind == "session-expired",
+            },
+        ),
     }
     emit_status(app);
     if result.is_ok() {
@@ -642,11 +838,13 @@ async fn sync(app: &AppHandle) -> Result<()> {
     result
 }
 
-async fn sync_inner(state: &VaultState) -> Result<()> {
-    let account = state.account.lock().clone().ok_or_else(Failure::locked)?;
+/// A token this account can use right now, renewed from the refresh token
+/// when the old one is about to run out.
+async fn access_token(state: &VaultState, id: &str) -> Result<Zeroizing<String>> {
+    let account = state.account(id)?;
     let (user_key, access) = {
         let unlocked = state.unlocked.read();
-        let unlocked = unlocked.as_ref().ok_or_else(Failure::locked)?;
+        let unlocked = unlocked.get(id).ok_or_else(Failure::locked)?;
         let access = unlocked
             .session
             .as_ref()
@@ -654,31 +852,40 @@ async fn sync_inner(state: &VaultState) -> Result<()> {
             .map(|s| s.access_token.clone());
         (unlocked.user_key.clone(), access)
     };
+    if let Some(token) = access {
+        return Ok(token);
+    }
     let client = state.client(account.server.clone())?;
+    let refresh = Account::unseal(&account.protected_refresh_token, &user_key)
+        .ok_or(Error::SessionExpired)?;
+    let session = client.refresh(&refresh).await?;
+    let token = session.access_token.clone();
+    // Keep a new refresh token, if the server rotated it.
+    if let Some(new) = session
+        .refresh_token
+        .as_ref()
+        .filter(|t| t.as_str() != refresh.as_str())
+    {
+        let sealed = Account::seal(new, &user_key);
+        state.update_account(id, |account| account.protected_refresh_token = Some(sealed));
+    }
+    if let Some(unlocked) = state.unlocked.write().get_mut(id) {
+        unlocked.session = Some(session);
+    }
+    Ok(token)
+}
 
-    let access = match access {
-        Some(token) => token,
-        None => {
-            let refresh = Account::unseal(&account.protected_refresh_token, &user_key)
-                .ok_or(Error::SessionExpired)?;
-            let session = client.refresh(&refresh).await?;
-            let token = session.access_token.clone();
-            // Keep a new refresh token, if the server rotated it.
-            if let Some(new) = session
-                .refresh_token
-                .as_ref()
-                .filter(|t| t.as_str() != refresh.as_str())
-            {
-                if let Some(stored) = state.account.lock().as_mut() {
-                    stored.protected_refresh_token = Some(Account::seal(new, &user_key));
-                    let _ = state.storage.save_account(stored);
-                }
-            }
-            if let Some(unlocked) = state.unlocked.write().as_mut() {
-                unlocked.session = Some(session);
-            }
-            token
-        }
+async fn sync_inner(state: &VaultState, id: &str) -> Result<()> {
+    let account = state.account(id)?;
+    let access = access_token(state, id).await?;
+    let client = state.client(account.server.clone())?;
+    let user_key = {
+        let unlocked = state.unlocked.read();
+        unlocked
+            .get(id)
+            .ok_or_else(Failure::locked)?
+            .user_key
+            .clone()
     };
 
     let text = client.sync(&access).await?;
@@ -686,9 +893,9 @@ async fn sync_inner(state: &VaultState) -> Result<()> {
     let vault = Vault::open(&sync, &user_key)?;
     state
         .storage
-        .save_cache(&text)
+        .save_cache(id, &text)
         .map_err(|e| Failure::new("io", format!("Couldn't cache the vault: {e}")))?;
-    if let Some(stored) = state.account.lock().as_mut() {
+    state.update_account(id, |stored| {
         stored.last_sync = Some(now());
         stored.name = sync.profile.name.clone().filter(|n| !n.is_empty());
         // The master password changed elsewhere: the next unlock takes the new one.
@@ -700,12 +907,10 @@ async fn sync_inner(state: &VaultState) -> Result<()> {
         {
             stored.protected_user_key = key;
         }
-        let _ = state.storage.save_account(stored);
-    }
-    if let Some(unlocked) = state.unlocked.write().as_mut() {
+    });
+    if let Some(unlocked) = state.unlocked.write().get_mut(id) {
         unlocked.vault = vault;
     }
-    state.session_expired.store(false, Ordering::SeqCst);
     Ok(())
 }
 
@@ -717,7 +922,7 @@ pub(crate) fn start(app: &AppHandle) {
         loop {
             tokio::time::sleep(Duration::from_secs(10)).await;
             let state = app.state::<VaultState>();
-            if state.unlocked.read().is_none() {
+            if state.unlocked.read().is_empty() {
                 continue;
             }
             let security = *state.security.lock();
@@ -728,7 +933,13 @@ pub(crate) fn start(app: &AppHandle) {
                 emit_status(&app);
                 continue;
             }
-            if last_sync.elapsed() >= SYNC_EVERY && !state.session_expired.load(Ordering::SeqCst) {
+            // Only the account on screen: the others come up to date when
+            // someone switches to them.
+            let expired = state
+                .active_id()
+                .map(|id| state.trouble(&id).session_expired)
+                .unwrap_or(true);
+            if last_sync.elapsed() >= SYNC_EVERY && !expired {
                 last_sync = Instant::now();
                 spawn_sync(app.clone());
             }
@@ -740,6 +951,42 @@ fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs())
+}
+
+/// The moment, as Bitwarden writes dates: `2026-09-23T12:30:00.000Z`. Saved
+/// items carry one, for the password history and the trash.
+fn iso_now() -> String {
+    let since = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    iso_from_unix(since.as_secs(), since.subsec_millis())
+}
+
+fn iso_from_unix(seconds: u64, millis: u32) -> String {
+    let days = (seconds / 86_400) as i64;
+    let rest = seconds % 86_400;
+    // Days since the epoch to a calendar date, counting from March so leap
+    // days land at the end of the year (Howard Hinnant's civil_from_days).
+    let shifted = days + 719_468;
+    let era = shifted.div_euclid(146_097);
+    let day_of_era = shifted.rem_euclid(146_097);
+    let year_of_era =
+        (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_index = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_index + 2) / 5 + 1;
+    let month = if month_index < 10 {
+        month_index + 3
+    } else {
+        month_index - 9
+    };
+    let year = year_of_era + era * 400 + i64::from(month <= 2);
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}.{millis:03}Z",
+        rest / 3600,
+        (rest / 60) % 60,
+        rest % 60
+    )
 }
 
 // ── Items ──────────────────────────────────────────────────
@@ -947,7 +1194,7 @@ pub(crate) fn vault_item(state: State<'_, VaultState>, id: String) -> Result<Val
                     "host": host_of(&u.uri),
                     "openable": u.uri.starts_with("http://") || u.uri.starts_with("https://"),
                 })).collect::<Vec<_>>(),
-                "passkeys": l.passkeys,
+                "passkeys": l.passkey_count(),
             })
         });
         let card = item.card.as_ref().map(|c| {
@@ -1027,7 +1274,7 @@ pub(crate) async fn verify_reprompt(
     password: String,
 ) -> Result<()> {
     let password = Zeroizing::new(password);
-    let account = state.account.lock().clone().ok_or_else(Failure::locked)?;
+    let (_, account) = state.active_account()?;
     let master_key = derive_off_thread(password, account.email.clone(), account.kdf).await?;
     let protected: EncString = account.protected_user_key.parse()?;
     decrypt_user_key(&master_key, &protected)
@@ -1186,11 +1433,592 @@ pub(crate) fn generate_password(options: generator::Options) -> Generated {
     }
 }
 
+// ── Saving ─────────────────────────────────────────────────
+//
+// The editor sends back what was typed. A value it never had — a password
+// nobody looked at, a card number, a hidden field — comes as `null`, and then
+// the one already here is kept; `""` clears it. So editing a name doesn't need
+// the password to pass through the window.
+
+/// A value the editor may have left alone.
+type Keep = Option<String>;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Draft {
+    kind: ItemKind,
+    name: String,
+    #[serde(default)]
+    notes: Keep,
+    #[serde(default)]
+    favorite: bool,
+    #[serde(default)]
+    reprompt: bool,
+    #[serde(default)]
+    folder_id: Option<String>,
+    #[serde(default)]
+    login: Option<LoginDraft>,
+    #[serde(default)]
+    card: Option<CardDraft>,
+    /// The identity's fields by name; a name that isn't in here keeps its value.
+    #[serde(default)]
+    identity: Option<std::collections::BTreeMap<String, String>>,
+    #[serde(default)]
+    ssh_key: Option<SshKeyDraft>,
+    #[serde(default)]
+    fields: Vec<FieldDraft>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LoginDraft {
+    #[serde(default)]
+    username: Keep,
+    #[serde(default)]
+    password: Keep,
+    #[serde(default)]
+    totp: Keep,
+    #[serde(default)]
+    uris: Vec<UriDraft>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UriDraft {
+    uri: String,
+    #[serde(default, rename = "match")]
+    match_kind: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CardDraft {
+    #[serde(default)]
+    cardholder_name: Keep,
+    #[serde(default)]
+    brand: Keep,
+    #[serde(default)]
+    number: Keep,
+    #[serde(default)]
+    exp_month: Keep,
+    #[serde(default)]
+    exp_year: Keep,
+    #[serde(default)]
+    code: Keep,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SshKeyDraft {
+    #[serde(default)]
+    private_key: Keep,
+    #[serde(default)]
+    public_key: Keep,
+    #[serde(default)]
+    fingerprint: Keep,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FieldDraft {
+    #[serde(default)]
+    name: Option<String>,
+    kind: FieldKind,
+    #[serde(default)]
+    value: Keep,
+    /// Which field of the item this one was before. Carries the value the
+    /// editor never saw, and where a linked field points.
+    #[serde(default)]
+    from: Option<usize>,
+}
+
+fn secret_of(value: String) -> Option<Secret> {
+    (!value.is_empty()).then(|| Zeroizing::new(value))
+}
+
+/// `null` keeps what is there, a value replaces it, `""` clears it.
+fn apply_keep(field: &mut Option<Secret>, value: Keep) {
+    if let Some(value) = value {
+        *field = secret_of(value);
+    }
+}
+
+fn apply_draft(item: &mut Item, draft: Draft, now: &str) -> Result<()> {
+    item.name = Zeroizing::new(draft.name.trim().to_string());
+    apply_keep(&mut item.notes, draft.notes);
+    item.favorite = draft.favorite;
+    item.reprompt = draft.reprompt;
+    item.folder_id = draft.folder_id.filter(|id| !id.is_empty());
+
+    if let Some(login) = draft.login {
+        let old_uris = item
+            .login
+            .as_ref()
+            .map(|l| l.uris.clone())
+            .unwrap_or_default();
+        let current = item
+            .login
+            .as_mut()
+            .ok_or_else(|| Failure::new("invalid", "This item isn't a login."))?;
+        apply_keep(&mut current.username, login.username);
+        apply_keep(&mut current.totp, login.totp);
+        current.uris = login
+            .uris
+            .into_iter()
+            .filter(|u| !u.uri.trim().is_empty())
+            .map(|u| {
+                let uri = u.uri.trim().to_string();
+                LoginUri {
+                    // An address that didn't change keeps the checksum the
+                    // server made for it; a changed one has none any more.
+                    checksum: old_uris
+                        .iter()
+                        .find(|old| old.uri.as_str() == uri)
+                        .and_then(|old| old.checksum.clone()),
+                    uri: Zeroizing::new(uri),
+                    match_kind: u.match_kind.filter(|m| *m <= 5),
+                }
+            })
+            .collect();
+        // Last, because it writes the history.
+        if let Some(password) = login.password {
+            item.set_password(Zeroizing::new(password), now);
+        }
+    }
+
+    if let Some(card) = draft.card {
+        let current = item
+            .card
+            .as_mut()
+            .ok_or_else(|| Failure::new("invalid", "This item isn't a card."))?;
+        apply_keep(&mut current.cardholder_name, card.cardholder_name);
+        apply_keep(&mut current.brand, card.brand);
+        apply_keep(&mut current.number, card.number);
+        apply_keep(&mut current.exp_month, card.exp_month);
+        apply_keep(&mut current.exp_year, card.exp_year);
+        apply_keep(&mut current.code, card.code);
+    }
+
+    if let Some(values) = draft.identity {
+        if item.identity.is_none() {
+            return Err(Failure::new("invalid", "This item isn't an identity."));
+        }
+        for (name, _) in IDENTITY_FIELDS {
+            let Some(value) = values.get(*name) else {
+                continue;
+            };
+            let value = secret_of(value.trim().to_string());
+            let identity = item.identity.as_mut().expect("checked above");
+            match *name {
+                "title" => identity.title = value,
+                "firstName" => identity.first_name = value,
+                "middleName" => identity.middle_name = value,
+                "lastName" => identity.last_name = value,
+                "username" => identity.username = value,
+                "company" => identity.company = value,
+                "email" => identity.email = value,
+                "phone" => identity.phone = value,
+                "address1" => identity.address1 = value,
+                "address2" => identity.address2 = value,
+                "address3" => identity.address3 = value,
+                "postalCode" => identity.postal_code = value,
+                "city" => identity.city = value,
+                "state" => identity.state = value,
+                "country" => identity.country = value,
+                "ssn" => identity.ssn = value,
+                "passportNumber" => identity.passport_number = value,
+                "licenseNumber" => identity.license_number = value,
+                _ => {}
+            }
+        }
+    }
+
+    if let Some(ssh) = draft.ssh_key {
+        let current = item
+            .ssh_key
+            .as_mut()
+            .ok_or_else(|| Failure::new("invalid", "This item isn't an SSH key."))?;
+        apply_keep(&mut current.private_key, ssh.private_key);
+        apply_keep(&mut current.public_key, ssh.public_key);
+        apply_keep(&mut current.fingerprint, ssh.fingerprint);
+    }
+
+    let old_fields = item.fields.clone();
+    item.fields = draft
+        .fields
+        .into_iter()
+        .map(|field| {
+            let old = field.from.and_then(|index| old_fields.get(index));
+            Field {
+                name: field.name.and_then(secret_of),
+                value: match field.value {
+                    Some(value) => secret_of(value),
+                    None => old.and_then(|old| old.value.clone()),
+                },
+                kind: field.kind,
+                linked_id: old
+                    .filter(|_| field.kind == FieldKind::Linked)
+                    .and_then(|old| old.linked_id),
+            }
+        })
+        .collect();
+    Ok(())
+}
+
+/// What a write changed, for the cached vault. Applying it here keeps the
+/// list and the details right away, without waiting for the next sync.
+enum Patch {
+    Cipher(Value),
+    Trash(String),
+    RemoveCipher(String),
+    Folder(Value),
+    RemoveFolder(String),
+}
+
+/// The value of `name`, whatever case the server spells it in.
+fn entry<'a>(value: &'a Value, name: &str) -> Option<&'a Value> {
+    let object = value.as_object()?;
+    object
+        .iter()
+        .find(|(key, _)| key.eq_ignore_ascii_case(name))
+        .map(|(_, value)| value)
+}
+
+fn entry_id(value: &Value) -> Option<&str> {
+    entry(value, "id")?.as_str()
+}
+
+/// The `ciphers` or `folders` list of a sync, made if it isn't there.
+fn list_mut<'a>(sync: &'a mut Value, name: &str) -> Option<&'a mut Vec<Value>> {
+    let object = sync.as_object_mut()?;
+    let key = object
+        .keys()
+        .find(|key| key.eq_ignore_ascii_case(name))
+        .cloned()
+        .unwrap_or_else(|| name.to_string());
+    object
+        .entry(key)
+        .or_insert_with(|| Value::Array(Vec::new()))
+        .as_array_mut()
+}
+
+fn set_field(value: &mut Value, name: &str, to: Value) {
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+    let key = object
+        .keys()
+        .find(|key| key.eq_ignore_ascii_case(name))
+        .cloned()
+        .unwrap_or_else(|| name.to_string());
+    object.insert(key, to);
+}
+
+/// Writes the change into the cached sync and opens the vault again from it.
+fn patch_cache(state: &VaultState, account_id: &str, patch: Patch) -> Result<()> {
+    let Some(text) = state.storage.load_cache(account_id) else {
+        // Nothing cached yet; the next sync brings everything anyway.
+        return Ok(());
+    };
+    let mut sync: Value = serde_json::from_str(&text)
+        .map_err(|e| Failure::new("io", format!("The cached vault doesn't parse: {e}")))?;
+    match patch {
+        Patch::Cipher(cipher) => {
+            let Some(id) = entry_id(&cipher).map(str::to_string) else {
+                return Ok(());
+            };
+            let ciphers = list_mut(&mut sync, "ciphers").ok_or_else(broken_cache)?;
+            match ciphers
+                .iter()
+                .position(|c| entry_id(c) == Some(id.as_str()))
+            {
+                Some(index) => ciphers[index] = cipher,
+                None => ciphers.push(cipher),
+            }
+        }
+        Patch::Trash(id) => {
+            let ciphers = list_mut(&mut sync, "ciphers").ok_or_else(broken_cache)?;
+            if let Some(cipher) = ciphers
+                .iter_mut()
+                .find(|c| entry_id(c) == Some(id.as_str()))
+            {
+                set_field(cipher, "deletedDate", json!(iso_now()));
+            }
+        }
+        Patch::RemoveCipher(id) => {
+            let ciphers = list_mut(&mut sync, "ciphers").ok_or_else(broken_cache)?;
+            ciphers.retain(|c| entry_id(c) != Some(id.as_str()));
+        }
+        Patch::Folder(folder) => {
+            let Some(id) = entry_id(&folder).map(str::to_string) else {
+                return Ok(());
+            };
+            let folders = list_mut(&mut sync, "folders").ok_or_else(broken_cache)?;
+            match folders
+                .iter()
+                .position(|f| entry_id(f) == Some(id.as_str()))
+            {
+                Some(index) => folders[index] = folder,
+                None => folders.push(folder),
+            }
+        }
+        Patch::RemoveFolder(id) => {
+            let folders = list_mut(&mut sync, "folders").ok_or_else(broken_cache)?;
+            folders.retain(|f| entry_id(f) != Some(id.as_str()));
+            // The items in it stay, without a folder — as the server does it.
+            let ciphers = list_mut(&mut sync, "ciphers").ok_or_else(broken_cache)?;
+            for cipher in ciphers.iter_mut() {
+                if entry(cipher, "folderId").and_then(Value::as_str) == Some(id.as_str()) {
+                    set_field(cipher, "folderId", Value::Null);
+                }
+            }
+        }
+    }
+    let text = sync.to_string();
+    state
+        .storage
+        .save_cache(account_id, &text)
+        .map_err(|e| Failure::new("io", format!("Couldn't cache the vault: {e}")))?;
+    let parsed = parse_sync(&text)?;
+    let mut guard = state.unlocked.write();
+    let unlocked = guard.get_mut(account_id).ok_or_else(Failure::locked)?;
+    unlocked.vault = Vault::open(&parsed, &unlocked.user_key)?;
+    Ok(())
+}
+
+fn broken_cache() -> Failure {
+    Failure::new("io", "The cached vault isn't a sync.")
+}
+
+/// The item as it is here, ready to be sent — with the reprompt honoured: an
+/// item that asks for the master password can't be changed without it either.
+fn prepare(state: &VaultState, account_id: &str, id: &str) -> Result<Item> {
+    let guard = state.unlocked.read();
+    let unlocked = guard.get(account_id).ok_or_else(Failure::locked)?;
+    let item = unlocked
+        .vault
+        .item(id)
+        .ok_or_else(|| Failure::new("not-found", "This item isn't in the vault any more."))?;
+    if item.reprompt && !unlocked.reprompt_ok.contains(id) {
+        return Err(Failure::new(
+            "reprompt",
+            "This item asks for the master password first.",
+        ));
+    }
+    Ok(item.clone())
+}
+
+fn sealed(state: &VaultState, account_id: &str, item: &Item) -> Result<wire::CipherRequest> {
+    item.can_save()?;
+    let guard = state.unlocked.read();
+    let unlocked = guard.get(account_id).ok_or_else(Failure::locked)?;
+    let outer = unlocked
+        .vault
+        .outer_key(item.organization_id.as_deref(), &unlocked.user_key)?;
+    Ok(item.seal(outer)?)
+}
+
+/// Saves an item: a new one when `id` is empty, otherwise the one it names.
+/// Returns the item's id.
+#[tauri::command]
+pub(crate) async fn save_item(
+    app: AppHandle,
+    state: State<'_, VaultState>,
+    id: Option<String>,
+    draft: Draft,
+) -> Result<String> {
+    state.touch();
+    let (account_id, account) = state.active_account()?;
+    let mut item = match &id {
+        Some(id) => {
+            let item = prepare(&state, &account_id, id)?;
+            if item.kind != draft.kind {
+                return Err(Failure::new("invalid", "An item can't change its type."));
+            }
+            if item.deleted {
+                return Err(Failure::new(
+                    "invalid",
+                    "An item in the trash can't be changed. Restore it first.",
+                ));
+            }
+            item
+        }
+        None => Item::new(draft.kind),
+    };
+    let collection_ids = item.collection_ids.clone();
+    apply_draft(&mut item, draft, &iso_now())?;
+    let request = sealed(&state, &account_id, &item)?;
+
+    let client = state.client(account.server.clone())?;
+    let access = access_token(&state, &account_id).await?;
+    let answer = match &id {
+        Some(id) => client.update_cipher(&access, id, request).await?,
+        None => {
+            client
+                .create_cipher(&access, request, &collection_ids)
+                .await?
+        }
+    };
+    let saved_id = entry_id(&answer)
+        .map(str::to_string)
+        .or_else(|| id.clone())
+        .unwrap_or_default();
+    patch_cache(&state, &account_id, Patch::Cipher(answer))?;
+    tracing::info!(new = id.is_none(), "item saved");
+    let _ = app.emit("vault-changed", ());
+    emit_status(&app);
+    Ok(saved_id)
+}
+
+/// Changes one thing about an item that is already there, and saves it.
+async fn change_item(
+    app: &AppHandle,
+    state: &VaultState,
+    id: &str,
+    change: impl FnOnce(&mut Item),
+) -> Result<()> {
+    state.touch();
+    let (account_id, account) = state.active_account()?;
+    let mut item = prepare(state, &account_id, id)?;
+    change(&mut item);
+    let request = sealed(state, &account_id, &item)?;
+    let client = state.client(account.server.clone())?;
+    let access = access_token(state, &account_id).await?;
+    let answer = client.update_cipher(&access, id, request).await?;
+    patch_cache(state, &account_id, Patch::Cipher(answer))?;
+    let _ = app.emit("vault-changed", ());
+    emit_status(app);
+    Ok(())
+}
+
+#[tauri::command]
+pub(crate) async fn set_favorite(
+    app: AppHandle,
+    state: State<'_, VaultState>,
+    id: String,
+    favorite: bool,
+) -> Result<()> {
+    change_item(&app, &state, &id, |item| item.favorite = favorite).await
+}
+
+#[tauri::command]
+pub(crate) async fn set_item_folder(
+    app: AppHandle,
+    state: State<'_, VaultState>,
+    id: String,
+    folder_id: Option<String>,
+) -> Result<()> {
+    let folder_id = folder_id.filter(|id| !id.is_empty());
+    change_item(&app, &state, &id, move |item| item.folder_id = folder_id).await
+}
+
+/// Into the trash, or — with `permanent` — gone for good.
+#[tauri::command]
+pub(crate) async fn delete_item(
+    app: AppHandle,
+    state: State<'_, VaultState>,
+    id: String,
+    permanent: bool,
+) -> Result<()> {
+    state.touch();
+    let (account_id, account) = state.active_account()?;
+    prepare(&state, &account_id, &id)?;
+    let client = state.client(account.server.clone())?;
+    let access = access_token(&state, &account_id).await?;
+    if permanent {
+        client.delete_cipher(&access, &id).await?;
+        patch_cache(&state, &account_id, Patch::RemoveCipher(id))?;
+    } else {
+        client.trash_cipher(&access, &id).await?;
+        patch_cache(&state, &account_id, Patch::Trash(id))?;
+    }
+    tracing::info!(permanent, "item deleted");
+    let _ = app.emit("vault-changed", ());
+    emit_status(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub(crate) async fn restore_item(
+    app: AppHandle,
+    state: State<'_, VaultState>,
+    id: String,
+) -> Result<()> {
+    state.touch();
+    let (account_id, account) = state.active_account()?;
+    prepare(&state, &account_id, &id)?;
+    let client = state.client(account.server.clone())?;
+    let access = access_token(&state, &account_id).await?;
+    let answer = client.restore_cipher(&access, &id).await?;
+    if entry_id(&answer).is_some() {
+        patch_cache(&state, &account_id, Patch::Cipher(answer))?;
+    } else {
+        sync_account(&app, &account_id).await?;
+    }
+    let _ = app.emit("vault-changed", ());
+    emit_status(&app);
+    Ok(())
+}
+
+/// A new folder when `id` is empty, otherwise a new name for that one.
+#[tauri::command]
+pub(crate) async fn save_folder(
+    app: AppHandle,
+    state: State<'_, VaultState>,
+    id: Option<String>,
+    name: String,
+) -> Result<String> {
+    state.touch();
+    let (account_id, account) = state.active_account()?;
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err(Failure::new("invalid", "A folder needs a name."));
+    }
+    let sealed = {
+        let guard = state.unlocked.read();
+        let unlocked = guard.get(&account_id).ok_or_else(Failure::locked)?;
+        EncString::encrypt(name.as_bytes(), &unlocked.user_key).to_string()
+    };
+    let client = state.client(account.server.clone())?;
+    let access = access_token(&state, &account_id).await?;
+    let answer = match &id {
+        Some(id) => client.rename_folder(&access, id, sealed).await?,
+        None => client.create_folder(&access, sealed).await?,
+    };
+    let saved_id = entry_id(&answer)
+        .map(str::to_string)
+        .or_else(|| id.clone())
+        .unwrap_or_default();
+    patch_cache(&state, &account_id, Patch::Folder(answer))?;
+    let _ = app.emit("vault-changed", ());
+    emit_status(&app);
+    Ok(saved_id)
+}
+
+/// Removes a folder. The items in it stay, without a folder.
+#[tauri::command]
+pub(crate) async fn delete_folder(
+    app: AppHandle,
+    state: State<'_, VaultState>,
+    id: String,
+) -> Result<()> {
+    state.touch();
+    let (account_id, account) = state.active_account()?;
+    let client = state.client(account.server.clone())?;
+    let access = access_token(&state, &account_id).await?;
+    client.delete_folder(&access, &id).await?;
+    patch_cache(&state, &account_id, Patch::RemoveFolder(id))?;
+    let _ = app.emit("vault-changed", ());
+    emit_status(&app);
+    Ok(())
+}
+
 impl VaultState {
     /// A login's address, for opening in the browser.
     pub(crate) fn item_uri(&self, id: &str, index: usize) -> Option<String> {
+        let active = self.active.lock().clone()?;
         let unlocked = self.unlocked.read();
-        let unlocked = unlocked.as_ref()?;
+        let unlocked = unlocked.get(&active)?;
         let item = unlocked.vault.item(id)?;
         if item.reprompt && !unlocked.reprompt_ok.contains(id) {
             return None;
@@ -1205,13 +2033,40 @@ impl VaultState {
     }
 
     pub(crate) fn web_vault(&self) -> Option<String> {
-        self.account.lock().as_ref().map(|a| a.server.web())
+        let (_, account) = self.active_account().ok()?;
+        Some(account.server.web())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dates_look_like_bitwardens() {
+        assert_eq!(iso_from_unix(0, 0), "1970-01-01T00:00:00.000Z");
+        // A leap day, and the last second of a year.
+        assert_eq!(iso_from_unix(951_782_400, 0), "2000-02-29T00:00:00.000Z");
+        assert_eq!(iso_from_unix(1_609_459_199, 7), "2020-12-31T23:59:59.007Z");
+        assert_eq!(
+            iso_from_unix(1_758_629_400, 250),
+            "2025-09-23T12:10:00.250Z"
+        );
+    }
+
+    #[test]
+    fn a_patch_finds_its_list_whatever_the_case() {
+        let mut sync = json!({ "Ciphers": [{ "Id": "a" }], "profile": {} });
+        let ciphers = list_mut(&mut sync, "ciphers").unwrap();
+        assert_eq!(ciphers.len(), 1);
+        assert_eq!(entry_id(&ciphers[0]), Some("a"));
+        ciphers.push(json!({ "id": "b" }));
+        // A sync without folders gets the list it was missing.
+        assert!(list_mut(&mut sync, "folders").unwrap().is_empty());
+        set_field(&mut sync["Ciphers"][0], "deletedDate", json!("now"));
+        assert_eq!(sync["Ciphers"][0]["deletedDate"], json!("now"));
+        assert_eq!(sync["Ciphers"].as_array().unwrap().len(), 2);
+    }
 
     #[test]
     fn hosts_and_card_endings() {

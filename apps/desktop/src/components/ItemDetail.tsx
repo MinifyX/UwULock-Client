@@ -1,10 +1,13 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import {
   copyField,
+  deleteItem,
   failure,
   openItemUri,
   openWebVault,
+  restoreItem,
   revealField,
+  setFavorite,
   totpCode,
   vaultItem,
   verifyReprompt,
@@ -15,41 +18,14 @@ import {
 } from '../lib/api';
 import { errorText } from '../lib/errors';
 import { charClasses, copiedText, spacedCode, when } from '../lib/format';
-import { N_, t, useLanguage } from '../lib/i18n';
+import { t, useLanguage } from '../lib/i18n';
+import { IDENTITY_LABEL, KIND_LABEL } from '../lib/items';
 import { getSettings } from '../lib/settings';
 import { toast } from '../lib/toast';
 import { Icon } from './Icon';
 import { ItemTile } from './ItemTile';
+import { Modal } from './Modal';
 import { PasswordInput } from './PasswordInput';
-
-const KIND_LABEL: Record<ItemSummary['kind'], string> = {
-  login: N_('Login'),
-  card: N_('Karte'),
-  identity: N_('Identität'),
-  note: N_('Sichere Notiz'),
-  'ssh-key': N_('SSH-Schlüssel'),
-};
-
-const IDENTITY_LABEL: Record<string, string> = {
-  title: N_('Anrede'),
-  firstName: N_('Vorname'),
-  middleName: N_('Zweiter Vorname'),
-  lastName: N_('Nachname'),
-  username: N_('Benutzername'),
-  company: N_('Firma'),
-  email: N_('E-Mail'),
-  phone: N_('Telefon'),
-  address1: N_('Adresse'),
-  address2: N_('Adresse 2'),
-  address3: N_('Adresse 3'),
-  postalCode: N_('Postleitzahl'),
-  city: N_('Ort'),
-  state: N_('Bundesland'),
-  country: N_('Land'),
-  ssn: N_('Sozialversicherungsnummer'),
-  passportNumber: N_('Reisepassnummer'),
-  licenseNumber: N_('Führerscheinnummer'),
-};
 
 async function copy(id: string, field: string) {
   try {
@@ -300,17 +276,65 @@ function Reprompt({ id, onPassed }: { id: string; onPassed: () => void }) {
   );
 }
 
+/** Asks before something is thrown away for good. */
+function ConfirmDelete({
+  name,
+  permanent,
+  onCancel,
+  onConfirm,
+}: {
+  name: string;
+  permanent: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  useLanguage();
+  return (
+    <Modal
+      title={permanent ? t('Endgültig löschen?') : t('In den Papierkorb?')}
+      tone={permanent ? 'warning' : 'default'}
+      onCancel={onCancel}
+      footer={
+        <>
+          <span className="spacer" />
+          <button className="danger" data-secondary onClick={onConfirm}>
+            {permanent ? t('Endgültig löschen') : t('In den Papierkorb')}
+          </button>
+          <button className="primary" data-autofocus onClick={onCancel}>
+            {t('Abbrechen')}
+          </button>
+        </>
+      }
+    >
+      <p className="dialog-lead">
+        {permanent
+          ? t(
+              '„{name}“ wird auf dem Server gelöscht. Das lässt sich nicht rückgängig machen – auch nicht im Web-Tresor.',
+              { name },
+            )
+          : t('„{name}“ wandert in den Papierkorb. Der Server hebt ihn dort noch 30 Tage auf.', {
+              name,
+            })}
+      </p>
+    </Modal>
+  );
+}
+
 export function ItemDetail({
   summary,
   overview,
+  onEdit,
 }: {
   summary: ItemSummary;
   overview: Overview | null;
+  onEdit: () => void;
 }) {
   useLanguage();
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [asking, setAsking] = useState<null | 'trash' | 'permanent'>(null);
+  const [busy, setBusy] = useState(false);
   const id = summary.id;
 
   const load = () => {
@@ -326,6 +350,19 @@ export function ItemDetail({
   // Reload when the sync brought a new revision of this item.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(load, [id, summary.revisionDate]);
+
+  const act = async (what: () => Promise<void>, done: string) => {
+    setBusy(true);
+    try {
+      await what();
+      toast(done);
+    } catch (e) {
+      toast(errorText(e), 'error');
+    } finally {
+      setBusy(false);
+      setAsking(null);
+    }
+  };
 
   const folder = overview?.folders.find((f) => f.id === summary.folderId)?.name;
   const org = overview?.organizations.find((o) => o.id === summary.organizationId)?.name;
@@ -363,7 +400,78 @@ export function ItemDetail({
             {summary.deleted && <span className="chip chip-muted">{t('Im Papierkorb')}</span>}
           </p>
         </div>
+        <div className="detail-tools">
+          {summary.deleted ? (
+            <>
+              <button
+                className="quiet"
+                disabled={busy}
+                onClick={() => void act(() => restoreItem(id), t('Aus dem Papierkorb geholt ✧'))}
+              >
+                <Icon name="history" size={15} />
+                {t('Wiederherstellen')}
+              </button>
+              <button
+                className="quiet danger-text"
+                disabled={busy}
+                onClick={() => setAsking('permanent')}
+              >
+                <Icon name="trash" size={15} />
+                {t('Endgültig löschen')}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                className="icon-button"
+                disabled={busy}
+                aria-pressed={summary.favorite}
+                title={summary.favorite ? t('Favorit entfernen') : t('Zu Favoriten')}
+                aria-label={summary.favorite ? t('Favorit entfernen') : t('Zu Favoriten')}
+                onClick={() =>
+                  void act(
+                    () => setFavorite(id, !summary.favorite),
+                    summary.favorite ? t('Kein Favorit mehr') : t('Favorit ✧'),
+                  )
+                }
+              >
+                <Icon
+                  name="star"
+                  size={15}
+                  className={summary.favorite ? 'badge-star' : undefined}
+                />
+              </button>
+              <button
+                className="icon-button"
+                disabled={busy}
+                title={t('In den Papierkorb')}
+                aria-label={t('In den Papierkorb')}
+                onClick={() => setAsking('trash')}
+              >
+                <Icon name="trash" size={15} />
+              </button>
+              <button className="primary" disabled={busy || summary.broken} onClick={onEdit}>
+                <Icon name="pencil" size={15} />
+                {t('Bearbeiten')}
+              </button>
+            </>
+          )}
+        </div>
       </header>
+
+      {asking && (
+        <ConfirmDelete
+          name={summary.name || t('(ohne Namen)')}
+          permanent={asking === 'permanent'}
+          onCancel={() => setAsking(null)}
+          onConfirm={() =>
+            void act(
+              () => deleteItem(id, asking === 'permanent'),
+              asking === 'permanent' ? t('Gelöscht.') : t('Im Papierkorb.'),
+            )
+          }
+        />
+      )}
 
       {error && (
         <p className="notice" data-tone="error">
@@ -640,7 +748,6 @@ export function ItemDetail({
                 .join(' · ')}
             </p>
             <p className="detail-beta">
-              <span>{t('Bearbeiten kommt in einer der nächsten Betas.')}</span>
               <button
                 className="link-button"
                 onClick={() => void openWebVault().catch(() => undefined)}

@@ -79,15 +79,42 @@ Keys and decrypted values are `Zeroizing` and wiped when dropped.
 - **Rust, while unlocked**: the user key, the decrypted vault and the session.
   Locking — by hand, Ctrl+L, auto-lock or quitting — drops all of it and
   clears a copied secret from the clipboard.
-- **Disk** (`account.rs`): `account.json` with server, email, KDF settings,
-  the user key as the server wraps it, and the refresh token and
-  remember-device token sealed under the user key; `vault.json`, the last
-  sync as the server sent it; `device-id`. Nothing in there opens anything
-  without the master password.
+- **Disk** (`account.rs`): one folder per account under `accounts/<id>/`, with
+  `account.json` — server, email, KDF settings, the user key as the server
+  wraps it, and the refresh token and remember-device token sealed under the
+  user key — and `vault.json`, the last sync as the server sent it. Beside
+  them `accounts.json` (which accounts there are and which was open last,
+  nothing secret) and `device-id`, shared by all of them. Nothing in there
+  opens anything without the master password.
 
 Auto-lock counts what the user does (keys, clicks, the wheel, reveal, copy),
 not what the page polls: the one-time code refreshes every second and must
-not keep the vault open by itself.
+not keep the vault open by itself. It locks every account at once.
+
+## Saving
+
+Editing goes the same way round as reading. The editor sends back what was
+typed; a value it never had — a password nobody revealed, a card number, a
+hidden field — comes as `null`, and Rust takes the one the item already has.
+So a name change never brings the password into the web view.
+
+What UwULock doesn't show travels along: an item keeps its own key, its
+passkeys, its linked fields, the checksum of an address it still has, and the
+date it was archived. Bitwarden stores the login, card, identity, note and SSH
+object as the client sends it — whatever a save leaves out is gone from the
+item afterwards.
+
+Three rules keep a save from costing anything:
+
+- Every change names the revision UwULock last saw. A server with a newer copy
+  refuses it (`Error::Conflict`), and the page says so instead of retrying.
+- An item that didn't fully decrypt is never written back.
+- An item that asks for the master password can't be changed without it
+  either.
+
+What comes back from the server goes straight into the cached sync
+(`patch_cache`), so the list and the details are right without waiting for the
+next sync.
 
 ## Suite parts
 

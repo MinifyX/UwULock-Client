@@ -46,7 +46,14 @@ function strength(bits: number): { level: 1 | 2 | 3 | 4; label: string } {
   return { level: 4, label: t('sehr stark ✧') };
 }
 
-export function GeneratorDialog({ onClose }: { onClose: () => void }) {
+export function GeneratorDialog({
+  onClose,
+  onUse,
+}: {
+  onClose: () => void;
+  /** Opened from the editor: the password goes into the field instead. */
+  onUse?: (password: string) => void;
+}) {
   useLanguage();
   const [options, setOptions] = useState<GeneratorOptions>(loadOptions);
   const [result, setResult] = useState<{ password: string; bits: number } | null>(null);
@@ -107,10 +114,22 @@ export function GeneratorDialog({ onClose }: { onClose: () => void }) {
             <Icon name="dice" size={15} />
             {t('Neu würfeln')}
           </button>
-          <button className="primary" data-autofocus onClick={() => void copy()}>
-            <Icon name="copy" size={15} />
-            {t('Kopieren')}
-          </button>
+          {onUse ? (
+            <button
+              className="primary"
+              data-autofocus
+              disabled={!result}
+              onClick={() => result && onUse(result.password)}
+            >
+              <Icon name="check" size={15} />
+              {t('Übernehmen')}
+            </button>
+          ) : (
+            <button className="primary" data-autofocus onClick={() => void copy()}>
+              <Icon name="copy" size={15} />
+              {t('Kopieren')}
+            </button>
+          )}
         </>
       }
     >

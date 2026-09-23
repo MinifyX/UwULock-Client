@@ -31,6 +31,8 @@ export function App() {
   const [generator, setGenerator] = useState(false);
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [updateDismissed, setUpdateDismissed] = useState(false);
+  /** The login screen, for a second account next to the one already here. */
+  const [adding, setAdding] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const backgroundRef = useRef<HTMLDivElement>(null);
   const current = useToast();
@@ -146,16 +148,30 @@ export function App() {
         <main className="stage">
           {status === null ? null : status.state === 'logged-out' ? (
             <LoginScreen onDone={setStatus} />
+          ) : adding ? (
+            <LoginScreen
+              adding
+              onDone={(next) => {
+                setAdding(false);
+                setStatus(next);
+              }}
+              onCancel={() => setAdding(false)}
+            />
           ) : status.state === 'locked' ? (
             <LockScreen
               status={status}
               onUnlocked={setStatus}
               onLoggedOut={() => void vaultStatus().then(setStatus)}
+              onAddAccount={() => setAdding(true)}
             />
           ) : status.sessionExpired ? (
             <LoginScreen again={status} onDone={setStatus} onCancel={() => void lock()} />
           ) : (
-            <VaultScreen status={status} searchRef={searchRef} />
+            <VaultScreen
+              status={status}
+              searchRef={searchRef}
+              onAddAccount={() => setAdding(true)}
+            />
           )}
         </main>
       </div>

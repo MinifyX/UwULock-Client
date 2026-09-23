@@ -4,11 +4,13 @@
  */
 
 import app from './app.json';
+import editing from './editing.json';
 import settings from './settings.json';
 import vault from './vault.json';
 
 export const EN: Readonly<Record<string, string>> = {
   ...app,
+  ...editing,
   ...settings,
   ...vault,
 };

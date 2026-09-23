@@ -1,11 +1,15 @@
-//! What Bitwarden and Vaultwarden send, as they send it.
+//! What Bitwarden and Vaultwarden send, as they send it — and what they take
+//! back.
 //!
 //! Bitwarden answers in camelCase, older Vaultwardens in PascalCase, and a few
 //! fields changed their case over the years. So every key is lowered first
 //! ([`lowercase_keys`]) and the structs here name them in lower case. Every
 //! encrypted field stays an encrypted string until [`crate::vault`] opens it.
+//!
+//! Writing goes the other way: the `…Request` structs at the end are what a
+//! save sends, in the camelCase both servers expect.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Lowers every object key, recursively. Values are left alone.
@@ -186,6 +190,9 @@ pub struct Cipher {
     pub identity: Option<Identity>,
     #[serde(default, rename = "sshkey")]
     pub ssh_key: Option<SshKey>,
+    /// Notes carry their own little object; the server insists on getting it back.
+    #[serde(default, rename = "securenote")]
+    pub secure_note: Option<SecureNote>,
     #[serde(default)]
     pub fields: Option<Vec<Field>>,
     #[serde(default, rename = "passwordhistory")]
@@ -200,6 +207,16 @@ pub struct Cipher {
     pub creation_date: Option<String>,
     #[serde(default, rename = "deleteddate")]
     pub deleted_date: Option<String>,
+    /// Newer servers can archive an item. A save that leaves this out
+    /// un-archives it, so it is carried along.
+    #[serde(default, rename = "archiveddate")]
+    pub archived_date: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct SecureNote {
+    #[serde(default, rename = "type", deserialize_with = "flexible_u32")]
+    pub kind: Option<u32>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -214,8 +231,12 @@ pub struct Login {
     pub uris: Option<Vec<LoginUri>>,
     #[serde(default, rename = "passwordrevisiondate")]
     pub password_revision_date: Option<String>,
+    /// Passkeys. UwULock can't use them, but a save must hand them back
+    /// untouched, or the server drops them.
     #[serde(default, rename = "fido2credentials")]
     pub fido2_credentials: Option<Vec<Value>>,
+    #[serde(default, rename = "autofillonpageload")]
+    pub autofill_on_page_load: Option<bool>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -224,6 +245,10 @@ pub struct LoginUri {
     pub uri: Option<String>,
     #[serde(default, rename = "match", deserialize_with = "flexible_u32")]
     pub match_kind: Option<u32>,
+    /// Bitwarden's check that an address wasn't tampered with. Only valid for
+    /// the address it was made for, so it travels with an unchanged one.
+    #[serde(default, rename = "urichecksum")]
+    pub checksum: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -301,6 +326,9 @@ pub struct Field {
     pub value: Option<String>,
     #[serde(default, rename = "type", deserialize_with = "flexible_u32")]
     pub kind: Option<u32>,
+    /// Which field of the item a linked field points at.
+    #[serde(default, rename = "linkedid", deserialize_with = "flexible_u32")]
+    pub linked_id: Option<u32>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -309,6 +337,140 @@ pub struct PasswordHistory {
     pub password: Option<String>,
     #[serde(default, rename = "lastuseddate")]
     pub last_used_date: Option<String>,
+}
+
+// ── What a save sends ──────────────────────────────────────
+//
+// Both servers read these in camelCase. Vaultwarden keeps the login, card,
+// identity, note and SSH object as it gets them, so anything left out here is
+// gone from the item afterwards — which is why every one of them carries what
+// the sync brought along, not just what UwULock shows.
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CipherRequest {
+    #[serde(rename = "type")]
+    pub kind: u8,
+    pub name: String,
+    pub notes: Option<String>,
+    pub favorite: bool,
+    pub reprompt: u8,
+    pub folder_id: Option<String>,
+    pub organization_id: Option<String>,
+    /// The item's own key, still wrapped as it came.
+    pub key: Option<String>,
+    pub login: Option<LoginRequest>,
+    pub card: Option<CardRequest>,
+    pub identity: Option<IdentityRequest>,
+    pub secure_note: Option<SecureNoteRequest>,
+    pub ssh_key: Option<SshKeyRequest>,
+    pub fields: Option<Vec<FieldRequest>>,
+    pub password_history: Option<Vec<PasswordHistoryRequest>>,
+    /// The revision UwULock last saw. The server refuses the save if the item
+    /// has changed since, instead of overwriting the newer copy.
+    pub last_known_revision_date: Option<String>,
+    pub archived_date: Option<String>,
+}
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoginRequest {
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub totp: Option<String>,
+    pub uris: Vec<LoginUriRequest>,
+    pub password_revision_date: Option<String>,
+    pub fido2_credentials: Option<Vec<Value>>,
+    pub autofill_on_page_load: Option<bool>,
+}
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoginUriRequest {
+    pub uri: Option<String>,
+    #[serde(rename = "match")]
+    pub match_kind: Option<u32>,
+    pub uri_checksum: Option<String>,
+}
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CardRequest {
+    pub cardholder_name: Option<String>,
+    pub brand: Option<String>,
+    pub number: Option<String>,
+    pub exp_month: Option<String>,
+    pub exp_year: Option<String>,
+    pub code: Option<String>,
+}
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IdentityRequest {
+    pub title: Option<String>,
+    pub first_name: Option<String>,
+    pub middle_name: Option<String>,
+    pub last_name: Option<String>,
+    pub username: Option<String>,
+    pub company: Option<String>,
+    pub email: Option<String>,
+    pub phone: Option<String>,
+    pub address1: Option<String>,
+    pub address2: Option<String>,
+    pub address3: Option<String>,
+    pub postal_code: Option<String>,
+    pub city: Option<String>,
+    pub state: Option<String>,
+    pub country: Option<String>,
+    pub ssn: Option<String>,
+    pub passport_number: Option<String>,
+    pub license_number: Option<String>,
+}
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecureNoteRequest {
+    #[serde(rename = "type")]
+    pub kind: u32,
+}
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshKeyRequest {
+    pub private_key: Option<String>,
+    pub public_key: Option<String>,
+    pub key_fingerprint: Option<String>,
+}
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FieldRequest {
+    pub name: Option<String>,
+    pub value: Option<String>,
+    #[serde(rename = "type")]
+    pub kind: u32,
+    pub linked_id: Option<u32>,
+}
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PasswordHistoryRequest {
+    pub password: String,
+    pub last_used_date: String,
+}
+
+/// A new item in an organisation goes to `/ciphers/create`, wrapped like this.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShareRequest {
+    pub cipher: CipherRequest,
+    pub collection_ids: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderRequest {
+    pub name: String,
 }
 
 #[cfg(test)]

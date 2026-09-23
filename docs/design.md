@@ -56,13 +56,16 @@ therefore use `#e11d74` (4.5:1, WCAG AA).
 - Custom title bar like every UwU app, with the generator (dice), lock and
   settings next to the window buttons.
 - **Sidebar**: all items, favourites, types, folders, organisations with
-  their collections, the trash; the account and its sync state at the bottom.
+  their collections, the trash; the account, its sync state and the way to the
+  other accounts at the bottom.
 - **List**: a tile per item — the first letter for logins, the kind's icon
   for everything else. **No favicons**: fetching them would tell a server
   which sites are in the vault. Arrow keys move, typing in the search field
   filters by name, username and host.
 - **Details**: cards of rows, label above value, actions on the right —
-  show, copy, open in the browser. Secrets are dots until the eye is clicked.
+  show, copy, open in the browser. Favourite, trash and **Bearbeiten** sit next
+  to the name; editing opens a wide dialog, where a value the page never saw
+  says so ("Bleibt, wie es ist") instead of showing dots that could be typed over. Secrets are dots until the eye is clicked.
   The one-time code counts down in a ring and turns amber for its last five
   seconds.
 - **Login and lock** get the whole window: Nyu on the left and a card on the

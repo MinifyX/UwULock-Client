@@ -25,9 +25,13 @@ Die Risiken, offen benannt:
   Funktionen (neue Verschlüsselungsformate, neue Anmeldeprüfungen) muss
   UwULock nachziehen. Vaultwarden ändert sich langsamer und ist das
   Hauptziel.
-- Ein Fehler beim **Schreiben** kann echte Daten beschädigen. Darum liest die
-  erste Beta nur; Bearbeiten kommt, wenn der Lesepfad in echter Benutzung
-  hält, und zuerst gegen den Spielzeug-Server getestet.
+- Ein Fehler beim **Schreiben** kann echte Daten beschädigen. Darum las die
+  erste Beta nur. Bearbeiten kam erst, als der Lesepfad in echter Benutzung
+  hielt, und es hält sich an drei Regeln: Was UwULock nicht anzeigt
+  (Passkeys, verknüpfte Felder, Prüfsummen von Adressen), geht unverändert
+  zurück an den Server; jede Änderung nennt die zuletzt gesehene Fassung, und
+  der Server lehnt sie ab, statt eine neuere zu überschreiben; ein Eintrag,
+  der sich nicht vollständig entschlüsseln ließ, wird nie zurückgeschrieben.
 
 ## Grundsätze
 

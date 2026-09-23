@@ -2,7 +2,7 @@
 
 My wish list, roughly in order, without dates.
 
-## 0.1 · Beta — reading (now)
+## 0.1 · Beta — reading (released)
 
 - Log in to Vaultwarden and Bitwarden (self-hosted, .com, .eu), PBKDF2 and
   Argon2id, two-step login with authenticator, email and YubiKey OTP
@@ -10,14 +10,17 @@ My wish list, roughly in order, without dates.
 - Auto-lock, clipboard clearing, offline copy, periodic sync
 - Installer, signed updates, German and English
 
-## 0.2 · Writing
+## 0.2 · Writing (done, not released)
 
-- Create, edit, delete and restore items (logins first, then the rest),
-  folders, favourites, move items between folders
-- Password history kept on change, the generator right in the password field
-- Notifications from the server (Bitwarden's WebSocket hub) instead of polling
-- Unlock with Windows Hello / Touch ID, lock when the system locks or sleeps
-- A second account side by side (private and business, like UwUMail)
+- [x] Create, edit, delete and restore items of every kind, folders,
+      favourites, move items between folders
+- [x] Password history kept on change, the generator right in the password
+      field
+- [x] Several accounts side by side (private and work), one open at a time
+- [ ] Notifications from the server (Bitwarden's WebSocket hub) instead of
+      polling
+- [ ] Unlock with Windows Hello / Touch ID, lock when the system locks or
+      sleeps
 
 ## 0.3 · The suite
 
