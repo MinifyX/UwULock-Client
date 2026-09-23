@@ -133,9 +133,13 @@ fn hmac<M: Mac + hmac::digest::KeyInit>(key: &[u8], counter: u64) -> Vec<u8> {
     mac.finalize().into_bytes().to_vec()
 }
 
+/// `text` without `prefix`, ignoring ASCII case. `get` rather than indexing:
+/// the prefix length can fall inside a multi-byte character of whatever a
+/// shared item holds, and slicing there would panic.
 fn strip_prefix_ci<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
-    (text.len() >= prefix.len() && text[..prefix.len()].eq_ignore_ascii_case(prefix))
-        .then(|| &text[prefix.len()..])
+    text.get(..prefix.len())
+        .filter(|start| start.eq_ignore_ascii_case(prefix))
+        .map(|_| &text[prefix.len()..])
 }
 
 /// RFC 4648 base32, forgiving like authenticator apps: spaces, dashes, lower
@@ -198,6 +202,37 @@ mod tests {
         assert_eq!(a.code_at(59).0.len(), 6);
         assert!(Totp::parse("not base32!").is_err());
         assert!(Totp::parse("").is_err());
+    }
+
+    #[test]
+    fn non_ascii_keys_are_refused_not_a_panic() {
+        for text in [
+            "0000000é",
+            "otpauth:/éé",
+            "steam:/é",
+            "otpauth://é",
+            "ééééé",
+            "stéam://x",
+        ] {
+            assert!(Totp::parse(text).is_err(), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn parse_never_panics_on_multi_byte_text() {
+        // A multi-byte character at every offset up to and past both prefix
+        // lengths, behind every start of either scheme.
+        for scheme in ["", "steam://", "otpauth://", "STEAM://", "OtpAuth://"] {
+            for cut in 0..=scheme.len() {
+                for c in ['é', '€', '𝄞', '\u{0}', '/'] {
+                    for pad in 0..12 {
+                        let zeros = "0".repeat(pad);
+                        let _ = Totp::parse(&format!("{}{zeros}{c}", &scheme[..cut]));
+                        let _ = Totp::parse(&format!("{}{c}{zeros}{c}", &scheme[..cut]));
+                    }
+                }
+            }
+        }
     }
 
     #[test]
