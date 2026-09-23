@@ -68,7 +68,62 @@ impl Kdf {
             _ => Ok(()),
         }
     }
+
+    /// Ceilings for what a server may ask for, so a prelogin can't keep the
+    /// app deriving for hours. Bitwarden's own server allows up to 2 000 000
+    /// PBKDF2 rounds, 10 Argon2 passes and 16 lanes; Vaultwarden caps only
+    /// the lanes. The rounds and passes get room above Bitwarden's maximum,
+    /// so an account set up by hand on a Vaultwarden still logs in.
+    ///
+    /// Only for what comes from the server: a KDF this device already has
+    /// stored was accepted before and stays usable.
+    pub fn check_ceilings(&self) -> Result<(), Error> {
+        match *self {
+            Kdf::Pbkdf2 { iterations } if iterations > MAX_PBKDF2_ITERATIONS => Err(
+                Error::Unsupported(format!("PBKDF2 with {iterations} iterations")),
+            ),
+            Kdf::Argon2id {
+                iterations,
+                parallelism,
+                ..
+            } if iterations > MAX_ARGON2_ITERATIONS || parallelism > MAX_ARGON2_PARALLELISM => {
+                Err(Error::Unsupported(format!(
+                    "Argon2id with {iterations} iterations and {parallelism} lanes"
+                )))
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// Whether a master key derived like this is cheaper to guess than one
+    /// derived like `other`: fewer PBKDF2 rounds, fewer Argon2 passes or less
+    /// memory, or PBKDF2 where it was Argon2id. Fewer Argon2 lanes aren't
+    /// cheaper for whoever guesses, and PBKDF2 to Argon2id is the upgrade
+    /// Bitwarden recommends.
+    pub fn is_weaker_than(&self, other: &Kdf) -> bool {
+        match (*self, *other) {
+            (Kdf::Pbkdf2 { iterations }, Kdf::Pbkdf2 { iterations: before }) => iterations < before,
+            (
+                Kdf::Argon2id {
+                    iterations,
+                    memory_mib,
+                    ..
+                },
+                Kdf::Argon2id {
+                    iterations: before,
+                    memory_mib: memory_before,
+                    ..
+                },
+            ) => iterations < before || memory_mib < memory_before,
+            (Kdf::Pbkdf2 { .. }, Kdf::Argon2id { .. }) => true,
+            (Kdf::Argon2id { .. }, Kdf::Pbkdf2 { .. }) => false,
+        }
+    }
 }
+
+const MAX_PBKDF2_ITERATIONS: u32 = 10_000_000;
+const MAX_ARGON2_ITERATIONS: u32 = 20;
+const MAX_ARGON2_PARALLELISM: u32 = 16;
 
 /// Bitwarden salts with the email as typed at registration, trimmed and in
 /// lower case.
@@ -455,6 +510,27 @@ mod tests {
         }
         .check()
         .is_err());
+    }
+
+    #[test]
+    fn what_counts_as_a_weaker_kdf() {
+        let pbkdf2 = |iterations| Kdf::Pbkdf2 { iterations };
+        let argon2 = |iterations, memory_mib, parallelism| Kdf::Argon2id {
+            iterations,
+            memory_mib,
+            parallelism,
+        };
+        assert!(pbkdf2(5_000).is_weaker_than(&pbkdf2(600_000)));
+        assert!(!pbkdf2(600_000).is_weaker_than(&pbkdf2(600_000)));
+        assert!(!pbkdf2(2_000_000).is_weaker_than(&pbkdf2(600_000)));
+        assert!(argon2(2, 64, 4).is_weaker_than(&argon2(3, 64, 4)));
+        assert!(argon2(3, 32, 4).is_weaker_than(&argon2(3, 64, 4)));
+        assert!(!argon2(3, 64, 1).is_weaker_than(&argon2(3, 64, 4)));
+        assert!(!argon2(4, 128, 4).is_weaker_than(&argon2(3, 64, 4)));
+        // Leaving Argon2id for PBKDF2 is a downgrade however many rounds;
+        // the other way is Bitwarden's recommended upgrade.
+        assert!(pbkdf2(2_000_000).is_weaker_than(&argon2(2, 15, 1)));
+        assert!(!argon2(2, 15, 1).is_weaker_than(&pbkdf2(600_000)));
     }
 
     #[test]

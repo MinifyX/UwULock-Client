@@ -404,6 +404,7 @@ pub(crate) async fn login(
     let server = server.resolve()?;
     let client = Arc::new(state.client(server.clone())?);
     let kdf = client.prelogin(&email).await?;
+    state.refuse_weaker_kdf(&server, &email, kdf)?;
     let master_key = derive_off_thread(password.clone(), email.clone(), kdf).await?;
     let hash = Zeroizing::new(crypto::master_password_hash(&master_key, &password));
     *state.pending.lock() = Some(PendingLogin {
@@ -714,6 +715,30 @@ pub(crate) fn logout(
 }
 
 impl VaultState {
+    /// Logging in again to an account this device knows: the server doesn't
+    /// get to ask for a cheaper key derivation than the one stored from the
+    /// last login, or the hash sent next would be that much easier to guess
+    /// the master password from. Whoever lowered it on purpose removes the
+    /// account here and adds it again; a first login takes what the server
+    /// says, within `Kdf::check` and `Kdf::check_ceilings`.
+    fn refuse_weaker_kdf(&self, server: &Server, email: &str, kdf: Kdf) -> Result<()> {
+        let accounts = self.accounts.lock();
+        let known = accounts
+            .iter()
+            .find(|stored| &stored.account.server == server && stored.account.email == email);
+        match known {
+            Some(stored) if kdf.is_weaker_than(&stored.account.kdf) => Err(Failure::new(
+                "weaker-kdf",
+                format!(
+                    "The server asks for a weaker key derivation ({kdf:?}) than this \
+                     account's last login used ({:?}).",
+                    stored.account.kdf
+                ),
+            )),
+            _ => Ok(()),
+        }
+    }
+
     /// Removes one account from this device. The id comes from the page, so
     /// it has to be one of the accounts first: nothing else is ever handed to
     /// `Storage::forget`.
@@ -2110,6 +2135,58 @@ mod tests {
         state.log_out(&id).unwrap();
         assert!(state.accounts.lock().is_empty());
         assert_eq!(*state.active.lock(), None);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_known_account_keeps_its_kdf_strength() {
+        let dir = std::env::temp_dir().join(format!("uwulock-test-{}", uuid::Uuid::new_v4()));
+        let storage = Storage::new(dir.clone()).unwrap();
+        let server = Server::self_hosted("vault.example.org").unwrap();
+        let account = Account {
+            version: 1,
+            server: server.clone(),
+            email: "nyu@example.org".into(),
+            name: None,
+            label: None,
+            kdf: Kdf::Pbkdf2 {
+                iterations: 600_000,
+            },
+            protected_user_key: "2.x|y|z".into(),
+            protected_refresh_token: None,
+            protected_remember_token: None,
+            last_sync: None,
+        };
+        let id = storage.id_for(&account.server, &account.email);
+        storage.save_account(&id, &account).unwrap();
+        let state = VaultState::new(storage);
+        let pbkdf2 = |iterations| Kdf::Pbkdf2 { iterations };
+
+        let failure = state
+            .refuse_weaker_kdf(&server, "nyu@example.org", pbkdf2(5_000))
+            .unwrap_err();
+        assert_eq!(failure.kind, "weaker-kdf");
+        for same_or_stronger in [
+            pbkdf2(600_000),
+            pbkdf2(2_000_000),
+            Kdf::Argon2id {
+                iterations: 3,
+                memory_mib: 64,
+                parallelism: 4,
+            },
+        ] {
+            state
+                .refuse_weaker_kdf(&server, "nyu@example.org", same_or_stronger)
+                .unwrap();
+        }
+        // A first login takes Bitwarden's old defaults as they are.
+        state
+            .refuse_weaker_kdf(&server, "new@example.org", pbkdf2(5_000))
+            .unwrap();
+        let other = Server::self_hosted("other.example.org").unwrap();
+        state
+            .refuse_weaker_kdf(&other, "nyu@example.org", pbkdf2(100_000))
+            .unwrap();
         std::fs::remove_dir_all(dir).unwrap();
     }
 

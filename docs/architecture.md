@@ -31,7 +31,10 @@ own, kept in the data folder across logouts.
    `/api/accounts/prelogin`) says how to derive the master key: PBKDF2-SHA256
    with n iterations, or Argon2id with iterations, memory and parallelism.
    Settings below Bitwarden's own floors are refused: a server asking for 100
-   rounds would make the hash cheap to crack.
+   rounds would make the hash cheap to crack. So are settings far above its
+   maxima, which would keep the app busy for hours. An account this device
+   already knows never logs in with weaker settings than its last login used;
+   whoever lowered them on purpose logs the account out here and adds it again.
 2. **Login** — `POST /identity/connect/token`, `grant_type=password`, with the
    master password hash. A 400 with `TwoFactorProviders2` asks for a second
    step; the same request goes again with `twoFactorToken` /
