@@ -367,6 +367,63 @@ mod tests {
         std::fs::remove_dir_all(dir).unwrap();
     }
 
+    /// Byte for byte what 0.1.0-beta.1 wrote, so a field that quietly gets
+    /// another name is caught before an update loses somebody's login.
+    const ACCOUNT_0_1: &str = r#"{
+  "version": 1,
+  "server": {
+    "kind": "self-hosted",
+    "url": "https://vault.example.org"
+  },
+  "email": "nyu@example.org",
+  "name": "Nyu",
+  "kdf": {
+    "type": "pbkdf2",
+    "iterations": 600000
+  },
+  "protectedUserKey": "2.aXY=|ZGF0YQ==|bWFj",
+  "protectedRefreshToken": "2.aXY=|cmVmcmVzaA==|bWFj",
+  "protectedRememberToken": null,
+  "lastSync": 1758556800
+}"#;
+
+    #[test]
+    fn an_account_from_the_first_beta_still_opens() {
+        let dir = scratch();
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(ACCOUNT), ACCOUNT_0_1).unwrap();
+        std::fs::write(dir.join(CACHE), "{\"ciphers\":[]}").unwrap();
+
+        let storage = Storage::new(dir.clone()).unwrap();
+        let accounts = storage.accounts();
+        assert_eq!(accounts.len(), 1);
+        let account = &accounts[0].account;
+        assert_eq!(account.email, "nyu@example.org");
+        assert_eq!(account.name.as_deref(), Some("Nyu"));
+        assert_eq!(
+            account.server,
+            Server::self_hosted("vault.example.org").unwrap()
+        );
+        assert_eq!(
+            account.kdf,
+            Kdf::Pbkdf2 {
+                iterations: 600_000
+            }
+        );
+        assert_eq!(account.protected_user_key, "2.aXY=|ZGF0YQ==|bWFj");
+        assert!(account.protected_refresh_token.is_some());
+        assert_eq!(account.last_sync, Some(1_758_556_800));
+        // No label yet in that version: the server's address stands in.
+        assert_eq!(account.label, None);
+        assert_eq!(account.title(), "vault.example.org");
+        // And the same account keeps its folder when it logs in again.
+        assert_eq!(
+            storage.id_for(&account.server, &account.email),
+            accounts[0].id
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn an_older_single_account_folder_is_moved_in() {
         let dir = scratch();
