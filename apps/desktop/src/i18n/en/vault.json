@@ -172,6 +172,7 @@
   "Die Sitzung ist abgelaufen. Bitte melde dich neu an.": "The session has expired. Please log in again.",
   "Der Server hat mit einem Fehler geantwortet: {reason}": "The server answered with an error: {reason}",
   "Das kann diese Beta noch nicht: {reason}": "This beta can't do that yet: {reason}",
+  "Der Server verlangt für dieses Konto eine schwächere Schlüsselableitung als bei der letzten Anmeldung, deshalb hat UwULock nichts gesendet. Wenn du sie selbst gesenkt hast, melde das Konto auf diesem Gerät ab und füge es neu hinzu.": "The server asks for a weaker key derivation for this account than at its last login, so UwULock sent nothing. If you lowered it yourself, log the account out of this device and add it again.",
   "Etwas ließ sich nicht entschlüsseln: {reason}": "Something couldn't be decrypted: {reason}",
   "Kopieren hat nicht geklappt: {reason}": "Copying didn't work: {reason}",
   "Der Tresor ist gesperrt.": "The vault is locked.",

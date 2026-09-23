@@ -131,7 +131,7 @@ fn is_loopback(url: &url::Url) -> bool {
 /// This installation, as the server sees it.
 #[derive(Debug, Clone)]
 pub struct Device {
-    /// A UUID made once per account on this computer.
+    /// A UUID made once on this computer and shared by every account on it.
     pub id: String,
     pub name: String,
     /// Bitwarden's device type: 6 Windows, 7 macOS, 8 Linux desktop.
@@ -696,6 +696,7 @@ fn kdf_from(
         other => return Err(Error::Unsupported(format!("key derivation type {other}"))),
     };
     kdf.check()?;
+    kdf.check_ceilings()?;
     Ok(kdf)
 }
 
@@ -837,5 +838,24 @@ mod tests {
             Server::BitwardenEu.identity(),
             "https://identity.bitwarden.eu"
         );
+    }
+
+    #[test]
+    fn a_prelogin_stays_between_floor_and_ceiling() {
+        // Too little to be worth anything, or too much to ever finish.
+        assert!(kdf_from(Some(0), Some(0), None, None).is_err());
+        assert!(kdf_from(Some(0), Some(u32::MAX), None, None).is_err());
+        assert!(kdf_from(Some(0), Some(10_000_001), None, None).is_err());
+        assert!(kdf_from(Some(1), Some(u32::MAX), Some(64), Some(4)).is_err());
+        assert!(kdf_from(Some(1), Some(3), Some(64), Some(u32::MAX)).is_err());
+        assert!(kdf_from(Some(1), Some(3), Some(u32::MAX), Some(4)).is_err());
+        assert!(kdf_from(Some(2), None, None, None).is_err());
+        // Bitwarden's old and current defaults, and its maxima.
+        for iterations in [5_000, 100_000, 600_000, 2_000_000] {
+            assert!(kdf_from(Some(0), Some(iterations), None, None).is_ok());
+        }
+        assert!(kdf_from(Some(1), Some(3), Some(64), Some(4)).is_ok());
+        assert!(kdf_from(Some(1), Some(10), Some(1024), Some(16)).is_ok());
+        assert!(kdf_from(None, None, None, None).is_ok());
     }
 }

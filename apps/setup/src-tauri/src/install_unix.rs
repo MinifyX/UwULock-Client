@@ -233,7 +233,7 @@ pub fn stop_app(layout: &Layout, dir: &Path) -> Result<(), String> {
     system::stop_processes_under(&dir.join(APP), "UwULock")
 }
 
-/// UwULock is open. Closing it ends every open remote session, so the setup
+/// UwULock is open. Closing it locks every open vault, so the setup
 /// asks first.
 pub fn app_running(layout: &Layout, dir: &Path) -> bool {
     !layout.sandbox && !system::processes_under(&dir.join(APP)).is_empty()
@@ -595,34 +595,10 @@ pub fn uninstall(
                 }
             }
         }
-        if !layout.sandbox {
-            forget_seal_key();
-        }
         progress(Step::Cleanup, 1.0);
     }
     progress(Step::Done, 1.0);
     Ok(())
-}
-
-/// The key UwULock sealed its remembered vault and its pairing with lives in
-/// the Keychain or the Secret Service, outside the data folders.
-fn forget_seal_key() {
-    #[cfg(target_os = "macos")]
-    system::best_effort(
-        "/usr/bin/security",
-        &[
-            "delete-generic-password",
-            "-s",
-            APP_ID,
-            "-a",
-            "device-seal-key",
-        ],
-    );
-    #[cfg(not(target_os = "macos"))]
-    system::best_effort(
-        "secret-tool",
-        &["clear", "service", APP_ID, "username", "device-seal-key"],
-    );
 }
 
 #[cfg(test)]
@@ -677,7 +653,7 @@ mod tests {
         let dir = layout.default_dir.clone();
         std::fs::create_dir_all(dir.join(APP)).unwrap();
         std::fs::create_dir_all(&layout.data[0]).unwrap();
-        std::fs::write(layout.data[0].join("uwulock.db"), b"hosts").unwrap();
+        std::fs::write(layout.data[0].join("accounts.json"), b"{}").unwrap();
         let options = Options {
             dir: dir.display().to_string(),
             desktop_shortcut: true,
@@ -703,15 +679,15 @@ mod tests {
         assert!(!dir.join(APP).exists());
         assert!(layout.installed().is_none());
         assert!(
-            layout.data[0].join("uwulock.db").exists(),
-            "hosts and vault are kept"
+            layout.data[0].join("accounts.json").exists(),
+            "accounts and vaults are kept"
         );
 
         std::fs::create_dir_all(dir.join(APP)).unwrap();
         uninstall(layout, &dir, false, &mut |_, _| {}).unwrap();
         assert!(
             !layout.data[0].exists(),
-            "hosts and vault are deleted on request"
+            "accounts and vaults are deleted on request"
         );
     }
 

@@ -412,6 +412,23 @@ fn other_instances_running() -> bool {
     false
 }
 
+/// Where the setup finds the TMPDIR UwULock had, empty for none. The setup
+/// reads it under the same name.
+#[cfg(target_os = "linux")]
+const ORIGINAL_TMPDIR: &str = "UWULOCK_ORIGINAL_TMPDIR";
+
+/// A folder that didn't exist before, next to the downloaded setup, that only
+/// this user can open. It goes with the updates folder on the next start.
+#[cfg(target_os = "linux")]
+fn private_scratch(dir: &Path) -> std::io::Result<PathBuf> {
+    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+    let path = dir.join(format!("setup-tmp-{}", uuid::Uuid::new_v4()));
+    // Not recursive: anything already at that path is an error, not reused.
+    std::fs::DirBuilder::new().mode(0o700).create(&path)?;
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700))?;
+    Ok(path)
+}
+
 /// Starts the checked setup to replace this UwULock, which then quits. The file
 /// stays locked until the setup process exists.
 fn hand_over(pending: Pending, relaunch: bool) -> Result<(), String> {
@@ -435,9 +452,24 @@ fn hand_over(pending: Pending, relaunch: bool) -> Result<(), String> {
     let mut command = std::process::Command::new(&update.file);
     command.args(&args);
     // The Linux setup is an AppImage. Unpacked and run, it needs no FUSE,
-    // which many systems no longer have.
+    // which many systems no longer have. The AppImage runtime unpacks it
+    // under $TMPDIR, into a folder named after the file's checksum, and runs
+    // what it finds there if it is already there; in the shared /tmp another
+    // user could have put their own program in its place. So it unpacks into
+    // a new folder only this user can open, and the setup gives what it
+    // starts afterwards the TMPDIR from before.
     #[cfg(target_os = "linux")]
-    command.env("APPIMAGE_EXTRACT_AND_RUN", "1");
+    {
+        let dir = update.file.parent().unwrap_or(Path::new("."));
+        let scratch =
+            private_scratch(dir).map_err(|e| format!("Couldn't start the update: {e}"))?;
+        command.env("APPIMAGE_EXTRACT_AND_RUN", "1");
+        command.env(
+            ORIGINAL_TMPDIR,
+            std::env::var_os("TMPDIR").unwrap_or_default(),
+        );
+        command.env("TMPDIR", scratch);
+    }
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
@@ -817,5 +849,18 @@ mod tests {
         assert_eq!(target, "windows-x86_64");
         #[cfg(all(windows, target_arch = "aarch64"))]
         assert_eq!(target, "windows-aarch64");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_setup_unpacks_in_a_folder_of_its_own() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let first = private_scratch(dir.path()).unwrap();
+        let second = private_scratch(dir.path()).unwrap();
+        assert_ne!(first, second);
+        assert!(first.starts_with(dir.path()));
+        let mode = std::fs::metadata(&first).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o700);
     }
 }

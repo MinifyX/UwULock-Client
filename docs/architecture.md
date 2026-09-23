@@ -31,7 +31,10 @@ own, kept in the data folder across logouts.
    `/api/accounts/prelogin`) says how to derive the master key: PBKDF2-SHA256
    with n iterations, or Argon2id with iterations, memory and parallelism.
    Settings below Bitwarden's own floors are refused: a server asking for 100
-   rounds would make the hash cheap to crack.
+   rounds would make the hash cheap to crack. So are settings far above its
+   maxima, which would keep the app busy for hours. An account this device
+   already knows never logs in with weaker settings than its last login used;
+   whoever lowered them on purpose logs the account out here and adds it again.
 2. **Login** — `POST /identity/connect/token`, `grant_type=password`, with the
    master password hash. A 400 with `TwoFactorProviders2` asks for a second
    step; the same request goes again with `twoFactorToken` /
@@ -43,7 +46,8 @@ own, kept in the data folder across logouts.
    `grant_type=refresh_token` when the token is about to run out.
 
 Bitwarden answers in camelCase, older Vaultwardens in PascalCase. `wire.rs`
-lowers every key first and reads one shape.
+lowers every key first and reads one shape. Passkeys are the exception: UwULock
+never reads them, and hands them back to the server spelled as it sent them.
 
 ## The crypto
 
@@ -77,8 +81,9 @@ Keys and decrypted values are `Zeroizing` and wiped when dropped.
   time by `reveal_field` when the eye is clicked, and hidden again after a
   minute. Copying (`copy_field`) never goes through the page.
 - **Rust, while unlocked**: the user key, the decrypted vault and the session.
-  Locking — by hand, Ctrl+L, auto-lock or quitting — drops all of it and
-  clears a copied secret from the clipboard.
+  Locking — by hand, Ctrl+L or auto-lock — drops all of it and clears a
+  copied secret from the clipboard. Quitting drops it with the process, but
+  leaves a secret copied just before in the clipboard.
 - **Disk** (`account.rs`): one folder per account under `accounts/<id>/`, with
   `account.json` — server, email, KDF settings, the user key as the server
   wraps it, and the refresh token and remember-device token sealed under the

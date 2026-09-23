@@ -39,6 +39,10 @@ export function errorText(error: unknown): string {
       return t('Das kann diese Beta noch nicht: {reason}', {
         reason: m.replace(/^not supported yet: /, ''),
       });
+    case 'weaker-kdf':
+      return t(
+        'Der Server verlangt für dieses Konto eine schwächere Schlüsselableitung als bei der letzten Anmeldung, deshalb hat UwULock nichts gesendet. Wenn du sie selbst gesenkt hast, melde das Konto auf diesem Gerät ab und füge es neu hinzu.',
+      );
     case 'crypto':
       return t('Etwas ließ sich nicht entschlüsseln: {reason}', { reason: m });
     case 'clipboard':

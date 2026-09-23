@@ -272,7 +272,10 @@ impl Item {
                 })
                 .collect(),
             password_revision_date: l.password_revision_date.clone(),
-            fido2_credentials: l.passkeys.clone(),
+            fido2_credentials: l
+                .passkeys
+                .as_ref()
+                .map(|keys| keys.iter().map(wire::passkey_for_saving).collect()),
             autofill_on_page_load: l.autofill_on_page_load,
         });
         let card = self.card.as_ref().map(|c| wire::CardRequest {
