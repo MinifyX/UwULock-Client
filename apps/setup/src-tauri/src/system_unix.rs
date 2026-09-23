@@ -105,11 +105,33 @@ pub fn stop_processes_under(dir: &Path, name: &str) -> Result<(), String> {
     }
 }
 
+/// Set by UwULock when it starts an update: its own TMPDIR, empty for none.
+/// It points TMPDIR at a private folder for the AppImage runtime to unpack
+/// the setup in, a folder that goes away with the update.
+const ORIGINAL_TMPDIR: &str = "UWULOCK_ORIGINAL_TMPDIR";
+
+/// What the setup starts gets the TMPDIR UwULock had before the update, not
+/// the setup's private one. Without the variable (a setup started by hand, or
+/// by a UwULock from before) TMPDIR was never changed and stays as it is.
+fn restore_tmpdir(command: &mut std::process::Command, original: Option<std::ffi::OsString>) {
+    let Some(original) = original else {
+        return;
+    };
+    command.env_remove(ORIGINAL_TMPDIR);
+    if original.is_empty() {
+        command.env_remove("TMPDIR");
+    } else {
+        command.env("TMPDIR", original);
+    }
+}
+
 /// Starts a program in a process group of its own, so it outlives the setup.
 pub fn spawn_detached(program: &Path, args: &[&str]) -> Result<(), String> {
     use std::os::unix::process::CommandExt;
     use std::process::Stdio;
-    std::process::Command::new(program)
+    let mut command = std::process::Command::new(program);
+    restore_tmpdir(&mut command, std::env::var_os(ORIGINAL_TMPDIR));
+    command
         .args(args)
         .current_dir(program.parent().unwrap_or(Path::new("/")))
         .stdin(Stdio::null())
@@ -179,4 +201,38 @@ pub fn writable(dir: &Path) -> bool {
     };
     // SAFETY: a NUL-terminated path that lives for the call.
     unsafe { libc::access(path.as_ptr(), libc::W_OK) == 0 }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::{OsStr, OsString};
+
+    fn env_after(original: Option<&str>) -> Vec<(OsString, Option<OsString>)> {
+        let mut command = std::process::Command::new("true");
+        restore_tmpdir(&mut command, original.map(OsString::from));
+        let mut env: Vec<_> = command
+            .get_envs()
+            .map(|(k, v)| (k.to_os_string(), v.map(OsStr::to_os_string)))
+            .collect();
+        env.sort();
+        env
+    }
+
+    #[test]
+    fn what_the_setup_starts_gets_the_old_tmpdir_back() {
+        let tmpdir = OsString::from("TMPDIR");
+        let marker = OsString::from(ORIGINAL_TMPDIR);
+        assert_eq!(
+            env_after(Some("/home/nyu/tmp")),
+            [
+                (tmpdir.clone(), Some(OsString::from("/home/nyu/tmp"))),
+                (marker.clone(), None),
+            ]
+        );
+        // UwULock had none: the child has none either.
+        assert_eq!(env_after(Some("")), [(tmpdir, None), (marker, None)]);
+        // Not started by an update: nothing changes.
+        assert!(env_after(None).is_empty());
+    }
 }
