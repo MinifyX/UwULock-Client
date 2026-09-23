@@ -707,27 +707,33 @@ pub(crate) fn logout(
         Some(id) => id,
         None => state.active_id()?,
     };
-    state.unlocked.write().remove(&id);
-    *state.pending.lock() = None;
-    state.clipboard.clear_now();
-    state
-        .storage
-        .forget(&id)
-        .map_err(|e| Failure::new("io", format!("Couldn't remove the account: {e}")))?;
-    state.accounts.lock().retain(|stored| stored.id != id);
-    state.troubles.lock().remove(&id);
-    if state.active.lock().as_deref() == Some(id.as_str()) {
-        let next = state
-            .accounts
-            .lock()
-            .first()
-            .map(|stored| stored.id.clone());
-        let _ = state.storage.set_active(next.as_deref());
-        *state.active.lock() = next;
-    }
+    state.log_out(&id)?;
     tracing::info!("logged out");
     emit_status(&app);
     Ok(status_of(&state))
+}
+
+impl VaultState {
+    /// Removes one account from this device. The id comes from the page, so
+    /// it has to be one of the accounts first: nothing else is ever handed to
+    /// `Storage::forget`.
+    fn log_out(&self, id: &str) -> Result<()> {
+        self.account(id)?;
+        self.unlocked.write().remove(id);
+        *self.pending.lock() = None;
+        self.clipboard.clear_now();
+        self.storage
+            .forget(id)
+            .map_err(|e| Failure::new("io", format!("Couldn't remove the account: {e}")))?;
+        self.accounts.lock().retain(|stored| stored.id != id);
+        self.troubles.lock().remove(id);
+        if self.active.lock().as_deref() == Some(id) {
+            let next = self.accounts.lock().first().map(|stored| stored.id.clone());
+            let _ = self.storage.set_active(next.as_deref());
+            *self.active.lock() = next;
+        }
+        Ok(())
+    }
 }
 
 /// Brings another account's vault on screen. One that is still open shows up
@@ -2066,6 +2072,45 @@ mod tests {
         set_field(&mut sync["Ciphers"][0], "deletedDate", json!("now"));
         assert_eq!(sync["Ciphers"][0]["deletedDate"], json!("now"));
         assert_eq!(sync["Ciphers"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn logout_takes_only_an_account_on_this_device() {
+        let dir = std::env::temp_dir().join(format!("uwulock-test-{}", uuid::Uuid::new_v4()));
+        let storage = Storage::new(dir.join("data")).unwrap();
+        let account = Account {
+            version: 1,
+            server: Server::self_hosted("vault.example.org").unwrap(),
+            email: "nyu@example.org".into(),
+            name: None,
+            label: None,
+            kdf: Kdf::Pbkdf2 {
+                iterations: 600_000,
+            },
+            protected_user_key: "2.x|y|z".into(),
+            protected_refresh_token: None,
+            protected_remember_token: None,
+            last_sync: None,
+        };
+        let id = storage.id_for(&account.server, &account.email);
+        storage.save_account(&id, &account).unwrap();
+        let outside = dir.join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        let state = VaultState::new(storage);
+
+        let absolute = outside.to_string_lossy().to_string();
+        for bad in ["", "..", "nonexistent", absolute.as_str()] {
+            let failure = state.log_out(bad).unwrap_err();
+            assert_eq!(failure.kind, "logged-out", "{bad:?}");
+        }
+        assert!(outside.exists());
+        assert!(dir.join("data").exists());
+        assert_eq!(state.accounts.lock().len(), 1);
+
+        state.log_out(&id).unwrap();
+        assert!(state.accounts.lock().is_empty());
+        assert_eq!(*state.active.lock(), None);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

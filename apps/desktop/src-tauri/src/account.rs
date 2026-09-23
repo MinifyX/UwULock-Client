@@ -162,8 +162,17 @@ impl Storage {
         write_atomic(&self.dir.join(INDEX), text.as_bytes())
     }
 
-    fn home(&self, id: &str) -> PathBuf {
-        self.dir.join(ACCOUNTS).join(id)
+    /// An account's folder. Only an id this app could have made gets one:
+    /// the id comes back from the page, and `..`, an empty id or an absolute
+    /// path would point `forget` at a folder that isn't an account's.
+    fn home(&self, id: &str) -> std::io::Result<PathBuf> {
+        if !is_account_id(id) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "not an account id",
+            ));
+        }
+        Ok(self.dir.join(ACCOUNTS).join(id))
     }
 
     /// Every account on this device, in the order they are shown. An id in the
@@ -188,7 +197,7 @@ impl Storage {
     }
 
     pub fn load_account(&self, id: &str) -> Option<Account> {
-        let text = std::fs::read_to_string(self.home(id).join(ACCOUNT)).ok()?;
+        let text = std::fs::read_to_string(self.home(id).ok()?.join(ACCOUNT)).ok()?;
         match serde_json::from_str(&text) {
             Ok(account) => Some(account),
             Err(error) => {
@@ -199,7 +208,7 @@ impl Storage {
     }
 
     pub fn save_account(&self, id: &str, account: &Account) -> std::io::Result<()> {
-        let home = self.home(id);
+        let home = self.home(id)?;
         std::fs::create_dir_all(&home)?;
         let text = serde_json::to_string_pretty(account).map_err(std::io::Error::other)?;
         write_atomic(&home.join(ACCOUNT), text.as_bytes())?;
@@ -237,11 +246,11 @@ impl Storage {
     }
 
     pub fn load_cache(&self, id: &str) -> Option<String> {
-        std::fs::read_to_string(self.home(id).join(CACHE)).ok()
+        std::fs::read_to_string(self.home(id).ok()?.join(CACHE)).ok()
     }
 
     pub fn save_cache(&self, id: &str, sync: &str) -> std::io::Result<()> {
-        let home = self.home(id);
+        let home = self.home(id)?;
         std::fs::create_dir_all(&home)?;
         write_atomic(&home.join(CACHE), sync.as_bytes())
     }
@@ -249,7 +258,7 @@ impl Storage {
     /// Logging out of one account: its folder goes, the device id and the
     /// other accounts stay.
     pub fn forget(&self, id: &str) -> std::io::Result<()> {
-        match std::fs::remove_dir_all(self.home(id)) {
+        match std::fs::remove_dir_all(self.home(id)?) {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(e),
@@ -280,6 +289,12 @@ impl Storage {
 
 fn new_id() -> String {
     uuid::Uuid::new_v4().to_string()
+}
+
+/// What `new_id` makes: a UUID in its 36-character form with hyphens, and
+/// nothing a path could be built from.
+fn is_account_id(id: &str) -> bool {
+    id.len() == 36 && uuid::Uuid::try_parse(id).is_ok()
 }
 
 /// Written next to the target, then renamed over it: a crash in between
@@ -443,6 +458,36 @@ mod tests {
         assert_eq!(storage.active().as_deref(), Some(accounts[0].id.as_str()));
         assert_eq!(storage.load_cache(&accounts[0].id).unwrap(), "{\"old\":1}");
         assert!(!dir.join(ACCOUNT).exists());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn only_account_ids_are_forgotten() {
+        let dir = scratch();
+        let storage = Storage::new(dir.join("data")).unwrap();
+        let sample = sample("nyu@example.org");
+        let id = storage.id_for(&sample.server, &sample.email);
+        storage.save_account(&id, &sample).unwrap();
+        // Something next to the data folder that must survive.
+        let outside = dir.join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("keep"), "1").unwrap();
+
+        let absolute = outside.to_string_lossy().to_string();
+        let braced = format!("{{{id}}}");
+        for bad in ["", ".", "..", "../..", absolute.as_str(), braced.as_str()] {
+            assert!(storage.forget(bad).is_err(), "{bad:?}");
+            assert!(storage.save_cache(bad, "{}").is_err(), "{bad:?}");
+            assert!(storage.load_account(bad).is_none(), "{bad:?}");
+        }
+        assert!(outside.join("keep").exists());
+        assert!(dir.join("data").join(ACCOUNTS).join(&id).exists());
+        assert_eq!(storage.accounts().len(), 1);
+
+        // A well-formed id nobody has is fine: nothing to remove.
+        storage.forget(&new_id()).unwrap();
+        storage.forget(&id).unwrap();
+        assert!(storage.accounts().is_empty());
         std::fs::remove_dir_all(dir).unwrap();
     }
 }
