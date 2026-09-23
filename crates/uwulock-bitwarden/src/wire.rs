@@ -13,16 +13,68 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Lowers every object key, recursively. Values are left alone.
+///
+/// Except under [`RAW`] keys: what they hold is never read here, only handed
+/// back on a save, so it stays exactly as the server spelled it.
 pub fn lowercase_keys(value: Value) -> Value {
     match value {
         Value::Object(map) => Value::Object(
             map.into_iter()
-                .map(|(key, value)| (key.to_lowercase(), lowercase_keys(value)))
+                .map(|(key, value)| {
+                    let key = key.to_lowercase();
+                    let value = if RAW.contains(&key.as_str()) {
+                        value
+                    } else {
+                        lowercase_keys(value)
+                    };
+                    (key, value)
+                })
                 .collect(),
         ),
         Value::Array(items) => Value::Array(items.into_iter().map(lowercase_keys).collect()),
         other => other,
     }
+}
+
+/// Keys whose values go back to the server as they came. Vaultwarden stores a
+/// login object as it gets it, so a passkey written back with lowered keys
+/// (`credentialid`, `rpid`) would stay that way for every other client.
+const RAW: &[&str] = &["fido2credentials"];
+
+/// The passkey fields Bitwarden names, in its camelCase.
+const PASSKEY_KEYS: &[&str] = &[
+    "credentialId",
+    "keyType",
+    "keyAlgorithm",
+    "keyCurve",
+    "keyValue",
+    "rpId",
+    "userHandle",
+    "userName",
+    "counter",
+    "rpName",
+    "userDisplayName",
+    "discoverable",
+    "creationDate",
+];
+
+/// A passkey as a save sends it: the fields Bitwarden knows get their
+/// camelCase name back if an earlier UwULock stored them lowered, everything
+/// else stays as it is. A key that is already there in camelCase wins.
+pub fn passkey_for_saving(passkey: &Value) -> Value {
+    let Value::Object(map) = passkey else {
+        return passkey.clone();
+    };
+    let mut out = serde_json::Map::new();
+    for (key, value) in map {
+        let name = PASSKEY_KEYS
+            .iter()
+            .find(|known| **known != key && known.to_lowercase() == *key)
+            .filter(|known| !map.contains_key(**known))
+            .map_or(key.as_str(), |known| known);
+        out.insert(name.to_string(), value.clone());
+    }
+    Value::Object(out)
 }
 
 /// Numbers that some servers send as strings, and the other way round.
@@ -488,5 +540,34 @@ mod tests {
             assert_eq!(sync.profile.private_key.as_deref(), Some("x"));
             assert_eq!(sync.ciphers[0].collection_ids, ["c"]);
         }
+    }
+
+    #[test]
+    fn passkeys_keep_the_servers_spelling() {
+        let passkey = serde_json::json!({ "credentialId": "c", "rpId": "example.com",
+            "SomethingNewer": { "NestedKey": [1, "Two"] } });
+        let sync =
+            serde_json::json!({ "Ciphers": [{ "Login": { "Fido2Credentials": [passkey] } }] });
+        let lowered = lowercase_keys(sync);
+        assert_eq!(
+            lowered["ciphers"][0]["login"]["fido2credentials"][0],
+            passkey
+        );
+    }
+
+    #[test]
+    fn lowered_passkeys_get_their_names_back() {
+        let stored = serde_json::json!({ "credentialid": "c", "rpid": "example.com",
+            "username": "u", "counter": "0", "somethingnewer": 1,
+            "userName": "camel wins", "UnknownPascal": true });
+        let sent = passkey_for_saving(&stored);
+        assert_eq!(
+            sent,
+            serde_json::json!({ "credentialId": "c", "rpId": "example.com",
+                "username": "u", "counter": "0", "somethingnewer": 1,
+                "userName": "camel wins", "UnknownPascal": true })
+        );
+        // One that is right already goes back unchanged.
+        assert_eq!(passkey_for_saving(&sent), sent);
     }
 }

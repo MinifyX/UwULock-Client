@@ -43,7 +43,8 @@ own, kept in the data folder across logouts.
    `grant_type=refresh_token` when the token is about to run out.
 
 Bitwarden answers in camelCase, older Vaultwardens in PascalCase. `wire.rs`
-lowers every key first and reads one shape.
+lowers every key first and reads one shape. Passkeys are the exception: UwULock
+never reads them, and hands them back to the server spelled as it sent them.
 
 ## The crypto
 

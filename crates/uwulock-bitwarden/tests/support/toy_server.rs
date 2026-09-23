@@ -177,7 +177,8 @@ fn sample_vault(
         json!([{ "password": enc("hunter2", user), "lastUsedDate": "2025-01-01T00:00:00.000Z" }]);
     // Things UwULock doesn't show but must hand back on a save.
     github["login"]["fido2Credentials"] = json!([{ "credentialId": "passkey-1",
-        "userName": enc("nyu-the-cat", user), "counter": enc("0", user), "discoverable": enc("true", user) }]);
+        "userName": enc("nyu-the-cat", user), "counter": enc("0", user), "discoverable": enc("true", user),
+        "rpId": enc("github.com", user), "futureField": { "NestedValue": [1, "Two"] } }]);
     github["login"]["autofillOnPageLoad"] = json!(true);
     github["login"]["uris"][0]["uriChecksum"] = enc("checksum-of-the-github-address", user);
 

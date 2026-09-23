@@ -109,6 +109,54 @@ async fn an_edit_keeps_what_it_doesnt_touch() {
     assert!(!saved.broken);
 }
 
+/// The login object as the server holds it, not as UwULock reads it.
+async fn raw_login(account: &Account, id: &str) -> serde_json::Value {
+    let text = account.client.sync(&account.access).await.unwrap();
+    let sync: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let cipher = sync["ciphers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|cipher| cipher["id"] == id)
+        .unwrap();
+    cipher["login"].clone()
+}
+
+#[tokio::test]
+async fn a_passkey_goes_back_exactly_as_it_came() {
+    let server = ToyServer::start(Options::default());
+    let account = log_in(&server).await;
+    let before = raw_login(&account, "c-github").await["fido2Credentials"].clone();
+    assert!(before[0]["futureField"].is_object());
+
+    let mut item = account.vault().await.item("c-github").unwrap().clone();
+    item.favorite = false;
+    account.save(&item).await.unwrap();
+
+    // Vaultwarden keeps the login object as it gets it: the key names and
+    // every value, including one UwULock has never heard of, must be the
+    // server's own.
+    let after = raw_login(&account, "c-github").await;
+    assert_eq!(after["fido2Credentials"], before);
+    let mut keys: Vec<&String> = after["fido2Credentials"][0]
+        .as_object()
+        .unwrap()
+        .keys()
+        .collect();
+    keys.sort();
+    assert_eq!(
+        keys,
+        [
+            "counter",
+            "credentialId",
+            "discoverable",
+            "futureField",
+            "rpId",
+            "userName"
+        ]
+    );
+}
+
 #[tokio::test]
 async fn a_changed_password_keeps_the_old_one() {
     let server = ToyServer::start(Options::default());
