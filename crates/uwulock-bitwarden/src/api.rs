@@ -131,7 +131,7 @@ fn is_loopback(url: &url::Url) -> bool {
 /// This installation, as the server sees it.
 #[derive(Debug, Clone)]
 pub struct Device {
-    /// A UUID made once per account on this computer.
+    /// A UUID made once on this computer and shared by every account on it.
     pub id: String,
     pub name: String,
     /// Bitwarden's device type: 6 Windows, 7 macOS, 8 Linux desktop.

@@ -81,8 +81,9 @@ Keys and decrypted values are `Zeroizing` and wiped when dropped.
   time by `reveal_field` when the eye is clicked, and hidden again after a
   minute. Copying (`copy_field`) never goes through the page.
 - **Rust, while unlocked**: the user key, the decrypted vault and the session.
-  Locking — by hand, Ctrl+L, auto-lock or quitting — drops all of it and
-  clears a copied secret from the clipboard.
+  Locking — by hand, Ctrl+L or auto-lock — drops all of it and clears a
+  copied secret from the clipboard. Quitting drops it with the process, but
+  leaves a secret copied just before in the clipboard.
 - **Disk** (`account.rs`): one folder per account under `accounts/<id>/`, with
   `account.json` — server, email, KDF settings, the user key as the server
   wraps it, and the refresh token and remember-device token sealed under the
