@@ -57,8 +57,9 @@ bitwarden.com or bitwarden.eu — with the same encryption the official apps use
 - **Playful.** Nyu, the cat, is a padlock now. Security warnings are never
   playful.
 
-> **Status: beta.** Released is 0.1.0-beta.1, which only reads. In the branch
-> since then: editing, and several accounts side by side.
+> **Status: beta.** 0.2.0-beta.1 reads and writes: log in (with two-step
+> login), browse, search, copy, one-time codes — and create, edit and delete,
+> with a private Vaultwarden and one at work side by side.
 >
 > **What works.**
 >

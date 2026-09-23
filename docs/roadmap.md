@@ -10,13 +10,16 @@ My wish list, roughly in order, without dates.
 - Auto-lock, clipboard clearing, offline copy, periodic sync
 - Installer, signed updates, German and English
 
-## 0.2 · Writing (done, not released)
+## 0.2 · Writing (now)
 
 - [x] Create, edit, delete and restore items of every kind, folders,
       favourites, move items between folders
 - [x] Password history kept on change, the generator right in the password
       field
 - [x] Several accounts side by side (private and work), one open at a time
+
+## 0.2.x · Next
+
 - [ ] Notifications from the server (Bitwarden's WebSocket hub) instead of
       polling
 - [ ] Unlock with Windows Hello / Touch ID, lock when the system locks or
