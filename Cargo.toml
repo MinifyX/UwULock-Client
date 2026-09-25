@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "crates/uwulock-core",
   "crates/uwulock-bitwarden",
   "apps/desktop/src-tauri",
   "apps/setup/src-tauri",
@@ -14,6 +15,7 @@ repository = "https://github.com/MinifyX/UwULock-Client"
 rust-version = "1.89"
 
 [workspace.dependencies]
+uwulock-core = { path = "crates/uwulock-core" }
 uwulock-bitwarden = { path = "crates/uwulock-bitwarden" }
 
 parking_lot = "0.12"

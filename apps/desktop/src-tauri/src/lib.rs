@@ -20,10 +20,9 @@ pub fn run() {
     system::restrict_dll_search();
 
     tracing_subscriber::fmt()
-        .with_env_filter(
-            std::env::var("UWULOCK_LOG")
-                .unwrap_or_else(|_| "uwulock=debug,uwulock_bitwarden=debug,warn".to_string()),
-        )
+        .with_env_filter(std::env::var("UWULOCK_LOG").unwrap_or_else(|_| {
+            "uwulock=debug,uwulock_bitwarden=debug,uwulock_core=debug,warn".to_string()
+        }))
         .init();
 
     tauri::Builder::default()
