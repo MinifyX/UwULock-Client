@@ -16,10 +16,34 @@ that is tested without a window.
 └──────────────────────────────────────┬───────────────────────────────┘
                                        │
                          crates/uwulock-bitwarden
-              crypto · api · wire · vault · totp · generator
-                                       │ HTTPS (rustls)
-                        Vaultwarden / Bitwarden (identity + api)
+                   api: prelogin · login · 2FA · sync · saving
+                                       │ uses
+                           crates/uwulock-core
+              crypto · wire · vault · totp · generator (no network)
+
+         crates/uwulock-bitwarden ── HTTPS (rustls) ──▶ Vaultwarden / Bitwarden
+                                                       (identity + api)
 ```
+
+The work is split in two crates:
+
+- **`uwulock-core`** — Bitwarden's crypto and data formats, without a network:
+  master key, encrypted values, the sync format (`wire`), the decrypted vault,
+  TOTP, the password generator, and the shared `Error`. No HTTP, no disk.
+- **`uwulock-bitwarden`** — the HTTP side (`api`): prelogin, login, two-step
+  login, token refresh, sync, saving. It re-exports `uwulock-core` under its
+  old paths (`uwulock_bitwarden::crypto`, `::vault`, …), so the desktop app
+  only depends on this one.
+
+Why the split: the web vault of UwULock-Server will run `uwulock-core`
+compiled to WebAssembly (`wasm32-unknown-unknown`) in the browser — the same
+crypto the desktop app uses, checked against the same vectors from
+Bitwarden's SDK, with no second implementation in TypeScript. CI runs
+`cargo check -p uwulock-core --target wasm32-unknown-unknown` so nothing
+networked or browser-unsafe creeps in. In a browser, randomness comes from
+`crypto.getRandomValues` (getrandom's `js` feature), and `Totp::now` does not
+exist there — the standard clock panics in a browser, so the web side passes
+the time to `Totp::code_at` itself.
 
 ## The protocol
 
@@ -51,7 +75,7 @@ never reads them, and hands them back to the server spelled as it sent them.
 
 ## The crypto
 
-All RustCrypto, in `crypto.rs`:
+All RustCrypto, in `crates/uwulock-core/src/crypto.rs`:
 
 | Step              | How                                                                                                     |
 | ----------------- | ------------------------------------------------------------------------------------------------------- |
@@ -64,9 +88,9 @@ All RustCrypto, in `crypto.rs`:
 | Item keys         | `cipher.key`, type 2 under the user or organisation key (newer items)                                   |
 | Every field       | type 2: AES-256-CBC + HMAC-SHA256 over IV‖ciphertext, MAC checked first, constant time                  |
 
-`tests/vectors.rs` checks the master key, hash, stretching and a legacy user
+`crates/uwulock-core/tests/vectors.rs` checks the master key, hash, stretching and a legacy user
 key against the known answers in Bitwarden's SDK (`bitwarden/sdk-internal`).
-`tests/flow.rs` runs the whole way — prelogin, two-step login, remembered
+`crates/uwulock-bitwarden/tests/flow.rs` runs the whole way — prelogin, two-step login, remembered
 device, refresh, revoked session, sync, every item type, organisations, item
 keys — against a toy server that encrypts its vault the way Bitwarden's apps
 do.

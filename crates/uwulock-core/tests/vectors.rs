@@ -2,7 +2,7 @@
 //! crates/bitwarden-crypto): if these hold, a master password typed here
 //! produces the same hash and opens the same keys as in Bitwarden's apps.
 
-use uwulock_bitwarden::crypto::{
+use uwulock_core::crypto::{
     decrypt_user_key, master_key, master_password_hash, EncString, Kdf, SymmetricKey,
 };
 

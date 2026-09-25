@@ -89,7 +89,8 @@ impl Totp {
         })
     }
 
-    /// The code at `unix_seconds`, and how many seconds it stays valid.
+    /// The code at `unix_seconds`, and how many seconds it stays valid. The
+    /// one to use in a browser build, with the time from `Date.now()`.
     pub fn code_at(&self, unix_seconds: u64) -> (Zeroizing<String>, u64) {
         let counter = unix_seconds / self.period;
         let remaining = self.period - unix_seconds % self.period;
@@ -119,6 +120,10 @@ impl Totp {
         (code, remaining)
     }
 
+    /// The code now, by the system clock. Not in a browser build
+    /// (`wasm32-unknown-unknown`), where `SystemTime::now` panics: the web
+    /// vault passes the time to [`Totp::code_at`] itself (`Date.now() / 1000`).
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     pub fn now(&self) -> (Zeroizing<String>, u64) {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

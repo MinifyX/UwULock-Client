@@ -5241,15 +5241,31 @@ dependencies = [
 name = "uwulock-bitwarden"
 version = "0.2.0-beta.2"
 dependencies = [
+ "base64 0.22.1",
+ "rand 0.8.8",
+ "reqwest 0.12.28",
+ "rsa",
+ "serde",
+ "serde_json",
+ "tokio",
+ "url",
+ "uwulock-core",
+ "zeroize",
+]
+
+[[package]]
+name = "uwulock-core"
+version = "0.2.0-beta.2"
+dependencies = [
  "aes",
  "argon2",
  "base64 0.22.1",
  "cbc",
+ "getrandom 0.2.17",
  "hkdf",
  "hmac",
  "pbkdf2",
  "rand 0.8.8",
- "reqwest 0.12.28",
  "rsa",
  "serde",
  "serde_json",
@@ -5257,10 +5273,8 @@ dependencies = [
  "sha2",
  "subtle",
  "thiserror 1.0.69",
- "tokio",
  "tracing",
  "url",
- "uuid",
  "zeroize",
 ]
 

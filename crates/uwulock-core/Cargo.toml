@@ -1,0 +1,35 @@
+[package]
+name = "uwulock-core"
+description = "Bitwarden's crypto and data formats, without a network: master key, encrypted values, the sync format, the decrypted vault, TOTP, the password generator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# Nothing networked in here: this crate is also built for
+# wasm32-unknown-unknown, for the web vault of UwULock-Server.
+[dependencies]
+aes.workspace = true
+argon2.workspace = true
+base64.workspace = true
+cbc.workspace = true
+hkdf.workspace = true
+hmac.workspace = true
+pbkdf2.workspace = true
+rand.workspace = true
+rsa.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha1.workspace = true
+sha2.workspace = true
+subtle.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+zeroize.workspace = true
+url = "2"
+
+# In a browser, randomness comes from crypto.getRandomValues (rand 0.8 reaches
+# it through getrandom 0.2).
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }

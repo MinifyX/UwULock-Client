@@ -96,16 +96,17 @@ details. [Auf Deutsch](docs/install.md#uwulock-installieren).
 
 ## Project layout
 
-| Path                       | What lives there                                                         |
-| -------------------------- | ------------------------------------------------------------------------ |
-| `apps/desktop`             | The Tauri 2 app (React UI + Rust shell)                                  |
-| `apps/desktop/e2e`         | End-to-end run of the real app against a toy Vaultwarden                 |
-| `apps/setup`               | The installer, updater and uninstaller, for all three systems            |
-| `crates/uwulock-bitwarden` | Bitwarden's protocol and crypto: login, two-step login, sync, decrypting |
-| `brand/`                   | Nyu as a padlock: the UwULock icon, symbol, mono symbol                  |
-| `docs/`                    | Vision, architecture, design, roadmap, install guide                     |
-| `release-notes/`           | What's new, per version                                                  |
-| `scripts/`                 | Icons, building the setup, releasing                                     |
+| Path                       | What lives there                                                            |
+| -------------------------- | --------------------------------------------------------------------------- |
+| `apps/desktop`             | The Tauri 2 app (React UI + Rust shell)                                     |
+| `apps/desktop/e2e`         | End-to-end run of the real app against a toy Vaultwarden                    |
+| `apps/setup`               | The installer, updater and uninstaller, for all three systems               |
+| `crates/uwulock-core`      | Bitwarden's crypto and data formats, no network; also builds to WebAssembly |
+| `crates/uwulock-bitwarden` | Bitwarden's protocol over HTTP: login, two-step login, sync, saving         |
+| `brand/`                   | Nyu as a padlock: the UwULock icon, symbol, mono symbol                     |
+| `docs/`                    | Vision, architecture, design, roadmap, install guide                        |
+| `release-notes/`           | What's new, per version                                                     |
+| `scripts/`                 | Icons, building the setup, releasing                                        |
 
 ## Development
 
@@ -133,8 +134,15 @@ Checks:
 ```bash
 pnpm typecheck && pnpm lint
 cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace
+cargo check -p uwulock-core --target wasm32-unknown-unknown   # the web vault's build
 node apps/desktop/e2e/run.mjs     # end to end, Windows
 ```
+
+`uwulock-core` is kept free of anything networked so the web vault of
+UwULock-Server can run it compiled to WebAssembly: the same crypto, checked
+against the same vectors from Bitwarden's SDK
+([architecture](docs/architecture.md)). The wasm check needs
+`rustup target add wasm32-unknown-unknown`.
 
 The installer, with the app packed inside: `pnpm build:setup`. Releasing is
 `pnpm release`; [release-notes/README.md](release-notes/README.md) has the steps.
