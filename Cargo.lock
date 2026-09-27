@@ -5242,9 +5242,7 @@ name = "uwulock-bitwarden"
 version = "0.2.0-beta.2"
 dependencies = [
  "base64 0.22.1",
- "rand 0.8.8",
  "reqwest 0.12.28",
- "rsa",
  "serde",
  "serde_json",
  "tokio",

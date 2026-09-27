@@ -10,7 +10,9 @@
 //! - Every field of every item is an [`EncString`]: AES-256-CBC with an
 //!   HMAC-SHA256 over IV and ciphertext, checked before anything is decrypted.
 //! - Organisation keys come RSA-OAEP-wrapped with the account's public key; the
-//!   private key is itself an EncString under the user key.
+//!   private key is itself an EncString under the user key. The same wrapping
+//!   hands the user key to someone else's key pair: an emergency contact, a
+//!   device asking to log in.
 //!
 //! Keys zeroize themselves when dropped.
 
@@ -19,7 +21,7 @@ use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine as _;
 use hmac::{Hmac, Mac};
 use rand::RngCore;
-use rsa::pkcs8::DecodePrivateKey;
+use rsa::pkcs8::{DecodePrivateKey, DecodePublicKey, EncodePrivateKey, EncodePublicKey};
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
@@ -259,6 +261,16 @@ impl SymmetricKey {
         mac.update(data);
         mac.finalize().into_bytes().into()
     }
+
+    /// In constant time, so how much of a MAC matched tells nothing.
+    fn check_mac(&self, iv: &[u8], data: &[u8], mac: &[u8]) -> Result<(), Error> {
+        let expected = self.mac_of(iv, data);
+        if bool::from(expected.as_slice().ct_eq(mac)) {
+            Ok(())
+        } else {
+            Err(Error::WrongKey)
+        }
+    }
 }
 
 /// An encrypted value as Bitwarden writes it: `<type>.<base64 parts separated by |>`.
@@ -372,10 +384,7 @@ impl EncString {
     pub fn decrypt(&self, key: &SymmetricKey) -> Result<Zeroizing<Vec<u8>>, Error> {
         match self {
             EncString::AesCbc256HmacSha256 { iv, data, mac } => {
-                let expected = key.mac_of(iv, data);
-                if !bool::from(expected.as_slice().ct_eq(mac)) {
-                    return Err(Error::WrongKey);
-                }
+                key.check_mac(iv, data, mac)?;
                 aes_decrypt(&key.enc, iv, data)
             }
             // No MAC means no way to tell a wrong key from a changed value.
@@ -397,6 +406,12 @@ impl EncString {
     /// Opens a key: the account's user key, an organisation key, an item key.
     pub fn decrypt_key(&self, key: &SymmetricKey) -> Result<SymmetricKey, Error> {
         SymmetricKey::from_bytes(&self.decrypt(key)?)
+    }
+
+    /// Opens an RSA-wrapped key: an organisation key, or a user key handed
+    /// over to this key pair.
+    pub fn decrypt_key_rsa(&self, private: &PrivateKey) -> Result<SymmetricKey, Error> {
+        SymmetricKey::from_bytes(&self.decrypt_rsa(private)?)
     }
 
     /// Opens an RSA-wrapped value, an organisation key.
@@ -424,7 +439,8 @@ fn aes_decrypt(key: &[u8; 32], iv: &[u8], data: &[u8]) -> Result<Zeroizing<Vec<u
         .map_err(|_| Error::Crypto("a value didn't decrypt".into()))
 }
 
-/// The account's RSA private key, for organisation keys.
+/// An RSA-2048 private key: the account's own, for organisation keys, or one
+/// made for handing over the user key.
 pub struct PrivateKey(rsa::RsaPrivateKey);
 
 impl std::fmt::Debug for PrivateKey {
@@ -434,6 +450,15 @@ impl std::fmt::Debug for PrivateKey {
 }
 
 impl PrivateKey {
+    /// A fresh RSA-2048 key pair, as Bitwarden makes them: for a new account,
+    /// a device asking to log in, a passkey that unlocks. In a browser this
+    /// takes a moment, a second or a few.
+    pub fn generate() -> Result<Self, Error> {
+        rsa::RsaPrivateKey::new(&mut rand::rngs::OsRng, 2048)
+            .map(PrivateKey)
+            .map_err(|e| Error::Crypto(format!("RSA: {e}")))
+    }
+
     /// From the PKCS#8 DER the profile's `privateKey` decrypts to.
     pub fn from_der(der: &[u8]) -> Result<Self, Error> {
         rsa::RsaPrivateKey::from_pkcs8_der(der)
@@ -441,14 +466,52 @@ impl PrivateKey {
             .map_err(|_| Error::Crypto("the account's private key doesn't parse".into()))
     }
 
-    pub fn public(&self) -> rsa::RsaPublicKey {
-        self.0.to_public_key()
+    /// PKCS#8 DER, what Bitwarden encrypts under a symmetric key.
+    pub fn to_der(&self) -> Result<Zeroizing<Vec<u8>>, Error> {
+        self.0
+            .to_pkcs8_der()
+            .map(|der| Zeroizing::new(der.as_bytes().to_vec()))
+            .map_err(|e| Error::Crypto(format!("RSA: {e}")))
+    }
+
+    pub fn public(&self) -> PublicKey {
+        PublicKey(self.0.to_public_key())
     }
 }
 
-/// Wraps a key for someone's public key, as the server hands out organisation keys.
-pub fn wrap_for(public: &rsa::RsaPublicKey, key: &SymmetricKey) -> Result<EncString, Error> {
+/// An RSA public key: someone's to wrap a key for.
+#[derive(Clone, PartialEq, Eq)]
+pub struct PublicKey(rsa::RsaPublicKey);
+
+impl std::fmt::Debug for PublicKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("PublicKey(…)")
+    }
+}
+
+impl PublicKey {
+    /// From SPKI DER, as Bitwarden hands out public keys (base64 in JSON).
+    pub fn from_der(der: &[u8]) -> Result<Self, Error> {
+        rsa::RsaPublicKey::from_public_key_der(der)
+            .map(PublicKey)
+            .map_err(|_| Error::Crypto("a public key doesn't parse".into()))
+    }
+
+    /// SPKI DER.
+    pub fn to_der(&self) -> Result<Vec<u8>, Error> {
+        self.0
+            .to_public_key_der()
+            .map(|der| der.into_vec())
+            .map_err(|e| Error::Crypto(format!("RSA: {e}")))
+    }
+}
+
+/// Wraps a key for someone's public key, RSA-OAEP with SHA-1 (type 4), as
+/// Bitwarden's apps do it: organisation keys for members, the user key for
+/// an emergency contact, a device asking to log in.
+pub fn wrap_for(public: &PublicKey, key: &SymmetricKey) -> Result<EncString, Error> {
     let data = public
+        .0
         .encrypt(
             &mut rand::rngs::OsRng,
             rsa::Oaep::new::<sha1::Sha1>(),
@@ -535,8 +598,7 @@ mod tests {
 
     #[test]
     fn rsa_round_trip() {
-        let private = rsa::RsaPrivateKey::new(&mut rand::rngs::OsRng, 2048).unwrap();
-        let private = PrivateKey(private);
+        let private = PrivateKey::generate().unwrap();
         let org = SymmetricKey::generate();
         let wrapped = wrap_for(&private.public(), &org).unwrap();
         let text = wrapped.to_string();
@@ -547,5 +609,26 @@ mod tests {
             .decrypt_rsa(&private)
             .unwrap();
         assert_eq!(opened.as_slice(), org.to_bytes().as_slice());
+    }
+
+    #[test]
+    fn handing_the_user_key_to_another_key_pair() {
+        // Emergency access and a device asking to log in go the same way: the
+        // other side's public key arrives as SPKI DER, the user key goes back
+        // wrapped for it, and only its private key opens that.
+        let theirs = PrivateKey::generate().unwrap();
+        let der = theirs.public().to_der().unwrap();
+        let public = PublicKey::from_der(&der).unwrap();
+        let user = SymmetricKey::generate();
+        let wrapped = wrap_for(&public, &user).unwrap().to_string();
+        assert!(wrapped.starts_with("4."));
+        let wrapped: EncString = wrapped.parse().unwrap();
+        let opened = wrapped.decrypt_key_rsa(&theirs).unwrap();
+        assert_eq!(opened.to_bytes().as_slice(), user.to_bytes().as_slice());
+
+        // The private key survives the way through PKCS#8.
+        let again = PrivateKey::from_der(&theirs.to_der().unwrap()).unwrap();
+        assert!(wrapped.decrypt_key_rsa(&again).is_ok());
+        assert!(PublicKey::from_der(b"not a key").is_err());
     }
 }

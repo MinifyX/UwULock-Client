@@ -25,8 +25,6 @@ reqwest = { version = "0.12", default-features = false, features = [
 [dev-dependencies]
 tokio = { workspace = true }
 base64 = { workspace = true }
-rand = { workspace = true }
-rsa = { workspace = true }
 serde_json = { workspace = true }
 url = "2"
 zeroize = { workspace = true }

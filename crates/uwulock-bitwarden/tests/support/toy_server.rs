@@ -17,7 +17,6 @@
 
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine as _;
-use rsa::pkcs8::EncodePrivateKey;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -79,12 +78,13 @@ impl ToyServer {
         let protected_user_key =
             EncString::encrypt(&user_key.to_bytes(), &SymmetricKey::stretch(&master)).to_string();
 
-        let private = rsa::RsaPrivateKey::new(&mut rand::rngs::OsRng, 2048).unwrap();
-        let der = private.to_pkcs8_der().unwrap();
-        let protected_private_key = EncString::encrypt(der.as_bytes(), &user_key).to_string();
+        let private = crypto::PrivateKey::generate().unwrap();
+        let der = private.to_der().unwrap();
+        let protected_private_key = EncString::encrypt(&der, &user_key).to_string();
         let org_key = SymmetricKey::generate();
-        let public = rsa::RsaPublicKey::from(&private);
-        let org_wrapped = crypto::wrap_for(&public, &org_key).unwrap().to_string();
+        let org_wrapped = crypto::wrap_for(&private.public(), &org_key)
+            .unwrap()
+            .to_string();
 
         let sync = sample_vault(
             &user_key,
