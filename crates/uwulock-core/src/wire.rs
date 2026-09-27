@@ -95,6 +95,15 @@ fn flexible_string<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Stri
     })
 }
 
+/// A list, which some servers send as `null` when it is empty.
+fn null_as_empty<'de, D, T>(d: D) -> Result<Vec<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Ok(Option::<Vec<T>>::deserialize(d)?.unwrap_or_default())
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Prelogin {
     #[serde(default, deserialize_with = "flexible_u32")]
@@ -149,12 +158,14 @@ pub struct ErrorModel {
 #[derive(Debug, Default, Deserialize)]
 pub struct Sync {
     pub profile: Profile,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_empty")]
     pub folders: Vec<Folder>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_empty")]
     pub collections: Vec<Collection>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_empty")]
     pub ciphers: Vec<Cipher>,
+    #[serde(default, deserialize_with = "null_as_empty")]
+    pub sends: Vec<Send>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -167,7 +178,7 @@ pub struct Profile {
     pub key: Option<String>,
     #[serde(default, rename = "privatekey")]
     pub private_key: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_empty")]
     pub organizations: Vec<Organization>,
 }
 
@@ -231,9 +242,9 @@ pub struct Cipher {
     pub fields: Option<Vec<Field>>,
     #[serde(default, rename = "passwordhistory")]
     pub password_history: Option<Vec<PasswordHistory>>,
-    #[serde(default)]
-    pub attachments: Option<Vec<Value>>,
-    #[serde(default, rename = "collectionids")]
+    #[serde(default, deserialize_with = "null_as_empty")]
+    pub attachments: Vec<Attachment>,
+    #[serde(default, rename = "collectionids", deserialize_with = "null_as_empty")]
     pub collection_ids: Vec<String>,
     #[serde(default, rename = "revisiondate")]
     pub revision_date: Option<String>,
@@ -371,6 +382,89 @@ pub struct PasswordHistory {
     pub password: Option<String>,
     #[serde(default, rename = "lastuseddate")]
     pub last_used_date: Option<String>,
+}
+
+/// A file attached to an item. The file itself is fetched on its own
+/// (`url`, or `/ciphers/<id>/attachment/<id>`), encrypted in binary
+/// ([`crate::crypto::decrypt_file`]).
+#[derive(Debug, Default, Deserialize)]
+pub struct Attachment {
+    pub id: String,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default, rename = "filename")]
+    pub file_name: Option<String>,
+    /// The attachment's own key, under the item key (or the user or
+    /// organisation key). Old attachments have none: their contents are
+    /// under that key directly.
+    #[serde(default)]
+    pub key: Option<String>,
+    /// In bytes. A string at Bitwarden, a number at some Vaultwardens.
+    #[serde(default, deserialize_with = "flexible_string")]
+    pub size: Option<String>,
+    #[serde(default, rename = "sizename")]
+    pub size_name: Option<String>,
+}
+
+/// A Send: a text or a file shared by link. Its values are under the Send's
+/// own key, which comes from `key` ([`crate::crypto::send_key`]).
+#[derive(Debug, Default, Deserialize)]
+pub struct Send {
+    pub id: String,
+    #[serde(default, rename = "accessid")]
+    pub access_id: Option<String>,
+    /// 0 a text, 1 a file.
+    #[serde(rename = "type")]
+    pub kind: u8,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
+    /// The 16-byte seed of the Send's key, under the user key.
+    #[serde(default)]
+    pub key: Option<String>,
+    #[serde(default)]
+    pub text: Option<SendText>,
+    #[serde(default)]
+    pub file: Option<SendFile>,
+    #[serde(default, rename = "maxaccesscount", deserialize_with = "flexible_u32")]
+    pub max_access_count: Option<u32>,
+    #[serde(default, rename = "accesscount", deserialize_with = "flexible_u32")]
+    pub access_count: Option<u32>,
+    /// The hash of the Send's password ([`crate::crypto::send_password_hash`]),
+    /// if it has one.
+    #[serde(default)]
+    pub password: Option<String>,
+    #[serde(default)]
+    pub disabled: Option<bool>,
+    #[serde(default, rename = "hideemail")]
+    pub hide_email: Option<bool>,
+    #[serde(default, rename = "revisiondate")]
+    pub revision_date: Option<String>,
+    #[serde(default, rename = "expirationdate")]
+    pub expiration_date: Option<String>,
+    #[serde(default, rename = "deletiondate")]
+    pub deletion_date: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct SendText {
+    #[serde(default)]
+    pub text: Option<String>,
+    #[serde(default)]
+    pub hidden: Option<bool>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct SendFile {
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default, rename = "filename")]
+    pub file_name: Option<String>,
+    #[serde(default, deserialize_with = "flexible_string")]
+    pub size: Option<String>,
+    #[serde(default, rename = "sizename")]
+    pub size_name: Option<String>,
 }
 
 // ── What a save sends ──────────────────────────────────────
@@ -522,6 +616,95 @@ mod tests {
             assert_eq!(sync.profile.private_key.as_deref(), Some("x"));
             assert_eq!(sync.ciphers[0].collection_ids, ["c"]);
         }
+    }
+
+    #[test]
+    fn lists_sent_as_null_are_empty() {
+        let sync = serde_json::json!({
+            "Profile": { "Email": "nyu@example.com", "Organizations": null },
+            "Folders": null, "Collections": null, "Ciphers": null, "Sends": null,
+        });
+        let sync: Sync = serde_json::from_value(lowercase_keys(sync)).unwrap();
+        assert!(sync.profile.organizations.is_empty());
+        assert!(sync.folders.is_empty() && sync.collections.is_empty());
+        assert!(sync.ciphers.is_empty() && sync.sends.is_empty());
+
+        // And a sync without them at all.
+        let sync: Sync = serde_json::from_value(serde_json::json!({ "profile": {} })).unwrap();
+        assert!(sync.ciphers.is_empty() && sync.sends.is_empty());
+    }
+
+    #[test]
+    fn a_sync_with_organisations_attachments_and_sends() {
+        let sync = serde_json::json!({
+            "profile": {
+                "email": "nyu@example.com",
+                "organizations": [{ "id": "o1", "name": "Cats", "key": "4.AAAA" }],
+            },
+            "folders": null,
+            "collections": [{ "id": "c1", "organizationId": "o1", "name": "2.x|y|z" }],
+            "ciphers": [
+                {
+                    "id": "1", "type": 1, "organizationId": "o1", "collectionIds": null,
+                    "fields": null, "passwordHistory": null,
+                    "attachments": [
+                        { "id": "a1", "fileName": "2.a|b|c", "key": "2.d|e|f",
+                          "size": "161", "sizeName": "161 Bytes",
+                          "url": "https://vault.example.com/attachments/1/a1" },
+                        { "id": "a2", "fileName": "2.g|h|i", "key": null, "size": 42 },
+                    ],
+                },
+                { "Id": "2", "Type": 2, "Attachments": null, "CollectionIds": ["c1"] },
+            ],
+            "sends": [
+                { "id": "s1", "accessId": "ct2APRQtJk-BLLDwAYqhRA", "type": 0,
+                  "name": "2.j|k|l", "key": "2.m|n|o", "notes": null,
+                  "text": { "text": "2.p|q|r", "hidden": false }, "file": null,
+                  "maxAccessCount": null, "accessCount": 0, "password": null,
+                  "disabled": false, "hideEmail": null,
+                  "revisionDate": "2026-09-27T12:00:00Z", "expirationDate": null,
+                  "deletionDate": "2026-10-04T12:00:00Z" },
+                { "Id": "s2", "Type": 1, "Key": "2.s|t|u", "Text": null,
+                  "File": { "Id": "f1", "FileName": "2.v|w|x", "Size": "1024",
+                            "SizeName": "1 KB" },
+                  "Password": "vTIDfdj3FTDbejmMf+mJWpYdMXsxfeSd1Sma3sjCtiQ=",
+                  "MaxAccessCount": "3" },
+            ],
+        });
+        let sync: Sync = serde_json::from_value(lowercase_keys(sync)).unwrap();
+        assert_eq!(sync.profile.organizations[0].key.as_deref(), Some("4.AAAA"));
+        assert!(sync.folders.is_empty());
+        assert_eq!(sync.collections[0].organization_id, "o1");
+
+        let [first, second] = sync.ciphers.as_slice() else {
+            panic!("two ciphers")
+        };
+        assert!(first.collection_ids.is_empty());
+        assert_eq!(first.attachments.len(), 2);
+        assert_eq!(first.attachments[0].key.as_deref(), Some("2.d|e|f"));
+        assert_eq!(first.attachments[0].size.as_deref(), Some("161"));
+        assert_eq!(first.attachments[1].key, None);
+        assert_eq!(first.attachments[1].size.as_deref(), Some("42"));
+        assert!(second.attachments.is_empty());
+        assert_eq!(second.collection_ids, ["c1"]);
+
+        let [text, file] = sync.sends.as_slice() else {
+            panic!("two sends")
+        };
+        assert_eq!(text.kind, 0);
+        assert_eq!(text.access_id.as_deref(), Some("ct2APRQtJk-BLLDwAYqhRA"));
+        assert_eq!(
+            text.text.as_ref().and_then(|t| t.text.as_deref()),
+            Some("2.p|q|r")
+        );
+        assert_eq!(text.max_access_count, None);
+        assert_eq!(file.kind, 1);
+        assert_eq!(
+            file.file.as_ref().and_then(|f| f.file_name.as_deref()),
+            Some("2.v|w|x")
+        );
+        assert_eq!(file.max_access_count, Some(3));
+        assert!(file.password.is_some());
     }
 
     #[test]
