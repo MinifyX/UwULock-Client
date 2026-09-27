@@ -5239,7 +5239,7 @@ dependencies = [
 
 [[package]]
 name = "uwulock-bitwarden"
-version = "0.2.0-beta.2"
+version = "0.2.0-beta.3"
 dependencies = [
  "base64 0.22.1",
  "reqwest 0.12.28",
@@ -5253,7 +5253,7 @@ dependencies = [
 
 [[package]]
 name = "uwulock-core"
-version = "0.2.0-beta.2"
+version = "0.2.0-beta.3"
 dependencies = [
  "aes",
  "argon2",
@@ -5278,7 +5278,7 @@ dependencies = [
 
 [[package]]
 name = "uwulock-desktop"
-version = "0.2.0-beta.2"
+version = "0.2.0-beta.3"
 dependencies = [
  "arboard",
  "base64 0.22.1",
@@ -5305,7 +5305,7 @@ dependencies = [
 
 [[package]]
 name = "uwulock-setup"
-version = "0.2.0-beta.2"
+version = "0.2.0-beta.3"
 dependencies = [
  "libc",
  "semver",

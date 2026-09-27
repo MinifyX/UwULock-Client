@@ -1,0 +1,4 @@
+{
+  "de": "Passt zu UwULock Server 0.4 ✧\n\n- Einträge mit Anhängen, Sends und Organisationen – etwa nach einem Umzug von Vaultwarden – kommen sauber an und bleiben beim Bearbeiten erhalten\n- Ein Server, der leere Listen als „nichts“ statt als leere Liste schickt, bringt die Synchronisierung nicht mehr durcheinander\n- Windows x64: Das Setup wird jetzt wie alle anderen automatisch gebaut",
+  "en": "Fits UwULock Server 0.4 ✧\n\n- Items with attachments, Sends and organisations — after a move from Vaultwarden, say — arrive cleanly and stay intact when you edit them\n- A server that sends empty lists as \"nothing\" instead of an empty list no longer confuses the sync\n- Windows x64: the setup is now built automatically, like all the others"
+}

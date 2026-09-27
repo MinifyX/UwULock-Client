@@ -57,9 +57,11 @@ bitwarden.com or bitwarden.eu — with the same encryption the official apps use
 - **Playful.** Nyu, the cat, is a padlock now. Security warnings are never
   playful.
 
-> **Status: beta.** 0.2.0-beta.2 reads and writes: log in (with two-step
+> **Status: beta.** 0.2.0-beta.3 reads and writes: log in (with two-step
 > login), browse, search, copy, one-time codes — and create, edit and delete,
-> with a private Vaultwarden and one at work side by side.
+> with a private Vaultwarden and one at work side by side. It fits
+> [UwULock Server](https://github.com/MinifyX/UwULock-Server) 0.4: items with
+> attachments, Sends and organisations come through the sync and stay intact.
 >
 > **What works.**
 >
