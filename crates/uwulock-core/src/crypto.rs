@@ -13,6 +13,9 @@
 //!   private key is itself an EncString under the user key. The same wrapping
 //!   hands the user key to someone else's key pair: an emergency contact, a
 //!   device asking to log in.
+//! - Attachments and file Sends are the same type 2, in binary
+//!   ([`encrypt_file`]). A Send's key comes from a 16-byte seed
+//!   ([`send_key`]), the one its link carries.
 //!
 //! Keys zeroize themselves when dropped.
 
@@ -521,6 +524,103 @@ pub fn wrap_for(public: &PublicKey, key: &SymmetricKey) -> Result<EncString, Err
     Ok(EncString::RsaOaepSha1 { data })
 }
 
+// ── Files: attachments and Sends ───────────────────────────
+//
+// A file's contents are type 2 like any other value, but in binary, without
+// base64 (Bitwarden's `EncArrayBuffer`): the type byte 2, the IV (16 bytes),
+// the MAC (32), then the ciphertext. An attachment is under its own key
+// (`attachment.key`, itself under the item key, or the user or organisation
+// key), or under that key directly if it is older than attachment keys. A
+// file Send is under the Send's key.
+
+/// Encrypts a file's contents under `key`, with a fresh random IV.
+pub fn encrypt_file(plain: &[u8], key: &SymmetricKey) -> Vec<u8> {
+    let mut iv = [0u8; 16];
+    rand::rngs::OsRng.fill_bytes(&mut iv);
+    // Encrypted in place, in the buffer that is returned: attachments can be
+    // large, and a browser tab has no memory to spare for a second copy.
+    let padded = (plain.len() / 16 + 1) * 16;
+    let mut out = vec![0u8; FILE_HEADER + padded];
+    out[0] = 2;
+    out[1..17].copy_from_slice(&iv);
+    out[FILE_HEADER..FILE_HEADER + plain.len()].copy_from_slice(plain);
+    Aes256CbcEnc::new(&key.enc.into(), &iv.into())
+        .encrypt_padded_mut::<Pkcs7>(&mut out[FILE_HEADER..], plain.len())
+        .expect("room for the padding");
+    let mac = key.mac_of(&iv, &out[FILE_HEADER..]);
+    out[17..FILE_HEADER].copy_from_slice(&mac);
+    out
+}
+
+/// Opens a file's contents. Anything but type 2 is refused, and so is
+/// anything too short to hold one AES block; the MAC is checked first, in
+/// constant time.
+pub fn decrypt_file(bytes: &[u8], key: &SymmetricKey) -> Result<Zeroizing<Vec<u8>>, Error> {
+    match bytes.first() {
+        Some(2) => {}
+        Some(kind) => {
+            return Err(Error::Crypto(format!(
+                "an encrypted file of unknown type {kind}"
+            )))
+        }
+        None => return Err(Error::Crypto("an encrypted file is empty".into())),
+    }
+    if bytes.len() < FILE_HEADER + 16 {
+        return Err(Error::Crypto("an encrypted file is too short".into()));
+    }
+    let (iv, mac, data) = (
+        &bytes[1..17],
+        &bytes[17..FILE_HEADER],
+        &bytes[FILE_HEADER..],
+    );
+    key.check_mac(iv, data, mac)?;
+    aes_decrypt(&key.enc, iv, data)
+}
+
+/// Type byte, IV and MAC.
+const FILE_HEADER: usize = 1 + 16 + 32;
+
+/// A key made from a short random secret, for sharing it in a link: HKDF-SHA256
+/// with the salt `bitwarden-<name>` and `info`, 64 bytes (Bitwarden's
+/// `derive_shareable_key`).
+pub fn derive_shareable_key(secret: &[u8; 16], name: &str, info: Option<&str>) -> SymmetricKey {
+    let salt = format!("bitwarden-{name}");
+    let hkdf = hkdf::Hkdf::<Sha256>::new(Some(salt.as_bytes()), secret);
+    let mut bytes = Zeroizing::new([0u8; 64]);
+    hkdf.expand(info.unwrap_or_default().as_bytes(), bytes.as_mut())
+        .expect("64 bytes is a valid length");
+    SymmetricKey::from_bytes(bytes.as_ref()).expect("64 bytes")
+}
+
+/// A Send's key, from its 16-byte seed: what the Send's `key` decrypts to
+/// under the user key, and what its link carries after the `#`, in URL-safe
+/// base64 without padding.
+pub fn send_key(seed: &[u8]) -> Result<SymmetricKey, Error> {
+    let seed: &[u8; 16] = seed.try_into().map_err(|_| {
+        Error::Crypto(format!(
+            "a Send's seed has 16 bytes, this one {}",
+            seed.len()
+        ))
+    })?;
+    Ok(derive_shareable_key(seed, "send", Some("send")))
+}
+
+/// A seed for a new Send.
+pub fn generate_send_seed() -> Zeroizing<[u8; 16]> {
+    let mut seed = Zeroizing::new([0u8; 16]);
+    rand::rngs::OsRng.fill_bytes(seed.as_mut());
+    seed
+}
+
+/// What a Send's password becomes before it goes to the server, when the Send
+/// is made and when it is opened: base64 of PBKDF2-SHA256 over the password,
+/// salted with the seed, 100 000 rounds.
+pub fn send_password_hash(password: &str, seed: &[u8]) -> String {
+    let mut hash = Zeroizing::new([0u8; 32]);
+    pbkdf2::pbkdf2_hmac::<Sha256>(password.as_bytes(), seed, 100_000, hash.as_mut());
+    B64.encode(hash.as_ref())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -630,5 +730,39 @@ mod tests {
         let again = PrivateKey::from_der(&theirs.to_der().unwrap()).unwrap();
         assert!(wrapped.decrypt_key_rsa(&again).is_ok());
         assert!(PublicKey::from_der(b"not a key").is_err());
+    }
+
+    #[test]
+    fn files_round_trip() {
+        let key = SymmetricKey::generate();
+        for length in [0, 1, 15, 16, 17, 1000] {
+            let plain: Vec<u8> = (0..length).map(|i| i as u8).collect();
+            let file = encrypt_file(&plain, &key);
+            assert_eq!(file[0], 2);
+            assert_eq!(file.len(), FILE_HEADER + (length / 16 + 1) * 16);
+            assert_eq!(decrypt_file(&file, &key).unwrap().as_slice(), plain);
+        }
+    }
+
+    #[test]
+    fn files_that_were_changed_or_are_not_type_2_are_refused() {
+        let key = SymmetricKey::generate();
+        let file = encrypt_file(b"a cat picture", &key);
+        assert!(matches!(
+            decrypt_file(&file, &SymmetricKey::generate()),
+            Err(Error::WrongKey)
+        ));
+        for at in [1, 17, file.len() - 1] {
+            let mut changed = file.clone();
+            changed[at] ^= 1;
+            assert!(matches!(decrypt_file(&changed, &key), Err(Error::WrongKey)));
+        }
+        for kind in [0, 1, 4, 7] {
+            let mut other = file.clone();
+            other[0] = kind;
+            assert!(matches!(decrypt_file(&other, &key), Err(Error::Crypto(_))));
+        }
+        assert!(decrypt_file(&[], &key).is_err());
+        assert!(decrypt_file(&file[..FILE_HEADER + 15], &key).is_err());
     }
 }
