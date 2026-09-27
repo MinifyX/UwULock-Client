@@ -688,7 +688,7 @@ fn open_item(cipher: &wire::Cipher, kind: ItemKind, outer: &SymmetricKey) -> Ite
         ssh_key,
         fields,
         password_history,
-        attachments: cipher.attachments.as_ref().map_or(0, Vec::len),
+        attachments: cipher.attachments.len(),
         broken,
         key: item_key,
         wrapped_key: cipher.key.clone(),
