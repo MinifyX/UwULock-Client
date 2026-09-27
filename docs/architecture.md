@@ -28,7 +28,8 @@ that is tested without a window.
 The work is split in two crates:
 
 - **`uwulock-core`** — Bitwarden's crypto and data formats, without a network:
-  master key, encrypted values, the sync format (`wire`), the decrypted vault,
+  master key, encrypted values and files, Send keys, key pairs and passkey key
+  sets, fingerprint phrases, the sync format (`wire`), the decrypted vault,
   TOTP, the password generator, and the shared `Error`. No HTTP, no disk.
 - **`uwulock-bitwarden`** — the HTTP side (`api`): prelogin, login, two-step
   login, token refresh, sync, saving. It re-exports `uwulock-core` under its
@@ -87,9 +88,18 @@ All RustCrypto, in `crates/uwulock-core/src/crypto.rs`:
 | Organisation keys | type 4, RSA-2048-OAEP-SHA1 with the account's public key                                                |
 | Item keys         | `cipher.key`, type 2 under the user or organisation key (newer items)                                   |
 | Every field       | type 2: AES-256-CBC + HMAC-SHA256 over IV‖ciphertext, MAC checked first, constant time                  |
+| Files             | attachments and file Sends: type 2 in binary, byte 2‖IV‖MAC‖ciphertext (`encrypt_file`, `decrypt_file`) |
+| Send keys         | HKDF-SHA256(16-byte seed, salt "bitwarden-send", info "send") → 64 bytes (`send_key`)                   |
+| Handing over      | the user key RSA-OAEP-SHA1-wrapped for a fresh or someone's RSA-2048 key (`wrap_for`, `PrivateKey`)     |
+| Passkey unlock    | PRF output stretched like a master key; key set of user key, public and private key (`PrfKeySet`)       |
+| Fingerprint       | SHA-256(public key), HKDF-Expand with the email or user id → five words of EFF's long list              |
 
-`crates/uwulock-core/tests/vectors.rs` checks the master key, hash, stretching and a legacy user
-key against the known answers in Bitwarden's SDK (`bitwarden/sdk-internal`).
+`crates/uwulock-core/tests/vectors.rs` checks the master key, hash, stretching, a legacy user
+key, shareable and Send keys, a Send, two attachments and a fingerprint phrase against the known
+answers in Bitwarden's SDK (`bitwarden/sdk-internal`). The SDK has none for a passkey's key set, so
+that test opens one made with Python's `cryptography` the way Bitwarden's web vault makes it.
+The desktop app doesn't use files, Sends, passkeys or handing over yet; the web vault of
+UwULock-Server does.
 `crates/uwulock-bitwarden/tests/flow.rs` runs the whole way — prelogin, two-step login, remembered
 device, refresh, revoked session, sync, every item type, organisations, item
 keys — against a toy server that encrypts its vault the way Bitwarden's apps

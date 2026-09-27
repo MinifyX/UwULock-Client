@@ -1,6 +1,7 @@
 //! Bitwarden's crypto and data formats, without a network.
 //!
-//! - [`crypto`] — master key, password hash, keys and encrypted values
+//! - [`crypto`] — master key, password hash, keys and encrypted values;
+//!   files, Sends, key pairs, passkeys that unlock, fingerprint phrases
 //! - [`wire`] — what the server sends, as it sends it
 //! - [`vault`] — the sync, decrypted: items, folders, collections
 //! - [`totp`] — codes for items with an authenticator key
