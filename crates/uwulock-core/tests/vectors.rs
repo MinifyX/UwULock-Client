@@ -1,14 +1,17 @@
 //! Known answers from Bitwarden's own SDK (bitwarden/sdk-internal,
 //! crates/bitwarden-crypto, bitwarden-vault and bitwarden-send): if these
 //! hold, a master password typed here produces the same hash and opens the
-//! same keys as in Bitwarden's apps, and the same attachments and Sends.
+//! same keys as in Bitwarden's apps, and the same attachments, Sends and
+//! fingerprint phrases.
 
 use base64::engine::general_purpose::{STANDARD as B64, URL_SAFE_NO_PAD as B64_URL};
 use base64::Engine as _;
 use uwulock_core::crypto::{
-    decrypt_file, decrypt_user_key, derive_shareable_key, master_key, master_password_hash,
-    send_key, send_password_hash, EncString, Kdf, SymmetricKey,
+    decrypt_file, decrypt_user_key, derive_shareable_key, fingerprint, master_key,
+    master_password_hash, prf_key, send_key, send_password_hash, EncString, Kdf, PrfKeySet,
+    PrivateKey, PublicKey, SymmetricKey,
 };
+use uwulock_core::Error;
 
 #[test]
 fn pbkdf2_hash_matches_bitwarden() {
@@ -212,6 +215,85 @@ fn opens_attachments_as_bitwarden_wrote_them() {
     // An old one, under the user key itself.
     let file = B64.decode("AsQLXOBHrJ8porroTUlPxeJOm9XID7LL9D2+KwYATXEpR1EFjLBpcCvMmnqcnYLXIEefe9TCeY4Us50ux43kRSpvdB7YkjxDKV0O1/y6tB7qC4vvv9J9+O/uDEnMx/9yXuEhAW/LA/TsU/WAgxkOM0uTvm8JdD9LUR1z9Ql7zOWycMVzkvGsk2KBNcqAdrotS5FlDftZOXyU8pWecNeyA/w=").unwrap();
     assert_eq!(decrypt_file(&file, &user).unwrap().as_slice(), original);
+}
+
+#[test]
+fn fingerprint_matches_bitwarden() {
+    let public_key = [
+        48, 130, 1, 34, 48, 13, 6, 9, 42, 134, 72, 134, 247, 13, 1, 1, 1, 5, 0, 3, 130, 1, 15, 0,
+        48, 130, 1, 10, 2, 130, 1, 1, 0, 187, 38, 44, 241, 110, 205, 89, 253, 25, 191, 126, 84,
+        121, 202, 61, 223, 189, 244, 118, 212, 74, 139, 130, 97, 115, 164, 167, 106, 191, 188, 233,
+        218, 196, 250, 187, 146, 125, 160, 150, 49, 198, 224, 176, 10, 0, 143, 99, 230, 232, 160,
+        51, 104, 154, 211, 33, 80, 170, 4, 68, 80, 219, 115, 167, 114, 156, 227, 125, 193, 128,
+        123, 39, 254, 191, 124, 63, 129, 44, 63, 18, 56, 161, 48, 158, 0, 27, 146, 2, 99, 136, 75,
+        21, 135, 6, 118, 12, 26, 251, 184, 172, 249, 53, 78, 210, 46, 143, 17, 104, 202, 65, 173,
+        229, 219, 233, 144, 163, 101, 216, 238, 152, 54, 158, 1, 195, 50, 203, 21, 226, 12, 82,
+        170, 175, 170, 160, 21, 247, 248, 80, 97, 123, 0, 152, 116, 229, 126, 221, 199, 155, 194,
+        192, 51, 207, 177, 240, 160, 84, 241, 41, 88, 176, 53, 111, 28, 173, 177, 232, 158, 22, 79,
+        133, 152, 31, 32, 12, 196, 147, 58, 57, 50, 252, 208, 131, 150, 179, 132, 178, 150, 234,
+        251, 143, 125, 163, 144, 20, 46, 71, 168, 252, 164, 86, 120, 124, 56, 252, 206, 210, 236,
+        212, 139, 127, 189, 236, 40, 46, 2, 238, 13, 216, 40, 48, 85, 133, 229, 181, 155, 176, 217,
+        241, 154, 153, 213, 112, 222, 72, 219, 197, 3, 219, 56, 77, 109, 47, 72, 251, 131, 36, 240,
+        96, 169, 31, 82, 93, 166, 242, 3, 33, 213, 2, 3, 1, 0, 1,
+    ];
+    assert_eq!(
+        fingerprint("a09726a0-9590-49d1-a5f5-afe300b6a515", &public_key),
+        "turban-deftly-anime-chatroom-unselfish"
+    );
+}
+
+// Bitwarden's SDK has no known answer for a passkey's key set, so this one was
+// made independently, with Python's `cryptography`, the way Bitwarden's web
+// vault makes it (WebAuthnLoginPrfKeyService, DefaultRotateableKeySetService):
+// a fresh RSA-2048 key pair, the user key RSA-OAEP-SHA1-wrapped for it, the
+// public key under the user key, the private key under the stretched PRF output.
+const PRF: &str = "zneACW8mIItRUUPXmFYNTALq1IgEqNDzUPpkVkc2J5c=";
+const PRF_USER_KEY: &str =
+    "n881qAvoh5N+nxB1WcHmkTxXnJCsKIC/tT8D1qlqnmuPrAQrm3QcDYk9dK87tZAk7Ae4/JvYk2VXwHFpiWRBlg==";
+const PRF_ENCRYPTED_USER_KEY: &str = "4.LdwYwZNp3+jcmwPP2U4fs4WUvsRr5J/PaUXJWYzOUD5jkdHDHhv0ZlH08a5p64/WB2Lq4TPzlHvh0x9VxBu7E8yAxqFkcllcY3tOufkgfcDeTNtLFvRvaT2c4feiunoIa8qlQQgMXKlIcIYPA+nETm5lJ/ms5N4z+iAtBpFmFLCPCefCD6SsplOr+rcQ+Jw2kHL8/gNWVc38OWrqQSIjzHrb1XbinDU6Pbwved0MdA3ycXZVnTPYSGqJkrW1DCI5KY3EqNnMcZKRa6mwwPkESO8psagyNDTugkbYkMLK/5cdJ5hIaIzIAvqVB4Lxxa4pvxREjWII3slH4X3v2eWWTQ==";
+const PRF_ENCRYPTED_PUBLIC_KEY: &str = "2.AAECAwQFBgcICQoLDA0ODw==|SeQlackjlQ29Vy1Vt1FWkFWmJcapjFL8VdjRFQx2NlID52FHCT5dLrp+4UIiVgh6qV9Yo+Q1mVAt9mmMK7TdnsKFTUwEyEL3FVxwZ5NSpw2LKCEYr4PZE+kHRApD/HbQyzfqQruUcMeGUauSny5wLiCIc1MshgnfQqMvynLUW6ParQa5qyxUg3t0kvBWGMS4+hERHHU+HhZRvo+Zwm8s4E5Dq/unv1aw8qR5ulOl4++O3OomFjAZeXmLqaUm+A4z4vcS6LDVQ2bYU0lUyBDTp6rL0knCTrkOzKfTWtfQrA4YtIS8B3NKtobosFLogQ96Z2Bjgwg7zcm+0dFTkXNJNOYMeVF9qW5odJo6Fs8CYwvF09+gyhU0b2Q42tmg9q8hsI+3BV4bad0NsLBTztbUpA==|j09lw9J2qNN3KY9DNp+OJ4cqLnjIWxMeqpDjZT9Dn6s=";
+const PRF_ENCRYPTED_PRIVATE_KEY: &str = "2.EBESExQVFhcYGRobHB0eHw==|MRv+6J8ey3rAbNQARlK5Tvmiuucw41dxcFxNvgPQFqAnTa56wXWA6a7vMw4aoTpbuPCOVAHKkC2fxoyYvoTFxxG229s4R6L39fRvW9f+j1B1bGA0ORom/SFQU74dhwHCe9pW1GB+mKaIOpDQnHXTgNh7mzSA71bJYOPMYn0wEokHloAWO9G+8u8ZZhe/kYrkYhNbAdkZSsx8q67wdMOAQXGTsrhCTnO7tyEzsNXXhG9olXj3MWe8qk0nP/4y05R7nx66qz4SxM7NCRu/YsXKo2YRD5qW9Qb9yCHXxCHbC0Wnrji7mEiSoSdXZdRvyUHeimTpd9s7x/E/qZW233WFifWnmGtQNrje0NEB6S4r0Iv1WVdez1l+VAUZeWDvg8O7TElm76dOzaIqdRaPDGWv/VMvkibzSdmYz+fj77W/8ynX5VCkGqs+qxZzbLpLo+LHDRzY46n7Vd0YR162BGf0hT61kJEuSgE0BouvTre/mx7YJyXPo4UqVhzlv1ZdpiwjI5P+X8RNk2dlh7s93y0Jpf2WEqrM8VZKW9nm5mgLYFJPT8rnvEyhNo52IqahuDWShCNcEcK9074eD78UT9bjDEmDjaWYi7GJT/Kcec6gEVtpvE+YGFgSVKvYapKKPKUQSI7QNmeh3o8essKkOLwskmJsdX9TPGK+ktRfOeJFwgshk0P5pQ1Pk/RDjCNeypT+n0OOq2BGtuuuHakoVtkRaKOVEXLvgjgtlOwi+0oLH2wlKM9JBV8+Qo2BjBOi//mk0gAyyF6jY0D3uKMRv+1k5tr4rGJOiAEexuNADcm2M8Ymm4OcAEXQIKG+EG3l/12ge3sHyne3kHEVjojmqZ0bO3X5VYGeGa4MA1rSBXCLNFlyMDoZPl57YkVDy3OtjAxqsk3mvqGHWO9y76Q81fO7/gfkCE/y6BtUWMmfExhGZtjzzdbXoTX+a+MJRzmymt1h/bvnqH5CH3lVRe6fuHo8LRY/FxomA8CO2UFIMylTYEAHhQsFMSrSBrn/WNWjJDevmVDr6bVnJrTMlNZKfjRPbXeFUTeCpl5ATwpUzYDuBldT3z1cBLMDblTSpLImeUePi5upQ57+PSwBrAFX/RhCNl3EYnpb/c+EwdbBhBNZDslc3iPHAlZ3iKG0zH1D01ZCw+TDeVbAo7ReISSM3O1lc+Utyh4sUM1Gr8AHOEfcNkzt/DacahOVQGmvsDTWiZtWTJVkImsHtK5cGgVyU0AsBRtxXKpS8V4psPstbOcnOzsAwM88ivY9wtcrbmUgtDxupa+i/hFOFzSS6kERAdm8Ta5p75DlwCaQ5g8JAJTD/qaxqO7oajBs6DkImR1wDTG4iA4QqrmONIqM8qDyFz4ClhsbZ+6uSqOy2bX72xNFFoKqwGfq9OQnmQ9bUel/11o4dctuOtiLwBaK8/cMSbLL4mJjLyQ5PclxKjlpAKGLlJN75zmsyOVgFYd/sJUPWXooF3ioQmVCjMYobjhbV5HV+4LMdZ70vhGL0XXYvtknxg41moYCmp7MTehQuqST/3hBGK1y799dQiQdosYlEGf+ehDAhCTaub9w9/QQOngkGcFpuyxtIVXe+vH1vlqJ/w/EkUa3UxmpbDtEGZJBJOG699X+hTFct47Tag5D6zkyT+w=|dQJzpz+QG8tPd63YH8Wp3DpmqYBc6fssQJIQQLcWBxA=";
+
+#[test]
+fn prf_key_is_the_stretched_prf_output() {
+    let prf = B64.decode(PRF).unwrap();
+    assert_eq!(
+        B64.encode(prf_key(&prf).unwrap().to_bytes()),
+        "OBf2A92aPP/LzVHuF7twpF01JrriYfmJfrrPJHLneUsPLmQFs77RNsrK2r0XF2qCNGzmbGSWrGKghhRWa2QC6A=="
+    );
+}
+
+#[test]
+fn opens_a_passkey_key_set_made_elsewhere() {
+    let prf = B64.decode(PRF).unwrap();
+    let set = PrfKeySet {
+        encrypted_user_key: PRF_ENCRYPTED_USER_KEY.parse().unwrap(),
+        encrypted_public_key: PRF_ENCRYPTED_PUBLIC_KEY.parse().unwrap(),
+        encrypted_private_key: PRF_ENCRYPTED_PRIVATE_KEY.parse().unwrap(),
+    };
+    let user = set.open(&prf).unwrap();
+    assert_eq!(B64.encode(user.to_bytes()), PRF_USER_KEY);
+
+    // The public half, under the user key, is the private half's.
+    let public = set.encrypted_public_key.decrypt(&user).unwrap();
+    let private = set
+        .encrypted_private_key
+        .decrypt(&prf_key(&prf).unwrap())
+        .unwrap();
+    assert_eq!(
+        PrivateKey::from_der(&private).unwrap().public(),
+        PublicKey::from_der(&public).unwrap()
+    );
+    // Computed there as well.
+    assert_eq!(
+        fingerprint("nyu@example.com", &public),
+        "unstable-freemason-banshee-sedation-zips"
+    );
+
+    // Another passkey's output doesn't open it.
+    let mut other = prf.clone();
+    other[0] ^= 1;
+    assert!(matches!(set.open(&other), Err(Error::WrongKey)));
 }
 
 fn key(base64: &str) -> SymmetricKey {
