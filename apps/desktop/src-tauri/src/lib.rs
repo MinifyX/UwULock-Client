@@ -8,6 +8,7 @@
 //! - [`live`] — changes from other devices as they happen
 //! - [`session_lock`] — locking when the screen locks or the computer sleeps
 //! - [`hello`] — unlocking with Windows Hello
+//! - [`moving`] — moving a vault in from Bitwarden or Vaultwarden
 //! - [`clipboard`] — copies that clear themselves
 //! - [`system`] — updates and links out of the app
 
@@ -15,6 +16,7 @@ mod account;
 mod clipboard;
 mod hello;
 mod live;
+mod moving;
 mod session_lock;
 mod system;
 mod updates;
@@ -49,6 +51,7 @@ pub fn run() {
             let storage = account::Storage::new(dir)?;
             tracing::info!(path = %storage.dir().display(), "data folder");
             app.manage(vault::VaultState::new(storage));
+            app.manage(moving::MoveState::default());
             vault::start(app.handle());
             live::start(app.handle());
             session_lock::start(app.handle());
@@ -89,6 +92,14 @@ pub fn run() {
             vault::restore_item,
             vault::save_folder,
             vault::delete_folder,
+            moving::move_target,
+            moving::move_login,
+            moving::move_login_two_factor,
+            moving::move_login_new_device,
+            moving::move_login_send_email,
+            moving::move_start,
+            moving::move_cancel,
+            moving::move_close,
             system::set_update_channel,
             system::update_status,
             system::check_for_updates,

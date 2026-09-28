@@ -19,6 +19,7 @@ import { systemName } from '../lib/platform';
 import { updateSettings, useSettings, type AutoLock, type ClipboardClear } from '../lib/settings';
 import { toast } from '../lib/toast';
 import { Modal } from './Modal';
+import { MoveSetting } from './MoveDialog';
 import { Nyu } from './nyu/Nyu';
 
 export type SettingsSection = 'appearance' | 'security' | 'account' | 'updates' | 'about';
@@ -316,6 +317,7 @@ function Account({ status, onClose }: { status: Status; onClose: () => void }) {
       >
         <button onClick={() => void openWebVault().catch(() => undefined)}>{t('Öffnen')}</button>
       </Row>
+      {status.state === 'unlocked' && <MoveSetting />}
       <Row
         label={t('Abmelden')}
         description={t(

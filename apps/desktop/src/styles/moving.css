@@ -1,0 +1,46 @@
+/* ── Moving a vault in from Bitwarden ──────────────────────────────────── */
+
+.move-counts,
+.move-notices {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.move-counts li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px;
+  border-radius: var(--uwu-radius-control);
+  background: var(--uwu-canvas);
+}
+
+.move-count {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.move-count small {
+  margin-left: 6px;
+  font-weight: 400;
+  color: var(--uwu-muted);
+}
+
+.move-notices li {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--uwu-muted);
+}
+
+.move-notices strong {
+  color: var(--uwu-ink);
+}
+
+.move-progress {
+  width: 100%;
+  height: 8px;
+  accent-color: var(--uwu-pink-solid);
+}

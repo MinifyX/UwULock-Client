@@ -17,6 +17,9 @@
 //!   `uwuLock`: the cursor of the last delta and UwULock's own state (own
 //!   icons, reminders, masked addresses, travel mode…), that state sealed
 //!   under the user key. The vault part stays exactly `/api/sync`'s shape.
+//! - `accounts/<id>/move-journal.json` — after a move from Bitwarden into
+//!   this account: which source object became which here (ids only), sealed
+//!   under the user key, so a second move carries only what is new.
 //! - `accounts.json` — which accounts there are, in which order, and which one
 //!   was open last. Nothing secret.
 //! - `device-id` — this installation's device id, kept across logouts and
@@ -41,6 +44,7 @@ const CACHE: &str = "vault.json";
 const DEVICE: &str = "device-id";
 const INDEX: &str = "accounts.json";
 const ACCOUNTS: &str = "accounts";
+const MOVE_JOURNAL: &str = "move-journal.json";
 /// The key of UwULock's part in the cached sync.
 const UWU: &str = "uwuLock";
 
@@ -309,6 +313,18 @@ impl Storage {
         write_atomic(&home.join(CACHE), sync.as_bytes())
     }
 
+    /// The journal of moves into this account (`move-journal.json`): which
+    /// object of which source became which here, sealed under the user key.
+    pub fn load_move_journal(&self, id: &str) -> Option<String> {
+        std::fs::read_to_string(self.home(id).ok()?.join(MOVE_JOURNAL)).ok()
+    }
+
+    pub fn save_move_journal(&self, id: &str, sealed: &str) -> std::io::Result<()> {
+        let home = self.home(id)?;
+        std::fs::create_dir_all(&home)?;
+        write_atomic(&home.join(MOVE_JOURNAL), sealed.as_bytes())
+    }
+
     /// Logging out of one account: its folder goes, the device id and the
     /// other accounts stay.
     pub fn forget(&self, id: &str) -> std::io::Result<()> {
@@ -383,6 +399,24 @@ mod tests {
 
     fn scratch() -> PathBuf {
         std::env::temp_dir().join(format!("uwulock-test-{}", uuid::Uuid::new_v4()))
+    }
+
+    #[test]
+    fn a_move_journal_lives_and_goes_with_its_account() {
+        let dir = scratch();
+        let storage = Storage::new(dir.clone()).unwrap();
+        let account = sample("nyu@example.org");
+        let id = storage.id_for(&account.server, &account.email);
+        storage.save_account(&id, &account).unwrap();
+        assert!(storage.load_move_journal(&id).is_none());
+        storage.save_move_journal(&id, "2.x|y|z").unwrap();
+        assert_eq!(storage.load_move_journal(&id).as_deref(), Some("2.x|y|z"));
+        assert!(storage
+            .save_move_journal("../elsewhere", "2.x|y|z")
+            .is_err());
+        storage.forget(&id).unwrap();
+        assert!(storage.load_move_journal(&id).is_none());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

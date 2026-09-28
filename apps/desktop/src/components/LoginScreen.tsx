@@ -26,6 +26,22 @@ type Props = {
   onCancel?: () => void;
 };
 
+/** What the code screens call: the app's own login, or the move dialog's. */
+export type CodeActions<S extends { step: string }> = {
+  twoFactor: (provider: number, code: string, remember: boolean) => Promise<S>;
+  newDevice: (code: string) => Promise<S>;
+  sendEmail: () => Promise<void>;
+  /** Offer "remember this device" (not for a login that is never kept). */
+  remember: boolean;
+};
+
+const APP_LOGIN: CodeActions<LoginStep> = {
+  twoFactor: loginTwoFactor,
+  newDevice: loginNewDevice,
+  sendEmail: loginSendEmail,
+  remember: true,
+};
+
 const METHOD_LABEL: Record<TwoFactorMethod['kind'], string> = {
   authenticator: N_('Authenticator-App'),
   email: N_('E-Mail'),
@@ -205,25 +221,35 @@ export function LoginScreen({ again, adding, onDone, onCancel }: Props) {
         )}
 
         {step?.step === 'two-factor' && (
-          <TwoFactor methods={step.methods} message={step.message} onBack={back} onDone={finish} />
+          <TwoFactor
+            methods={step.methods}
+            message={step.message}
+            actions={APP_LOGIN}
+            onBack={back}
+            onDone={finish}
+          />
         )}
 
-        {step?.step === 'new-device' && <NewDevice onBack={back} onDone={finish} />}
+        {step?.step === 'new-device' && (
+          <NewDevice actions={APP_LOGIN} onBack={back} onDone={finish} />
+        )}
       </section>
     </div>
   );
 }
 
-function TwoFactor({
+export function TwoFactor<S extends { step: string }>({
   methods,
   message,
+  actions,
   onBack,
   onDone,
 }: {
   methods: TwoFactorMethod[];
   message: string | null;
+  actions: CodeActions<S>;
   onBack: () => void;
-  onDone: (step: LoginStep) => void;
+  onDone: (step: S) => void;
 }) {
   useLanguage();
   const usable = methods.filter((m) => m.supported);
@@ -245,7 +271,7 @@ function TwoFactor({
     setBusy(true);
     setError(null);
     try {
-      const next = await loginTwoFactor(provider, code, remember);
+      const next = await actions.twoFactor(provider, code, remember);
       if (next.step === 'two-factor') {
         setError(t('Der Code wurde nicht angenommen.'));
         setCode('');
@@ -260,7 +286,7 @@ function TwoFactor({
   const sendEmail = async () => {
     setError(null);
     try {
-      await loginSendEmail();
+      await actions.sendEmail();
       setSent(true);
     } catch (e) {
       setError(errorText(e));
@@ -347,10 +373,16 @@ function TwoFactor({
           disabled={busy}
         />
       </label>
-      <label className="check">
-        <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-        <span>{t('Auf diesem Gerät merken')}</span>
-      </label>
+      {actions.remember && (
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={remember}
+            onChange={(e) => setRemember(e.target.checked)}
+          />
+          <span>{t('Auf diesem Gerät merken')}</span>
+        </label>
+      )}
       {error && (
         <p className="form-error" role="alert">
           {error}
@@ -374,7 +406,15 @@ function TwoFactor({
   );
 }
 
-function NewDevice({ onBack, onDone }: { onBack: () => void; onDone: (step: LoginStep) => void }) {
+export function NewDevice<S extends { step: string }>({
+  actions,
+  onBack,
+  onDone,
+}: {
+  actions: CodeActions<S>;
+  onBack: () => void;
+  onDone: (step: S) => void;
+}) {
   useLanguage();
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -387,7 +427,7 @@ function NewDevice({ onBack, onDone }: { onBack: () => void; onDone: (step: Logi
         setBusy(true);
         setError(null);
         try {
-          const next = await loginNewDevice(code);
+          const next = await actions.newDevice(code);
           if (next.step === 'new-device') setError(t('Der Code wurde nicht angenommen.'));
           else onDone(next);
         } catch (e) {

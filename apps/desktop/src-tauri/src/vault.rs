@@ -47,7 +47,7 @@ pub struct Failure {
 }
 
 impl Failure {
-    fn new(kind: &'static str, message: impl Into<String>) -> Self {
+    pub(crate) fn new(kind: &'static str, message: impl Into<String>) -> Self {
         Failure {
             kind,
             message: message.into(),
@@ -189,7 +189,7 @@ impl VaultState {
         }
     }
 
-    fn touch(&self) {
+    pub(crate) fn touch(&self) {
         *self.last_activity.lock() = Instant::now();
     }
 
@@ -197,7 +197,7 @@ impl VaultState {
         Device::this_system(self.storage.device_id())
     }
 
-    fn client(&self, server: Server) -> Result<Client> {
+    pub(crate) fn client(&self, server: Server) -> Result<Client> {
         Ok(Client::new(server, self.device())?)
     }
 
@@ -209,7 +209,7 @@ impl VaultState {
             .ok_or_else(|| Failure::new("logged-out", "No account on this device."))
     }
 
-    fn account(&self, id: &str) -> Result<Account> {
+    pub(crate) fn account(&self, id: &str) -> Result<Account> {
         self.accounts
             .lock()
             .iter()
@@ -218,7 +218,7 @@ impl VaultState {
             .ok_or_else(|| Failure::new("logged-out", "No such account on this device."))
     }
 
-    fn active_account(&self) -> Result<(String, Account)> {
+    pub(crate) fn active_account(&self) -> Result<(String, Account)> {
         let id = self.active_id()?;
         let account = self.account(&id)?;
         Ok((id, account))
@@ -270,6 +270,30 @@ impl VaultState {
         let mut guard = self.unlocked.write();
         let unlocked = guard.get_mut(&id).ok_or_else(Failure::locked)?;
         f(unlocked)
+    }
+}
+
+/// For moving a vault in from Bitwarden (`moving`).
+impl VaultState {
+    pub(crate) fn storage(&self) -> &Storage {
+        &self.storage
+    }
+
+    /// The user key of an open account.
+    pub(crate) fn user_key_of(&self, id: &str) -> Result<SymmetricKey> {
+        self.unlocked
+            .read()
+            .get(id)
+            .map(|unlocked| unlocked.user_key.clone())
+            .ok_or_else(Failure::locked)
+    }
+
+    /// Whether an open account's server offers one of UwULock's features.
+    pub(crate) fn offers(&self, id: &str, feature: &str) -> bool {
+        self.unlocked
+            .read()
+            .get(id)
+            .is_some_and(|unlocked| unlocked.has(feature))
     }
 }
 
@@ -404,7 +428,7 @@ pub struct ServerInput {
 }
 
 impl ServerInput {
-    fn resolve(&self) -> Result<Server> {
+    pub(crate) fn resolve(&self) -> Result<Server> {
         match self.kind.as_str() {
             "bitwarden-us" => Ok(Server::BitwardenUs),
             "bitwarden-eu" => Ok(Server::BitwardenEu),
@@ -438,7 +462,7 @@ fn derive(password: &str, email: &str, kdf: Kdf) -> Result<Zeroizing<[u8; 32]>> 
     Ok(crypto::master_key(password, email, kdf)?)
 }
 
-async fn derive_off_thread(
+pub(crate) async fn derive_off_thread(
     password: Zeroizing<String>,
     email: String,
     kdf: Kdf,
@@ -1080,7 +1104,7 @@ async fn sync(app: &AppHandle) -> Result<()> {
     sync_account(app, &id).await
 }
 
-async fn sync_account(app: &AppHandle, id: &str) -> Result<()> {
+pub(crate) async fn sync_account(app: &AppHandle, id: &str) -> Result<()> {
     let state = app.state::<VaultState>();
     // One sync per account at a time.
     if !state.syncing.lock().insert(id.to_string()) {
@@ -1109,7 +1133,7 @@ async fn sync_account(app: &AppHandle, id: &str) -> Result<()> {
 
 /// A token this account can use right now, renewed from the refresh token
 /// when the old one is about to run out.
-async fn access_token(state: &VaultState, id: &str) -> Result<Zeroizing<String>> {
+pub(crate) async fn access_token(state: &VaultState, id: &str) -> Result<Zeroizing<String>> {
     let account = state.account(id)?;
     let (user_key, access) = {
         let unlocked = state.unlocked.read();
@@ -1275,7 +1299,7 @@ fn now() -> u64 {
 
 /// The moment, as Bitwarden writes dates: `2026-09-23T12:30:00.000Z`. Saved
 /// items carry one, for the password history and the trash.
-fn iso_now() -> String {
+pub(crate) fn iso_now() -> String {
     let since = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default();
