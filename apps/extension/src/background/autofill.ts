@@ -39,7 +39,7 @@ import * as clipboard from './clipboard';
 import { changed } from './events';
 import * as session from './session';
 import { settings, updateSettings } from './settings';
-import { session as sessionStore, setSession } from './store';
+import { activeAccount, session as sessionStore, setSession } from './store';
 import * as vault from './vault';
 import { callJson } from './wasm';
 
@@ -125,6 +125,7 @@ export async function pageInfo(sender: Sender): Promise<PageInfo> {
     inlineMenu: config.inlineMenu && isFillableUrl(url),
     savePrompt: config.savePrompt && isFillableUrl(url),
     language: resolveLanguage(config.language),
+    uwuFeatures: unlocked ? ((await activeAccount())?.uwu?.features ?? []) : [],
   };
 }
 

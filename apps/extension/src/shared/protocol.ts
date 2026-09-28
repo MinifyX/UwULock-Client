@@ -54,6 +54,8 @@ export type PageInfo = {
   /** Offer to save or update logins after a form was sent. */
   savePrompt: boolean;
   language: 'de' | 'en';
+  /** UwULock Server's own features the account's server offers (see `Status.uwu`); empty elsewhere. */
+  uwuFeatures: string[];
 };
 
 export type LoginValues = {

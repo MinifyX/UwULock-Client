@@ -42,6 +42,12 @@ vi.mock('../src/background/settings', () => ({
   updateSettings: async () => undefined,
 }));
 
+vi.mock('../src/background/store', () => ({
+  activeAccount: async () => ({ id: 'user-1', uwu: null }),
+  session: async () => undefined,
+  setSession: async () => undefined,
+}));
+
 vi.mock('../src/background/clipboard', () => ({ copy: async () => undefined }));
 vi.mock('../src/background/events', () => ({ changed: () => undefined }));
 
