@@ -25,16 +25,24 @@ that is tested without a window.
                                                        (identity + api)
 ```
 
-The work is split in two crates:
+The work is split in three crates:
 
 - **`uwulock-core`** — Bitwarden's crypto and data formats, without a network:
   master key, encrypted values and files, Send keys, key pairs and passkey key
   sets, fingerprint phrases, the sync format (`wire`), the decrypted vault,
-  TOTP, the password generator, and the shared `Error`. No HTTP, no disk.
+  TOTP, passkeys that sign in (`passkey`: Bitwarden's `fido2Credentials`, a
+  WebAuthn authenticator's data and signatures), the password and passphrase
+  generator, and the shared `Error`. No HTTP, no disk.
 - **`uwulock-bitwarden`** — the HTTP side (`api`): prelogin, login, two-step
   login, token refresh, sync, saving. It re-exports `uwulock-core` under its
   old paths (`uwulock_bitwarden::crypto`, `::vault`, …), so the desktop app
   only depends on this one.
+- **`uwulock-wasm`** — `uwulock-core` compiled to WebAssembly for the browser
+  extension's background worker: unlocking (master password, PIN, the kept
+  user key), the vault as the web vault shows it, autofill values, and
+  passkeys made and used. Everything in and out as JSON text; the keys stay
+  in the module's memory until it is locked.
+  `apps/extension/scripts/build-wasm.mjs` builds it.
 
 Why the split: the web vault of UwULock-Server will run `uwulock-core`
 compiled to WebAssembly (`wasm32-unknown-unknown`) in the browser — the same
@@ -94,13 +102,13 @@ All RustCrypto, in `crates/uwulock-core/src/crypto.rs`:
 | Passkey unlock    | PRF output stretched like a master key; key set of user key, public and private key (`PrfKeySet`)       |
 | Fingerprint       | SHA-256(public key), HKDF-Expand with the email or user id → five words of EFF's long list              |
 
-`crates/uwulock-core/tests/vectors.rs` checks the master key, hash, stretching, a legacy user
+`crates/uwulock-core/tests/integration/vectors.rs` checks the master key, hash, stretching, a legacy user
 key, shareable and Send keys, a Send, two attachments and a fingerprint phrase against the known
 answers in Bitwarden's SDK (`bitwarden/sdk-internal`). The SDK has none for a passkey's key set, so
 that test opens one made with Python's `cryptography` the way Bitwarden's web vault makes it.
 The desktop app doesn't use files, Sends, passkeys or handing over yet; the web vault of
 UwULock-Server does.
-`crates/uwulock-bitwarden/tests/flow.rs` runs the whole way — prelogin, two-step login, remembered
+`crates/uwulock-bitwarden/tests/integration/flow.rs` runs the whole way — prelogin, two-step login, remembered
 device, refresh, revoked session, sync, every item type, organisations, item
 keys — against a toy server that encrypts its vault the way Bitwarden's apps
 do.
@@ -154,6 +162,53 @@ Three rules keep a save from costing anything:
 What comes back from the server goes straight into the cached sync
 (`patch_cache`), so the list and the details are right without waiting for the
 next sync.
+
+## The browser extension
+
+`apps/extension` is a Manifest V3 extension for Chromium and Firefox, one
+source and two packages (`scripts/build.mjs`; the manifests differ only in the
+background: a service worker plus an offscreen document for the clipboard in
+Chromium, an event page in Firefox). It is a Bitwarden client of its own —
+client `browser`, a device of the account — and needs neither the desktop app
+nor UwULock Server's extras.
+
+```
+ popup · passkey window ──┐                 ┌── content script (every frame)
+ (React, desktop styles)  │ runtime         │   forms, inline menu, save bar,
+                          ▼ messages        ▼   filling — closed shadow DOM
+            background (service worker / event page)
+            session.ts  login, 2FA, unlock, PIN, lock, accounts
+            vault.ts    sync, cache, saving   live.ts  notification hub
+            autofill.ts which frame may have what, save prompts
+            passkeys.ts WebAuthn provider      menus.ts context menu, shortcut
+                          │
+                 crates/uwulock-wasm (keys, crypto, vault)
+                          │
+            fetch / WebSocket ──▶ UwULock Server · Vaultwarden · Bitwarden
+
+ page/webauthn.ts (MAIN world, https) ⇄ content/bridge.ts ⇄ background
+```
+
+- **Keys** live in the WebAssembly module's memory. A service worker is ended
+  after half a minute without work, so while the vault is unlocked the user
+  key is also in `storage.session` (memory only, closed to content scripts),
+  and the next event opens the vault again from it and the cached sync
+  (IndexedDB, still encrypted). `storage.local` has the accounts: server,
+  address, KDF, the user key as the server wraps it, the tokens.
+- **Content scripts** ask with `content:*` messages and learn names only. The
+  values of one item go to a frame after somebody picked it, and only if the
+  item matches that frame's own address (the sender's URL, never anything the
+  message says). A pick in the popup, the context menu or the shortcut is an
+  offer to every frame of the tab; each frame claims it and is judged on its
+  own address.
+- **Passkeys**: a script in the page's own world replaces
+  `navigator.credentials.create/get`, hands the options to the bridge, and
+  the background checks the relying party against the frame's origin, asks in
+  a window of its own, and signs with the passkey from the vault
+  (`uwulock-core::passkey`). Anything it doesn't answer goes to the browser.
+- **UwULock Server's extras** are looked up at login (`GET /uwu/v1/info`,
+  kept per account as `uwu.features`): a feature appears when the server lists
+  it, so Vaultwarden and Bitwarden see a plain Bitwarden client.
 
 ## Suite parts
 

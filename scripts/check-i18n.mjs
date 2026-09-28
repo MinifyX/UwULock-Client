@@ -1,44 +1,50 @@
-// Every German string the app translates has an English one.
+// Every German string the apps translate has an English one.
 //
 //   node scripts/check-i18n.mjs
 //
-// Finds the string literals passed to t() and N_() in the desktop app and
-// checks the English catalogue (apps/desktop/src/i18n/en/*.json)
-// has each of them. Also reports a German string with two different English
-// translations in different catalogue files. Exits non-zero on a problem.
+// Finds the string literals passed to t() and N_() in the desktop app and the
+// browser extension and checks each app's English catalogue
+// (apps/<app>/src/i18n/en/*.json) has each of them. Also reports a German
+// string with two different English translations in different catalogue files.
+// The extension shows a few of the desktop app's components, so its strings
+// may also come from the desktop catalogue. Exits non-zero on a problem.
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const sources = [join(root, 'apps/desktop/src')];
-const catalogue = join(root, 'apps/desktop/src/i18n/en');
 
 const files = (dir) =>
   readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);
-    if (statSync(path).isDirectory()) return name === 'i18n' ? [] : files(path);
+    if (statSync(path).isDirectory()) return name === 'i18n' || name === 'wasm' ? [] : files(path);
     return /\.(ts|tsx)$/.test(name) ? [path] : [];
   });
 
-const english = new Map();
 const problems = [];
-for (const name of readdirSync(catalogue).filter((n) => n.endsWith('.json'))) {
-  const entries = JSON.parse(readFileSync(join(catalogue, name), 'utf8'));
-  for (const [german, translated] of Object.entries(entries)) {
-    if (typeof translated !== 'string' || !translated.trim()) {
-      problems.push(`${name}: empty translation for ${JSON.stringify(german)}`);
-      continue;
+
+function catalogue(dir) {
+  const english = new Map();
+  for (const name of readdirSync(dir).filter((n) => n.endsWith('.json'))) {
+    const entries = JSON.parse(readFileSync(join(dir, name), 'utf8'));
+    for (const [german, translated] of Object.entries(entries)) {
+      if (typeof translated !== 'string' || !translated.trim()) {
+        problems.push(
+          `${relative(root, dir)}/${name}: empty translation for ${JSON.stringify(german)}`,
+        );
+        continue;
+      }
+      const known = english.get(german);
+      if (known && known.text !== translated) {
+        problems.push(
+          `${JSON.stringify(german)} is ${JSON.stringify(known.text)} in ${known.file} but ${JSON.stringify(translated)} in ${name}`,
+        );
+      }
+      english.set(german, { text: translated, file: name });
     }
-    const known = english.get(german);
-    if (known && known.text !== translated) {
-      problems.push(
-        `${JSON.stringify(german)} is ${JSON.stringify(known.text)} in ${known.file} but ${JSON.stringify(translated)} in ${name}`,
-      );
-    }
-    english.set(german, { text: translated, file: name });
   }
+  return english;
 }
 
 // t('…'), t("…"), t(`…`) without ${}, and the same for N_().
@@ -51,16 +57,23 @@ const unescape = (text) =>
     return { n: '\n', t: '\t' }[escape] ?? escape;
   });
 
+const desktop = catalogue(join(root, 'apps/desktop/src/i18n/en'));
+const extension = catalogue(join(root, 'apps/extension/src/i18n/en'));
+const APPS = [
+  { name: 'desktop', sources: join(root, 'apps/desktop/src'), english: desktop },
+  { name: 'extension', sources: join(root, 'apps/extension/src'), english: extension },
+];
+
 let used = 0;
-const seen = new Set();
-for (const dir of sources) {
-  for (const file of files(dir)) {
+const seen = new Map(APPS.map((app) => [app.name, new Set()]));
+for (const app of APPS) {
+  for (const file of files(app.sources)) {
     const text = readFileSync(file, 'utf8');
     for (const match of text.matchAll(call)) {
       const german = unescape(match[1] ?? match[2] ?? match[3] ?? '');
       used += 1;
-      seen.add(german);
-      if (!english.has(german)) {
+      seen.get(app.name).add(german);
+      if (!app.english.has(german)) {
         const line = text.slice(0, match.index).split('\n').length;
         problems.push(`${relative(root, file)}:${line} has no English: ${JSON.stringify(german)}`);
       }
@@ -68,10 +81,12 @@ for (const dir of sources) {
   }
 }
 
-const unused = [...english.keys()].filter((german) => !seen.has(german));
-if (unused.length) {
-  console.warn(`${unused.length} English entries are not used any more:`);
-  for (const german of unused.slice(0, 20)) console.warn(`  ${JSON.stringify(german)}`);
+for (const app of APPS) {
+  const unused = [...app.english.keys()].filter((german) => !seen.get(app.name).has(german));
+  if (unused.length) {
+    console.warn(`${unused.length} English entries of the ${app.name} are not used any more:`);
+    for (const german of unused.slice(0, 20)) console.warn(`  ${JSON.stringify(german)}`);
+  }
 }
 
 if (problems.length) {
@@ -79,4 +94,5 @@ if (problems.length) {
   console.error(`\n✗ ${problems.length} translation problems`);
   process.exit(1);
 }
-console.log(`✓ ${seen.size} strings, ${used} uses, all with English`);
+const strings = [...seen.values()].reduce((sum, set) => sum + set.size, 0);
+console.log(`✓ ${strings} strings, ${used} uses, all with English`);

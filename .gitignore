@@ -6,6 +6,8 @@ dist/
 target/
 *.tsbuildinfo
 apps/*/src-tauri/gen/schemas/
+# The extension's crypto, built by apps/extension/scripts/build-wasm.mjs
+apps/extension/src/wasm/pkg/
 
 # Local environment
 .env
@@ -57,3 +59,6 @@ apps/desktop/e2e/shots/
 # Vault exports can carry real data. The app keeps its own files in the
 # data folder, never in here; the toy server makes up its vault.
 *.csv
+
+# The extension's end-to-end screenshots
+apps/extension/e2e/shots/

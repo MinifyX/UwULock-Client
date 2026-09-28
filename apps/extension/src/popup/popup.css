@@ -1,0 +1,514 @@
+/*
+ * The popup and the passkey window: the desktop app's tokens and components (tokens.css,
+ * app.css, vault.css), laid out for a window 380 pixels wide. No raw colours in here either.
+ */
+
+html,
+body {
+  width: 380px;
+  height: 580px;
+}
+
+/* The passkey window and a popup opened as a window of its own size themselves. */
+html:has(.prompt),
+html:has(.popup[data-window]) {
+  width: 100%;
+  height: 100%;
+}
+
+html:has(.prompt) body {
+  width: 100%;
+  height: 100%;
+}
+
+.popup {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--uwu-canvas);
+}
+
+.popup-loading {
+  background:
+    radial-gradient(circle at 50% 30%, var(--uwu-pink-tint) 0, transparent 50%), var(--uwu-canvas);
+}
+
+.popup-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 10px 8px 14px;
+  border-bottom: 1px solid var(--uwu-hairline);
+  background: var(--uwu-surface);
+}
+
+.popup-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.popup-brand .wordmark span {
+  color: var(--uwu-pink);
+}
+
+.popup-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.popup-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.popup-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-top: 1px solid var(--uwu-hairline);
+  background: var(--uwu-surface);
+}
+
+.popup-tabs button {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 7px 4px 6px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--uwu-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.popup-tabs button[aria-current='page'] {
+  color: var(--uwu-pink-ink);
+  background: var(--uwu-pink-tint);
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 2px 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--uwu-muted);
+}
+
+.chip-warning {
+  color: var(--uwu-alarm);
+  border-color: color-mix(in srgb, var(--uwu-alarm) 45%, transparent);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.item-list.plain {
+  flex: none;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  display: grid;
+  align-content: start;
+  gap: 2px;
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.row-actions .icon-button:hover:not(:disabled) {
+  color: var(--uwu-pink);
+  background: var(--uwu-pink-tint);
+}
+
+.fill-button {
+  padding: 5px 10px;
+  font-size: 12px;
+  border-color: var(--uwu-pink-solid);
+  background: var(--uwu-pink-solid);
+  color: var(--uwu-on-pink);
+}
+
+.fill-button:hover:not(:disabled) {
+  background: var(--uwu-pink-solid);
+  filter: brightness(1.06);
+}
+
+.add-here,
+.add-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  width: max-content;
+  color: var(--uwu-pink-ink);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.add-here {
+  border-style: dashed;
+}
+
+a.add-line {
+  padding: 4px 10px;
+}
+
+.empty-block {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 6px 0;
+}
+
+.empty-scene.small {
+  width: 170px;
+}
+
+.empty-line {
+  margin: 0;
+  color: var(--uwu-muted);
+  text-align: center;
+  font-size: 13px;
+}
+
+.pending-save {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--uwu-radius-card);
+  border: 1px solid var(--uwu-pink-tint-strong);
+  background: var(--uwu-pink-tint);
+}
+
+.pending-save p {
+  margin: 0;
+  font-weight: 600;
+}
+
+.vault-tools {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.vault-tools .select {
+  max-width: 140px;
+}
+
+/* ── An item ───────────────────────────────────────────── */
+
+.back-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: -4px -4px 0;
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 4px;
+}
+
+.flip {
+  transform: scaleX(-1);
+}
+
+.detail-view .detail-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.detail-view .detail-title {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.detail-view .detail-title h2 {
+  margin: 0;
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+
+.detail-cards {
+  display: grid;
+  gap: 10px;
+}
+
+.detail-view .detail-row {
+  min-height: 48px;
+  padding: 7px 8px 7px 14px;
+}
+
+.detail-view .detail-actions {
+  opacity: 1;
+}
+
+.fill-row {
+  justify-content: stretch;
+}
+
+button.wide {
+  width: 100%;
+}
+
+.notes-text {
+  flex: 1;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.detail-foot {
+  margin: 0;
+  font-size: 11.5px;
+}
+
+.history-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  margin: 4px 6px;
+}
+
+/* ── Editing ───────────────────────────────────────────── */
+
+.editor .segmented.wide {
+  width: 100%;
+}
+
+.editor .segmented.wide button {
+  flex: 1;
+  padding: 6px 4px;
+}
+
+.editor textarea {
+  font: inherit;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--uwu-radius-control);
+  border: 1px solid var(--uwu-border);
+  background: var(--uwu-canvas);
+  color: var(--uwu-ink);
+  resize: vertical;
+}
+
+.inline-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.inline-controls .password-input {
+  flex: 1;
+}
+
+.uri-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.uri-row .select {
+  max-width: 120px;
+}
+
+.uri-row input {
+  font: inherit;
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: var(--uwu-radius-control);
+  border: 1px solid var(--uwu-border);
+  background: var(--uwu-canvas);
+  color: var(--uwu-ink);
+}
+
+.add-field {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+/* ── Generator and settings ────────────────────────────── */
+
+.generator .segmented.wide,
+.login .segmented.wide {
+  width: 100%;
+}
+
+.generator .segmented.wide button,
+.login .segmented.wide button {
+  flex: 1;
+}
+
+.generated {
+  font-size: 16px;
+}
+
+.setting-list {
+  display: grid;
+  gap: 0;
+  padding: 2px 12px;
+  border-radius: var(--uwu-radius-card);
+  border: 1px solid var(--uwu-hairline);
+  background: var(--uwu-surface);
+}
+
+.setting-list .setting-row {
+  padding: 9px 0;
+}
+
+.setting-list .setting-row:last-child {
+  border-bottom: 0;
+}
+
+.setting-text {
+  display: grid;
+}
+
+.setting-row > .setting-label {
+  flex: 1;
+}
+
+.setting-list .field {
+  padding: 8px 0;
+}
+
+.setting-list .select {
+  max-width: 170px;
+}
+
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.history-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.history-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  overflow-wrap: anywhere;
+}
+
+.pin-form {
+  padding: 8px 0;
+}
+
+.about-line {
+  margin: 4px 0 0;
+  font-size: 12px;
+  text-align: center;
+}
+
+.about-line a {
+  color: inherit;
+}
+
+/* ── Login and lock ────────────────────────────────────── */
+
+.login-head {
+  display: grid;
+  justify-items: center;
+  background: radial-gradient(circle at 50% 50%, var(--uwu-pink-tint) 0, transparent 60%);
+}
+
+.login-scene {
+  width: 200px;
+  margin: -8px 0 -14px;
+}
+
+.lock-view {
+  justify-content: center;
+}
+
+.lock-view .lock-scene {
+  width: 190px;
+  align-self: center;
+  margin: 0;
+}
+
+.lock-account {
+  margin: -4px 0 0;
+  display: block;
+}
+
+.lock-more {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
+
+/* ── The passkey window ────────────────────────────────── */
+
+.prompt {
+  padding: 16px;
+  gap: 12px;
+}
+
+.prompt-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  color: var(--uwu-pink);
+}
+
+.prompt-head .card-title {
+  color: var(--uwu-ink);
+  margin: 0 0 4px;
+}
+
+.prompt-head p {
+  margin: 0;
+}
+
+.prompt-origin {
+  margin-top: 4px !important;
+  font-size: 12px;
+  color: var(--uwu-muted);
+  overflow-wrap: anywhere;
+}
+
+.prompt-actions {
+  margin-top: auto;
+}
+
+.toast {
+  bottom: 70px;
+}

@@ -1,0 +1,9 @@
+<form id="login" action="https://login.example.com/session" method="post">
+  <input type="search" name="q" placeholder="Suche" />
+  <label for="user">Benutzername</label>
+  <input id="user" name="username" type="text" autocomplete="username" />
+  <label for="pass">Passwort</label>
+  <input id="pass" name="password" type="password" autocomplete="current-password" />
+  <input type="hidden" name="csrf" value="token" />
+  <button type="submit">Anmelden</button>
+</form>

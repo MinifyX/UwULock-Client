@@ -1,9 +1,7 @@
 //! The whole way against the toy server: prelogin, login with two-step login,
 //! remembering the device, refresh, sync, and opening every kind of item.
 
-mod support;
-
-use support::toy_server::{self, Options, ToyServer};
+use crate::support::toy_server::{self, Options, ToyServer};
 use uwulock_bitwarden::api::{parse_sync, LoginOutcome, PasswordLogin, TwoFactorAnswer};
 use uwulock_bitwarden::crypto::{self, decrypt_user_key, EncString};
 use uwulock_bitwarden::totp::Totp;

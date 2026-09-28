@@ -1,0 +1,30 @@
+<form id="pay" action="https://shop.example.com/pay">
+  <label for="holder">Karteninhaber</label>
+  <input id="holder" name="holder" />
+  <label for="cc">Kartennummer</label>
+  <input id="cc" name="cardnumber" inputmode="numeric" />
+  <select id="month" name="exp_month" aria-label="Ablaufmonat">
+    <option value="">Monat</option>
+    <option value="1">Januar</option>
+    <option value="2">Februar</option>
+    <option value="3">März</option>
+    <option value="4">April</option>
+    <option value="5">Mai</option>
+    <option value="6">Juni</option>
+    <option value="7">Juli</option>
+    <option value="8">August</option>
+    <option value="9">September</option>
+    <option value="10">Oktober</option>
+    <option value="11">November</option>
+    <option value="12">Dezember</option>
+  </select>
+  <select id="year" name="exp_year" aria-label="Ablaufjahr">
+    <option value="">Jahr</option>
+    <option value="2026">2026</option>
+    <option value="2027">2027</option>
+    <option value="2028">2028</option>
+    <option value="2029">2029</option>
+  </select>
+  <input id="cvc" name="cvc" type="password" maxlength="4" placeholder="Prüfnummer" />
+  <button type="submit">Jetzt bezahlen</button>
+</form>

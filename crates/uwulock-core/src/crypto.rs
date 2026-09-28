@@ -699,9 +699,15 @@ pub fn open_prf_key_set(
 // ── Fingerprint phrases ────────────────────────────────────
 
 /// EFF's long word list (<https://www.eff.org/dice>, CC BY 3.0 US), one word a
-/// line, in its order: 7776 words.
+/// line, in its order: 7776 words. Passphrases come from it too
+/// ([`crate::generator::passphrase`]).
 const WORDS: &str = include_str!("eff_large_wordlist.txt");
-const WORD_COUNT: u32 = 7776;
+pub(crate) const WORD_COUNT: u32 = 7776;
+
+/// The word at `index` of the list, counted from 0.
+pub(crate) fn word(index: usize) -> &'static str {
+    WORDS.lines().nth(index).expect("the list has 7776 words")
+}
 
 /// Bitwarden's fingerprint phrase for a public key (SPKI DER): five words
 /// joined with `-`, which both sides read out to check they see the same key
@@ -727,10 +733,7 @@ pub fn fingerprint(material: &str, public_key: &[u8]) -> String {
                 *byte = (part / WORD_COUNT) as u8;
                 remainder = part % WORD_COUNT;
             }
-            WORDS
-                .lines()
-                .nth(remainder as usize)
-                .expect("the list has 7776 words")
+            word(remainder as usize)
         })
         .collect();
     words.join("-")

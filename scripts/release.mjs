@@ -2,8 +2,9 @@
 // Linux, from the machine that holds the update signing key.
 //
 //   pnpm release                  fetch what CI built for the tag (Windows x64
-//                                 and ARM, macOS, Linux), sign what the updater
-//                                 runs, check everything, publish it
+//                                 and ARM, macOS, Linux, the browser extension),
+//                                 sign what the updater runs, check everything,
+//                                 publish it
 //   pnpm release --build-windows  the same, but build the Windows x64 setup here
 //                                 (on Windows) instead of taking CI's
 //   pnpm release --no-build       take the Windows x64 setup already in
@@ -124,6 +125,10 @@ const PLATFORMS = [
     file: 'UwULock-update-linux-x64.AppImage',
     sign: { 'linux-x86_64': `UwULock-Setup-${version}-linux-x64.AppImage` },
   },
+  // The browser extension (.github/workflows/extension.yml, called by installers.yml): files to
+  // install by hand, nothing an updater runs, so nothing to sign.
+  { artifact: 'extension', file: 'UwULock-extension-chromium.zip' },
+  { artifact: 'extension', file: 'UwULock-extension-firefox.xpi' },
 ].filter((entry) => !windowsOnly || entry.file === windowsName);
 
 console.log(`\n▸ Checking UwULock ${version}`);
@@ -177,7 +182,7 @@ try {
   const files = new Map(localWindows ? [[windowsName, windowsSetup]] : []);
   if (!windowsOnly) {
     console.log(
-      `\n▸ Fetching what CI built for this tag: ${localWindows ? '' : 'Windows x64, '}Windows ARM, macOS, Linux`,
+      `\n▸ Fetching what CI built for this tag: ${localWindows ? '' : 'Windows x64, '}Windows ARM, macOS, Linux, the browser extension`,
     );
     const ci = join(work, 'ci');
     const run = await ciRun(head);
@@ -358,6 +363,16 @@ function releaseBody(aurLive) {
       'Linux portable',
       `${code('UwULock-linux-x64-portable.tar.gz')} · ARM: ${code('…-arm64-portable.tar.gz')}`,
     ],
+    [
+      'Browser-Erweiterung: Chrome, Edge, Brave, Vivaldi, Opera',
+      'Browser extension: Chrome, Edge, Brave, Vivaldi, Opera',
+      code('UwULock-extension-chromium.zip'),
+    ],
+    [
+      'Browser-Erweiterung: Firefox (unsigniert)',
+      'Browser extension: Firefox (unsigned)',
+      code('UwULock-extension-firefox.xpi'),
+    ],
   ].filter(([, , files]) => {
     const named = [...files.matchAll(/`(UwULock-[^`]+)`/g)].map((m) => m[1]);
     return named.length === 0 ? !windowsOnly : named.every(has);
@@ -365,6 +380,8 @@ function releaseBody(aurLive) {
   const table = (column) =>
     ['| | |', '|---|---|', ...rows.map((row) => `| ${row[column]} | ${row[2]} |`)].join('\n');
   const mac = has('UwULock-macos-universal.dmg');
+  const extension = has('UwULock-extension-chromium.zip');
+  const extensionGuide = `https://github.com/${REPOSITORY}/blob/main/docs/extension.md`;
   const de = [
     table(0),
     'Windows: warnt es („Der Computer wurde durch Windows geschützt“), **Weitere Informationen → Trotzdem ausführen**.',
@@ -378,6 +395,11 @@ function releaseBody(aurLive) {
       : [
           'Linux: `.deb` und `.rpm` installieren systemweit und aktualisieren sich selbst (fragt nach dem Administrator-Passwort); die portable Version einfach entpacken und `./UwULock/uwulock` starten, sie aktualisiert sich nicht.',
         ]),
+    ...(extension
+      ? [
+          `Browser-Erweiterung: die \`.zip\` entpacken und unter \`chrome://extensions\` im Entwicklermodus mit **Entpackte Erweiterung laden** hinzufügen. Die \`.xpi\` ist nicht von Mozilla signiert: dauerhaft nur in Firefox Developer Edition, Nightly oder LibreWolf, sonst vorübergehend über \`about:debugging\` ([Anleitung](${extensionGuide})).`,
+        ]
+      : []),
   ];
   const en = [
     table(1),
@@ -392,6 +414,11 @@ function releaseBody(aurLive) {
       : [
           "Linux: the `.deb` and `.rpm` install system-wide and update themselves (asking for the administrator password); the portable one you just unpack and start with `./UwULock/uwulock`, and it doesn't update itself.",
         ]),
+    ...(extension
+      ? [
+          `Browser extension: unpack the \`.zip\` and add it at \`chrome://extensions\` in developer mode with **Load unpacked**. The \`.xpi\` isn't signed by Mozilla: it stays installed only in Firefox Developer Edition, Nightly or LibreWolf, elsewhere temporarily through \`about:debugging\` ([guide](${extensionGuide})).`,
+        ]
+      : []),
   ];
   return [
     `## Deutsch\n\n${notes.de}\n`,

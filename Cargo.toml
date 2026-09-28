@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "crates/uwulock-core",
   "crates/uwulock-bitwarden",
+  "crates/uwulock-wasm",
   "apps/desktop/src-tauri",
   "apps/setup/src-tauri",
 ]
@@ -35,6 +36,8 @@ base64 = "0.22"
 cbc = { version = "0.1", features = ["alloc"] }
 hkdf = "0.12"
 hmac = "0.12"
+# Passkeys that sign in: ECDSA on P-256, keys as PKCS#8.
+p256 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
 pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 rand = "0.8"
 rsa = { version = "0.9", features = ["sha1", "sha2"] }
@@ -44,10 +47,40 @@ subtle = "2"
 zeroize = { version = "1", features = ["derive"] }
 windows-sys = "0.61"
 
+# Debug builds for tests: line numbers for backtraces, no debug info for dependencies — a
+# smaller target/ and faster linking. Optimised are only the crates that do the heavy maths,
+# so a test that derives a master key or makes an RSA key doesn't take seconds.
 [profile.dev]
-opt-level = 1
+debug = "line-tables-only"
 
 [profile.dev.package."*"]
+debug = false
+
+[profile.dev.package.uwulock-core]
+opt-level = 3
+
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3
+
+[profile.dev.package.pbkdf2]
+opt-level = 3
+
+[profile.dev.package.sha2]
+opt-level = 3
+
+[profile.dev.package.hmac]
+opt-level = 3
+
+[profile.dev.package.aes]
+opt-level = 3
+
+[profile.dev.package.rsa]
+opt-level = 3
+
+[profile.dev.package.num-bigint-dig]
 opt-level = 3
 
 [profile.release]

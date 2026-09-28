@@ -6,7 +6,7 @@
 
 <p align="center">
   The password manager I build for myself, because every other one annoyed me. (◕‿◕✿)<br/>
-  Vaultwarden · Bitwarden · TOTP · Windows, macOS and Linux, first beta
+  Vaultwarden · Bitwarden · TOTP · Windows, macOS, Linux and a browser extension, beta
 </p>
 
 <p align="center">
@@ -96,6 +96,20 @@ Download the file for your system from the newest
 **Install** — no admin prompt. The [install guide](docs/install.md) has the
 details. [Auf Deutsch](docs/install.md#uwulock-installieren).
 
+## Browser extension
+
+UwULock for Chrome, Edge, Brave, Vivaldi, Opera and Firefox, from one code base: log in (with
+two-step login), unlock with the master password or a PIN, the page's logins first, copy and
+one-time codes, create and edit items, a generator — and filling from a button in the login
+field, the context menu or Ctrl+Shift+L, a bar that offers to save what you signed in with, and
+passkeys kept in your vault in Bitwarden's format. It speaks to UwULock Server, Vaultwarden and
+Bitwarden directly; the crypto is uwulock-core, compiled to WebAssembly.
+
+It isn't in any store: `UwULock-extension-chromium.zip` and `UwULock-extension-firefox.xpi` are on
+the [releases](https://github.com/MinifyX/UwULock-Client/releases). Chromium loads it in developer
+mode; the Firefox file is unsigned, so it stays installed only in Developer Edition, Nightly or
+LibreWolf and loads temporarily elsewhere. [How to install it](docs/extension.md).
+
 ## Project layout
 
 | Path                       | What lives there                                                            |
@@ -103,8 +117,10 @@ details. [Auf Deutsch](docs/install.md#uwulock-installieren).
 | `apps/desktop`             | The Tauri 2 app (React UI + Rust shell)                                     |
 | `apps/desktop/e2e`         | End-to-end run of the real app against a toy Vaultwarden                    |
 | `apps/setup`               | The installer, updater and uninstaller, for all three systems               |
+| `apps/extension`           | The browser extension for Chromium and Firefox (Manifest V3, React)         |
 | `crates/uwulock-core`      | Bitwarden's crypto and data formats, no network; also builds to WebAssembly |
 | `crates/uwulock-bitwarden` | Bitwarden's protocol over HTTP: login, two-step login, sync, saving         |
+| `crates/uwulock-wasm`      | uwulock-core as WebAssembly, for the browser extension                      |
 | `brand/`                   | Nyu as a padlock: the UwULock icon, symbol, mono symbol                     |
 | `docs/`                    | Vision, architecture, design, roadmap, install guide                        |
 | `release-notes/`           | What's new, per version                                                     |
@@ -140,6 +156,9 @@ cargo check -p uwulock-core --target wasm32-unknown-unknown   # the web vault's 
 node apps/desktop/e2e/run.mjs     # end to end, Windows
 ```
 
+The browser extension: `pnpm --filter @uwulock/extension wasm` (needs `wasm-bindgen-cli`
+0.2.129), then `… build`, `… test` and `… e2e` — see [the extension guide](docs/extension.md).
+
 `uwulock-core` is kept free of anything networked so the web vault of
 UwULock-Server can run it compiled to WebAssembly: the same crypto, checked
 against the same vectors from Bitwarden's SDK
@@ -152,6 +171,7 @@ The installer, with the app packed inside: `pnpm build:setup`. Releasing is
 ## Documentation
 
 - [Install guide](docs/install.md) — installing, updating, uninstalling, in English and German
+- [Browser extension](docs/extension.md) — what it does, installing it in Chromium and Firefox
 - [Konzept](KONZEPT.md) — the concept, in German
 - [Vision](docs/vision.md) — what I want UwULock to be and what it will never do
 - [Architecture](docs/architecture.md) — how the pieces fit together, and the crypto

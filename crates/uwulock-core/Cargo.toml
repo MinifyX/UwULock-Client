@@ -1,6 +1,6 @@
 [package]
 name = "uwulock-core"
-description = "Bitwarden's crypto and data formats, without a network: master key, encrypted values, the sync format, the decrypted vault, TOTP, the password generator"
+description = "Bitwarden's crypto and data formats, without a network: master key, encrypted values, the sync format, the decrypted vault, TOTP, passkeys, the password generator"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,6 +9,10 @@ rust-version.workspace = true
 
 # Nothing networked in here: this crate is also built for
 # wasm32-unknown-unknown, for the web vault of UwULock-Server.
+# No doc tests: the examples in the docs are prose, and each would be a binary to link.
+[lib]
+doctest = false
+
 [dependencies]
 aes.workspace = true
 argon2.workspace = true
@@ -16,6 +20,7 @@ base64.workspace = true
 cbc.workspace = true
 hkdf.workspace = true
 hmac.workspace = true
+p256.workspace = true
 pbkdf2.workspace = true
 rand.workspace = true
 rsa.workspace = true

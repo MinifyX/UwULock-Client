@@ -4,9 +4,7 @@
 //! Every check goes the long way round — save, sync again, decrypt — so it
 //! shows what the server really kept, not what UwULock thinks it sent.
 
-mod support;
-
-use support::toy_server::{self, Options, ToyServer};
+use crate::support::toy_server::{self, Options, ToyServer};
 use uwulock_bitwarden::api::parse_sync;
 use uwulock_bitwarden::crypto::{self, decrypt_user_key, EncString, SymmetricKey};
 use uwulock_bitwarden::vault::{Field, FieldKind, Item, LoginUri, Secret};

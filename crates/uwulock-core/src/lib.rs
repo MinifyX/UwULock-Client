@@ -5,17 +5,21 @@
 //! - [`wire`] — what the server sends, as it sends it
 //! - [`vault`] — the sync, decrypted: items, folders, collections
 //! - [`totp`] — codes for items with an authenticator key
-//! - [`generator`] — passwords
+//! - [`passkey`] — passkeys that sign in, in Bitwarden's format: a WebAuthn
+//!   authenticator's keys, authenticator data and signatures
+//! - [`generator`] — passwords and passphrases
 //!
 //! No HTTP, no disk, no clock that isn't passed in where it matters: the
-//! desktop app uses this through `uwulock-bitwarden`, and the web vault of
-//! UwULock-Server uses it compiled to WebAssembly (`wasm32-unknown-unknown`).
+//! desktop app uses this through `uwulock-bitwarden`; the browser extension
+//! (through `uwulock-wasm`) and the web vault of UwULock-Server use it
+//! compiled to WebAssembly (`wasm32-unknown-unknown`).
 //! There, [`totp::Totp::now`] can't be used (the standard clock panics in a
 //! browser); pass the time to [`totp::Totp::code_at`] instead, e.g.
 //! `Date.now() / 1000`.
 
 pub mod crypto;
 pub mod generator;
+pub mod passkey;
 pub mod totp;
 pub mod vault;
 pub mod wire;

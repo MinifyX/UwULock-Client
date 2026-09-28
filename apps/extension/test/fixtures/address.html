@@ -1,0 +1,23 @@
+<form id="address">
+  <label for="a-title">Anrede</label>
+  <select id="a-title" name="anrede">
+    <option value="">–</option>
+    <option value="frau">Frau</option>
+    <option value="herr">Herr</option>
+  </select>
+  <label for="a-first">Vorname</label><input id="a-first" name="vorname" />
+  <label for="a-last">Nachname</label><input id="a-last" name="nachname" />
+  <label for="a-company">Firma (optional)</label><input id="a-company" name="firma" />
+  <label for="a-street">Straße und Hausnummer</label><input id="a-street" name="strasse" />
+  <label for="a-zip">PLZ</label><input id="a-zip" name="plz" maxlength="5" />
+  <label for="a-city">Ort</label><input id="a-city" name="ort" />
+  <label for="a-country">Land</label>
+  <select id="a-country" name="land">
+    <option value="AT">Österreich</option>
+    <option value="DE">Deutschland</option>
+    <option value="CH">Schweiz</option>
+  </select>
+  <label for="a-phone">Telefon</label><input id="a-phone" name="telefon" type="tel" />
+  <label for="a-mail">E-Mail</label><input id="a-mail" name="email" type="email" />
+  <button type="submit">Weiter zur Zahlung</button>
+</form>

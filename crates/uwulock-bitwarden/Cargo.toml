@@ -7,6 +7,10 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+# No doc tests: the examples in the docs are prose, and each would be a binary to link.
+[lib]
+doctest = false
+
 [dependencies]
 uwulock-core.workspace = true
 base64.workspace = true

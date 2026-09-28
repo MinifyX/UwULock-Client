@@ -65,8 +65,9 @@ pub struct Login {
     pub totp: Option<Secret>,
     pub uris: Vec<LoginUri>,
     pub password_revision_date: Option<String>,
-    /// Passkeys stored with the login, as the server sent them. UwULock can't
-    /// use them yet, and hands them back untouched.
+    /// Passkeys stored with the login, as the server sent them: still
+    /// encrypted, under the item's key. [`crate::passkey::Passkey::open`]
+    /// reads one; a save hands them back as they are.
     pub passkeys: Option<Vec<serde_json::Value>>,
     pub autofill_on_page_load: Option<bool>,
 }

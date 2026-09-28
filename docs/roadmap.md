@@ -27,6 +27,14 @@ My wish list, roughly in order, without dates.
 
 ## 0.3 · The suite
 
+- [x] A browser extension for Chromium and Firefox, from one code base:
+      login and unlock (PIN too), the page's logins first, filling from the
+      field, the context menu and Ctrl+Shift+L, saving and updating what was
+      signed in with, passkeys in Bitwarden's format, live sync — straight to
+      UwULock Server, Vaultwarden or Bitwarden
+- [ ] The extension with UwULock Server's own extras: masked addresses, the
+      server's icons, file requests, sharing an item as a Send
+
 - UwUSSH takes SSH keys from UwULock, UwURDP takes logins, UwUMail account
   passwords — through a local, authenticated channel, one confirmation per
   use
