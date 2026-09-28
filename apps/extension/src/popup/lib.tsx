@@ -40,6 +40,15 @@ export function useStatus(): [Status | null, () => Promise<void>] {
   return [status, refresh];
 }
 
+/**
+ * Whether the account's server is a UwULock Server that offers `feature` (as its
+ * `/uwu/v1/info` lists it: `masked-addresses`, `icons`, `file-requests`, …). UwULock's own
+ * extras show only then; for Vaultwarden and Bitwarden this is always false.
+ */
+export function uwuFeature(status: Status | null, feature: string): boolean {
+  return Boolean(status?.uwu?.features.includes(feature));
+}
+
 let settingsCache: Settings | null = null;
 const settingsListeners = new Set<() => void>();
 

@@ -35,6 +35,7 @@ import {
   setSession,
   updateAccount,
 } from './store';
+import { uwuInfo } from './uwu';
 import * as vault from './vault';
 import { call } from './wasm';
 
@@ -368,7 +369,7 @@ async function loggedIn(pending: PendingLogin, body: Record<string, unknown>): P
   await saveAccount(next);
   await setLocal('activeAccount', id);
   await removeSession('pendingLogin');
-  next.uwu = await uwuInfo(next);
+  next.uwu = (await uwuInfo(next)) ?? null;
   await saveAccount(next);
   // The master key from the first step is still in the module — unless the background was
   // ended while somebody fetched their code. Then the vault stays locked until the password.
@@ -384,26 +385,6 @@ async function loggedIn(pending: PendingLogin, body: Record<string, unknown>): P
   }
   changed();
   return { step: 'done', status: await status() };
-}
-
-/**
- * UwULock Server says what it is at `/uwu/v1/info`; Bitwarden and Vaultwarden don't. Its own
- * features (masked addresses, icons, file requests, …) are offered only when it lists them.
- */
-async function uwuInfo(found: Account): Promise<Account['uwu']> {
-  if (found.server.kind !== 'self-hosted') return null;
-  try {
-    const info = lowerKeys(await anonymous(`${endpoints(found.server).web}/uwu/v1/info`));
-    if (typeof info.name !== 'string' || !info.name.startsWith('UwULock')) return null;
-    return {
-      version: typeof info.version === 'string' ? info.version : null,
-      features: Array.isArray(info.features)
-        ? info.features.filter((f): f is string => typeof f === 'string')
-        : [],
-    };
-  } catch {
-    return null;
-  }
 }
 
 async function requirePending(): Promise<PendingLogin> {

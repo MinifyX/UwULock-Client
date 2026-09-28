@@ -13,6 +13,7 @@ import { equivalentDomains, type EquivalentDomains } from '../shared/uri';
 import { changed } from './events';
 import { ApiError, failure, request } from './http';
 import * as live from './live';
+import { uwuInfo } from './uwu';
 import { type Account, cacheSync, updateAccount } from './store';
 import { call, callJson } from './wasm';
 
@@ -106,8 +107,10 @@ export async function sync(account: Account): Promise<void> {
     const profile = (body.profile ?? body.Profile) as Record<string, unknown> | undefined;
     const key = (profile?.key ?? profile?.Key) as string | undefined;
     const name = (profile?.name ?? profile?.Name) as string | undefined;
+    const uwu = await uwuInfo(account);
     const next = await updateAccount(account.id, {
       lastSync: Date.now(),
+      ...(uwu !== undefined ? { uwu } : {}),
       ...(key ? { protectedKey: key } : {}),
       ...(name !== undefined ? { name: name ?? null } : {}),
     });
