@@ -223,7 +223,8 @@ export type Version = {
 };
 
 export const itemVersions = (id: string) => invoke<Version[]>('item_versions', { id });
-export const revealVersionField = (id: string, versionId: string, field: string) =>
+/** Without a version: the item as it is now, named the same way. */
+export const revealVersionField = (id: string, versionId: string | null, field: string) =>
   invoke<string>('reveal_version_field', { id, versionId, field });
 export const restoreVersion = (id: string, versionId: string) =>
   invoke<void>('restore_version', { id, versionId });

@@ -859,18 +859,26 @@ pub(crate) async fn item_versions(
     })
 }
 
-/// One value of a version, for the eye in the comparison.
+/// One value of a version — or, with no `version_id`, of the item as it is
+/// now, named the same way (the authenticator key is its key here, not the
+/// current code) — for the eye in the comparison.
 #[tauri::command]
 pub(crate) fn reveal_version_field(
     state: State<'_, VaultState>,
     id: String,
-    version_id: String,
+    version_id: Option<String>,
     field: String,
 ) -> Result<String> {
     state.touch();
     let (account_id, _) = state.active_account()?;
     // The item's own re-prompt covers its versions.
-    prepare(&state, &account_id, &id)?;
+    let current = prepare(&state, &account_id, &id)?;
+    let missing = || Failure::new("not-found", "This version has no such value.");
+    let Some(version_id) = version_id else {
+        return version_value(&current, &field)
+            .map(|v| v.to_string())
+            .ok_or_else(missing);
+    };
     with(&state, &account_id, |u| {
         let (item_id, version) = u
             .extras_cache
@@ -882,7 +890,7 @@ pub(crate) fn reveal_version_field(
         }
         version_value(version, &field)
             .map(|v| v.to_string())
-            .ok_or_else(|| Failure::new("not-found", "This version has no such value."))
+            .ok_or_else(missing)
     })
 }
 

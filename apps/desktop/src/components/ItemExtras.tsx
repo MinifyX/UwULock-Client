@@ -5,12 +5,7 @@
  */
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import {
-  copyGenerated,
-  revealField,
-  type ItemDetail as Detail,
-  type ItemSummary,
-} from '../lib/api';
+import { copyGenerated, type ItemDetail as Detail, type ItemSummary } from '../lib/api';
 import { errorText } from '../lib/errors';
 import { when } from '../lib/format';
 import { ICON_ACCEPT, iconFromFile } from '../lib/iconImage';
@@ -377,7 +372,7 @@ function ChangeRow({ id, version, change }: { id: string; version: string; chang
     change.kind === 'removed' ? (
       empty
     ) : change.secret ? (
-      <Hidden load={() => revealField(id, change.field)} />
+      <Hidden load={() => revealVersionField(id, null, change.field)} />
     ) : (
       <span className="version-value">{change.after}</span>
     );
