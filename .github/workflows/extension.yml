@@ -1,0 +1,161 @@
+name: Extension
+
+# The browser extension, for Chromium and Firefox: uwulock-core as WebAssembly, the unit tests,
+# both packages, Mozilla's linter over the Firefox one, and the end-to-end test in Chromium
+# against a UwULock Server release. On every pull request that touches it, on main, and — called
+# by installers.yml — for a release, whose `pnpm release` takes the packages from the artifact
+# `extension`.
+
+on:
+  pull_request:
+    paths:
+      - 'apps/extension/**'
+      - 'apps/desktop/src/**'
+      - 'crates/uwulock-core/**'
+      - 'crates/uwulock-wasm/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'scripts/check-i18n.mjs'
+      - '.github/workflows/extension.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/extension/**'
+      - 'apps/desktop/src/**'
+      - 'crates/uwulock-core/**'
+      - 'crates/uwulock-wasm/**'
+      - 'Cargo.lock'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/extension.yml'
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Not `github.workflow`: called from installers.yml that is the caller's name, and sharing
+  # its group would make the two wait for each other.
+  group: extension-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+  CARGO_TERM_COLOR: always
+
+jobs:
+  core:
+    name: uwulock-core and its WebAssembly
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: core
+      - run: cargo fmt --all --check
+      - run: cargo clippy -p uwulock-core -p uwulock-wasm --all-targets -- -D warnings
+      - run: cargo test -p uwulock-core -p uwulock-wasm
+      - run: cargo check -p uwulock-core -p uwulock-wasm --target wasm32-unknown-unknown
+
+  build:
+    name: Build, test and package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: wasm
+      # A prebuilt wasm-bindgen, in exactly the version crates/uwulock-wasm pins.
+      - uses: taiki-e/install-action@9983c65e42da123ff25d1f78505eb6de315aa172 # v2.87.20
+        with:
+          tool: wasm-bindgen@0.2.129
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: uwulock-core as WebAssembly
+        run: node apps/extension/scripts/build-wasm.mjs
+      - run: pnpm --filter @uwulock/extension typecheck
+      - run: pnpm --filter @uwulock/extension exec vitest run --reporter=dot
+      - run: node scripts/check-i18n.mjs
+      - name: Both packages
+        run: |
+          pnpm --filter @uwulock/extension build
+          ls -la target/extension
+      # Mozilla's own checks, as addons.mozilla.org runs them. Warnings (React writes
+      # innerHTML, for one) are shown; errors fail.
+      - name: web-ext lint (Firefox)
+        run: npx --yes web-ext@8 lint --source-dir apps/extension/dist/firefox --self-hosted
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: extension
+          path: |
+            target/extension/UwULock-extension-chromium.zip
+            target/extension/UwULock-extension-firefox.xpi
+          if-no-files-found: error
+          retention-days: 14
+
+  e2e:
+    name: End to end (Chromium, UwULock Server)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: extension
+          path: target/extension
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+      # Only the extension's own dependencies: the test needs Playwright, nothing else.
+      - run: pnpm install --frozen-lockfile --filter @uwulock/extension
+      - name: The package CI built, unpacked
+        run: |
+          mkdir -p apps/extension/dist/chromium
+          unzip -q target/extension/UwULock-extension-chromium.zip -d apps/extension/dist/chromium
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Chromium
+        run: pnpm --filter @uwulock/extension exec playwright-core install --with-deps chromium
+      - name: UwULock Server's release, and the test
+        run: |
+          docker pull -q ghcr.io/minifyx/uwulock-server:0.4.0-beta.2
+          pnpm --filter @uwulock/extension e2e
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: extension-e2e-screenshots
+          path: apps/extension/e2e/shots
+          retention-days: 7

@@ -2,7 +2,8 @@ name: Installers
 
 # macOS and Linux: the checks Windows gets on Lorin's machine. Then every file
 # `pnpm release` publishes: the Windows setups for x64 and ARM, the universal
-# macOS disk image, and .deb, .rpm and portable folder for Linux x64 and arm64.
+# macOS disk image, .deb, .rpm and portable folder for Linux x64 and arm64, and
+# the browser extension for Chromium and Firefox (extension.yml, called below).
 # All unsigned: nothing here holds the update signing key or any other secret.
 # The files the updater runs are signed by `pnpm release`, next to the key,
 # after it downloads them from here.
@@ -28,6 +29,11 @@ env:
   APPIMAGE_EXTRACT_AND_RUN: '1'
 
 jobs:
+  # The browser extension's packages, as artifact `extension`, in this run: `pnpm release`
+  # downloads everything from one run of this workflow.
+  extension:
+    uses: ./.github/workflows/extension.yml
+
   check:
     name: Check (${{ matrix.os }})
     strategy:

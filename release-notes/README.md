@@ -22,7 +22,8 @@ without it. The text appears under "Was ist neu?" in UwULock's update hint and o
 `pnpm release` waits for the tag's CI run and downloads what it built: the Windows setups for x64
 (`UwULock-windows-x64-setup.exe`) and ARM, the universal macOS disk image and its update program, and
 for Linux x64 and arm64 the `.deb`, `.rpm` and portable `.tar.gz`, plus the x64 setup AppImage for
-copies the old Linux setup installed. With `--build-windows` it builds the Windows x64 setup on this
+copies the old Linux setup installed, and the browser extension (`UwULock-extension-chromium.zip`,
+`UwULock-extension-firefox.xpi`, built by `extension.yml`, which the tag's run calls). With `--build-windows` it builds the Windows x64 setup on this
 machine instead (`pnpm build:setup`, on Windows only), with `--no-build` it takes the one already in
 `target/installers`. It signs every file the updater runs —
 each as a copy under the versioned name installed apps check for (`UwULock-Setup-<version>.exe`,
