@@ -30,7 +30,8 @@ export function TabView({
       setItems(await tabItems());
       setPending(await pendingSaves());
     } catch (e) {
-      toast(errorText(e), 'error');
+      // Locked meanwhile: the lock screen takes over, nothing to say here.
+      if ((e as { kind?: string }).kind !== 'locked') toast(errorText(e), 'error');
     }
   }, []);
 

@@ -102,8 +102,8 @@ function ofKind(kind: ItemKind): vault.IndexEntry[] {
     .sort(order);
 }
 
-async function state(): Promise<PageInfo['state']> {
-  return (await session.status()).state;
+function state(): Promise<PageInfo['state']> {
+  return session.vaultState();
 }
 
 /** What a content script may know about its frame. */

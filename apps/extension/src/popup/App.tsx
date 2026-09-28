@@ -85,7 +85,9 @@ export function App() {
       <header className="popup-bar">
         <span className="popup-brand">
           <img src="/icons/icon-32.png" alt="" width="20" height="20" />
-          UwU<span>Lock</span>
+          <span className="wordmark">
+            UwU<span>Lock</span>
+          </span>
         </span>
         <span className="spacer" />
         <button

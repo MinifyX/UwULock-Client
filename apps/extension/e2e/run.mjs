@@ -212,6 +212,12 @@ async function main() {
     const popup = await context.newPage();
     current = popup;
     await popup.goto(`chrome-extension://${id}/popup.html`);
+    if (process.env.UWULOCK_E2E_SHOTS) {
+      mkdirSync(shots, { recursive: true });
+      await popup.setViewportSize({ width: 380, height: 580 });
+      await popup.locator('input[type=email]').waitFor();
+      await popup.screenshot({ path: join(shots, 'ui-login.png') });
+    }
     await popup.locator('input[autocomplete=url]').fill(server.url);
     await popup.locator('input[type=email]').fill(EMAIL);
     await popup.locator('input[autocomplete=current-password]').fill(PASSWORD);
@@ -271,6 +277,32 @@ async function main() {
       async () => (await site.locator('#result').textContent()) === 'verified',
     );
     console.log('✓ log in, save, fill and passkeys all work');
+
+    if (process.env.UWULOCK_E2E_SHOTS) {
+      // Pictures of the popup, for looking at it: UWULOCK_E2E_SHOTS=1.
+      mkdirSync(shots, { recursive: true });
+      await popup.setViewportSize({ width: 380, height: 580 });
+      await popup.reload();
+      await popup.locator('.popup-tabs').waitFor();
+      for (const [tab, name] of [
+        ['Vault', 'vault'],
+        ['Generator', 'generator'],
+        ['Settings', 'settings'],
+      ]) {
+        await popup.getByRole('button', { name: tab }).click();
+        await popup.screenshot({ path: join(shots, `ui-${name}.png`) });
+      }
+      await popup.getByRole('button', { name: 'Vault' }).click();
+      await popup.locator('.item-row').first().click();
+      await popup.locator('.detail-head').waitFor();
+      await popup.screenshot({ path: join(shots, 'ui-item.png') });
+      await popup.getByRole('button', { name: 'Back' }).click();
+      await popup.getByRole('button', { name: 'This page' }).click();
+      await popup.screenshot({ path: join(shots, 'ui-page.png') });
+      await popup.getByRole('button', { name: 'Lock', exact: true }).click();
+      await popup.locator('.lock-view').waitFor();
+      await popup.screenshot({ path: join(shots, 'ui-lock.png') });
+    }
   } catch (error) {
     mkdirSync(shots, { recursive: true });
     for (const [index, page] of context.pages().entries()) {

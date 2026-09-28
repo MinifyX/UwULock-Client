@@ -69,6 +69,7 @@ export const restored: Promise<void> = (async () => {
     if (text) await vault.open(found, text);
   } catch {
     // Whatever went wrong, the vault is locked now; the master password opens it again.
+    await call((core) => core.lock()).catch(() => undefined);
     await removeSession('unlocked').catch(() => undefined);
     unlockedId = null;
   }
@@ -101,6 +102,13 @@ export async function lock(): Promise<void> {
 }
 
 // ── Status ────────────────────────────────────────────────
+
+/** Logged out, locked or unlocked — without the rest of the status (and without using up its notices). */
+export async function vaultState(): Promise<Status['state']> {
+  const active = await local('activeAccount');
+  if (!active || !(await account(active))) return 'logged-out';
+  return unlockedId === active ? 'unlocked' : 'locked';
+}
 
 export async function status(): Promise<Status> {
   const list = await accounts();

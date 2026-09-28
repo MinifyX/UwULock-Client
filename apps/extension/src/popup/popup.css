@@ -50,7 +50,7 @@ html:has(.prompt) body {
   letter-spacing: -0.01em;
 }
 
-.popup-brand span {
+.popup-brand .wordmark span {
   color: var(--uwu-pink);
 }
 
@@ -116,10 +116,13 @@ html:has(.prompt) body {
 }
 
 .item-list.plain {
+  flex: none;
   list-style: none;
   margin: 0;
   padding: 0;
+  overflow: visible;
   display: grid;
+  align-content: start;
   gap: 2px;
 }
 
@@ -204,28 +207,6 @@ a.add-line {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 8px;
-}
-
-.vault-tools .search-box {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 10px;
-  border-radius: var(--uwu-radius-control);
-  border: 1px solid var(--uwu-border);
-  background: var(--uwu-surface);
-  color: var(--uwu-muted);
-}
-
-.vault-tools .search {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  outline: none;
-  background: transparent;
-  padding: 8px 0;
-  font: inherit;
-  color: var(--uwu-ink);
 }
 
 .vault-tools .select {
@@ -403,6 +384,18 @@ button.wide {
 
 .setting-list .setting-row {
   padding: 9px 0;
+}
+
+.setting-list .setting-row:last-child {
+  border-bottom: 0;
+}
+
+.setting-text {
+  display: grid;
+}
+
+.setting-row > .setting-label {
+  flex: 1;
 }
 
 .setting-list .field {

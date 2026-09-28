@@ -42,7 +42,8 @@ export function VaultView({ onOpen }: { onOpen: (id: string) => void }) {
         setItems(await vaultItems());
         setOverview(await vaultOverview());
       } catch (e) {
-        toast(errorText(e), 'error');
+        // Locked meanwhile: the lock screen takes over, nothing to say here.
+        if ((e as { kind?: string }).kind !== 'locked') toast(errorText(e), 'error');
       }
     };
     void load();

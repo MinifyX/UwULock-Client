@@ -92,8 +92,8 @@ function frameOrigin(sender: Sender): { origin: string; url: string } | null {
   return { origin, url };
 }
 
-async function vaultState(): Promise<VaultState> {
-  return (await session.status()).state;
+function vaultState(): Promise<VaultState> {
+  return session.vaultState();
 }
 
 function clientData(type: 'webauthn.create' | 'webauthn.get', challenge: string, origin: string) {
