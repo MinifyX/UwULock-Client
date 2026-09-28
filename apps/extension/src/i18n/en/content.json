@@ -21,5 +21,18 @@
   "UwULock ist gesperrt.": "UwULock is locked.",
   "UwULock öffnen": "Open UwULock",
   "UwULock – passende Einträge": "UwULock – matching items",
-  "UwULock-Menü öffnen": "Open the UwULock menu"
+  "UwULock-Menü öffnen": "Open the UwULock menu",
+  "Neue maskierte Adresse": "New masked address",
+  "Von UwUMail, nur für diese Seite": "From UwUMail, just for this site",
+  "Maskierte Adresse wird angelegt …": "Creating a masked address …",
+  "Die maskierte Adresse ließ sich nicht anlegen.": "The masked address couldn't be created.",
+  "Dein Konto ist noch nicht mit UwUMail verbunden. Verbinde es im Web-Tresor unter Einstellungen → Maskierte Adressen.": "Your account isn't connected to UwUMail yet. Connect it in the web vault under Settings → Masked addresses.",
+  "Die Verbindung zu UwUMail wurde beendet. Verbinde dein Konto im Web-Tresor noch einmal.": "The connection to UwUMail has ended. Connect your account again in the web vault.",
+  "UwUMail antwortet gerade nicht. Versuche es gleich noch einmal.": "UwUMail isn't answering right now. Try again in a moment.",
+  "Ein Limit ist erreicht, mehr geht gerade nicht.": "A limit has been reached; no more for now.",
+  "Zu viele Anfragen auf einmal. Warte einen Moment und versuche es dann noch einmal.": "Too many requests at once. Wait a moment, then try again.",
+  "Dein Server bietet das gerade nicht an.": "Your server doesn't offer this right now.",
+  "Dein Konto hat noch keinen Schlüssel für UwULocks Extras. Öffne einmal den Web-Tresor oder UwULock am Rechner.": "Your account has no key for UwULock's extras yet. Open the web vault or UwULock on your computer once.",
+  "Das ist nicht erlaubt.": "That isn't allowed.",
+  "Der Server hat die Anfrage abgelehnt: {reason}": "The server refused the request: {reason}"
 }
