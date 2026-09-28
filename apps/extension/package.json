@@ -1,0 +1,33 @@
+{
+  "name": "@uwulock/extension",
+  "version": "0.2.0-beta.3",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-only",
+  "scripts": {
+    "wasm": "node scripts/build-wasm.mjs",
+    "build": "tsc --noEmit && node scripts/build.mjs",
+    "build:all": "node scripts/build-wasm.mjs && pnpm run build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "e2e": "node e2e/run.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/manrope": "^5.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tldts": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.1.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "jsdom": "^25.0.0",
+    "playwright-core": "1.63.0",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.0",
+    "vitest": "^2.1.0"
+  }
+}
