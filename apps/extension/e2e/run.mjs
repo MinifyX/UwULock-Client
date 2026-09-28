@@ -236,7 +236,9 @@ async function main() {
     await until('the saved login', async () => {
       await popup.reload();
       await popup.getByRole('button', { name: 'Vault' }).click();
-      return (await popup.locator('.item-row', { hasText: 'localhost' }).count()) > 0;
+      // The list loads after the tab shows: wait for it a moment before trying again.
+      await popup.locator('.item-row', { hasText: 'localhost' }).first().waitFor({ timeout: 3000 });
+      return true;
     });
 
     step('The same page again: the inline menu fills it');
