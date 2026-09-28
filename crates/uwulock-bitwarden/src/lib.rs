@@ -3,6 +3,7 @@
 //! - [`api`] — prelogin, login with two-step login, token refresh, sync, saving
 //! - [`delta`] — the offline copy, kept up to date by UwULock Server's delta sync
 //! - [`live`] — live updates: UwULock's realtime channel, Bitwarden's SignalR hub
+//! - [`suite`] — the suite vault for UwUSSH and UwURDP: spaces, their keys, pull and push
 //! - [`uwu`] — UwULock Server's own API: its features, the extras key, delta sync
 //!
 //! The crypto and the data formats live in `uwulock-core` (no network, also
@@ -20,10 +21,11 @@
 pub mod api;
 pub mod delta;
 pub mod live;
+pub mod suite;
 pub mod uwu;
 
 pub use uwulock_core::{crypto, generator, totp, vault, wire, Error};
 
-pub use api::{Client, Device, LoginOutcome, Server, Session, TwoFactorMethod};
+pub use api::{App, Client, Device, LoginOutcome, Server, Session, TwoFactorMethod};
 pub use crypto::{EncString, Kdf, SymmetricKey};
 pub use vault::{Item, ItemKind, Vault};

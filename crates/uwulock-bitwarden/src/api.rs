@@ -255,6 +255,37 @@ pub struct Client {
     http: reqwest::Client,
     server: Server,
     device: Device,
+    app: App,
+}
+
+/// Who logs in, as the token endpoint sees it: UwULock desktop as Bitwarden's
+/// desktop client (`desktop`, scope `api`), or a UwU app with a token for its
+/// own suite space only (contract §6.5: `uwussh`, `uwurdp`, … with scope
+/// `uwu.suite`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct App {
+    pub client_id: String,
+    pub scope: String,
+}
+
+impl Default for App {
+    fn default() -> Self {
+        App {
+            client_id: "desktop".into(),
+            scope: "api offline_access".into(),
+        }
+    }
+}
+
+impl App {
+    /// A suite app (`uwussh`, `uwurdp`, `uwumail`, `uwusuite`): its token
+    /// opens its own space on a UwULock Server and nothing else.
+    pub fn suite(client_id: &str) -> Self {
+        App {
+            client_id: client_id.into(),
+            scope: "uwu.suite offline_access".into(),
+        }
+    }
 }
 
 impl Client {
@@ -272,7 +303,14 @@ impl Client {
             http,
             server,
             device,
+            app: App::default(),
         })
+    }
+
+    /// The same client, logging in as another app (see [`App`]).
+    pub fn with_app(mut self, app: App) -> Self {
+        self.app = app;
+        self
     }
 
     pub fn server(&self) -> &Server {
@@ -324,8 +362,8 @@ impl Client {
             ("grant_type", "password".into()),
             ("username", email.clone()),
             ("password", login.password_hash.into()),
-            ("scope", "api offline_access".into()),
-            ("client_id", "desktop".into()),
+            ("scope", self.app.scope.clone()),
+            ("client_id", self.app.client_id.clone()),
             ("deviceType", device_type),
             ("deviceIdentifier", self.device.id.clone()),
             ("deviceName", self.device.name.clone()),
@@ -460,7 +498,7 @@ impl Client {
     pub async fn refresh(&self, refresh_token: &str) -> Result<Session, Error> {
         let form = [
             ("grant_type", "refresh_token"),
-            ("client_id", "desktop"),
+            ("client_id", self.app.client_id.as_str()),
             ("refresh_token", refresh_token),
         ];
         let response = send(
