@@ -668,9 +668,15 @@ impl Mover {
         &self.source
     }
 
+    /// What moved so far in this run, and what didn't.
+    pub fn summary(&self) -> &Summary {
+        &self.summary
+    }
+
     /// The next step. An object that fails is noted in the summary and left
-    /// for the next run; a session that ran out or a server out of reach ends
-    /// the move with an error (the journal keeps what moved until then).
+    /// for the next run; a session that ran out, a server out of reach or
+    /// one that asks for a break ends the move with an error (the journal
+    /// keeps what moved until then).
     pub async fn step(&mut self, target_token: &str) -> Result<Step, Error> {
         let Some(task) = self.tasks.get(self.next).cloned() else {
             return Ok(Step::Finished(self.summary.clone()));
@@ -678,7 +684,7 @@ impl Mover {
         let kind = task.kind();
         match self.run(&task, target_token).await {
             Ok(()) => {}
-            Err(error @ (Error::SessionExpired | Error::Network(_))) => return Err(error),
+            Err(error) if ends_the_run(&error) => return Err(error),
             Err(error) => {
                 tracing::warn!(kind, %error, "didn't move");
                 self.summary.failed.push(Failed {
@@ -756,7 +762,7 @@ impl Mover {
         if wants_family {
             match self.make_family(id, &name, token).await {
                 Ok(()) => return Ok(()),
-                Err(error @ (Error::SessionExpired | Error::Network(_))) => return Err(error),
+                Err(error) if ends_the_run(&error) => return Err(error),
                 Err(error) => {
                     // No family after all (a limit, a setting): a folder instead.
                     tracing::warn!(%error, "no family; the organisation becomes a folder");
@@ -1036,7 +1042,7 @@ impl Mover {
             .await
         {
             Ok(url) => url,
-            Err(error @ (Error::SessionExpired | Error::Network(_))) => return Err(error),
+            Err(error) if ends_the_run(&error) => return Err(error),
             Err(error) => listed_url.ok_or(error)?,
         };
         let encrypted = self.source.client.download(&url).await?;
@@ -1226,6 +1232,15 @@ fn forget_what_is_gone(moved: &mut Moved, snapshot: &Snapshot) {
     moved
         .sends
         .retain(|_, target| snapshot.sends.contains(target));
+}
+
+/// Errors that aren't about one object: the session ran out, the server is
+/// out of reach or wants a break. The move stops; the next run continues.
+fn ends_the_run(error: &Error) -> bool {
+    matches!(
+        error,
+        Error::SessionExpired | Error::Network(_) | Error::Server { status: 429, .. }
+    )
 }
 
 fn attachment_key(item: &str, attachment: &str) -> String {
