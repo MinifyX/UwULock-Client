@@ -632,6 +632,21 @@ impl Client {
         .map(drop)
     }
 
+    /// A new Send: the body is Bitwarden's `SendRequestModel`, as
+    /// [`uwulock_core::send::TextSend::seal`] makes it. Answers with the Send
+    /// (its `id` and `accessId` make the link).
+    pub async fn create_send(&self, access_token: &str, request: &Value) -> Result<Value, Error> {
+        self.write(
+            self.request(
+                reqwest::Method::POST,
+                format!("{}/sends", self.server.api()),
+            )
+            .bearer_auth(access_token)
+            .json(request),
+        )
+        .await
+    }
+
     /// Sends a write and returns what the server made of it, as it wrote it —
     /// keys and all, so the answer can go straight into the cached vault.
     async fn write(&self, request: reqwest::RequestBuilder) -> Result<Value, Error> {
@@ -675,6 +690,21 @@ pub fn parse_sync(text: &str) -> Result<wire::Sync, Error> {
     serde_json::from_value(lowercase_keys(value)).map_err(|e| Error::Server {
         status: 200,
         message: format!("the sync doesn't look like Bitwarden's: {e}"),
+    })
+}
+
+/// One cipher as the server writes it (an answer to a save, an entry
+/// version), in whatever case its keys come. A version carries no `id`; give
+/// it the item's.
+pub fn parse_cipher(mut value: Value, id: Option<&str>) -> Result<wire::Cipher, Error> {
+    if let (Some(id), Some(object)) = (id, value.as_object_mut()) {
+        if !object.keys().any(|k| k.eq_ignore_ascii_case("id")) {
+            object.insert("id".into(), Value::String(id.to_string()));
+        }
+    }
+    serde_json::from_value(lowercase_keys(value)).map_err(|e| Error::Server {
+        status: 200,
+        message: format!("an item doesn't look like Bitwarden's: {e}"),
     })
 }
 

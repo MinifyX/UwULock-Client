@@ -443,6 +443,9 @@ pub struct Vault {
     pub skipped: usize,
     /// The organisations' keys, kept for saving items that belong to one.
     org_keys: HashMap<String, SymmetricKey>,
+    /// The account's private key, from the profile: for UwULock's extras key
+    /// and the submissions of file requests.
+    private_key: Option<PrivateKey>,
 }
 
 impl Vault {
@@ -462,6 +465,26 @@ impl Vault {
                 Error::Refused("this item belongs to an organisation UwULock has no key for".into())
             }),
         }
+    }
+
+    /// The account's RSA private key, if the profile has one.
+    pub fn private_key(&self) -> Option<&PrivateKey> {
+        self.private_key.as_ref()
+    }
+
+    /// Opens one cipher that isn't part of the sync — an entry version, the
+    /// answer to a save — under the key it belongs under: its organisation's,
+    /// or the user key. `None` for a kind UwULock doesn't know.
+    pub fn open_cipher(
+        &self,
+        cipher: &wire::Cipher,
+        user_key: &SymmetricKey,
+    ) -> Result<Option<Item>, Error> {
+        let Some(kind) = ItemKind::from_wire(cipher.kind) else {
+            return Ok(None);
+        };
+        let outer = self.outer_key(cipher.organization_id.as_deref(), user_key)?;
+        Ok(Some(open_item(cipher, kind, outer)))
     }
 
     /// Opens a sync with the account's user key.
@@ -558,6 +581,7 @@ impl Vault {
             organizations,
             skipped,
             org_keys,
+            private_key: private,
         })
     }
 }

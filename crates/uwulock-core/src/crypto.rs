@@ -445,7 +445,9 @@ fn aes_decrypt(key: &[u8; 32], iv: &[u8], data: &[u8]) -> Result<Zeroizing<Vec<u
 }
 
 /// An RSA-2048 private key: the account's own, for organisation keys, or one
-/// made for handing over the user key.
+/// made for handing over the user key. A clone is wiped on drop like the
+/// original (`rsa` zeroizes its private parts).
+#[derive(Clone)]
 pub struct PrivateKey(rsa::RsaPrivateKey);
 
 impl std::fmt::Debug for PrivateKey {

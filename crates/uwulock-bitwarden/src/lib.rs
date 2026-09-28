@@ -2,8 +2,10 @@
 //!
 //! - [`api`] — prelogin, login with two-step login, token refresh, sync, saving
 //! - [`delta`] — the offline copy, kept up to date by UwULock Server's delta sync
+//! - [`icons`] — icons of devices on the local network, made into own icons
 //! - [`live`] — live updates: UwULock's realtime channel, Bitwarden's SignalR hub
-//! - [`uwu`] — UwULock Server's own API: its features, the extras key, delta sync
+//! - [`uwu`] — UwULock Server's own API: its features, the extras key, delta sync,
+//!   and the calls behind its extras (icons, versions, file requests, …)
 //!
 //! The crypto and the data formats live in `uwulock-core` (no network, also
 //! built for WebAssembly) and are re-exported here under their old paths:
@@ -19,6 +21,7 @@
 
 pub mod api;
 pub mod delta;
+pub mod icons;
 pub mod live;
 pub mod uwu;
 
