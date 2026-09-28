@@ -35,6 +35,8 @@ base64 = "0.22"
 cbc = { version = "0.1", features = ["alloc"] }
 hkdf = "0.12"
 hmac = "0.12"
+# Passkeys that sign in: ECDSA on P-256, keys as PKCS#8.
+p256 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
 pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 rand = "0.8"
 rsa = { version = "0.9", features = ["sha1", "sha2"] }

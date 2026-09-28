@@ -276,8 +276,8 @@ pub struct Login {
     pub uris: Option<Vec<LoginUri>>,
     #[serde(default, rename = "passwordrevisiondate")]
     pub password_revision_date: Option<String>,
-    /// Passkeys. UwULock can't use them, but a save must hand them back
-    /// untouched, or the server drops them.
+    /// Passkeys, kept as they came ([`crate::passkey`] reads them). A save
+    /// must hand them back, or the server drops them.
     #[serde(default, rename = "fido2credentials")]
     pub fido2_credentials: Option<Vec<Value>>,
     #[serde(default, rename = "autofillonpageload")]

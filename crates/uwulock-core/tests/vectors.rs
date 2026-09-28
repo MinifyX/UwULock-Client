@@ -6,12 +6,17 @@
 
 use base64::engine::general_purpose::{STANDARD as B64, URL_SAFE_NO_PAD as B64_URL};
 use base64::Engine as _;
+use sha2::Digest as _;
 use uwulock_core::crypto::{
     decrypt_file, decrypt_user_key, derive_shareable_key, fingerprint, master_key,
     master_password_hash, prf_key, send_key, send_password_hash, EncString, Kdf, PrfKeySet,
     PrivateKey, PublicKey, SymmetricKey,
 };
+use uwulock_core::passkey::{
+    attestation_object, credential_id_from_bytes, rp_id_hash, Passkey, AAGUID, BE, BS, UP, UV,
+};
 use uwulock_core::Error;
+use zeroize::Zeroizing;
 
 #[test]
 fn pbkdf2_hash_matches_bitwarden() {
@@ -294,6 +299,87 @@ fn opens_a_passkey_key_set_made_elsewhere() {
     let mut other = prf.clone();
     other[0] ^= 1;
     assert!(matches!(set.open(&other), Err(Error::WrongKey)));
+}
+
+// A passkey that signs in, made independently with Python's `cryptography`:
+// the P-256 key with the private scalar 01 02 … 20, exported as PKCS#8 the way
+// WebCrypto exports it for Bitwarden, and its public key. The signature is
+// RFC 6979's deterministic ECDSA over "authenticator data" and the SHA-256 of
+// "client data", so any correct implementation gives the same bytes.
+const PASSKEY_PKCS8: &str = "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyChRANCAARRXD1uueOWuQTT_sp_VP3NDMHpl783XcpRWtCmw7QDX0U2vjpQ8xj7-aVHWQKiIVAr7w1X4IxTsswKVvF9n5NU";
+const PASSKEY_SPKI: &str = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEUVw9brnjlrkE0/7Kf1T9zQzB6Ze/N13KUVrQpsO0A19FNr46UPMY+/mlR1kCoiFQK+8NV+CMU7LMClbxfZ+TVA==";
+const PASSKEY_X: &str = "515c3d6eb9e396b904d3feca7f54fdcd0cc1e997bf375dca515ad0a6c3b4035f";
+const PASSKEY_Y: &str = "4536be3a50f318fbf9a5475902a221502bef0d57e08c53b2cc0a56f17d9f9354";
+const PASSKEY_SIGNATURE: &str = "304502203386bd7c1855443e9f9731e67fdae8af3e8ac321c87b4632d3a486260e9c2059022100da68726941f33e3ab9007628daf4f8f845d8e30a65122a246aef967163afe0e4";
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn fixed_passkey(key_value: &str) -> Passkey {
+    Passkey {
+        credential_id: "b2a5d2c1-5e3f-4a7b-9c1d-0e2f4a6b8c9d".into(),
+        key_value: Zeroizing::new(key_value.into()),
+        rp_id: "example.com".into(),
+        rp_name: None,
+        user_handle: None,
+        user_name: None,
+        user_display_name: None,
+        counter: 0,
+        discoverable: true,
+        creation_date: String::new(),
+    }
+}
+
+#[test]
+fn a_passkeys_public_key_and_signature_match() {
+    // Bitwarden's URL-safe base64, and standard base64 with padding as some
+    // imports write it.
+    let padded = B64.encode(B64_URL.decode(PASSKEY_PKCS8).unwrap());
+    for key_value in [PASSKEY_PKCS8, padded.as_str()] {
+        let passkey = fixed_passkey(key_value);
+        assert_eq!(B64.encode(passkey.public_key_spki().unwrap()), PASSKEY_SPKI);
+        let cose = passkey.public_key_cose().unwrap();
+        assert_eq!(
+            hex(&cose),
+            format!("a5010203262001215820{PASSKEY_X}225820{PASSKEY_Y}")
+        );
+        let message = sha2::Sha256::digest(b"client data");
+        assert_eq!(
+            hex(&passkey.sign(b"authenticator data", &message).unwrap()),
+            PASSKEY_SIGNATURE
+        );
+    }
+}
+
+#[test]
+fn rp_id_hash_is_sha256() {
+    // `printf example.com | sha256sum`.
+    assert_eq!(
+        hex(&rp_id_hash("example.com")),
+        "a379a6f6eeafb9a55e378c118034e2751e682fab9f2d30ab13d2125586ce1947"
+    );
+}
+
+#[test]
+fn a_passkeys_attested_data_as_a_site_reads_it() {
+    let passkey = fixed_passkey(PASSKEY_PKCS8);
+    let data = passkey.authenticator_data(UP | UV | BE | BS, true).unwrap();
+    let object = attestation_object(&data);
+    let expected = format!(
+        "a363666d74646e6f6e656761747453746d74a06861757468446174615894{}5d{}{}0010{}{}",
+        "a379a6f6eeafb9a55e378c118034e2751e682fab9f2d30ab13d2125586ce1947",
+        "00000000",
+        hex(&AAGUID),
+        "b2a5d2c15e3f4a7b9c1d0e2f4a6b8c9d",
+        format_args!("a5010203262001215820{PASSKEY_X}225820{PASSKEY_Y}"),
+    );
+    assert_eq!(hex(&object), expected);
+    // Bitwarden's GUID ↔ bytes: the bytes in the order they are written.
+    assert_eq!(
+        credential_id_from_bytes(&passkey.credential_id_bytes().unwrap()),
+        passkey.credential_id
+    );
 }
 
 fn key(base64: &str) -> SymmetricKey {

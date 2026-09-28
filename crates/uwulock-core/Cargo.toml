@@ -1,6 +1,6 @@
 [package]
 name = "uwulock-core"
-description = "Bitwarden's crypto and data formats, without a network: master key, encrypted values, the sync format, the decrypted vault, TOTP, the password generator"
+description = "Bitwarden's crypto and data formats, without a network: master key, encrypted values, the sync format, the decrypted vault, TOTP, passkeys, the password generator"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,6 +16,7 @@ base64.workspace = true
 cbc.workspace = true
 hkdf.workspace = true
 hmac.workspace = true
+p256.workspace = true
 pbkdf2.workspace = true
 rand.workspace = true
 rsa.workspace = true
