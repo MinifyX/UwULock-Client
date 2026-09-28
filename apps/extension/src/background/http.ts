@@ -16,6 +16,8 @@ export const CLIENT_VERSION = '2025.8.0';
 export class ApiError extends Error {
   status: number;
   body: unknown;
+  /** UwULock Server's machine-readable reason under `/uwu/v1` (`not_connected`, `quota` …). */
+  code: string | null = null;
   constructor(status: number, message: string, body: unknown) {
     super(message);
     this.status = status;
@@ -23,8 +25,13 @@ export class ApiError extends Error {
   }
 }
 
-/** Errors as `{ kind, message }`, whatever threw them. */
+/**
+ * Errors as `{ kind, message }`, whatever threw them. An error of UwULock Server's own API
+ * keeps its `code` as the kind, `uwu:<code>`, so the popup and the page can say what it means.
+ */
 export function failure(error: unknown): Failure {
+  if (error instanceof ApiError && error.code && error.status !== 401 && error.status !== 0)
+    return { kind: `uwu:${error.code}`, message: error.message };
   if (error instanceof ApiError) {
     const kind =
       error.status === 401 ? 'session-expired' : error.status === 0 ? 'network' : 'server';
@@ -179,6 +186,26 @@ export async function request<T = unknown>(
     if (error instanceof ApiError && error.status === 401) {
       current = await refresh(current);
       return send(current.accessToken);
+    }
+    throw error;
+  }
+}
+
+/**
+ * A request to UwULock Server's own API, `<web>/uwu/v1<path>`, with the account's session.
+ * Errors keep the contract's `code` (`ApiError.code`).
+ */
+export async function uwu<T = unknown>(
+  account: Account,
+  path: string,
+  options: Options = {},
+): Promise<T> {
+  try {
+    return await request<T>(account, `/uwu/v1${path}`, options);
+  } catch (error) {
+    if (error instanceof ApiError && error.body && typeof error.body === 'object') {
+      const code = (error.body as Record<string, unknown>).code;
+      if (typeof code === 'string' && /^[a-z_]{1,64}$/.test(code)) error.code = code;
     }
     throw error;
   }

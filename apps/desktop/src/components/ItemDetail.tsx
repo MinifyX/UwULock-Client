@@ -22,7 +22,9 @@ import { t, useLanguage } from '../lib/i18n';
 import { IDENTITY_LABEL, KIND_LABEL } from '../lib/items';
 import { getSettings } from '../lib/settings';
 import { toast } from '../lib/toast';
+import { setMaskedState, useUwu } from '../lib/uwu';
 import { Icon } from './Icon';
+import { IconMenu, ReminderCard, ShareSendDialog, VersionsCard } from './ItemExtras';
 import { ItemTile } from './ItemTile';
 import { Modal } from './Modal';
 import { PasswordInput } from './PasswordInput';
@@ -280,15 +282,21 @@ function Reprompt({ id, onPassed }: { id: string; onPassed: () => void }) {
 function ConfirmDelete({
   name,
   permanent,
+  masked,
   onCancel,
   onConfirm,
 }: {
   name: string;
   permanent: boolean;
+  /** The item's masked address, when it has one. */
+  masked?: string | null;
   onCancel: () => void;
-  onConfirm: () => void;
+  /** `disableMasked`: switch the masked address off first. */
+  onConfirm: (disableMasked: boolean) => void;
 }) {
   useLanguage();
+  // Mail to an address whose item is gone should stop, unless someone says otherwise.
+  const [disableMasked, setDisableMasked] = useState(true);
   return (
     <Modal
       title={permanent ? t('Endgültig löschen?') : t('In den Papierkorb?')}
@@ -297,7 +305,11 @@ function ConfirmDelete({
       footer={
         <>
           <span className="spacer" />
-          <button className="danger" data-secondary onClick={onConfirm}>
+          <button
+            className="danger"
+            data-secondary
+            onClick={() => onConfirm(Boolean(masked && permanent && disableMasked))}
+          >
             {permanent ? t('Endgültig löschen') : t('In den Papierkorb')}
           </button>
           <button className="primary" data-autofocus onClick={onCancel}>
@@ -316,6 +328,16 @@ function ConfirmDelete({
               name,
             })}
       </p>
+      {masked && permanent && (
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={disableMasked}
+            onChange={(e) => setDisableMasked(e.target.checked)}
+          />
+          <span>{t('Die maskierte Adresse {email} abschalten', { email: masked })}</span>
+        </label>
+      )}
     </Modal>
   );
 }
@@ -334,8 +356,12 @@ export function ItemDetail({
   const [error, setError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [asking, setAsking] = useState<null | 'trash' | 'permanent'>(null);
+  const [sharing, setSharing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const uwu = useUwu();
   const id = summary.id;
+  const masked = uwu.masked[id] ?? null;
+  const due = uwu.reminders[id]?.isDue ?? false;
 
   const load = () => {
     vaultItem(id)
@@ -374,7 +400,10 @@ export function ItemDetail({
   return (
     <article className="detail" aria-label={summary.name}>
       <header className="detail-head">
-        <ItemTile item={summary} size="large" />
+        <span className="tile-wrap">
+          <ItemTile item={summary} size="large" />
+          <IconMenu summary={summary} detail={d && !d.locked ? d : null} />
+        </span>
         <div className="detail-title">
           <h2>
             {summary.name || t('(ohne Namen)')}
@@ -395,6 +424,18 @@ export function ItemDetail({
                 <Icon name="building" size={12} />
                 {org}
                 {collections.length > 0 && ` · ${collections.join(', ')}`}
+              </span>
+            )}
+            {masked && (
+              <span className="chip" title={t('Maskierte Adresse')}>
+                <Icon name="mask" size={12} />
+                {masked.email}
+              </span>
+            )}
+            {due && !summary.deleted && (
+              <span className="chip chip-due">
+                <Icon name="bell" size={12} />
+                {t('Neues Passwort fällig')}
               </span>
             )}
             {summary.deleted && <span className="chip chip-muted">{t('Im Papierkorb')}</span>}
@@ -443,6 +484,15 @@ export function ItemDetail({
               </button>
               <button
                 className="icon-button"
+                disabled={busy || !d || d.locked || summary.broken}
+                title={t('Als Send teilen …')}
+                aria-label={t('Als Send teilen …')}
+                onClick={() => setSharing(true)}
+              >
+                <Icon name="send" size={15} />
+              </button>
+              <button
+                className="icon-button"
                 disabled={busy}
                 title={t('In den Papierkorb')}
                 aria-label={t('In den Papierkorb')}
@@ -463,14 +513,26 @@ export function ItemDetail({
         <ConfirmDelete
           name={summary.name || t('(ohne Namen)')}
           permanent={asking === 'permanent'}
+          masked={masked?.email}
           onCancel={() => setAsking(null)}
-          onConfirm={() =>
+          onConfirm={(disableMasked) =>
             void act(
-              () => deleteItem(id, asking === 'permanent'),
+              async () => {
+                // UwUMail being away doesn't keep the item from going.
+                if (disableMasked && masked)
+                  await setMaskedState(masked.id, 'disabled').catch((e) =>
+                    toast(errorText(e), 'error'),
+                  );
+                await deleteItem(id, asking === 'permanent');
+              },
               asking === 'permanent' ? t('Gelöscht.') : t('Im Papierkorb.'),
             )
           }
         />
+      )}
+
+      {sharing && d && !d.locked && (
+        <ShareSendDialog summary={summary} detail={d} onClose={() => setSharing(false)} />
       )}
 
       {error && (
@@ -720,6 +782,9 @@ export function ItemDetail({
                 ))}
             </Section>
           )}
+
+          <ReminderCard summary={summary} />
+          <VersionsCard summary={summary} />
 
           <footer className="detail-foot">
             {d.login && d.login.passkeys > 0 && (

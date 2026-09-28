@@ -207,6 +207,13 @@ export type ContentRequest =
   | { type: 'content:copy-totp'; itemId: string }
   /** The vault is locked: open the popup to unlock. */
   | { type: 'content:open-popup' }
+  /**
+   * A new masked address for this tab's site, typed into the focused username or email field.
+   * Which site that is, the background takes from the sender.
+   */
+  | { type: 'content:masked-create' }
+  /** Open the web vault's page to connect a UwUMail account. */
+  | { type: 'content:open-masked-settings' }
   /** UwULock Server's / Bitwarden's WebAuthn fallback connector answered (two-step login). */
   | { type: 'content:webauthn-result'; data: string; remember: boolean }
   | { type: 'content:passkey-create'; requestId: string; options: PasskeyCreateOptions }
@@ -275,7 +282,70 @@ export type PendingLoginInfo = {
 };
 
 /** What UwULock Server says about itself: which of its own features this extension may offer. */
-export type UwuInfo = { version: string | null; features: string[] };
+export type UwuInfo = {
+  version: string | null;
+  features: string[];
+  /** Automatic icons (`GET <url>/<host>/icon.png`); null when the server has them switched off. */
+  icons?: { automatic: boolean; url: string | null } | null;
+  /** The admin's send domains, without the main host. */
+  sendDomains?: SendDomain[];
+};
+
+export type SendDomain = { id: string; url: string };
+
+// ── UwULock Server's extras ───────────────────────────────
+
+/** `GET /uwu/v1/masked/connection`, what the popup needs of it. */
+export type MaskedConnection = {
+  connected: boolean;
+  /** `ok`, `revoked` (connect again), `unreachable` (the last call failed). */
+  status: string | null;
+  server: string | null;
+  username: string | null;
+  defaultDomain: string | null;
+  /** Where the web vault connects an account: `<web>/#/settings/masked`. */
+  settingsUrl: string;
+};
+
+export type MaskedAddress = { id: string; email: string; forDomain: string | null };
+
+/** A value of an item that can go into a Send; `label` is a custom field's own name. */
+export type ShareableField = { name: string; label?: string };
+
+export type ShareOptions = {
+  /** `[name, label]`: the value, and what the recipient reads before it. */
+  fields: [string, string][];
+  /** Hours until the server deletes it. */
+  deletionHours: number;
+  /** null: as often as anybody wants until it is deleted. */
+  maxAccessCount: number | null;
+  password: string | null;
+};
+
+export type SharedSend = { id: string; link: string; deletionDate: string; onSendDomain: boolean };
+
+/** The owner's file request, as the popup lists it (read only). */
+export type FileRequestEntry = {
+  id: string;
+  /** null: the label didn't open (the extras key was reset), shown as "unnamed". */
+  label: string | null;
+  expirationDate: string | null;
+  submissionCount: number;
+  maxSubmissions: number | null;
+  unseen: number;
+  disabled: boolean;
+  expired: boolean;
+  /** `<web>/#/file-requests/<id>`, where it is managed. */
+  manageUrl: string;
+};
+
+/**
+ * The file requests, or why there are none to show: the extras key isn't there yet (`none`,
+ * made by the web vault or the desktop app) or was lost in a key rotation (`lost`).
+ */
+export type FileRequests =
+  | { state: 'open'; requests: FileRequestEntry[]; webUrl: string }
+  | { state: 'none' | 'lost'; requests: []; webUrl: string };
 
 export type TwoFactorMethod = {
   provider: number;
@@ -425,6 +495,8 @@ export type Settings = {
   copyTotp: boolean;
   /** Offer to create and use passkeys. */
   passkeys: boolean;
+  /** Icons in the vault list: own icons and the server's automatic ones (UwULock Server). */
+  showIcons: boolean;
   /** Hosts for which "never" was picked in the save prompt. */
   neverSave: string[];
   /** Bitwarden's default match detection for addresses without one: 0 domain … 5 never. */
@@ -532,7 +604,16 @@ export type PageRequest =
   | { type: 'pending-saves' }
   | { type: 'answer-pending-save'; id: string; answer: SaveAnswer }
   | { type: 'passkey-prompt'; id: string }
-  | { type: 'passkey-decide'; decision: PasskeyDecision };
+  | { type: 'passkey-decide'; decision: PasskeyDecision }
+  /** Icons as data URLs for items the popup shows: own, else automatic; absent ones get the glyph. */
+  | { type: 'icons'; ids: string[] }
+  | { type: 'masked-connection' }
+  /** A masked address for the active tab's site; `cipherId` from the item editor. */
+  | { type: 'masked-create'; cipherId: string | null }
+  | { type: 'share-fields'; id: string }
+  | { type: 'share-item'; id: string; options: ShareOptions }
+  | { type: 'file-requests' }
+  | { type: 'copy-file-request-link'; id: string };
 
 export type TabItems = {
   url: string | null;

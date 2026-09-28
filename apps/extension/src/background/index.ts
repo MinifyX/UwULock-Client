@@ -15,14 +15,17 @@ import type { ContentRequest, PageRequest, Reply } from '../shared/protocol';
 import * as autofill from './autofill';
 import * as clipboard from './clipboard';
 import { onChanged } from './events';
+import * as extras from './extras';
 import * as generator from './generator';
 import { failure, request } from './http';
+import * as icons from './icons';
 import * as live from './live';
 import * as menus from './menus';
 import * as passkeys from './passkeys';
 import * as session from './session';
 import { settings, updateSettings } from './settings';
 import { activeAccount, closeSessionToContentScripts } from './store';
+import { hasFeature } from './uwu';
 import * as vault from './vault';
 
 type Sender = chrome.runtime.MessageSender;
@@ -162,6 +165,29 @@ async function handlePage(message: PageRequest): Promise<unknown> {
       return passkeys.prompt(message.id);
     case 'passkey-decide':
       return passkeys.decide(message.decision);
+    case 'icons': {
+      const ids = Array.isArray(message.ids)
+        ? message.ids.filter((id): id is string => typeof id === 'string')
+        : [];
+      return icons.icons(await session.requireUnlocked(), ids);
+    }
+    case 'masked-connection':
+      return extras.maskedConnection(await session.requireUnlocked());
+    case 'masked-create':
+      return extras.createMasked(
+        await session.requireUnlocked(),
+        await autofill.activeTabUrl(),
+        typeof message.cipherId === 'string' ? message.cipherId : null,
+      );
+    case 'share-fields':
+      await session.requireUnlocked();
+      return extras.shareFields(message.id);
+    case 'share-item':
+      return extras.shareItem(await session.requireUnlocked(), message.id, message.options);
+    case 'file-requests':
+      return extras.fileRequests(await session.requireUnlocked());
+    case 'copy-file-request-link':
+      return extras.copyFileRequestLink(await session.requireUnlocked(), message.id);
   }
   throw { kind: 'invalid', message: 'Unknown request.' };
 }
@@ -195,6 +221,19 @@ async function handleContent(message: ContentRequest, sender: Sender): Promise<u
       return passkeys.get(sender, message.requestId, message.options);
     case 'content:passkey-abort':
       return passkeys.abort(message.requestId);
+    case 'content:masked-create': {
+      // Only the page's own site, and only the address goes back to the page.
+      const url = autofill.senderTabUrl(sender);
+      if (!url) throw { kind: 'invalid', message: 'Not a web page.' };
+      const created = await extras.createMasked(await session.requireUnlocked(), url, null);
+      return { email: created.email };
+    }
+    case 'content:open-masked-settings': {
+      const found = await currentAccount();
+      if (!hasFeature(found, 'masked-addresses')) return null;
+      await ext.tabs.create({ url: extras.maskedSettingsUrl(found) });
+      return null;
+    }
   }
   throw { kind: 'invalid', message: 'Unknown request.' };
 }

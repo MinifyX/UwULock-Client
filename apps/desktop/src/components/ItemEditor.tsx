@@ -21,6 +21,7 @@ import {
   MATCH_LABEL,
 } from '../lib/items';
 import { toast } from '../lib/toast';
+import { createMaskedAddress, has, linkMaskedAddress, useUwu } from '../lib/uwu';
 import { useCloseGuard } from './CloseGuard';
 import { GeneratorDialog } from './GeneratorDialog';
 import { Icon } from './Icon';
@@ -338,6 +339,10 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
   const [busy, setBusy] = useState(false);
   const [generator, setGenerator] = useState<null | 'password'>(null);
   const [nextKey, setNextKey] = useState(1000);
+  /** A masked address made here for a new item, linked to it once it is saved. */
+  const [newMasked, setNewMasked] = useState<string | null>(null);
+  const [masking, setMasking] = useState(false);
+  const uwu = useUwu();
   const id = summary?.id ?? null;
 
   useEffect(() => {
@@ -375,6 +380,8 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
     setError(null);
     try {
       const saved = await saveItem(id, draftOf(form, kind));
+      if (newMasked && !id)
+        await linkMaskedAddress(newMasked, saved).catch((e) => toast(errorText(e), 'error'));
       setInitial(JSON.stringify(form));
       toast(id ? t('Gespeichert ✧') : t('Angelegt ✧'));
       onSaved(saved);
@@ -388,6 +395,22 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
   const key = () => {
     setNextKey((n) => n + 1);
     return nextKey;
+  };
+
+  /** A new masked address for the site of the first address, as the username. */
+  const mask = async () => {
+    setMasking(true);
+    try {
+      const site = form.uris.find((uri) => uri.uri.trim())?.uri.trim() ?? null;
+      const address = await createMaskedAddress(site, form.name.trim() || null, id);
+      if (!id) setNewMasked(address.id);
+      set({ username: address.email });
+      toast(t('Maskierte Adresse erstellt ✧'));
+    } catch (e) {
+      toast(errorText(e), 'error');
+    } finally {
+      setMasking(false);
+    }
   };
 
   const folders = [...(overview?.folders ?? [])].sort((a, b) => a.name.localeCompare(b.name));
@@ -457,14 +480,32 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
 
             {kind === 'login' && (
               <>
-                <Field label={t('Benutzername')}>
+                <div className="field">
+                  <span className="field-label-row">
+                    <label htmlFor="editor-username">{t('Benutzername')}</label>
+                    {has(uwu, 'masked-addresses') && (
+                      <span className="field-actions">
+                        <button
+                          type="button"
+                          className="icon-button"
+                          disabled={masking}
+                          onClick={() => void mask()}
+                          title={t('Neue maskierte Adresse')}
+                          aria-label={t('Neue maskierte Adresse')}
+                        >
+                          <Icon name="mask" size={15} />
+                        </button>
+                      </span>
+                    )}
+                  </span>
                   <input
+                    id="editor-username"
                     type="text"
                     value={form.username}
                     autoComplete="off"
                     onChange={(e) => set({ username: e.target.value })}
                   />
-                </Field>
+                </div>
                 <SecretField
                   label={t('Passwort')}
                   secret={form.password}

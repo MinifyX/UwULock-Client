@@ -8,6 +8,11 @@
 //! - [`passkey`] — passkeys that sign in, in Bitwarden's format: a WebAuthn
 //!   authenticator's keys, authenticator data and signatures
 //! - [`generator`] — passwords and passphrases
+//! - [`send`] — text Sends, and sharing an item as one
+//! - [`extras`] — UwULock's extras key (and what is under it: suite space
+//!   keys, own icons), entry versions in a key rotation
+//! - [`file_request`] — file requests: the link, its public details, the
+//!   envelope of what somebody uploads
 //!
 //! No HTTP, no disk, no clock that isn't passed in where it matters: the
 //! desktop app uses this through `uwulock-bitwarden`; the browser extension
@@ -18,8 +23,11 @@
 //! `Date.now() / 1000`.
 
 pub mod crypto;
+pub mod extras;
+pub mod file_request;
 pub mod generator;
 pub mod passkey;
+pub mod send;
 pub mod totp;
 pub mod vault;
 pub mod wire;

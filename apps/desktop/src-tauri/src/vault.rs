@@ -23,6 +23,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, State};
 use uwulock_bitwarden::api::{parse_sync, PasswordLogin, TwoFactorAnswer};
 use uwulock_bitwarden::crypto::{self, decrypt_user_key};
+use uwulock_bitwarden::delta::UwuState;
+use uwulock_bitwarden::uwu::Info;
 use uwulock_bitwarden::vault::{Field, FieldKind, Item, ItemKind, LoginUri, Secret};
 use uwulock_bitwarden::wire;
 use uwulock_bitwarden::{
@@ -31,8 +33,9 @@ use uwulock_bitwarden::{
 };
 use zeroize::Zeroizing;
 
-use crate::account::{Account, Storage, Stored};
+use crate::account::{synced_from_cache, synced_to_cache, Account, Storage, Stored};
 use crate::clipboard::Clipboard;
+use crate::live::Live;
 
 const SYNC_EVERY: Duration = Duration::from_secs(5 * 60);
 
@@ -44,15 +47,23 @@ pub struct Failure {
 }
 
 impl Failure {
-    fn new(kind: &'static str, message: impl Into<String>) -> Self {
+    pub(crate) fn new(kind: &'static str, message: impl Into<String>) -> Self {
         Failure {
             kind,
             message: message.into(),
         }
     }
 
-    fn locked() -> Self {
+    pub(crate) fn locked() -> Self {
         Failure::new("locked", "The vault is locked.")
+    }
+
+    pub(crate) fn kind(&self) -> &'static str {
+        self.kind
+    }
+
+    pub(crate) fn message(&self) -> &str {
+        &self.message
     }
 }
 
@@ -72,14 +83,44 @@ impl From<Error> for Failure {
     }
 }
 
-type Result<T> = std::result::Result<T, Failure>;
+pub(crate) type Result<T> = std::result::Result<T, Failure>;
 
-struct Unlocked {
-    user_key: SymmetricKey,
-    vault: Vault,
+pub(crate) struct Unlocked {
+    pub(crate) user_key: SymmetricKey,
+    pub(crate) vault: Vault,
     session: Option<Session>,
     /// Items whose master password re-prompt was answered in this unlock.
-    reprompt_ok: HashSet<String>,
+    pub(crate) reprompt_ok: HashSet<String>,
+    /// UwULock Server only: what it can do (`/uwu/v1/info`), asked at every
+    /// sync. `None` for Bitwarden and Vaultwarden.
+    pub(crate) info: Option<Info>,
+    /// UwULock's own state from the delta sync: own icons, reminders, masked
+    /// addresses, travel mode, badges.
+    pub(crate) uwu: UwuState,
+    /// The extras key, once something needed it.
+    pub(crate) extras: Option<SymmetricKey>,
+    /// What the extras opened in this unlock: icons, versions. Gone on lock.
+    pub(crate) extras_cache: crate::extras::Cache,
+}
+
+impl Unlocked {
+    fn new(user_key: SymmetricKey, vault: Vault, session: Option<Session>) -> Self {
+        Unlocked {
+            user_key,
+            vault,
+            session,
+            reprompt_ok: HashSet::new(),
+            info: None,
+            uwu: UwuState::default(),
+            extras: None,
+            extras_cache: Default::default(),
+        }
+    }
+
+    /// Whether the server offers one of UwULock's features.
+    pub(crate) fn has(&self, feature: &str) -> bool {
+        self.info.as_ref().is_some_and(|info| info.has(feature))
+    }
 }
 
 /// A login between the password and the two-step code.
@@ -96,6 +137,8 @@ struct PendingLogin {
 struct Security {
     auto_lock: Option<Duration>,
     clipboard: Option<Duration>,
+    /// Lock when the screen locks or the computer goes to sleep.
+    with_system: bool,
 }
 
 /// What went wrong for one account, as the account card shows it.
@@ -114,13 +157,14 @@ pub(crate) struct VaultState {
     active: Mutex<Option<String>>,
     /// The accounts that are open, by id. An account that was switched away
     /// from stays open until something locks it.
-    unlocked: RwLock<HashMap<String, Unlocked>>,
+    pub(crate) unlocked: RwLock<HashMap<String, Unlocked>>,
     pending: Mutex<Option<PendingLogin>>,
     syncing: Mutex<HashSet<String>>,
     troubles: Mutex<HashMap<String, Trouble>>,
     security: Mutex<Security>,
     last_activity: Mutex<Instant>,
     clipboard: Arc<Clipboard>,
+    live: Live,
 }
 
 impl VaultState {
@@ -140,13 +184,15 @@ impl VaultState {
             security: Mutex::new(Security {
                 auto_lock: Some(Duration::from_secs(15 * 60)),
                 clipboard: Some(Duration::from_secs(30)),
+                with_system: true,
             }),
             last_activity: Mutex::new(Instant::now()),
             clipboard: Arc::new(Clipboard::default()),
+            live: Live::default(),
         }
     }
 
-    fn touch(&self) {
+    pub(crate) fn touch(&self) {
         *self.last_activity.lock() = Instant::now();
     }
 
@@ -154,7 +200,7 @@ impl VaultState {
         Device::this_system(self.storage.device_id())
     }
 
-    fn client(&self, server: Server) -> Result<Client> {
+    pub(crate) fn client(&self, server: Server) -> Result<Client> {
         Ok(Client::new(server, self.device())?)
     }
 
@@ -166,7 +212,7 @@ impl VaultState {
             .ok_or_else(|| Failure::new("logged-out", "No account on this device."))
     }
 
-    fn account(&self, id: &str) -> Result<Account> {
+    pub(crate) fn account(&self, id: &str) -> Result<Account> {
         self.accounts
             .lock()
             .iter()
@@ -175,7 +221,7 @@ impl VaultState {
             .ok_or_else(|| Failure::new("logged-out", "No such account on this device."))
     }
 
-    fn active_account(&self) -> Result<(String, Account)> {
+    pub(crate) fn active_account(&self) -> Result<(String, Account)> {
         let id = self.active_id()?;
         let account = self.account(&id)?;
         Ok((id, account))
@@ -201,6 +247,16 @@ impl VaultState {
         self.troubles.lock().insert(id.to_string(), trouble);
     }
 
+    /// The system locked or slept: locks everything, if the settings want
+    /// that and anything is open. Whether it did.
+    pub(crate) fn lock_for_system(&self) -> bool {
+        if !self.security.lock().with_system || self.unlocked.read().is_empty() {
+            return false;
+        }
+        self.lock_now();
+        true
+    }
+
     /// Locks every account: no key, no session, no clipboard.
     fn lock_now(&self) {
         self.unlocked.write().clear();
@@ -217,6 +273,30 @@ impl VaultState {
         let mut guard = self.unlocked.write();
         let unlocked = guard.get_mut(&id).ok_or_else(Failure::locked)?;
         f(unlocked)
+    }
+}
+
+/// For moving a vault in from Bitwarden (`moving`).
+impl VaultState {
+    pub(crate) fn storage(&self) -> &Storage {
+        &self.storage
+    }
+
+    /// The user key of an open account.
+    pub(crate) fn user_key_of(&self, id: &str) -> Result<SymmetricKey> {
+        self.unlocked
+            .read()
+            .get(id)
+            .map(|unlocked| unlocked.user_key.clone())
+            .ok_or_else(Failure::locked)
+    }
+
+    /// Whether an open account's server offers one of UwULock's features.
+    pub(crate) fn offers(&self, id: &str, feature: &str) -> bool {
+        self.unlocked
+            .read()
+            .get(id)
+            .is_some_and(|unlocked| unlocked.has(feature))
     }
 }
 
@@ -255,6 +335,12 @@ pub struct Status {
     sync_error: Option<String>,
     /// The server no longer accepts this device's session: log in again.
     session_expired: bool,
+    /// Unlocking with Windows Hello: `null` where there is none, else
+    /// whether it is on for this account.
+    hello: Option<bool>,
+    /// `realtime` or `hub` while changes from other devices arrive live;
+    /// `null` while the app checks every few minutes instead.
+    live: Option<&'static str>,
     /// Every account on this device, the open one included.
     accounts: Vec<AccountBrief>,
 }
@@ -302,6 +388,9 @@ fn status_of(state: &VaultState) -> Status {
         syncing: active.as_ref().is_some_and(|id| syncing.contains(id)),
         sync_error: trouble.sync_error,
         session_expired: trouble.session_expired,
+        live: state.live.channel().filter(|_| unlocked),
+        hello: crate::hello::available()
+            .then(|| account.as_ref().is_some_and(|a| a.hello_user_key.is_some())),
         accounts: accounts
             .iter()
             .map(|stored| AccountBrief {
@@ -319,9 +408,11 @@ fn status_of(state: &VaultState) -> Status {
     }
 }
 
-fn emit_status(app: &AppHandle) {
+pub(crate) fn emit_status(app: &AppHandle) {
     let state = app.state::<VaultState>();
     let _ = app.emit("vault-status", status_of(&state));
+    // Whatever changed may change which account gets live updates.
+    state.live.wake();
 }
 
 #[tauri::command]
@@ -340,7 +431,7 @@ pub struct ServerInput {
 }
 
 impl ServerInput {
-    fn resolve(&self) -> Result<Server> {
+    pub(crate) fn resolve(&self) -> Result<Server> {
         match self.kind.as_str() {
             "bitwarden-us" => Ok(Server::BitwardenUs),
             "bitwarden-eu" => Ok(Server::BitwardenEu),
@@ -360,7 +451,7 @@ impl ServerInput {
 #[serde(tag = "step", rename_all = "kebab-case")]
 pub enum LoginStep {
     Done {
-        status: Status,
+        status: Box<Status>,
     },
     #[serde(rename_all = "camelCase")]
     TwoFactor {
@@ -374,7 +465,7 @@ fn derive(password: &str, email: &str, kdf: Kdf) -> Result<Zeroizing<[u8; 32]>> 
     Ok(crypto::master_key(password, email, kdf)?)
 }
 
-async fn derive_off_thread(
+pub(crate) async fn derive_off_thread(
     password: Zeroizing<String>,
     email: String,
     kdf: Kdf,
@@ -502,7 +593,7 @@ async fn login_step(
                 .ok_or_else(|| Failure::new("invalid", "No login in progress."))?;
             finish_login(app, state, pending, session).await?;
             Ok(LoginStep::Done {
-                status: status_of(state),
+                status: Box::new(status_of(state)),
             })
         }
         LoginOutcome::TwoFactor { methods, message } => {
@@ -559,6 +650,9 @@ async fn finish_login(
         )
     });
     let remember = session.remember_token.clone().or(previous_remember);
+    let previous_hello = previous
+        .as_ref()
+        .and_then(|account| account.hello_user_key.clone());
 
     let mut account = Account {
         version: 1,
@@ -574,6 +668,7 @@ async fn finish_login(
             .map(|t| Account::seal(t, &user_key)),
         protected_remember_token: remember.as_ref().map(|t| Account::seal(t, &user_key)),
         last_sync: None,
+        hello_user_key: previous_hello,
     };
 
     // The first sync right away, so the vault isn't empty on arrival.
@@ -601,20 +696,20 @@ async fn finish_login(
             }),
         }
     }
-    state.unlocked.write().insert(
-        id.clone(),
-        Unlocked {
-            user_key,
-            vault,
-            session: Some(session),
-            reprompt_ok: HashSet::new(),
-        },
-    );
+    state
+        .unlocked
+        .write()
+        .insert(id.clone(), Unlocked::new(user_key, vault, Some(session)));
     *state.active.lock() = Some(id.clone());
     state.set_trouble(&id, Trouble::default());
     state.touch();
     tracing::info!(server = %pending.server.label(), "logged in");
     emit_status(app);
+    // A UwULock Server's own state and the cursor come with its delta sync,
+    // which the first sync above wasn't; the same sync learns its features.
+    if matches!(pending.server, Server::SelfHosted { .. }) {
+        spawn_sync(app.clone());
+    }
     Ok(())
 }
 
@@ -662,8 +757,16 @@ pub(crate) async fn unlock(
         }
     };
 
-    let vault = match state.storage.load_cache(&id) {
-        Some(text) => match parse_sync(&text).and_then(|sync| Vault::open(&sync, &user_key)) {
+    open_unlocked(&app, &state, id, user_key);
+    Ok(status_of(&state))
+}
+
+/// The user key is open: the vault comes from the copy on this device, the
+/// sync follows in the back.
+fn open_unlocked(app: &AppHandle, state: &VaultState, id: String, user_key: SymmetricKey) {
+    let cached = state.storage.load_cache(&id);
+    let vault = match &cached {
+        Some(text) => match parse_sync(text).and_then(|sync| Vault::open(&sync, &user_key)) {
             Ok(vault) => vault,
             Err(error) => {
                 tracing::warn!(%error, "the cached vault didn't open");
@@ -672,19 +775,96 @@ pub(crate) async fn unlock(
         },
         None => Vault::default(),
     };
-    state.unlocked.write().insert(
-        id,
-        Unlocked {
-            user_key,
-            vault,
-            session: None,
-            reprompt_ok: HashSet::new(),
-        },
-    );
+    let mut unlocked = Unlocked::new(user_key, vault, None);
+    if let Some(synced) = cached
+        .as_deref()
+        .and_then(|text| synced_from_cache(text, &unlocked.user_key))
+    {
+        unlocked.uwu = synced.uwu;
+    }
+    state.unlocked.write().insert(id, unlocked);
     state.touch();
     tracing::info!("unlocked");
-    emit_status(&app);
+    emit_status(app);
     spawn_sync(app.clone());
+}
+
+/// Unlocking with Windows Hello, for an account where it is on.
+#[tauri::command]
+pub(crate) async fn unlock_with_hello(
+    app: AppHandle,
+    state: State<'_, VaultState>,
+) -> Result<Status> {
+    let (id, account) = state.active_account()?;
+    let sealed = account
+        .hello_user_key
+        .clone()
+        .ok_or_else(|| Failure::new("unsupported", "Windows Hello isn't on for this account."))?;
+    let account_id = id.clone();
+    let user_key =
+        tauri::async_runtime::spawn_blocking(move || crate::hello::open(&account_id, &sealed))
+            .await
+            .map_err(|e| Failure::new("hello", e.to_string()))?
+            .map_err(|message| Failure::new("hello", message))?;
+    // The copy on this device must open with it; a key from before a
+    // rotation elsewhere doesn't, and then the master password is needed.
+    // The private key in it is under the user key, MAC and all.
+    let private_key = state
+        .storage
+        .load_cache(&id)
+        .and_then(|text| parse_sync(&text).ok())
+        .and_then(|sync| sync.profile.private_key);
+    if let Some(private_key) = private_key {
+        if private_key
+            .parse::<EncString>()
+            .and_then(|e| e.decrypt(&user_key))
+            .is_err()
+        {
+            state.update_account(&id, |account| account.hello_user_key = None);
+            return Err(Failure::new(
+                "hello",
+                "The account's key has changed. Unlock with the master password and switch \
+                 Windows Hello on again.",
+            ));
+        }
+    }
+    open_unlocked(&app, &state, id, user_key);
+    Ok(status_of(&state))
+}
+
+/// Switches unlocking with Windows Hello on or off for the account on
+/// screen. On needs the vault open (the user key is sealed for Hello) and
+/// asks Windows Hello once.
+#[tauri::command]
+pub(crate) async fn set_hello(
+    app: AppHandle,
+    state: State<'_, VaultState>,
+    enabled: bool,
+) -> Result<Status> {
+    let id = state.active_id()?;
+    if !enabled {
+        state.update_account(&id, |account| account.hello_user_key = None);
+        let account_id = id.clone();
+        let _ =
+            tauri::async_runtime::spawn_blocking(move || crate::hello::forget(&account_id)).await;
+        emit_status(&app);
+        return Ok(status_of(&state));
+    }
+    if !crate::hello::available() {
+        return Err(Failure::new(
+            "unsupported",
+            "Windows Hello isn't set up on this computer.",
+        ));
+    }
+    let user_key = state.with_unlocked(|u| Ok(u.user_key.clone()))?;
+    let account_id = id.clone();
+    let sealed =
+        tauri::async_runtime::spawn_blocking(move || crate::hello::seal(&account_id, &user_key))
+            .await
+            .map_err(|e| Failure::new("hello", e.to_string()))?
+            .map_err(|message| Failure::new("hello", message))?;
+    state.update_account(&id, |account| account.hello_user_key = Some(sealed));
+    emit_status(&app);
     Ok(status_of(&state))
 }
 
@@ -743,7 +923,9 @@ impl VaultState {
     /// it has to be one of the accounts first: nothing else is ever handed to
     /// `Storage::forget`.
     fn log_out(&self, id: &str) -> Result<()> {
-        self.account(id)?;
+        if self.account(id)?.hello_user_key.is_some() {
+            crate::hello::forget(id);
+        }
         self.unlocked.write().remove(id);
         *self.pending.lock() = None;
         self.clipboard.clear_now();
@@ -809,8 +991,10 @@ pub(crate) fn set_security(
     state: State<'_, VaultState>,
     auto_lock_minutes: Option<u32>,
     clipboard_seconds: Option<u32>,
+    lock_with_system: Option<bool>,
 ) {
     *state.security.lock() = Security {
+        with_system: lock_with_system.unwrap_or(true),
         auto_lock: auto_lock_minutes
             .filter(|m| *m > 0)
             .map(|m| Duration::from_secs(u64::from(m.min(24 * 60)) * 60)),
@@ -818,6 +1002,77 @@ pub(crate) fn set_security(
             .filter(|s| *s > 0)
             .map(|s| Duration::from_secs(u64::from(s.min(600)))),
     };
+}
+
+// ── Live updates ───────────────────────────────────────────
+
+impl VaultState {
+    pub(crate) fn live(&self) -> &Live {
+        &self.live
+    }
+
+    /// The account to listen for — the one on screen, open, with a session
+    /// the server still takes — and whether its server has the realtime
+    /// channel.
+    pub(crate) fn live_target(&self) -> Option<(String, bool)> {
+        let id = self.active.lock().clone()?;
+        if self.trouble(&id).session_expired {
+            return None;
+        }
+        let realtime = self.unlocked.read().get(&id)?.has("realtime");
+        Some((id, realtime))
+    }
+
+    /// What a live channel connects with: the server, a token, the cursor of
+    /// the offline copy, this device's id. A session the server refuses is
+    /// marked, so nobody keeps knocking.
+    pub(crate) async fn live_credentials(
+        &self,
+        id: &str,
+    ) -> Result<(Server, Zeroizing<String>, Option<String>, String)> {
+        let account = self.account(id)?;
+        let token = match access_token(self, id).await {
+            Ok(token) => token,
+            Err(failure) => {
+                if failure.kind == "session-expired" {
+                    let mut trouble = self.trouble(id);
+                    trouble.session_expired = true;
+                    self.set_trouble(id, trouble);
+                }
+                return Err(failure);
+            }
+        };
+        let cursor = self.storage.load_cache(id).and_then(|text| {
+            let value: Value = serde_json::from_str(&text).ok()?;
+            value
+                .get("uwuLock")?
+                .get("cursor")?
+                .as_str()
+                .map(str::to_string)
+        });
+        Ok((account.server, token, cursor, self.storage.device_id()))
+    }
+
+    /// The server refused the access token itself: the next call gets a new
+    /// one from the refresh token.
+    pub(crate) fn forget_access_token(&self, id: &str) {
+        if let Some(unlocked) = self.unlocked.write().get_mut(id) {
+            unlocked.session = None;
+        }
+    }
+
+    /// The server ended this device's session: the account locks, keeps
+    /// nothing decrypted, and asks for a new login.
+    pub(crate) fn session_ended(&self, id: &str) {
+        self.unlocked.write().remove(id);
+        if self.active.lock().as_deref() == Some(id) {
+            *self.pending.lock() = None;
+            self.clipboard.clear_now();
+        }
+        let mut trouble = self.trouble(id);
+        trouble.session_expired = true;
+        self.set_trouble(id, trouble);
+    }
 }
 
 // ── Sync ───────────────────────────────────────────────────
@@ -837,12 +1092,22 @@ fn spawn_sync(app: AppHandle) {
     });
 }
 
+/// A sync of one account in the back — the live channel's, which knows
+/// which account it listens for.
+pub(crate) fn spawn_sync_of(app: AppHandle, id: String) {
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = sync_account(&app, &id).await {
+            tracing::warn!(kind = error.kind, message = %error.message, "sync failed");
+        }
+    });
+}
+
 async fn sync(app: &AppHandle) -> Result<()> {
     let id = app.state::<VaultState>().active_id()?;
     sync_account(app, &id).await
 }
 
-async fn sync_account(app: &AppHandle, id: &str) -> Result<()> {
+pub(crate) async fn sync_account(app: &AppHandle, id: &str) -> Result<()> {
     let state = app.state::<VaultState>();
     // One sync per account at a time.
     if !state.syncing.lock().insert(id.to_string()) {
@@ -871,7 +1136,7 @@ async fn sync_account(app: &AppHandle, id: &str) -> Result<()> {
 
 /// A token this account can use right now, renewed from the refresh token
 /// when the old one is about to run out.
-async fn access_token(state: &VaultState, id: &str) -> Result<Zeroizing<String>> {
+pub(crate) async fn access_token(state: &VaultState, id: &str) -> Result<Zeroizing<String>> {
     let account = state.account(id)?;
     let (user_key, access) = {
         let unlocked = state.unlocked.read();
@@ -919,7 +1184,14 @@ async fn sync_inner(state: &VaultState, id: &str) -> Result<()> {
             .clone()
     };
 
-    let text = client.sync(&access).await?;
+    // UwULock Server says what it can do; the others don't answer.
+    let info = client.uwu_info().await.unwrap_or(None);
+    let (text, uwu) = if info.as_ref().is_some_and(|i| i.has("delta-sync")) {
+        let synced = delta_sync(state, id, &client, &access, &user_key).await?;
+        (synced_to_cache(&synced, &user_key), synced.uwu)
+    } else {
+        (client.sync(&access).await?, UwuState::default())
+    };
     let sync = parse_sync(&text)?;
     let vault = Vault::open(&sync, &user_key)?;
     state
@@ -941,8 +1213,50 @@ async fn sync_inner(state: &VaultState, id: &str) -> Result<()> {
     });
     if let Some(unlocked) = state.unlocked.write().get_mut(id) {
         unlocked.vault = vault;
+        unlocked.uwu = uwu;
+        if info.is_none() {
+            unlocked.extras = None;
+        }
+        unlocked.info = info;
     }
     Ok(())
+}
+
+/// UwULock Server's delta sync: what changed since the cursor kept with the
+/// offline copy, merged into it; everything, when there is no cursor or the
+/// server can't serve it (`reset`). Pages until the server has no more.
+async fn delta_sync(
+    state: &VaultState,
+    id: &str,
+    client: &Client,
+    access: &str,
+    user_key: &SymmetricKey,
+) -> Result<uwulock_bitwarden::delta::Synced> {
+    let mut synced = state
+        .storage
+        .load_cache(id)
+        .and_then(|text| synced_from_cache(&text, user_key))
+        .unwrap_or_default();
+    // No page limit from the server's side, but not an endless loop either.
+    for _ in 0..1000 {
+        let page = match client.uwu_sync(access, synced.cursor.as_deref()).await {
+            Ok(page) => page,
+            // A cursor the server can't read: drop it, start over.
+            Err(error) if error.code() == Some("invalid") && synced.cursor.is_some() => {
+                tracing::info!("the server didn't take the sync cursor; syncing everything");
+                synced.cursor = None;
+                continue;
+            }
+            Err(error) => return Err(Error::from(error).into()),
+        };
+        if !synced.apply(&page)? {
+            return Ok(synced);
+        }
+    }
+    Err(Failure::new(
+        "server",
+        "The server kept sending more changes.",
+    ))
 }
 
 /// Auto-lock and the periodic sync.
@@ -970,7 +1284,9 @@ pub(crate) fn start(app: &AppHandle) {
                 .active_id()
                 .map(|id| state.trouble(&id).session_expired)
                 .unwrap_or(true);
-            if last_sync.elapsed() >= SYNC_EVERY && !expired {
+            // Live updates make the regular check unnecessary.
+            let live = state.live.channel().is_some();
+            if last_sync.elapsed() >= SYNC_EVERY && !expired && !live {
                 last_sync = Instant::now();
                 spawn_sync(app.clone());
             }
@@ -978,7 +1294,7 @@ pub(crate) fn start(app: &AppHandle) {
     });
 }
 
-fn now() -> u64 {
+pub(crate) fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs())
@@ -986,14 +1302,14 @@ fn now() -> u64 {
 
 /// The moment, as Bitwarden writes dates: `2026-09-23T12:30:00.000Z`. Saved
 /// items carry one, for the password history and the trash.
-fn iso_now() -> String {
+pub(crate) fn iso_now() -> String {
     let since = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default();
     iso_from_unix(since.as_secs(), since.subsec_millis())
 }
 
-fn iso_from_unix(seconds: u64, millis: u32) -> String {
+pub(crate) fn iso_from_unix(seconds: u64, millis: u32) -> String {
     let days = (seconds / 86_400) as i64;
     let rest = seconds % 86_400;
     // Days since the epoch to a calendar date, counting from March so leap
@@ -1051,7 +1367,7 @@ fn text(value: &Option<Secret>) -> Option<String> {
 }
 
 /// The host of an address, for the list: `github.com` from `https://github.com/login`.
-fn host_of(uri: &str) -> Option<String> {
+pub(crate) fn host_of(uri: &str) -> Option<String> {
     let with_scheme = if uri.contains("://") {
         uri.to_string()
     } else {
@@ -1698,7 +2014,7 @@ fn apply_draft(item: &mut Item, draft: Draft, now: &str) -> Result<()> {
 
 /// What a write changed, for the cached vault. Applying it here keeps the
 /// list and the details right away, without waiting for the next sync.
-enum Patch {
+pub(crate) enum Patch {
     Cipher(Value),
     Trash(String),
     RemoveCipher(String),
@@ -1715,7 +2031,7 @@ fn entry<'a>(value: &'a Value, name: &str) -> Option<&'a Value> {
         .map(|(_, value)| value)
 }
 
-fn entry_id(value: &Value) -> Option<&str> {
+pub(crate) fn entry_id(value: &Value) -> Option<&str> {
     entry(value, "id")?.as_str()
 }
 
@@ -1746,7 +2062,7 @@ fn set_field(value: &mut Value, name: &str, to: Value) {
 }
 
 /// Writes the change into the cached sync and opens the vault again from it.
-fn patch_cache(state: &VaultState, account_id: &str, patch: Patch) -> Result<()> {
+pub(crate) fn patch_cache(state: &VaultState, account_id: &str, patch: Patch) -> Result<()> {
     let Some(text) = state.storage.load_cache(account_id) else {
         // Nothing cached yet; the next sync brings everything anyway.
         return Ok(());
@@ -1823,7 +2139,7 @@ fn broken_cache() -> Failure {
 
 /// The item as it is here, ready to be sent — with the reprompt honoured: an
 /// item that asks for the master password can't be changed without it either.
-fn prepare(state: &VaultState, account_id: &str, id: &str) -> Result<Item> {
+pub(crate) fn prepare(state: &VaultState, account_id: &str, id: &str) -> Result<Item> {
     let guard = state.unlocked.read();
     let unlocked = guard.get(account_id).ok_or_else(Failure::locked)?;
     let item = unlocked
@@ -2116,6 +2432,7 @@ mod tests {
             protected_refresh_token: None,
             protected_remember_token: None,
             last_sync: None,
+            hello_user_key: None,
         };
         let id = storage.id_for(&account.server, &account.email);
         storage.save_account(&id, &account).unwrap();
@@ -2156,6 +2473,7 @@ mod tests {
             protected_refresh_token: None,
             protected_remember_token: None,
             last_sync: None,
+            hello_user_key: None,
         };
         let id = storage.id_for(&account.server, &account.email);
         storage.save_account(&id, &account).unwrap();

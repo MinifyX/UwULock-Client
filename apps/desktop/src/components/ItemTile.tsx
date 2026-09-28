@@ -1,4 +1,5 @@
 import type { ItemKind, ItemSummary } from '../lib/api';
+import { useItemIcon } from '../lib/uwu';
 import { Icon, type IconName } from './Icon';
 
 const KIND_ICON: Record<ItemKind, IconName> = {
@@ -19,9 +20,10 @@ function hue(text: string): number {
 }
 
 /**
- * The little square in front of an item: a login shows the first letter of
- * its name, everything else what kind it is. No favicons: fetching them would
- * tell a server which sites are in the vault.
+ * The little square in front of an item: its icon on UwULock Server (an own
+ * one, or the site's, which the server fetches and Rust asks it for — never
+ * the page, never the site itself); otherwise a login shows the first letter
+ * of its name, everything else what kind it is.
  */
 export function ItemTile({
   item,
@@ -31,6 +33,13 @@ export function ItemTile({
   size?: 'small' | 'large';
 }) {
   const letter = (item.name || item.host || '?').trim().charAt(0).toUpperCase();
+  const icon = useItemIcon(item.id);
+  if (icon)
+    return (
+      <span className="item-tile" data-size={size} data-image aria-hidden>
+        <img src={icon} alt="" draggable={false} />
+      </span>
+    );
   return (
     <span className="item-tile" data-size={size} data-hue={hue(item.name || item.id)} aria-hidden>
       {item.kind === 'login' ? (

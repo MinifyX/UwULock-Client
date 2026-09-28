@@ -53,6 +53,20 @@ let userId: string | null = null;
 /** The server's revision date at the last sync: a newer one means something changed. */
 let knownRevision: number | null = null;
 
+/** Counts every vault opened (each sync) and closed: what is cached beside it knows when to go. */
+let opened = 0;
+let closings = 0;
+
+/** Changes with every sync and every lock. */
+export function generation(): number {
+  return opened + closings;
+}
+
+/** Changes only when the vault closes (locked, logged out, another account). */
+export function closedCount(): number {
+  return closings;
+}
+
 export function syncState() {
   return { syncing, error: syncError };
 }
@@ -78,6 +92,7 @@ export async function open(account: Account, text: string): Promise<void> {
     equivalents = [];
   }
   index = await callJson<IndexEntry[]>((core) => core.autofillIndex());
+  opened += 1;
   live.start(account);
   changed();
 }
@@ -90,6 +105,7 @@ export function closed() {
   userId = null;
   knownRevision = null;
   syncError = null;
+  closings += 1;
   live.stop();
 }
 

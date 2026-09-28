@@ -12,6 +12,7 @@ export const DEFAULT_SETTINGS: Settings = {
   savePrompt: true,
   copyTotp: true,
   passkeys: true,
+  showIcons: true,
   neverSave: [],
   defaultMatch: 0,
   generator: {
@@ -52,7 +53,7 @@ export async function updateSettings(patch: Partial<Settings>): Promise<Settings
     next.lockTimeout = patch.lockTimeout;
   if (typeof patch.clipboardClear === 'number')
     next.clipboardClear = Math.max(0, Math.min(600, Math.round(patch.clipboardClear)));
-  for (const key of ['inlineMenu', 'savePrompt', 'copyTotp', 'passkeys'] as const) {
+  for (const key of ['inlineMenu', 'savePrompt', 'copyTotp', 'passkeys', 'showIcons'] as const) {
     if (typeof patch[key] === 'boolean') next[key] = patch[key];
   }
   if (Array.isArray(patch.neverSave))

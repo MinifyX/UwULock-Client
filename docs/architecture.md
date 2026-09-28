@@ -210,6 +210,62 @@ nor UwULock Server's extras.
   kept per account as `uwu.features`): a feature appears when the server lists
   it, so Vaultwarden and Bitwarden see a plain Bitwarden client.
 
+## UwULock Server
+
+Against Bitwarden and Vaultwarden UwULock is a plain Bitwarden client. A
+UwULock Server says what more it can do at `GET /uwu/v1/info`; the app asks at
+every sync and offers a feature only when the server lists it. The contract
+for all of it is UwULock-Server's `docs/uwu-api.md`.
+
+- **Delta sync** (`uwulock-bitwarden::delta`, `uwu::uwu_sync`): the first
+  sync is complete, every later one brings only what changed since the
+  cursor. The pages are merged into a copy in exactly `/api/sync`'s shape, so
+  the vault opens from it as before. The cursor and UwULock's own state (own
+  icons, reminders, masked addresses, travel mode, badge counts) are kept in
+  the same `vault.json` under `uwuLock` — the state sealed under the user
+  key — so a crash can never leave a cursor that is ahead of the copy. A
+  cursor the server can't read, or a `reset`, means one full sync.
+- **Live updates** (`uwulock-bitwarden::live`, desktop `live.rs`): UwULock
+  Server's realtime channel (`/uwu/v1/realtime`: the token in the first
+  message, never in the URL; a fresh token on the same connection before the
+  old one runs out; the cursor, so a reconnect hears what it missed), else
+  Bitwarden's SignalR hub in MessagePack. Either says only _that_ something
+  changed; a sync follows 250 ms after the last change in a row. Reconnects
+  back off by the contract's close codes. While a channel is up, the
+  five-minute check rests. A session the server ends locks the account.
+- **The extras key** (`uwulock-core::extras`): what UwULock encrypts beyond
+  Bitwarden's objects (suite spaces, own icons, file-request labels) is under
+  one key per account, wrapped for the user key and for the account's RSA
+  public key. After an official client rotated the user key only the second
+  wrap is left; the next UwULock client opens it with the private key and
+  wraps it for the new user key (`extras::resolve`,
+  `Client::extras_key`).
+- **File requests** (`uwulock-core::file_request`): the link's secret and
+  its HKDF key, the public details the uploader's page encrypts for, a key
+  per submission wrapped RSA-OAEP-SHA1 for the owner, a key per file — so
+  taking a file into an item re-wraps only its key.
+- **The suite vault** (`uwulock-bitwarden::suite`): UwUSSH and UwURDP log in
+  as `App::suite("uwussh")` and get their space's key (under the extras key)
+  and pull and push their sealed records. The records' crypto and merge stay
+  in the apps.
+
+The crypto of all of this is in `uwulock-core`, with values made
+independently in Python as test vectors (`tests/integration/uwu.rs`), and is
+what UwULock-Server's web vault builds on as well.
+
+## Locking with the computer, Windows Hello
+
+`session_lock.rs` locks everything when the screen locks or the computer
+sleeps: logind (`PrepareForSleep`, `Lock`, `LockedHint`) and the screen
+saver's `ActiveChanged` on Linux, the input desktop on Windows, the session's
+`CGSSessionScreenIsLocked` on macOS, and everywhere a gap between the wall
+clock and the monotonic one. `hello.rs` unlocks with Windows Hello: its key
+(KeyCredentialManager) signs a fixed challenge per account, and the hashed,
+stretched signature seals a copy of the user key in `account.json`. Touch ID
+is not offered: a keychain item that only opens with a finger needs an Apple
+Developer ID signature and an entitlement, and a prompt in front of a key
+kept elsewhere would protect nothing.
+
 ## Suite parts
 
 Taken from UwURDP unchanged or nearly: the installer (`apps/setup`), the

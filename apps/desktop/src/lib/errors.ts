@@ -51,6 +51,43 @@ export function errorText(error: unknown): string {
       return t('Der Tresor ist gesperrt.');
     case 'not-found':
       return t('Das gibt es in diesem Eintrag nicht (mehr).');
+    // UwULock Server's extras.
+    case 'feature-off':
+      return t('Das bietet dieser Server nicht (mehr) an.');
+    case 'not-connected':
+      return t('Dein Konto ist noch nicht mit UwUMail verbunden. Das geht im Web-Tresor.');
+    case 'revoked':
+      return t('UwUMail hat die Verbindung beendet. Verbinde dein Konto im Web-Tresor neu.');
+    case 'quota':
+      return t('Damit wäre dein Kontingent auf dem Server überschritten.');
+    case 'too-large':
+      return t('Das ist zu groß für den Server.');
+    case 'rate-limited':
+      return t('Zu viele Versuche in kurzer Zeit. Warte einen Moment.');
+    case 'upstream':
+      return t('Ein Dienst hinter dem Server antwortet gerade nicht: {reason}', { reason: m });
+    case 'travel-active':
+      return t('Das geht nicht, solange der Reisemodus an ist.');
+    case 'extras-lost':
+      return t(
+        'Der Schlüssel für UwULocks Extras lässt sich nicht mehr öffnen – das Schlüsselpaar deines Kontos hat sich geändert. Im Web-Tresor kannst du neu anfangen.',
+      );
+    case 'no-key-pair':
+      return t('Deinem Konto fehlt ein Schlüsselpaar. Melde dich einmal im Web-Tresor an.');
+    case 'password-again':
+      return t(
+        'Ein neuer Link braucht das Passwort noch einmal – oder entferne es. Das Passwort hängt am Link.',
+      );
+    case 'new-link-needed':
+      return t('Der Link dieser Anfrage lässt sich nicht mehr öffnen. Erstelle einen neuen Link.');
+    case 'version-conflict':
+      return t(
+        'Der Eintrag wurde inzwischen woanders geändert. UwULock hat neu synchronisiert – sieh ihn dir an und stelle die Version dann noch einmal her.',
+      );
+    case 'not-local':
+      return t('Dieser Eintrag hat keine Adresse im lokalen Netz.');
+    case 'device-icon':
+      return t('Das Gerät hat kein Symbol geliefert.');
     case 'invalid':
       if (m.startsWith("That doesn't look like an email"))
         return t('Das sieht nicht nach einer E-Mail-Adresse aus.');

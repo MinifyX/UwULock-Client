@@ -17,7 +17,18 @@ base64.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 zeroize.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
 url = "2"
+# Icons of devices on the local network: whatever they serve (ICO, PNG, JPEG,
+# WebP, GIF), made into a small PNG. Only the decoders that are needed.
+image = { version = "0.25", default-features = false, features = [
+  "png",
+  "ico",
+  "jpeg",
+  "webp",
+  "gif",
+] }
 # rustls with both the bundled roots and the system's own store: a homelab
 # Vaultwarden behind a private CA works once that CA is trusted by the system.
 reqwest = { version = "0.12", default-features = false, features = [
@@ -26,7 +37,22 @@ reqwest = { version = "0.12", default-features = false, features = [
   "rustls-tls-native-roots",
 ] }
 
+# Live updates: UwULock's realtime channel and Bitwarden's SignalR hub, both
+# WebSockets, with the same rustls (ring) and roots as the HTTP client.
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+rand.workspace = true
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-native-certs = "0.8"
+tokio = { workspace = true, features = ["net"] }
+tokio-tungstenite = { version = "0.29", default-features = false, features = [
+  "connect",
+  "handshake",
+  "rustls-tls-webpki-roots",
+] }
+webpki-roots = "1"
+
 [dev-dependencies]
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 tokio = { workspace = true }
 base64 = { workspace = true }
 serde_json = { workspace = true }

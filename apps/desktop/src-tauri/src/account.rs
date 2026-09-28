@@ -13,6 +13,13 @@
 //! - `accounts/<id>/vault.json` — the last sync, exactly as the server sent
 //!   it. Every name, username, password and note in it is still encrypted by
 //!   Bitwarden; that is what lets the vault open offline.
+//!   On a UwULock Server with delta sync, the same file also carries
+//!   `uwuLock`: the cursor of the last delta and UwULock's own state (own
+//!   icons, reminders, masked addresses, travel mode…), that state sealed
+//!   under the user key. The vault part stays exactly `/api/sync`'s shape.
+//! - `accounts/<id>/move-journal.json` — after a move from Bitwarden into
+//!   this account: which source object became which here (ids only), sealed
+//!   under the user key, so a second move carries only what is new.
 //! - `accounts.json` — which accounts there are, in which order, and which one
 //!   was open last. Nothing secret.
 //! - `device-id` — this installation's device id, kept across logouts and
@@ -28,6 +35,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use uwulock_bitwarden::delta::{Synced, UwuState};
 use uwulock_bitwarden::{EncString, Kdf, Server, SymmetricKey};
 use zeroize::Zeroizing;
 
@@ -36,6 +44,52 @@ const CACHE: &str = "vault.json";
 const DEVICE: &str = "device-id";
 const INDEX: &str = "accounts.json";
 const ACCOUNTS: &str = "accounts";
+const MOVE_JOURNAL: &str = "move-journal.json";
+/// The key of UwULock's part in the cached sync.
+const UWU: &str = "uwuLock";
+
+/// The cached sync as a [`Synced`]: its vault, and — if a delta sync wrote it
+/// — the cursor and UwULock's state. A cache from a plain `/api/sync` has no
+/// cursor, so the next delta sync starts with a full one.
+pub fn synced_from_cache(text: &str, user_key: &SymmetricKey) -> Option<Synced> {
+    let mut sync: serde_json::Value = serde_json::from_str(text).ok()?;
+    let extra = sync.as_object_mut()?.remove(UWU);
+    let mut synced = Synced::from_full_sync(sync);
+    if let Some(extra) = extra {
+        let state = extra
+            .get("state")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string);
+        let state = Account::unseal(&state, user_key)
+            .and_then(|text| serde_json::from_str::<UwuState>(&text).ok());
+        // UwULock's state that doesn't open means starting over from a full
+        // sync, not a delta on top of a hole.
+        if let Some(state) = state {
+            synced.uwu = state;
+            synced.cursor = extra
+                .get("cursor")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string);
+        }
+    }
+    Some(synced)
+}
+
+/// What [`Storage::save_cache`] writes for a [`Synced`].
+pub fn synced_to_cache(synced: &Synced, user_key: &SymmetricKey) -> String {
+    let mut sync = synced.sync.clone();
+    if let Some(object) = sync.as_object_mut() {
+        let state = serde_json::to_string(&synced.uwu).unwrap_or_default();
+        object.insert(
+            UWU.into(),
+            serde_json::json!({
+                "cursor": synced.cursor,
+                "state": Account::seal(&state, user_key),
+            }),
+        );
+    }
+    sync.to_string()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -61,6 +115,10 @@ pub struct Account {
     /// Unix seconds of the last successful sync.
     #[serde(default)]
     pub last_sync: Option<u64>,
+    /// The user key sealed under what Windows Hello signs (`hello`), when
+    /// unlocking with Windows Hello is on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hello_user_key: Option<String>,
 }
 
 impl Account {
@@ -255,6 +313,18 @@ impl Storage {
         write_atomic(&home.join(CACHE), sync.as_bytes())
     }
 
+    /// The journal of moves into this account (`move-journal.json`): which
+    /// object of which source became which here, sealed under the user key.
+    pub fn load_move_journal(&self, id: &str) -> Option<String> {
+        std::fs::read_to_string(self.home(id).ok()?.join(MOVE_JOURNAL)).ok()
+    }
+
+    pub fn save_move_journal(&self, id: &str, sealed: &str) -> std::io::Result<()> {
+        let home = self.home(id)?;
+        std::fs::create_dir_all(&home)?;
+        write_atomic(&home.join(MOVE_JOURNAL), sealed.as_bytes())
+    }
+
     /// Logging out of one account: its folder goes, the device id and the
     /// other accounts stay.
     pub fn forget(&self, id: &str) -> std::io::Result<()> {
@@ -323,11 +393,30 @@ mod tests {
             protected_refresh_token: None,
             protected_remember_token: None,
             last_sync: None,
+            hello_user_key: None,
         }
     }
 
     fn scratch() -> PathBuf {
         std::env::temp_dir().join(format!("uwulock-test-{}", uuid::Uuid::new_v4()))
+    }
+
+    #[test]
+    fn a_move_journal_lives_and_goes_with_its_account() {
+        let dir = scratch();
+        let storage = Storage::new(dir.clone()).unwrap();
+        let account = sample("nyu@example.org");
+        let id = storage.id_for(&account.server, &account.email);
+        storage.save_account(&id, &account).unwrap();
+        assert!(storage.load_move_journal(&id).is_none());
+        storage.save_move_journal(&id, "2.x|y|z").unwrap();
+        assert_eq!(storage.load_move_journal(&id).as_deref(), Some("2.x|y|z"));
+        assert!(storage
+            .save_move_journal("../elsewhere", "2.x|y|z")
+            .is_err());
+        storage.forget(&id).unwrap();
+        assert!(storage.load_move_journal(&id).is_none());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -459,6 +548,27 @@ mod tests {
         assert_eq!(storage.load_cache(&accounts[0].id).unwrap(), "{\"old\":1}");
         assert!(!dir.join(ACCOUNT).exists());
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn the_delta_cursor_and_uwulocks_state_travel_with_the_vault() {
+        let key = SymmetricKey::generate();
+        let mut synced =
+            Synced::from_full_sync(serde_json::json!({ "ciphers": [], "profile": {} }));
+        synced.cursor = Some("c7".into());
+        synced.uwu.unseen.security_notices = 3;
+        let text = synced_to_cache(&synced, &key);
+        // The vault part still reads as a sync; the state is sealed.
+        assert!(uwulock_bitwarden::api::parse_sync(&text).is_ok());
+        assert!(!text.contains("securityNotices"));
+        assert_eq!(synced_from_cache(&text, &key).unwrap(), synced);
+        // Under another key the state doesn't open: no cursor, a full sync next.
+        let other = synced_from_cache(&text, &SymmetricKey::generate()).unwrap();
+        assert_eq!(other.cursor, None);
+        assert_eq!(other.sync, synced.sync);
+        // A plain sync from before.
+        let plain = synced_from_cache("{\"ciphers\":[]}", &key).unwrap();
+        assert_eq!(plain.cursor, None);
     }
 
     #[test]

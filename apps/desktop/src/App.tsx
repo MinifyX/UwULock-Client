@@ -6,6 +6,7 @@ import { LockScreen } from './components/LockScreen';
 import { LoginScreen } from './components/LoginScreen';
 import { SettingsDialog, type SettingsSection } from './components/SettingsDialog';
 import { TitleBar } from './components/TitleBar';
+import { TravelBadge } from './components/TravelBadge';
 import { UpdateHint } from './components/UpdateHint';
 import { VaultScreen } from './components/VaultScreen';
 import {
@@ -45,10 +46,12 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    void setSecurity(settings.autoLock || null, settings.clipboardClear || null).catch(
-      () => undefined,
-    );
-  }, [settings.autoLock, settings.clipboardClear]);
+    void setSecurity(
+      settings.autoLock || null,
+      settings.clipboardClear || null,
+      settings.lockWithSystem,
+    ).catch(() => undefined);
+  }, [settings.autoLock, settings.clipboardClear, settings.lockWithSystem]);
 
   // What counts as activity for auto-lock: keys, clicks, the wheel. Told to
   // Rust at most every 20 seconds.
@@ -125,6 +128,7 @@ export function App() {
     <div className="shell">
       <div className="background" ref={backgroundRef}>
         <TitleBar onSettings={() => setSettingsOpen('appearance')}>
+          {unlocked && <TravelBadge />}
           <button
             className="titlebar-action"
             onClick={() => setGenerator(true)}
