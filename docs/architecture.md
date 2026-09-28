@@ -102,13 +102,13 @@ All RustCrypto, in `crates/uwulock-core/src/crypto.rs`:
 | Passkey unlock    | PRF output stretched like a master key; key set of user key, public and private key (`PrfKeySet`)       |
 | Fingerprint       | SHA-256(public key), HKDF-Expand with the email or user id → five words of EFF's long list              |
 
-`crates/uwulock-core/tests/vectors.rs` checks the master key, hash, stretching, a legacy user
+`crates/uwulock-core/tests/integration/vectors.rs` checks the master key, hash, stretching, a legacy user
 key, shareable and Send keys, a Send, two attachments and a fingerprint phrase against the known
 answers in Bitwarden's SDK (`bitwarden/sdk-internal`). The SDK has none for a passkey's key set, so
 that test opens one made with Python's `cryptography` the way Bitwarden's web vault makes it.
 The desktop app doesn't use files, Sends, passkeys or handing over yet; the web vault of
 UwULock-Server does.
-`crates/uwulock-bitwarden/tests/flow.rs` runs the whole way — prelogin, two-step login, remembered
+`crates/uwulock-bitwarden/tests/integration/flow.rs` runs the whole way — prelogin, two-step login, remembered
 device, refresh, revoked session, sync, every item type, organisations, item
 keys — against a toy server that encrypts its vault the way Bitwarden's apps
 do.

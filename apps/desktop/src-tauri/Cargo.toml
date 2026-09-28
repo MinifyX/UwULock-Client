@@ -9,7 +9,9 @@ rust-version.workspace = true
 
 [lib]
 name = "uwulock_desktop_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# Desktop only: no mobile build wants the static or dynamic library, so only the one
+# main.rs links against — one library less to link for every build and test.
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

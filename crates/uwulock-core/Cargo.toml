@@ -9,6 +9,10 @@ rust-version.workspace = true
 
 # Nothing networked in here: this crate is also built for
 # wasm32-unknown-unknown, for the web vault of UwULock-Server.
+# No doc tests: the examples in the docs are prose, and each would be a binary to link.
+[lib]
+doctest = false
+
 [dependencies]
 aes.workspace = true
 argon2.workspace = true

@@ -9,7 +9,7 @@
 //! authenticator code is printed every 30 seconds. `UWU_TOY_ADDR` listens
 //! elsewhere (the end-to-end run uses its own port).
 
-#[path = "../tests/support/toy_server.rs"]
+#[path = "../tests/integration/support/toy_server.rs"]
 mod toy_server;
 
 use toy_server::{Options, ToyServer};
