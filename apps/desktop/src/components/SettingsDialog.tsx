@@ -244,10 +244,16 @@ function Account({ status, onClose }: { status: Status; onClose: () => void }) {
       </Row>
       <Row
         label={t('Synchronisieren')}
-        description={t(
-          'Zuletzt {when} – UwULock holt Änderungen beim Entsperren und danach alle fünf Minuten.',
-          { when: ago(status.lastSync) },
-        )}
+        description={
+          status.live
+            ? t('Zuletzt {when} – Änderungen von deinen anderen Geräten kommen sofort an.', {
+                when: ago(status.lastSync),
+              })
+            : t(
+                'Zuletzt {when} – UwULock holt Änderungen beim Entsperren und danach alle fünf Minuten.',
+                { when: ago(status.lastSync) },
+              )
+        }
       >
         <button
           disabled={busy || status.syncing}

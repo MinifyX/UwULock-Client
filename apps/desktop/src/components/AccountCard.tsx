@@ -100,7 +100,9 @@ export function AccountCard({
                 ? t('Synchronisiert …')
                 : status.syncError
                   ? t('Sync fehlgeschlagen')
-                  : t('Synchronisiert {when}', { when: ago(status.lastSync) })}
+                  : status.live
+                    ? t('Live · synchronisiert {when}', { when: ago(status.lastSync) })
+                    : t('Synchronisiert {when}', { when: ago(status.lastSync) })}
             </span>
           </span>
           <Icon name="chevron" size={14} className="account-chevron" />

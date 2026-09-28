@@ -35,6 +35,7 @@ use zeroize::Zeroizing;
 
 use crate::account::{synced_from_cache, synced_to_cache, Account, Storage, Stored};
 use crate::clipboard::Clipboard;
+use crate::live::Live;
 
 const SYNC_EVERY: Duration = Duration::from_secs(5 * 60);
 
@@ -55,6 +56,14 @@ impl Failure {
 
     fn locked() -> Self {
         Failure::new("locked", "The vault is locked.")
+    }
+
+    pub(crate) fn kind(&self) -> &'static str {
+        self.kind
+    }
+
+    pub(crate) fn message(&self) -> &str {
+        &self.message
     }
 }
 
@@ -150,6 +159,7 @@ pub(crate) struct VaultState {
     security: Mutex<Security>,
     last_activity: Mutex<Instant>,
     clipboard: Arc<Clipboard>,
+    live: Live,
 }
 
 impl VaultState {
@@ -172,6 +182,7 @@ impl VaultState {
             }),
             last_activity: Mutex::new(Instant::now()),
             clipboard: Arc::new(Clipboard::default()),
+            live: Live::default(),
         }
     }
 
@@ -284,6 +295,9 @@ pub struct Status {
     sync_error: Option<String>,
     /// The server no longer accepts this device's session: log in again.
     session_expired: bool,
+    /// `realtime` or `hub` while changes from other devices arrive live;
+    /// `null` while the app checks every few minutes instead.
+    live: Option<&'static str>,
     /// Every account on this device, the open one included.
     accounts: Vec<AccountBrief>,
 }
@@ -331,6 +345,7 @@ fn status_of(state: &VaultState) -> Status {
         syncing: active.as_ref().is_some_and(|id| syncing.contains(id)),
         sync_error: trouble.sync_error,
         session_expired: trouble.session_expired,
+        live: state.live.channel().filter(|_| unlocked),
         accounts: accounts
             .iter()
             .map(|stored| AccountBrief {
@@ -348,9 +363,11 @@ fn status_of(state: &VaultState) -> Status {
     }
 }
 
-fn emit_status(app: &AppHandle) {
+pub(crate) fn emit_status(app: &AppHandle) {
     let state = app.state::<VaultState>();
     let _ = app.emit("vault-status", status_of(&state));
+    // Whatever changed may change which account gets live updates.
+    state.live.wake();
 }
 
 #[tauri::command]
@@ -389,7 +406,7 @@ impl ServerInput {
 #[serde(tag = "step", rename_all = "kebab-case")]
 pub enum LoginStep {
     Done {
-        status: Status,
+        status: Box<Status>,
     },
     #[serde(rename_all = "camelCase")]
     TwoFactor {
@@ -531,7 +548,7 @@ async fn login_step(
                 .ok_or_else(|| Failure::new("invalid", "No login in progress."))?;
             finish_login(app, state, pending, session).await?;
             Ok(LoginStep::Done {
-                status: status_of(state),
+                status: Box::new(status_of(state)),
             })
         }
         LoginOutcome::TwoFactor { methods, message } => {
@@ -844,6 +861,77 @@ pub(crate) fn set_security(
     };
 }
 
+// ── Live updates ───────────────────────────────────────────
+
+impl VaultState {
+    pub(crate) fn live(&self) -> &Live {
+        &self.live
+    }
+
+    /// The account to listen for — the one on screen, open, with a session
+    /// the server still takes — and whether its server has the realtime
+    /// channel.
+    pub(crate) fn live_target(&self) -> Option<(String, bool)> {
+        let id = self.active.lock().clone()?;
+        if self.trouble(&id).session_expired {
+            return None;
+        }
+        let realtime = self.unlocked.read().get(&id)?.has("realtime");
+        Some((id, realtime))
+    }
+
+    /// What a live channel connects with: the server, a token, the cursor of
+    /// the offline copy, this device's id. A session the server refuses is
+    /// marked, so nobody keeps knocking.
+    pub(crate) async fn live_credentials(
+        &self,
+        id: &str,
+    ) -> Result<(Server, Zeroizing<String>, Option<String>, String)> {
+        let account = self.account(id)?;
+        let token = match access_token(self, id).await {
+            Ok(token) => token,
+            Err(failure) => {
+                if failure.kind == "session-expired" {
+                    let mut trouble = self.trouble(id);
+                    trouble.session_expired = true;
+                    self.set_trouble(id, trouble);
+                }
+                return Err(failure);
+            }
+        };
+        let cursor = self.storage.load_cache(id).and_then(|text| {
+            let value: Value = serde_json::from_str(&text).ok()?;
+            value
+                .get("uwuLock")?
+                .get("cursor")?
+                .as_str()
+                .map(str::to_string)
+        });
+        Ok((account.server, token, cursor, self.storage.device_id()))
+    }
+
+    /// The server refused the access token itself: the next call gets a new
+    /// one from the refresh token.
+    pub(crate) fn forget_access_token(&self, id: &str) {
+        if let Some(unlocked) = self.unlocked.write().get_mut(id) {
+            unlocked.session = None;
+        }
+    }
+
+    /// The server ended this device's session: the account locks, keeps
+    /// nothing decrypted, and asks for a new login.
+    pub(crate) fn session_ended(&self, id: &str) {
+        self.unlocked.write().remove(id);
+        if self.active.lock().as_deref() == Some(id) {
+            *self.pending.lock() = None;
+            self.clipboard.clear_now();
+        }
+        let mut trouble = self.trouble(id);
+        trouble.session_expired = true;
+        self.set_trouble(id, trouble);
+    }
+}
+
 // ── Sync ───────────────────────────────────────────────────
 
 #[tauri::command]
@@ -856,6 +944,16 @@ pub(crate) async fn sync_now(app: AppHandle, state: State<'_, VaultState>) -> Re
 fn spawn_sync(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         if let Err(error) = sync(&app).await {
+            tracing::warn!(kind = error.kind, message = %error.message, "sync failed");
+        }
+    });
+}
+
+/// A sync of one account in the back — the live channel's, which knows
+/// which account it listens for.
+pub(crate) fn spawn_sync_of(app: AppHandle, id: String) {
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = sync_account(&app, &id).await {
             tracing::warn!(kind = error.kind, message = %error.message, "sync failed");
         }
     });
@@ -1043,7 +1141,9 @@ pub(crate) fn start(app: &AppHandle) {
                 .active_id()
                 .map(|id| state.trouble(&id).session_expired)
                 .unwrap_or(true);
-            if last_sync.elapsed() >= SYNC_EVERY && !expired {
+            // Live updates make the regular check unnecessary.
+            let live = state.live.channel().is_some();
+            if last_sync.elapsed() >= SYNC_EVERY && !expired && !live {
                 last_sync = Instant::now();
                 spawn_sync(app.clone());
             }

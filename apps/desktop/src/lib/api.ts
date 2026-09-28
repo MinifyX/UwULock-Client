@@ -42,6 +42,8 @@ export type Status = {
   syncing: boolean;
   syncError: string | null;
   sessionExpired: boolean;
+  /** Changes from other devices arrive as they happen, over this channel. */
+  live: 'realtime' | 'hub' | null;
   accounts: AccountBrief[];
 };
 

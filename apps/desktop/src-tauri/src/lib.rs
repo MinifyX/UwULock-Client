@@ -5,11 +5,13 @@
 //!
 //! - [`vault`] — logging in, unlocking, syncing, items, copying
 //! - [`account`] — what is kept on disk, and where
+//! - [`live`] — changes from other devices as they happen
 //! - [`clipboard`] — copies that clear themselves
 //! - [`system`] — updates and links out of the app
 
 mod account;
 mod clipboard;
+mod live;
 mod system;
 mod updates;
 mod vault;
@@ -44,6 +46,7 @@ pub fn run() {
             tracing::info!(path = %storage.dir().display(), "data folder");
             app.manage(vault::VaultState::new(storage));
             vault::start(app.handle());
+            live::start(app.handle());
             updates::start(app.handle());
             Ok(())
         })
