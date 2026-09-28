@@ -1,0 +1,8 @@
+{
+  "extName": { "message": "UwULock" },
+  "extDescription": {
+    "message": "Your UwULock, Vaultwarden or Bitwarden vault in the browser: fill logins, save new ones, use passkeys."
+  },
+  "commandAutofill": { "message": "Fill the login for this page" },
+  "commandOpen": { "message": "Open UwULock" }
+}
