@@ -372,7 +372,10 @@ fn data_url(png: &[u8]) -> String {
 pub(crate) async fn item_icons(
     state: State<'_, VaultState>,
     ids: Vec<String>,
+    automatic: Option<bool>,
 ) -> Result<HashMap<String, String>> {
+    // The person may not want the server to learn which sites are in the vault.
+    let automatic = automatic.unwrap_or(true);
     let (account_id, account) = state.active_account()?;
 
     // What is known here already, and what has to be asked for.
@@ -387,7 +390,9 @@ pub(crate) async fn item_icons(
             return Ok(None);
         };
         let own_on = info.has("own-icons");
-        let auto_on = info.has("icons") && info.icons.as_ref().is_some_and(|icons| icons.automatic);
+        let auto_on = automatic
+            && info.has("icons")
+            && info.icons.as_ref().is_some_and(|icons| icons.automatic);
         let icons_url = info
             .icons
             .as_ref()
@@ -449,6 +454,9 @@ pub(crate) async fn item_icons(
                 .and(u.extras_cache.own.get(id))
                 .and_then(|(_, png)| png.clone());
             let icon = own.or_else(|| {
+                if !automatic {
+                    return None;
+                }
                 let host = u
                     .vault
                     .item(id)

@@ -17,12 +17,15 @@ import { N_, t, useLanguage } from '../lib/i18n';
 import { KIND_LABEL } from '../lib/items';
 import { useSettings } from '../lib/settings';
 import { toast } from '../lib/toast';
+import { has, loadIcons, openWebVaultAt, useUwu } from '../lib/uwu';
 import { AccountCard } from './AccountCard';
 import { ContextMenu, type MenuItem } from './ContextMenu';
+import { FileRequestsDialog } from './FileRequestsDialog';
 import { Icon, type IconName } from './Icon';
 import { ItemDetail } from './ItemDetail';
 import { ItemEditor } from './ItemEditor';
 import { ItemTile } from './ItemTile';
+import { MaskedDialog } from './MaskedDialog';
 import { Modal } from './Modal';
 import { NyuScene } from './nyu/scenes';
 
@@ -32,6 +35,8 @@ export type Filter =
   | { kind: 'type'; type: ItemKind }
   | { kind: 'folder'; id: string | null }
   | { kind: 'collection'; id: string }
+  | { kind: 'organization'; id: string }
+  | { kind: 'due' }
   | { kind: 'trash' };
 
 const TYPES: { type: ItemKind; label: string; icon: IconName }[] = [
@@ -42,7 +47,7 @@ const TYPES: { type: ItemKind; label: string; icon: IconName }[] = [
   { type: 'ssh-key', label: N_('SSH-Schlüssel'), icon: 'key' },
 ];
 
-function matches(filter: Filter, item: ItemSummary): boolean {
+function matches(filter: Filter, item: ItemSummary, due: Set<string>): boolean {
   if (filter.kind === 'trash') return item.deleted;
   if (item.deleted) return false;
   switch (filter.kind) {
@@ -56,6 +61,10 @@ function matches(filter: Filter, item: ItemSummary): boolean {
       return !item.organizationId && item.folderId === filter.id;
     case 'collection':
       return item.collectionIds.includes(filter.id);
+    case 'organization':
+      return item.organizationId === filter.id;
+    case 'due':
+      return due.has(item.id);
   }
 }
 
@@ -89,7 +98,18 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
     null,
   );
   const [folderToDelete, setFolderToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [extrasDialog, setExtrasDialog] = useState<null | 'file-requests' | 'masked'>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const uwu = useUwu();
+  const due = useMemo(
+    () =>
+      new Set(
+        Object.entries(uwu.reminders)
+          .filter(([, reminder]) => reminder.isDue)
+          .map(([id]) => id),
+      ),
+    [uwu.reminders],
+  );
 
   const reload = useCallback(async () => {
     try {
@@ -121,15 +141,17 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
       folder: (id: string | null) =>
         live.filter((i) => !i.organizationId && i.folderId === id).length,
       collection: (id: string) => live.filter((i) => i.collectionIds.includes(id)).length,
+      organization: (id: string) => live.filter((i) => i.organizationId === id).length,
+      due: live.filter((i) => due.has(i.id)).length,
     };
-  }, [items]);
+  }, [items, due]);
 
   const visible = useMemo(() => {
     const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
     const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
     return items
       .filter((item) =>
-        words.length ? !item.deleted || filter.kind === 'trash' : matches(filter, item),
+        words.length ? !item.deleted || filter.kind === 'trash' : matches(filter, item, due),
       )
       .filter((item) => {
         if (!words.length) return true;
@@ -140,7 +162,22 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
         (a, b) =>
           collator.compare(a.name, b.name) || collator.compare(a.subtitle ?? '', b.subtitle ?? ''),
       );
-  }, [items, filter, query]);
+  }, [items, filter, query, due]);
+
+  // Icons for what is on screen: asked of Rust, which asks the server; again
+  // when an own icon changed.
+  useEffect(() => {
+    if (!uwu.uwu) return;
+    const timer = window.setTimeout(
+      () =>
+        void loadIcons(
+          visible.slice(0, 400).map((item) => item.id),
+          settings.siteIcons,
+        ),
+      150,
+    );
+    return () => window.clearTimeout(timer);
+  }, [visible, uwu.uwu, uwu.ownIcons, settings.siteIcons]);
 
   // Keep a selection that is still visible, or take the first.
   useEffect(() => {
@@ -179,19 +216,27 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
     return () => window.removeEventListener('keydown', onKey);
   }, [current, settings.clipboardClear]);
 
-  const title = query.trim()
-    ? t('Suche')
-    : filter.kind === 'all'
-      ? t('Alle Einträge')
-      : filter.kind === 'favorites'
-        ? t('Favoriten')
-        : filter.kind === 'trash'
-          ? t('Papierkorb')
-          : filter.kind === 'type'
-            ? t(TYPES.find((x) => x.type === filter.type)?.label ?? '')
-            : filter.kind === 'folder'
-              ? (overview?.folders.find((f) => f.id === filter.id)?.name ?? t('Ohne Ordner'))
-              : (overview?.collections.find((c) => c.id === filter.id)?.name ?? '');
+  const filterTitle = (): string => {
+    switch (filter.kind) {
+      case 'all':
+        return t('Alle Einträge');
+      case 'favorites':
+        return t('Favoriten');
+      case 'trash':
+        return t('Papierkorb');
+      case 'due':
+        return t('Neues Passwort fällig');
+      case 'type':
+        return t(TYPES.find((x) => x.type === filter.type)?.label ?? '');
+      case 'folder':
+        return overview?.folders.find((f) => f.id === filter.id)?.name ?? t('Ohne Ordner');
+      case 'organization':
+        return overview?.organizations.find((o) => o.id === filter.id)?.name ?? '';
+      case 'collection':
+        return overview?.collections.find((c) => c.id === filter.id)?.name ?? '';
+    }
+  };
+  const title = query.trim() ? t('Suche') : filterTitle();
 
   const pick = (next: Filter) => {
     setFilter(next);
@@ -238,6 +283,9 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
         <ul className="nav-list">
           {nav({ kind: 'all' }, 'layers', t('Alle Einträge'), counts.all)}
           {nav({ kind: 'favorites' }, 'star', t('Favoriten'), counts.favorites)}
+          {has(uwu, 'reminders') &&
+            (counts.due > 0 || filter.kind === 'due') &&
+            nav({ kind: 'due' }, 'bell', t('Neues Passwort fällig'), counts.due)}
         </ul>
 
         <h2>{t('Typen')}</h2>
@@ -297,11 +345,29 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
 
         {overview?.organizations.map((org) => (
           <div key={org.id}>
-            <h2 className="org-heading">
+            <h2 className="nav-heading org-heading">
               <Icon name="building" size={13} />
-              {org.name}
+              <span className="nav-label">{org.name}</span>
+              <button
+                className="icon-button tiny"
+                title={t('Im Web-Tresor verwalten')}
+                aria-label={t('{name} im Web-Tresor verwalten', { name: org.name })}
+                onClick={() =>
+                  void openWebVaultAt('organization', org.id).catch((e) =>
+                    toast(errorText(e), 'error'),
+                  )
+                }
+              >
+                <Icon name="external" size={13} />
+              </button>
             </h2>
             <ul className="nav-list">
+              {nav(
+                { kind: 'organization', id: org.id },
+                'layers',
+                t('Alle Einträge'),
+                counts.organization(org.id),
+              )}
               {overview.collections
                 .filter((c) => c.organizationId === org.id)
                 .sort((a, b) => a.name.localeCompare(b.name))
@@ -311,6 +377,38 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
             </ul>
           </div>
         ))}
+
+        {(has(uwu, 'file-requests') || has(uwu, 'masked-addresses')) && (
+          <>
+            <h2>{t('Extras')}</h2>
+            <ul className="nav-list">
+              {has(uwu, 'file-requests') && (
+                <li>
+                  <button className="nav-row" onClick={() => setExtrasDialog('file-requests')}>
+                    <Icon name="inbox" size={16} />
+                    <span className="nav-label">{t('Dateianfragen')}</span>
+                    {uwu.unseen.fileRequestSubmissions > 0 && (
+                      <span
+                        className="nav-badge"
+                        title={t('{n} neue Uploads', { n: uwu.unseen.fileRequestSubmissions })}
+                      >
+                        {uwu.unseen.fileRequestSubmissions}
+                      </span>
+                    )}
+                  </button>
+                </li>
+              )}
+              {has(uwu, 'masked-addresses') && (
+                <li>
+                  <button className="nav-row" onClick={() => setExtrasDialog('masked')}>
+                    <Icon name="mask" size={16} />
+                    <span className="nav-label">{t('Maskierte Adressen')}</span>
+                  </button>
+                </li>
+              )}
+            </ul>
+          </>
+        )}
 
         {settings.showTrash && counts.trash > 0 && (
           <ul className="nav-list nav-trash">
@@ -408,6 +506,17 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
                   )}
                   {item.reprompt && (
                     <Icon name="lock" size={13} title={t('Fragt nach dem Master-Passwort')} />
+                  )}
+                  {due.has(item.id) && !item.deleted && (
+                    <Icon
+                      name="bell"
+                      size={13}
+                      className="badge-due"
+                      title={t('Neues Passwort fällig')}
+                    />
+                  )}
+                  {uwu.masked[item.id] && (
+                    <Icon name="mask" size={13} title={t('Mit maskierter Adresse')} />
                   )}
                   {item.hasTotp && <Icon name="clock" size={13} title={t('Mit Einmal-Code')} />}
                   {item.organizationId && (
@@ -526,6 +635,29 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
             })}
           </p>
         </Modal>
+      )}
+
+      {extrasDialog === 'file-requests' && (
+        <FileRequestsDialog
+          onClose={() => setExtrasDialog(null)}
+          onTakenOver={(id) => {
+            setExtrasDialog(null);
+            pick({ kind: 'all' });
+            setSelected(id);
+            void reload();
+          }}
+        />
+      )}
+      {extrasDialog === 'masked' && (
+        <MaskedDialog
+          items={items}
+          onClose={() => setExtrasDialog(null)}
+          onOpenItem={(id) => {
+            setExtrasDialog(null);
+            pick({ kind: 'all' });
+            setSelected(id);
+          }}
+        />
       )}
 
       {editing && (

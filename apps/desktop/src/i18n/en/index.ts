@@ -5,12 +5,14 @@
 
 import app from './app.json';
 import editing from './editing.json';
+import extras from './extras.json';
 import settings from './settings.json';
 import vault from './vault.json';
 
 export const EN: Readonly<Record<string, string>> = {
   ...app,
   ...editing,
+  ...extras,
   ...settings,
   ...vault,
 };
