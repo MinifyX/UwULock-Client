@@ -1,0 +1,303 @@
+// The extension end to end, in one Chromium session against one real UwULock Server:
+//
+//   node e2e/run.mjs            (after `pnpm build`)
+//
+// 1. a UwULock Server release (the Docker image, or UWULOCK_SERVER_BIN=<a binary>) on a free
+//    port, an account registered by invitation — crypto done here the way Bitwarden's apps do it;
+// 2. the built extension (dist/chromium) in Chromium: log in through the popup;
+// 3. a login page: sign in by hand, the save bar offers to save it, save;
+// 4. the same page again: the inline menu fills it;
+// 5. a WebAuthn page: register a passkey in the vault, sign in with it, the page checks the
+//    signature with WebCrypto.
+//
+// Needs Playwright's Chromium (PLAYWRIGHT_BROWSERS_PATH, or `playwright-core install chromium`)
+// and Docker unless UWULOCK_SERVER_BIN is set. Screenshots of a failure go to e2e/shots/.
+
+import { execFileSync, spawn } from 'node:child_process';
+import { createCipheriv, createHmac, pbkdf2Sync, randomBytes } from 'node:crypto';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { chromium } from 'playwright-core';
+import { startPages } from './pages.mjs';
+
+const app = join(dirname(fileURLToPath(import.meta.url)), '..');
+const shots = join(app, 'e2e/shots');
+const IMAGE = `ghcr.io/minifyx/uwulock-server:${process.env.UWULOCK_SERVER_VERSION ?? '0.4.0-beta.2'}`;
+const EMAIL = 'nyu@example.com';
+const PASSWORD = 'correct horse battery staple';
+const SITE_USER = 'nyu';
+const SITE_PASSWORD = 'Sit3-Passw0rd!';
+const TIMEOUT = 20_000;
+
+const step = (text) => console.log(`▸ ${text}`);
+const cleanups = [];
+
+function freePort() {
+  return new Promise((resolve) => {
+    const server = createServer();
+    server.listen(0, '127.0.0.1', () => {
+      const { port } = server.address();
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+async function until(what, check, timeout = TIMEOUT) {
+  const end = Date.now() + timeout;
+  for (;;) {
+    try {
+      const value = await check();
+      if (value) return value;
+    } catch {
+      // Not yet.
+    }
+    if (Date.now() > end) throw new Error(`Timed out waiting for ${what}`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+// ── The server ────────────────────────────────────────────
+
+async function startServer() {
+  const port = await freePort();
+  const env = {
+    UWULOCK_LISTEN: `127.0.0.1:${port}`,
+    UWULOCK_PUBLIC: `http://localhost:${port}`,
+    UWULOCK_TLS: 'off',
+    UWULOCK_UPDATE_CHECK: 'off',
+    UWULOCK_LOGIN_ATTEMPTS: '200',
+  };
+  let invite;
+  if (process.env.UWULOCK_SERVER_BIN) {
+    const data = mkdtempSync(join(tmpdir(), 'uwulock-e2e-data-'));
+    cleanups.push(() => rmSync(data, { recursive: true, force: true }));
+    const full = { ...process.env, ...env, UWULOCK_DATA: data };
+    invite = execFileSync(process.env.UWULOCK_SERVER_BIN, ['invite', EMAIL], {
+      env: full,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const child = spawn(process.env.UWULOCK_SERVER_BIN, ['serve'], { env: full, stdio: 'ignore' });
+    cleanups.push(() => child.kill());
+  } else {
+    const args = ['run', '-d', '--rm', '-p', `127.0.0.1:${port}:${port}`];
+    for (const [key, value] of Object.entries({ ...env, UWULOCK_LISTEN: `0.0.0.0:${port}` })) {
+      args.push('-e', `${key}=${value}`);
+    }
+    const id = execFileSync('docker', [...args, IMAGE], { encoding: 'utf8' }).trim();
+    cleanups.push(() => execFileSync('docker', ['stop', id], { stdio: 'ignore' }));
+    await until('the server', async () => (await fetch(`http://127.0.0.1:${port}/alive`)).ok);
+    invite = execFileSync('docker', ['exec', id, 'uwulock-server', 'invite', EMAIL], {
+      encoding: 'utf8',
+    });
+  }
+  const url = `http://localhost:${port}`;
+  await until('the server', async () => (await fetch(`http://127.0.0.1:${port}/alive`)).ok);
+  const token = /token=([^&\s]+)/.exec(invite)?.[1];
+  if (!token) throw new Error(`No invitation link in: ${invite}`);
+  return { url, token: decodeURIComponent(token) };
+}
+
+/** Registers the account the way Bitwarden's apps do: PBKDF2 master key, HKDF, AES-CBC + HMAC. */
+async function register(server) {
+  const iterations = 100_000;
+  const master = pbkdf2Sync(PASSWORD, EMAIL, iterations, 32, 'sha256');
+  const hash = pbkdf2Sync(master, PASSWORD, 1, 32, 'sha256').toString('base64');
+  const expand = (info) =>
+    createHmac('sha256', master)
+      .update(Buffer.concat([Buffer.from(info), Buffer.from([1])]))
+      .digest();
+  const [enc, mac] = [expand('enc'), expand('mac')];
+  const iv = randomBytes(16);
+  const cipher = createCipheriv('aes-256-cbc', enc, iv);
+  const data = Buffer.concat([cipher.update(randomBytes(64)), cipher.final()]);
+  const tag = createHmac('sha256', mac)
+    .update(Buffer.concat([iv, data]))
+    .digest();
+  const key = `2.${iv.toString('base64')}|${data.toString('base64')}|${tag.toString('base64')}`;
+  const response = await fetch(
+    `${server.url.replace('localhost', '127.0.0.1')}/identity/accounts/register/finish`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: EMAIL,
+        name: 'Nyu',
+        masterPasswordHash: hash,
+        key,
+        kdf: 0,
+        kdfIterations: iterations,
+        emailVerificationToken: server.token,
+      }),
+    },
+  );
+  if (!response.ok)
+    throw new Error(`Registering failed: ${response.status} ${await response.text()}`);
+}
+
+// ── The browser ───────────────────────────────────────────
+
+/** The built extension, with the test's servers allowed up front (no permission bubble to click). */
+function extensionCopy() {
+  const dir = mkdtempSync(join(tmpdir(), 'uwulock-e2e-ext-'));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  cpSync(join(app, 'dist/chromium'), dir, { recursive: true });
+  const manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8'));
+  manifest.host_permissions = ['http://localhost/*', 'http://127.0.0.1/*'];
+  writeFileSync(join(dir, 'manifest.json'), JSON.stringify(manifest));
+  return dir;
+}
+
+/**
+ * Clicks what the accessibility tree calls `name`: the extension draws its menu and bar in
+ * closed shadow roots, which no selector reaches — like assistive technology, the test finds
+ * them by role and name. It waits until the element has been there a moment, as the extension
+ * ignores clicks on what just appeared.
+ */
+async function clickAx(page, role, name, { prefix = false } = {}) {
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    let seen = 0;
+    const box = await until(`${role} “${name}”`, async () => {
+      const { nodes } = await cdp.send('Accessibility.getFullAXTree');
+      const node = nodes.find(
+        (n) =>
+          !n.ignored &&
+          n.role?.value === role &&
+          (prefix ? String(n.name?.value ?? '').startsWith(name) : n.name?.value === name),
+      );
+      if (!node?.backendDOMNodeId) {
+        seen = 0;
+        return null;
+      }
+      seen ||= Date.now();
+      if (Date.now() - seen < 400) return null;
+      const { model } = await cdp.send('DOM.getBoxModel', { backendNodeId: node.backendDOMNodeId });
+      return model.content;
+    });
+    await page.mouse.click((box[0] + box[4]) / 2, (box[1] + box[5]) / 2);
+  } finally {
+    await cdp.detach().catch(() => undefined);
+  }
+}
+
+async function main() {
+  const pages = await startPages();
+  cleanups.push(() => pages.close());
+  step('UwULock Server, and an account');
+  const server = await startServer();
+  await register(server);
+
+  step('Chromium with the extension');
+  const profile = mkdtempSync(join(tmpdir(), 'uwulock-e2e-profile-'));
+  cleanups.push(() => rmSync(profile, { recursive: true, force: true }));
+  const extension = extensionCopy();
+  const context = await chromium.launchPersistentContext(profile, {
+    channel: 'chromium',
+    headless: process.env.HEADED ? false : true,
+    locale: 'en-US',
+    args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
+  });
+  cleanups.unshift(() => context.close());
+  context.setDefaultTimeout(TIMEOUT);
+  const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
+  const id = new URL(worker.url()).host;
+  let current = null;
+
+  try {
+    step('Log in through the popup');
+    const popup = await context.newPage();
+    current = popup;
+    await popup.goto(`chrome-extension://${id}/popup.html`);
+    await popup.locator('input[autocomplete=url]').fill(server.url);
+    await popup.locator('input[type=email]').fill(EMAIL);
+    await popup.locator('input[autocomplete=current-password]').fill(PASSWORD);
+    await popup.locator('button[type=submit]').click();
+    await popup.locator('.popup-tabs').waitFor();
+
+    step('Sign in on a page: the bar offers to save the login');
+    const site = await context.newPage();
+    current = site;
+    await site.goto(`${pages.url}/login`);
+    await site.locator('#username').fill(SITE_USER);
+    await site.locator('#password').fill(SITE_PASSWORD);
+    await site.locator('#submit').click();
+    await site.locator('#welcome').waitFor();
+    await clickAx(site, 'button', 'Save');
+    await until('the saved login', async () => {
+      await popup.reload();
+      await popup.getByRole('button', { name: 'Vault' }).click();
+      return (await popup.locator('.item-row', { hasText: 'localhost' }).count()) > 0;
+    });
+
+    step('The same page again: the inline menu fills it');
+    await site.goto(`${pages.url}/login`);
+    await site.locator('#username').click();
+    await clickAx(site, 'button', 'Open the UwULock menu');
+    await clickAx(site, 'option', 'localhost', { prefix: true });
+    await until(
+      'the filled form',
+      async () =>
+        (await site.locator('#username').inputValue()) === SITE_USER &&
+        (await site.locator('#password').inputValue()) === SITE_PASSWORD,
+    );
+
+    step('A passkey: register it in the vault');
+    await site.goto(`${pages.url}/webauthn`);
+    const [prompt] = await Promise.all([
+      context.waitForEvent('page'),
+      site.locator('#register').click(),
+    ]);
+    current = prompt;
+    await prompt.locator('button[type=submit]').click();
+    current = site;
+    await until('the registered passkey', async () =>
+      (await site.locator('#result').textContent())?.startsWith('registered'),
+    );
+
+    step('…and sign in with it; the page checks the signature');
+    const [again] = await Promise.all([
+      context.waitForEvent('page'),
+      site.locator('#signin').click(),
+    ]);
+    current = again;
+    await again.locator('button[type=submit]').click();
+    current = site;
+    await until(
+      'the signature check',
+      async () => (await site.locator('#result').textContent()) === 'verified',
+    );
+    console.log('✓ log in, save, fill and passkeys all work');
+  } catch (error) {
+    mkdirSync(shots, { recursive: true });
+    for (const [index, page] of context.pages().entries()) {
+      await page.screenshot({ path: join(shots, `page-${index}.png`) }).catch(() => undefined);
+    }
+    if (current)
+      console.error(
+        `on ${current.url()}: ${await current
+          .locator('#result, .form-error')
+          .allTextContents()
+          .catch(() => [])}`,
+      );
+    throw error;
+  }
+}
+
+try {
+  await main();
+} catch (error) {
+  console.error(error);
+  process.exitCode = 1;
+} finally {
+  for (const cleanup of cleanups) {
+    try {
+      await cleanup();
+    } catch {
+      // Best effort.
+    }
+  }
+}
