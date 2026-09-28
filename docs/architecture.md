@@ -25,16 +25,24 @@ that is tested without a window.
                                                        (identity + api)
 ```
 
-The work is split in two crates:
+The work is split in three crates:
 
 - **`uwulock-core`** — Bitwarden's crypto and data formats, without a network:
   master key, encrypted values and files, Send keys, key pairs and passkey key
   sets, fingerprint phrases, the sync format (`wire`), the decrypted vault,
-  TOTP, the password generator, and the shared `Error`. No HTTP, no disk.
+  TOTP, passkeys that sign in (`passkey`: Bitwarden's `fido2Credentials`, a
+  WebAuthn authenticator's data and signatures), the password and passphrase
+  generator, and the shared `Error`. No HTTP, no disk.
 - **`uwulock-bitwarden`** — the HTTP side (`api`): prelogin, login, two-step
   login, token refresh, sync, saving. It re-exports `uwulock-core` under its
   old paths (`uwulock_bitwarden::crypto`, `::vault`, …), so the desktop app
   only depends on this one.
+- **`uwulock-wasm`** — `uwulock-core` compiled to WebAssembly for the browser
+  extension's background worker: unlocking (master password, PIN, the kept
+  user key), the vault as the web vault shows it, autofill values, and
+  passkeys made and used. Everything in and out as JSON text; the keys stay
+  in the module's memory until it is locked.
+  `apps/extension/scripts/build-wasm.mjs` builds it.
 
 Why the split: the web vault of UwULock-Server will run `uwulock-core`
 compiled to WebAssembly (`wasm32-unknown-unknown`) in the browser — the same
