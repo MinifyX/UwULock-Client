@@ -119,6 +119,8 @@ fn unlock_with(email: &str, kdf: Kdf, protected_key: &str, user_key: SymmetricKe
             user_key,
             vault: Vault::default(),
             reprompt_ok: HashSet::new(),
+            private_key: None,
+            extras: None,
         })
     });
 }
@@ -158,6 +160,7 @@ pub fn open(sync: &str) -> Result<()> {
         if let Some(key) = sync.profile.key.clone() {
             unlocked.protected_key = key;
         }
+        unlocked.private_key = sync.profile.private_key.clone();
         let vault = &unlocked.vault;
         unlocked.reprompt_ok.retain(|id| vault.item(id).is_some());
         Ok(())

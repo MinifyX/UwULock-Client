@@ -13,7 +13,7 @@ use uwulock_core::passkey::{self, Passkey, AAGUID};
 use uwulock_core::vault::{Card, Item, ItemKind, LoginUri};
 use zeroize::Zeroizing;
 
-use crate::{autofill, draft, generator, passkeys, session, view, Failure};
+use crate::{autofill, draft, extras, generator, passkeys, session, view, Failure};
 
 const EMAIL: &str = "nyu@example.com";
 const PASSWORD: &str = "correct horse battery staple";
@@ -538,4 +538,330 @@ fn a_counting_passkey_counts_and_is_saved() {
     // The vault in here counts along, before the next sync.
     let again = parse(&passkeys::assert(&request).unwrap());
     assert_eq!(b64(&again["authenticatorData"])[33..], [0, 0, 0, 7]);
+}
+
+// ── UwULock Server's extras ───────────────────────────────
+
+/// An RSA key pair for the account (PKCS#8), the one of uwulock-core's tests.
+const PRIVATE: &str = "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC2EmCSTyx6YUpNZSRI60oly0VN2cZ9Z4LFw3CuK6zIyVdFW4nGS3R4Ml5X5pdIc7lVn2FNmpi2j/1/TKFZymm/Kb4cgTmRiImF1Gc2OO9v5xlcFyJHDW0Jl8kL3fHNZvz+8ajCtXcVa29GuqCQIdoPgLEYTfCzqhSQc5T77X3QD1+DoO2nY3kXU7t+1GeXMgfUfcEJv0YPjGoofJZMP8GzMJijJTVTJc+M0WhRLPmm6XCr9E0m3OXZxNynYz6euGtPAmfm/ld5QQ+Gu+XYMnZvthAdmzwy9HyMv4cqtFVB8Q2IJOemKymg1ADNLQ453gZMXRDRSUG7kLsA2Ddsusp9AgMBAAECggEAOckbXVRDiZPXQTkYiwwiPFyHYm370VFI7/tXh+/UpuVADYM/9u97x6o0xzEoUpZn/ATZnQez8D1C92Qa0aSsaz+UVvesjcQH4bHIEC2B0MJICjJNbr+UG7dQ17NZSxektEV+ik2Nvf6bEpeo3hXgX4s4qb4S5vLUFASbBFob1CyDtjXZyL+vXiyKd8VxIF4tkG/3E/BUkJ5WANWa0psTxNbFfuOnV87lFo7Cycmx0ynZGIYdfzhz1Aq4f6cQiPdy3cDRuYWw0gKqwwrpFrMpAo2O+x8cVkS2oltZP0GkNoTZLIgcwVAhEE7K2qX1w46Hc0wjf/WlWGjoIvmBnQgDAQKBgQDhwEp56NCveTWfBSav6ZMy1YM44eJXtbUhTMRgSQnkloThnH2MXZmpX/OE8SBmmZgBCnVbwO/b90NkVDEYDawVGbEYfycfX74moakkm1zqB5P6qjacihFxwZXsudD8eDygbwvff/YKheeUGPPDwgJHqGGO3V+4b+bXiVCQnwFFZwKBgQDOd8xou+WXoCMf94N3aOcg1BRu5smHJs1bYRcubaxVPHFMa8LCOJ8XiS0iFqPdhxHgPdzNGT/n3DjZFV4P64jX6qNu+6N/fOojHSBj4FOVMq+nESblG3uyF1jrPu65xULOKgRwAjV8cPsOdWUzHTiOkZ/a0CgXseNiI57VAAS+ewKBgDWQaJtwcEOSYPSwRjOrGjAPlSkj/46MIMQb8ORfsCc6x6C4ftmVQ+Z6S8+ZXvS5MOXeU2ZH6yGoE6d0iomIhPIkvG5xjRjWoMmNxhJXgr5MugHZ7UdLQ0RYiHg4xquA4/G1J34KYJiymPX8zan/GIdkHnHFePbMJluxyxnlgGm1AoGBAJoEU79tKv/IvWsDQFa7Mm8SxYtVLdBb6aTY8Gn59iw/QmU3nbk0c7ki40Aik2qVb4hPnX6B72IOrXmCrwBBO3uV1QTdQkG/9QjsmVTn6nHJta5y5QjTT5qyP+p8r6h0tjkErvq/KxcBUMagXDWc/qubhhu8W6wRTwXOfJV3xhIxAoGAdB22F2D27iY55uz8VCQRzS4DehPx0eyipYy5KmT9MRv2FV9877tH/3wQ8amvHVBvJ/sQ4A7M1BcL/yUy1P6GD7DvM1KGXA1eybnCK+HINYr57A1rKA78kXPrXuogGYkUiy8LbMP3UvqV1q+BTlzJqfJqr20Fs6pjCEqoUu/uols=";
+
+fn private_key() -> crypto::PrivateKey {
+    use base64::engine::general_purpose::STANDARD;
+    crypto::PrivateKey::from_der(&STANDARD.decode(PRIVATE).unwrap()).unwrap()
+}
+
+/// A sync with the account's private key and one organisation.
+fn sync_with_keys(account: &Account, org_key: &SymmetricKey, ciphers: Vec<Value>) -> String {
+    let private = private_key();
+    let der = private.to_der().unwrap();
+    json!({
+        "profile": {
+            "email": EMAIL,
+            "key": account.protected,
+            "privateKey": EncString::encrypt(&der, &account.user_key).to_string(),
+            "organizations": [{
+                "id": "o1",
+                "name": "Family",
+                "key": crypto::wrap_for(&private.public(), org_key).unwrap().to_string(),
+            }],
+        },
+        "folders": [],
+        "ciphers": ciphers,
+    })
+    .to_string()
+}
+
+/// `GET /uwu/v1/keys` with the extras key under the user key (or not) and
+/// for the public key.
+fn keys(account: &Account, extras: &SymmetricKey, under_user: bool) -> String {
+    let wrapped =
+        uwulock_core::extras::wrap(extras, &account.user_key, &private_key().public()).unwrap();
+    json!({
+        "object": "uwuKeys",
+        "extrasKey": {
+            "userKeyWrapped": under_user.then_some(wrapped.user_key_wrapped),
+            "publicKeyWrapped": wrapped.public_key_wrapped,
+            "revisionDate": "2026-09-28T12:00:00.000000Z",
+        },
+        "lost": false,
+    })
+    .to_string()
+}
+
+/// The smallest thing `png_size` takes for a PNG of `side` × `side`.
+fn png(side: u32) -> Vec<u8> {
+    let mut png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR".to_vec();
+    png.extend(side.to_be_bytes());
+    png.extend(side.to_be_bytes());
+    png.extend([8, 6, 0, 0, 0]);
+    png
+}
+
+fn state(answer: String) -> String {
+    parse(&answer)["state"].as_str().unwrap().to_string()
+}
+
+#[test]
+fn the_extras_key_opens_under_the_user_key_or_the_private_key() {
+    let account = account();
+    let org_key = SymmetricKey::generate();
+    let extras_key = SymmetricKey::generate();
+    session::unlock_with_password(EMAIL, KDF, &account.protected, PASSWORD).unwrap();
+    session::open(&sync_with_keys(&account, &org_key, vec![])).unwrap();
+
+    assert_eq!(
+        state(extras::open_extras(&keys(&account, &extras_key, true)).unwrap()),
+        "open"
+    );
+    // After an official client rotated the user key only the private key's wrap is left.
+    assert_eq!(
+        state(extras::open_extras(&keys(&account, &extras_key, false)).unwrap()),
+        "open"
+    );
+    crate::with_unlocked(|u| {
+        assert_eq!(u.extras.as_ref().unwrap().to_bytes(), extras_key.to_bytes());
+        Ok(())
+    })
+    .unwrap();
+
+    let none = r#"{"object":"uwuKeys","extrasKey":null,"lost":false}"#;
+    assert_eq!(state(extras::open_extras(none).unwrap()), "none");
+    let lost = r#"{"object":"uwuKeys","extrasKey":null,"lost":true}"#;
+    assert_eq!(state(extras::open_extras(lost).unwrap()), "lost");
+    crate::with_unlocked(|u| {
+        assert!(u.extras.is_none());
+        Ok(())
+    })
+    .unwrap();
+
+    // Without a private key in the sync, a key that lost its user wrap stays shut.
+    session::open(&sync(&account, vec![])).unwrap();
+    assert_eq!(
+        state(extras::open_extras(&keys(&account, &extras_key, false)).unwrap()),
+        "lost"
+    );
+    // A wrap that isn't under this user key is an error, and nothing is open.
+    let other = Account {
+        user_key: SymmetricKey::generate(),
+        protected: String::new(),
+    };
+    assert_eq!(
+        kind(extras::open_extras(&keys(&other, &extras_key, true))),
+        "crypto"
+    );
+
+    session::lock();
+    assert_eq!(kind(extras::open_extras(none)), "locked");
+}
+
+#[test]
+fn own_icons_open_with_the_extras_or_the_organisations_key() {
+    let account = account();
+    let org_key = SymmetricKey::generate();
+    let extras_key = SymmetricKey::generate();
+    let mut shared = login("Shared", "nyu", "pw");
+    shared.organization_id = Some("o1".into());
+    let mut org_cipher = cipher(&shared, "shared", &org_key);
+    org_cipher["organizationId"] = "o1".into();
+    let ciphers = vec![
+        cipher(&login("Mine", "nyu", "pw"), "mine", &account.user_key),
+        org_cipher,
+    ];
+    session::unlock_with_password(EMAIL, KDF, &account.protected, PASSWORD).unwrap();
+    session::open(&sync_with_keys(&account, &org_key, ciphers)).unwrap();
+
+    let icon = |id: &str, key_type: &str, key: &SymmetricKey| {
+        json!({
+            "object": "ownIcon",
+            "cipherId": id,
+            "keyType": key_type,
+            "data": uwulock_core::extras::seal_icon(&png(64), key).unwrap(),
+            "revisionDate": "2026-09-28T12:00:00.000000Z",
+        })
+    };
+    let list = json!([
+        icon("mine", "extras", &extras_key),
+        icon("shared", "organization", &org_key),
+        // The key type has to fit the item; unknown items are left out.
+        icon("mine", "organization", &org_key),
+        icon("shared", "extras", &extras_key),
+        icon("gone", "extras", &extras_key),
+    ])
+    .to_string();
+
+    // Before the extras key is open only the organisation's icon opens.
+    let opened = parse(&extras::open_icons(&list).unwrap());
+    assert_eq!(opened.as_array().unwrap().len(), 1);
+    assert_eq!(opened[0]["cipherId"], "shared");
+
+    extras::open_extras(&keys(&account, &extras_key, true)).unwrap();
+    let opened = parse(&extras::open_icons(&list).unwrap());
+    let ids: Vec<&str> = opened
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["cipherId"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["mine", "shared"]);
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(opened[0]["png"].as_str().unwrap())
+        .unwrap();
+    assert_eq!(bytes, png(64));
+
+    // A value that doesn't open is left out too.
+    let broken = json!([icon("mine", "extras", &org_key)]).to_string();
+    assert_eq!(parse(&extras::open_icons(&broken).unwrap()), json!([]));
+}
+
+#[test]
+fn file_requests_show_their_labels_and_links() {
+    use uwulock_core::file_request::{self, LinkSecret};
+    let account = account();
+    let extras_key = SymmetricKey::generate();
+    unlocked(&account, vec![]);
+    let secret = LinkSecret::generate();
+    let id = "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0";
+    let access_id = file_request::access_id(id).unwrap();
+    let request = json!({
+        "object": "fileRequest",
+        "id": id,
+        "accessId": access_id,
+        "name": file_request::seal_label("Passport for the bank", &extras_key),
+        "linkSecret": secret.seal(&extras_key),
+        "submissionCount": 1,
+    });
+    let unnamed = json!({ "id": "r2", "name": null, "linkSecret": null });
+    let list = json!([request, unnamed]).to_string();
+
+    assert_eq!(kind(extras::file_request_labels(&list)), "unsupported");
+    extras::open_extras(&keys(&account, &extras_key, true)).unwrap();
+    assert_eq!(
+        parse(&extras::file_request_labels(&list).unwrap()),
+        json!([{ "id": id, "label": "Passport for the bank" }, { "id": "r2", "label": null }])
+    );
+
+    let part = secret.to_link_part();
+    assert_eq!(
+        extras::file_request_link(&request.to_string(), "https://lock.example.com/", false)
+            .unwrap(),
+        format!("https://lock.example.com/#/request/{access_id}/{part}")
+    );
+    assert_eq!(
+        extras::file_request_link(&request.to_string(), "https://send.example.com", true).unwrap(),
+        format!("https://send.example.com/r/{access_id}#{part}")
+    );
+    // Without `accessId` it comes from the id.
+    let bare = json!({ "id": id, "linkSecret": secret.seal(&extras_key) }).to_string();
+    assert!(
+        extras::file_request_link(&bare, "https://lock.example.com", false)
+            .unwrap()
+            .contains(&access_id)
+    );
+    assert_eq!(
+        kind(extras::file_request_link(
+            &unnamed.to_string(),
+            "https://lock.example.com",
+            false
+        )),
+        "invalid"
+    );
+}
+
+#[test]
+fn an_item_is_shared_as_a_send_without_its_authenticator_key() {
+    use uwulock_core::vault::{Field, FieldKind};
+    let account = account();
+    let mut item = login("Router", "admin", "hunter2");
+    item.login.as_mut().unwrap().totp = Some(Zeroizing::new("JBSWY3DPEHPK3PXP".into()));
+    item.fields = vec![Field {
+        name: Some(Zeroizing::new("PIN".into())),
+        value: Some(Zeroizing::new("1234".into())),
+        kind: FieldKind::Hidden,
+        linked_id: None,
+    }];
+    let mut guarded = login("Guarded", "g", "secret");
+    guarded.reprompt = true;
+    unlocked(
+        &account,
+        vec![
+            cipher(&item, "r1", &account.user_key),
+            cipher(&guarded, "g1", &account.user_key),
+        ],
+    );
+
+    let fields = parse(&extras::shareable_fields("r1").unwrap());
+    assert_eq!(
+        fields,
+        json!([
+            { "name": "username" },
+            { "name": "password" },
+            { "name": "uri:0" },
+            { "name": "field:0", "label": "PIN" },
+        ])
+    );
+    assert_eq!(kind(extras::shareable_fields("g1")), "reprompt");
+    assert_eq!(kind(extras::shareable_fields("nope")), "not-found");
+
+    let options = json!({
+        "fields": [["username", "Username"], ["password", "Password"], ["totp", "Code"], ["field:0", "Field"]],
+        "deletionDate": "2026-09-29T12:00:00.000Z",
+        "maxAccessCount": 1,
+        "password": "open sesame",
+    });
+    let request = parse(&extras::seal_share("r1", &options.to_string()).unwrap());
+    assert_eq!(request["type"], 0);
+    assert_eq!(request["maxAccessCount"], 1);
+    assert_eq!(request["deletionDate"], "2026-09-29T12:00:00.000Z");
+    assert_eq!(request["authType"], 1);
+    assert!(request["password"]
+        .as_str()
+        .is_some_and(|p| p != "open sesame"));
+
+    let key = request["key"].as_str().unwrap();
+    let seed = uwulock_core::send::open_seed(key, &account.user_key).unwrap();
+    let send_key = crypto::send_key(&seed).unwrap();
+    let open = |value: &Value| {
+        value
+            .as_str()
+            .unwrap()
+            .parse::<EncString>()
+            .unwrap()
+            .decrypt_string(&send_key)
+            .unwrap()
+            .to_string()
+    };
+    assert_eq!(open(&request["name"]), "Router");
+    let text = open(&request["text"]["text"]);
+    assert_eq!(
+        text,
+        "Router\nUsername: admin\nPassword: hunter2\nPIN: 1234"
+    );
+    assert!(!text.contains("JBSWY3DP"));
+
+    let link = extras::send_link(key, "AccessId1", "https://lock.example.com", false).unwrap();
+    assert_eq!(
+        link,
+        format!(
+            "https://lock.example.com/#/send/AccessId1/{}",
+            URL_SAFE_NO_PAD.encode(&*seed)
+        )
+    );
+    assert!(
+        extras::send_link(key, "AccessId1", "https://send.example.com", true)
+            .unwrap()
+            .starts_with("https://send.example.com/AccessId1#")
+    );
+
+    // Nothing with a value chosen, and the re-prompt first.
+    let empty = json!({ "fields": [["totp", "Code"]], "deletionDate": "2026-09-29T12:00:00.000Z" });
+    assert_eq!(
+        kind(extras::seal_share("r1", &empty.to_string())),
+        "invalid"
+    );
+    assert_eq!(
+        kind(extras::seal_share("g1", &options.to_string())),
+        "reprompt"
+    );
+    session::verify_reprompt("g1", PASSWORD).unwrap();
+    assert!(extras::seal_share("g1", &options.to_string()).is_ok());
 }
