@@ -47,14 +47,14 @@ pub struct Failure {
 }
 
 impl Failure {
-    fn new(kind: &'static str, message: impl Into<String>) -> Self {
+    pub(crate) fn new(kind: &'static str, message: impl Into<String>) -> Self {
         Failure {
             kind,
             message: message.into(),
         }
     }
 
-    fn locked() -> Self {
+    pub(crate) fn locked() -> Self {
         Failure::new("locked", "The vault is locked.")
     }
 
@@ -83,22 +83,24 @@ impl From<Error> for Failure {
     }
 }
 
-type Result<T> = std::result::Result<T, Failure>;
+pub(crate) type Result<T> = std::result::Result<T, Failure>;
 
-struct Unlocked {
-    user_key: SymmetricKey,
-    vault: Vault,
+pub(crate) struct Unlocked {
+    pub(crate) user_key: SymmetricKey,
+    pub(crate) vault: Vault,
     session: Option<Session>,
     /// Items whose master password re-prompt was answered in this unlock.
-    reprompt_ok: HashSet<String>,
+    pub(crate) reprompt_ok: HashSet<String>,
     /// UwULock Server only: what it can do (`/uwu/v1/info`), asked at every
     /// sync. `None` for Bitwarden and Vaultwarden.
-    info: Option<Info>,
+    pub(crate) info: Option<Info>,
     /// UwULock's own state from the delta sync: own icons, reminders, masked
     /// addresses, travel mode, badges.
-    uwu: UwuState,
+    pub(crate) uwu: UwuState,
     /// The extras key, once something needed it.
-    extras: Option<SymmetricKey>,
+    pub(crate) extras: Option<SymmetricKey>,
+    /// What the extras opened in this unlock: icons, versions. Gone on lock.
+    pub(crate) extras_cache: crate::extras::Cache,
 }
 
 impl Unlocked {
@@ -111,6 +113,7 @@ impl Unlocked {
             info: None,
             uwu: UwuState::default(),
             extras: None,
+            extras_cache: Default::default(),
         }
     }
 
@@ -152,7 +155,7 @@ pub(crate) struct VaultState {
     active: Mutex<Option<String>>,
     /// The accounts that are open, by id. An account that was switched away
     /// from stays open until something locks it.
-    unlocked: RwLock<HashMap<String, Unlocked>>,
+    pub(crate) unlocked: RwLock<HashMap<String, Unlocked>>,
     pending: Mutex<Option<PendingLogin>>,
     syncing: Mutex<HashSet<String>>,
     troubles: Mutex<HashMap<String, Trouble>>,
@@ -186,7 +189,7 @@ impl VaultState {
         }
     }
 
-    fn touch(&self) {
+    pub(crate) fn touch(&self) {
         *self.last_activity.lock() = Instant::now();
     }
 
@@ -194,7 +197,7 @@ impl VaultState {
         Device::this_system(self.storage.device_id())
     }
 
-    fn client(&self, server: Server) -> Result<Client> {
+    pub(crate) fn client(&self, server: Server) -> Result<Client> {
         Ok(Client::new(server, self.device())?)
     }
 
@@ -215,7 +218,7 @@ impl VaultState {
             .ok_or_else(|| Failure::new("logged-out", "No such account on this device."))
     }
 
-    fn active_account(&self) -> Result<(String, Account)> {
+    pub(crate) fn active_account(&self) -> Result<(String, Account)> {
         let id = self.active_id()?;
         let account = self.account(&id)?;
         Ok((id, account))
@@ -964,7 +967,7 @@ async fn sync(app: &AppHandle) -> Result<()> {
     sync_account(app, &id).await
 }
 
-async fn sync_account(app: &AppHandle, id: &str) -> Result<()> {
+pub(crate) async fn sync_account(app: &AppHandle, id: &str) -> Result<()> {
     let state = app.state::<VaultState>();
     // One sync per account at a time.
     if !state.syncing.lock().insert(id.to_string()) {
@@ -993,7 +996,7 @@ async fn sync_account(app: &AppHandle, id: &str) -> Result<()> {
 
 /// A token this account can use right now, renewed from the refresh token
 /// when the old one is about to run out.
-async fn access_token(state: &VaultState, id: &str) -> Result<Zeroizing<String>> {
+pub(crate) async fn access_token(state: &VaultState, id: &str) -> Result<Zeroizing<String>> {
     let account = state.account(id)?;
     let (user_key, access) = {
         let unlocked = state.unlocked.read();
@@ -1151,7 +1154,7 @@ pub(crate) fn start(app: &AppHandle) {
     });
 }
 
-fn now() -> u64 {
+pub(crate) fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs())
@@ -1166,7 +1169,7 @@ fn iso_now() -> String {
     iso_from_unix(since.as_secs(), since.subsec_millis())
 }
 
-fn iso_from_unix(seconds: u64, millis: u32) -> String {
+pub(crate) fn iso_from_unix(seconds: u64, millis: u32) -> String {
     let days = (seconds / 86_400) as i64;
     let rest = seconds % 86_400;
     // Days since the epoch to a calendar date, counting from March so leap
@@ -1224,7 +1227,7 @@ fn text(value: &Option<Secret>) -> Option<String> {
 }
 
 /// The host of an address, for the list: `github.com` from `https://github.com/login`.
-fn host_of(uri: &str) -> Option<String> {
+pub(crate) fn host_of(uri: &str) -> Option<String> {
     let with_scheme = if uri.contains("://") {
         uri.to_string()
     } else {
@@ -1871,7 +1874,7 @@ fn apply_draft(item: &mut Item, draft: Draft, now: &str) -> Result<()> {
 
 /// What a write changed, for the cached vault. Applying it here keeps the
 /// list and the details right away, without waiting for the next sync.
-enum Patch {
+pub(crate) enum Patch {
     Cipher(Value),
     Trash(String),
     RemoveCipher(String),
@@ -1888,7 +1891,7 @@ fn entry<'a>(value: &'a Value, name: &str) -> Option<&'a Value> {
         .map(|(_, value)| value)
 }
 
-fn entry_id(value: &Value) -> Option<&str> {
+pub(crate) fn entry_id(value: &Value) -> Option<&str> {
     entry(value, "id")?.as_str()
 }
 
@@ -1919,7 +1922,7 @@ fn set_field(value: &mut Value, name: &str, to: Value) {
 }
 
 /// Writes the change into the cached sync and opens the vault again from it.
-fn patch_cache(state: &VaultState, account_id: &str, patch: Patch) -> Result<()> {
+pub(crate) fn patch_cache(state: &VaultState, account_id: &str, patch: Patch) -> Result<()> {
     let Some(text) = state.storage.load_cache(account_id) else {
         // Nothing cached yet; the next sync brings everything anyway.
         return Ok(());
@@ -1996,7 +1999,7 @@ fn broken_cache() -> Failure {
 
 /// The item as it is here, ready to be sent — with the reprompt honoured: an
 /// item that asks for the master password can't be changed without it either.
-fn prepare(state: &VaultState, account_id: &str, id: &str) -> Result<Item> {
+pub(crate) fn prepare(state: &VaultState, account_id: &str, id: &str) -> Result<Item> {
     let guard = state.unlocked.read();
     let unlocked = guard.get(account_id).ok_or_else(Failure::locked)?;
     let item = unlocked

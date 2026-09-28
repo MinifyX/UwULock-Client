@@ -5,12 +5,15 @@
 //!
 //! - [`vault`] — logging in, unlocking, syncing, items, copying
 //! - [`account`] — what is kept on disk, and where
+//! - [`extras`] — UwULock Server's extras: icons, versions, reminders, file
+//!   requests, masked addresses, travel mode; items shared as Sends
 //! - [`live`] — changes from other devices as they happen
 //! - [`clipboard`] — copies that clear themselves
 //! - [`system`] — updates and links out of the app
 
 mod account;
 mod clipboard;
+mod extras;
 mod live;
 mod system;
 mod updates;
@@ -47,6 +50,7 @@ pub fn run() {
             app.manage(vault::VaultState::new(storage));
             vault::start(app.handle());
             live::start(app.handle());
+            extras::start(app.handle());
             updates::start(app.handle());
             Ok(())
         })
@@ -81,6 +85,35 @@ pub fn run() {
             vault::restore_item,
             vault::save_folder,
             vault::delete_folder,
+            extras::uwu_status,
+            extras::uwu_travel,
+            extras::open_web_vault_at,
+            extras::item_icons,
+            extras::set_own_icon,
+            extras::fetch_device_icon,
+            extras::delete_own_icon,
+            extras::item_versions,
+            extras::reveal_version_field,
+            extras::restore_version,
+            extras::delete_versions,
+            extras::set_reminder,
+            extras::delete_reminder,
+            extras::file_requests,
+            extras::create_file_request,
+            extras::update_file_request,
+            extras::delete_file_request,
+            extras::file_request_submissions,
+            extras::save_submission_file,
+            extras::mark_submission_seen,
+            extras::delete_submission,
+            extras::take_over_submission,
+            extras::masked_connection,
+            extras::masked_addresses,
+            extras::create_masked_address,
+            extras::update_masked_address,
+            extras::delete_masked_address,
+            extras::send_options,
+            extras::share_as_send,
             system::set_update_channel,
             system::update_status,
             system::check_for_updates,

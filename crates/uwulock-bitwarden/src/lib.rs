@@ -25,7 +25,7 @@ pub mod icons;
 pub mod live;
 pub mod uwu;
 
-pub use uwulock_core::{crypto, generator, totp, vault, wire, Error};
+pub use uwulock_core::{crypto, extras, file_request, generator, send, totp, vault, wire, Error};
 
 pub use api::{Client, Device, LoginOutcome, Server, Session, TwoFactorMethod};
 pub use crypto::{EncString, Kdf, SymmetricKey};

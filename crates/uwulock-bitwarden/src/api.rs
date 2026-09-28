@@ -251,6 +251,8 @@ pub struct PasswordLogin<'a> {
     pub new_device_code: Option<&'a str>,
 }
 
+/// Cheap to clone: the connection pool is shared.
+#[derive(Clone)]
 pub struct Client {
     http: reqwest::Client,
     server: Server,
