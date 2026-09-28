@@ -265,6 +265,24 @@ async function activeTab(): Promise<chrome.tabs.Tab | undefined> {
   return normal;
 }
 
+/** The address of the tab the popup was opened for, if it is a web page. */
+export async function activeTabUrl(): Promise<string | null> {
+  const tab = await activeTab();
+  const url = (tab?.id !== undefined ? (tab.url ?? tabUrls.get(tab.id)) : undefined) ?? null;
+  return isFillableUrl(url) ? url : null;
+}
+
+/** The address of the tab a content script runs in — its top frame's, not the frame's own. */
+export function senderTabUrl(sender: Sender): string | null {
+  const tabId = sender.tab?.id;
+  const url =
+    sender.tab?.url ??
+    (tabId !== undefined ? tabUrls.get(tabId) : undefined) ??
+    (sender.frameId === 0 ? sender.url : undefined) ??
+    null;
+  return isFillableUrl(url) ? url : null;
+}
+
 export async function tabItems(): Promise<TabItems> {
   const tab = await activeTab();
   const url = (tab?.id !== undefined ? (tab.url ?? tabUrls.get(tab.id)) : undefined) ?? null;

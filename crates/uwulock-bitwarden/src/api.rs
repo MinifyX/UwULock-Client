@@ -257,6 +257,37 @@ pub struct Client {
     http: reqwest::Client,
     server: Server,
     device: Device,
+    app: App,
+}
+
+/// Who logs in, as the token endpoint sees it: UwULock desktop as Bitwarden's
+/// desktop client (`desktop`, scope `api`), or a UwU app with a token for its
+/// own suite space only (contract §6.5: `uwussh`, `uwurdp`, … with scope
+/// `uwu.suite`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct App {
+    pub client_id: String,
+    pub scope: String,
+}
+
+impl Default for App {
+    fn default() -> Self {
+        App {
+            client_id: "desktop".into(),
+            scope: "api offline_access".into(),
+        }
+    }
+}
+
+impl App {
+    /// A suite app (`uwussh`, `uwurdp`, `uwumail`, `uwusuite`): its token
+    /// opens its own space on a UwULock Server and nothing else.
+    pub fn suite(client_id: &str) -> Self {
+        App {
+            client_id: client_id.into(),
+            scope: "uwu.suite offline_access".into(),
+        }
+    }
 }
 
 impl Client {
@@ -274,7 +305,14 @@ impl Client {
             http,
             server,
             device,
+            app: App::default(),
         })
+    }
+
+    /// The same client, logging in as another app (see [`App`]).
+    pub fn with_app(mut self, app: App) -> Self {
+        self.app = app;
+        self
     }
 
     pub fn server(&self) -> &Server {
@@ -326,8 +364,8 @@ impl Client {
             ("grant_type", "password".into()),
             ("username", email.clone()),
             ("password", login.password_hash.into()),
-            ("scope", "api offline_access".into()),
-            ("client_id", "desktop".into()),
+            ("scope", self.app.scope.clone()),
+            ("client_id", self.app.client_id.clone()),
             ("deviceType", device_type),
             ("deviceIdentifier", self.device.id.clone()),
             ("deviceName", self.device.name.clone()),
@@ -462,7 +500,7 @@ impl Client {
     pub async fn refresh(&self, refresh_token: &str) -> Result<Session, Error> {
         let form = [
             ("grant_type", "refresh_token"),
-            ("client_id", "desktop"),
+            ("client_id", self.app.client_id.as_str()),
             ("refresh_token", refresh_token),
         ];
         let response = send(
@@ -634,14 +672,315 @@ impl Client {
         .map(drop)
     }
 
-    /// A new Send: the body is Bitwarden's `SendRequestModel`, as
-    /// [`uwulock_core::send::TextSend::seal`] makes it. Answers with the Send
-    /// (its `id` and `accessId` make the link).
-    pub async fn create_send(&self, access_token: &str, request: &Value) -> Result<Value, Error> {
+    // ── Files, Sends, organisations ─────────────────────────
+    //
+    // What moving a vault over takes beyond items and folders. The shapes are
+    // Bitwarden's (server `CiphersController`, `SendsController`,
+    // `OrganizationsController`, `CollectionsController`), which Vaultwarden
+    // and UwULock Server answer the same way.
+
+    /// Where an attachment can be fetched right now:
+    /// `GET /api/ciphers/{id}/attachment/{attachmentId}` answers Bitwarden's
+    /// `AttachmentResponseModel`, whose `url` is a short-lived link (a signed
+    /// Azure blob at Bitwarden's cloud, `/attachments/…?token=` at Vaultwarden
+    /// and UwULock Server). The link needs no session.
+    pub async fn attachment_url(
+        &self,
+        access_token: &str,
+        cipher_id: &str,
+        attachment_id: &str,
+    ) -> Result<String, Error> {
+        let answer = self
+            .write(
+                self.request(
+                    reqwest::Method::GET,
+                    format!(
+                        "{}/ciphers/{}/attachment/{}",
+                        self.server.api(),
+                        escape(cipher_id),
+                        escape(attachment_id)
+                    ),
+                )
+                .bearer_auth(access_token),
+            )
+            .await?;
+        text_of(&answer, "url").ok_or_else(|| Error::Server {
+            status: 200,
+            message: "the server gave no link for the attachment".into(),
+        })
+    }
+
+    /// A file from a link the server handed out (an attachment's, a Send
+    /// file's), without the session: such links carry their own token, and
+    /// Bitwarden's point at Azure, which must never see the session. A link
+    /// without a host is taken as the server's own.
+    pub async fn download(&self, url: &str) -> Result<Vec<u8>, Error> {
+        let url = if url.starts_with('/') {
+            format!("{}{url}", self.server.web())
+        } else {
+            url.to_string()
+        };
+        let response = self
+            .http
+            .get(url)
+            .header("Accept", "application/octet-stream")
+            .timeout(FILE_TIMEOUT)
+            .send()
+            .await
+            .map_err(network_error)?;
+        let status = response.status().as_u16();
+        if !(200..300).contains(&status) {
+            let body = response.text().await.unwrap_or_default();
+            return Err(Response { status, body }.error());
+        }
+        let bytes = response.bytes().await.map_err(network_error)?;
+        Ok(bytes.to_vec())
+    }
+
+    /// Announces an attachment (`POST /api/ciphers/{id}/attachment/v2`, body
+    /// `{ key, fileName, fileSize, adminRequest }`: the attachment's key under
+    /// the item key, its name under the item key, the size of the encrypted
+    /// file). The answer is Bitwarden's `AttachmentUploadDataResponseModel`:
+    /// `{ attachmentId, url, fileUploadType, cipherResponse }`.
+    pub async fn announce_attachment(
+        &self,
+        access_token: &str,
+        cipher_id: &str,
+        request: &AttachmentRequest,
+    ) -> Result<Upload, Error> {
+        let answer = self
+            .write(
+                self.request(
+                    reqwest::Method::POST,
+                    format!(
+                        "{}/ciphers/{}/attachment/v2",
+                        self.server.api(),
+                        escape(cipher_id)
+                    ),
+                )
+                .bearer_auth(access_token)
+                .json(request),
+            )
+            .await?;
+        Upload::from_answer(&answer, "attachmentid")
+    }
+
+    /// Removes an attachment (one whose upload failed half-way).
+    pub async fn delete_attachment(
+        &self,
+        access_token: &str,
+        cipher_id: &str,
+        attachment_id: &str,
+    ) -> Result<(), Error> {
+        self.write(
+            self.request(
+                reqwest::Method::DELETE,
+                format!(
+                    "{}/ciphers/{}/attachment/{}",
+                    self.server.api(),
+                    escape(cipher_id),
+                    escape(attachment_id)
+                ),
+            )
+            .bearer_auth(access_token),
+        )
+        .await
+        .map(drop)
+    }
+
+    /// Uploads an encrypted file where [`Client::announce_attachment`] or
+    /// [`Client::create_file_send`] said. Only `fileUploadType` 0 ("direct",
+    /// to the server itself) is done: the answer's `url` is relative to the
+    /// API (`/ciphers/{id}/attachment/{attachmentId}`,
+    /// `/sends/{id}/file/{fileId}`) and takes a `multipart/form-data` POST
+    /// with the file in a part called `data`, its file name the encrypted
+    /// name. That is what Vaultwarden and UwULock Server hand out; Bitwarden's
+    /// cloud uploads to Azure (type 1), which a move never writes to.
+    pub async fn upload_file(
+        &self,
+        access_token: &str,
+        upload: &Upload,
+        file_name: &str,
+        bytes: &[u8],
+    ) -> Result<(), Error> {
+        if upload.kind != 0 {
+            return Err(Error::Unsupported(format!(
+                "uploads of type {} (only direct uploads to the server)",
+                upload.kind
+            )));
+        }
+        let api = self.server.api();
+        let url = if upload.url.starts_with('/') {
+            format!("{api}{}", upload.url)
+        } else if upload.url.starts_with(&format!("{api}/")) {
+            upload.url.clone()
+        } else {
+            // The session goes along; only to the server it belongs to.
+            return Err(Error::Refused(
+                "the server wants the file uploaded somewhere else".into(),
+            ));
+        };
+        let (content_type, body) = multipart(file_name, bytes);
+        let response = send(
+            self.request(reqwest::Method::POST, url)
+                .bearer_auth(access_token)
+                .header("Content-Type", content_type)
+                .timeout(FILE_TIMEOUT)
+                .body(body),
+        )
+        .await?;
+        if response.status == 401 {
+            return Err(Error::SessionExpired);
+        }
+        if !response.ok() {
+            return Err(response.write_error());
+        }
+        Ok(())
+    }
+
+    /// A text Send (`POST /api/sends`, Bitwarden's `SendRequestModel`).
+    pub async fn create_send(&self, access_token: &str, send: &Value) -> Result<Value, Error> {
         self.write(
             self.request(
                 reqwest::Method::POST,
                 format!("{}/sends", self.server.api()),
+            )
+            .bearer_auth(access_token)
+            .json(send),
+        )
+        .await
+    }
+
+    /// A file Send, announced (`POST /api/sends/file/v2`: the
+    /// `SendRequestModel` with `file: { fileName }` and `fileLength`, the size
+    /// of the encrypted file). The answer is `SendFileUploadDataResponseModel`:
+    /// `{ url, fileUploadType, sendResponse }`; `Upload::id` is the new Send's.
+    pub async fn create_file_send(
+        &self,
+        access_token: &str,
+        send: &Value,
+    ) -> Result<Upload, Error> {
+        let answer = self
+            .write(
+                self.request(
+                    reqwest::Method::POST,
+                    format!("{}/sends/file/v2", self.server.api()),
+                )
+                .bearer_auth(access_token)
+                .json(send),
+            )
+            .await?;
+        let mut upload = Upload::from_answer(&answer, "")?;
+        upload.id = answer
+            .get("sendResponse")
+            .or_else(|| answer.get("SendResponse"))
+            .and_then(|send| text_of(send, "id"))
+            .ok_or_else(|| Error::Server {
+                status: 200,
+                message: "the server didn't say which Send it made".into(),
+            })?;
+        Ok(upload)
+    }
+
+    pub async fn delete_send(&self, access_token: &str, id: &str) -> Result<(), Error> {
+        self.write(
+            self.request(
+                reqwest::Method::DELETE,
+                format!("{}/sends/{}", self.server.api(), escape(id)),
+            )
+            .bearer_auth(access_token),
+        )
+        .await
+        .map(drop)
+    }
+
+    /// Where the file of one of the account's own file Sends can be fetched,
+    /// the way whoever has its link fetches it: `POST
+    /// /api/sends/{id}/access/file/{fileId}` with `{}` (no password), answer
+    /// `{ url }`. Bitwarden's cloud names the Send by its access id there,
+    /// Vaultwarden and UwULock Server by its id, so both are tried. The server
+    /// counts this as one opening of the Send.
+    pub async fn send_file_url(
+        &self,
+        id: &str,
+        access_id: Option<&str>,
+        file_id: &str,
+    ) -> Result<String, Error> {
+        let mut names = vec![id];
+        if let Some(access) = access_id.filter(|a| !a.is_empty()) {
+            if matches!(self.server, Server::SelfHosted { .. }) {
+                names.push(access);
+            } else {
+                names.insert(0, access);
+            }
+        }
+        let mut last = None;
+        for name in names {
+            let result = self
+                .write(
+                    self.request(
+                        reqwest::Method::POST,
+                        format!(
+                            "{}/sends/{}/access/file/{}",
+                            self.server.api(),
+                            escape(name),
+                            escape(file_id)
+                        ),
+                    )
+                    .json(&serde_json::json!({})),
+                )
+                .await;
+            match result {
+                Ok(answer) => {
+                    return text_of(&answer, "url").ok_or_else(|| Error::Server {
+                        status: 200,
+                        message: "the server gave no link for the Send's file".into(),
+                    })
+                }
+                Err(error) => last = Some(error),
+            }
+        }
+        Err(last.unwrap_or_else(|| Error::Refused("no such Send".into())))
+    }
+
+    /// A new organisation (`POST /api/organizations`, Bitwarden's
+    /// `OrganizationCreateRequestModel`): `{ name, billingEmail, planType,
+    /// key, keys: { publicKey, encryptedPrivateKey }, collectionName }`. On
+    /// UwULock Server, `planType` 22 makes a family. Answers the
+    /// `OrganizationResponseModel`.
+    pub async fn create_organization(
+        &self,
+        access_token: &str,
+        request: &Value,
+    ) -> Result<Value, Error> {
+        self.write(
+            self.request(
+                reqwest::Method::POST,
+                format!("{}/organizations", self.server.api()),
+            )
+            .bearer_auth(access_token)
+            .json(request),
+        )
+        .await
+    }
+
+    /// A new collection (`POST /api/organizations/{orgId}/collections`:
+    /// `{ name, externalId, groups, users }`, the name under the
+    /// organisation key).
+    pub async fn create_collection(
+        &self,
+        access_token: &str,
+        organization_id: &str,
+        request: &Value,
+    ) -> Result<Value, Error> {
+        self.write(
+            self.request(
+                reqwest::Method::POST,
+                format!(
+                    "{}/organizations/{}/collections",
+                    self.server.api(),
+                    escape(organization_id)
+                ),
             )
             .bearer_auth(access_token)
             .json(request),
@@ -667,6 +1006,99 @@ impl Client {
             message: format!("the server's answer isn't JSON: {e}"),
         })
     }
+}
+
+/// Files take longer than the 60 seconds everything else gets.
+const FILE_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+
+/// Announcing an attachment: `POST /api/ciphers/{id}/attachment/v2`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachmentRequest {
+    /// The attachment's own key, under the item key.
+    pub key: String,
+    /// Under the item key.
+    pub file_name: String,
+    /// Of the encrypted file.
+    pub file_size: u64,
+    pub admin_request: bool,
+}
+
+/// Where an announced file goes.
+#[derive(Debug, Clone)]
+pub struct Upload {
+    /// The attachment's id, or the Send's.
+    pub id: String,
+    pub url: String,
+    /// Bitwarden's `FileUploadType`: 0 direct to the server, 1 Azure.
+    pub kind: u8,
+}
+
+impl Upload {
+    fn from_answer(answer: &Value, id_key: &str) -> Result<Upload, Error> {
+        let answer = lowercase_keys(answer.clone());
+        let missing = |what: &str| Error::Server {
+            status: 200,
+            message: format!("the server's upload answer has no {what}"),
+        };
+        Ok(Upload {
+            id: if id_key.is_empty() {
+                String::new()
+            } else {
+                text_of(&answer, id_key).ok_or_else(|| missing(id_key))?
+            },
+            url: text_of(&answer, "url").ok_or_else(|| missing("url"))?,
+            kind: answer
+                .get("fileuploadtype")
+                .and_then(Value::as_u64)
+                .unwrap_or(0) as u8,
+        })
+    }
+}
+
+/// A string value by its key in camelCase, PascalCase or lower case.
+pub(crate) fn text_of(value: &Value, key: &str) -> Option<String> {
+    let map = value.as_object()?;
+    map.get(key)
+        .or_else(|| {
+            map.iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case(key))
+                .map(|(_, value)| value)
+        })
+        .and_then(Value::as_str)
+        .filter(|text| !text.is_empty())
+        .map(str::to_string)
+}
+
+/// A `multipart/form-data` body with one file in the part `data`, as
+/// Bitwarden's clients upload attachments and Send files.
+fn multipart(file_name: &str, bytes: &[u8]) -> (String, Vec<u8>) {
+    let mut random = [0u8; 12];
+    rand_bytes(&mut random);
+    let boundary = format!("uwulock-{}", URL_SAFE_NO_PAD.encode(random));
+    // Encrypted names are base64 with `.` and `|`: nothing to quote.
+    let name: String = file_name
+        .chars()
+        .filter(|c| !matches!(c, '"' | '\r' | '\n'))
+        .collect();
+    let mut body = Vec::with_capacity(bytes.len() + 256);
+    body.extend_from_slice(
+        format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"data\"; filename=\"{name}\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(bytes);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    (format!("multipart/form-data; boundary={boundary}"), body)
+}
+
+fn rand_bytes(out: &mut [u8]) {
+    // A fresh key's bytes are as random as it gets, without another dependency.
+    let key = crate::crypto::SymmetricKey::generate();
+    let bytes = key.to_bytes();
+    let n = out.len().min(bytes.len());
+    out[..n].copy_from_slice(&bytes[..n]);
 }
 
 /// An id goes into a path; a server that hands out something odd shouldn't be

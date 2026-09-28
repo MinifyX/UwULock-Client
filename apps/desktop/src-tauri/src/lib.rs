@@ -8,13 +8,19 @@
 //! - [`extras`] — UwULock Server's extras: icons, versions, reminders, file
 //!   requests, masked addresses, travel mode; items shared as Sends
 //! - [`live`] — changes from other devices as they happen
+//! - [`session_lock`] — locking when the screen locks or the computer sleeps
+//! - [`hello`] — unlocking with Windows Hello
+//! - [`moving`] — moving a vault in from Bitwarden or Vaultwarden
 //! - [`clipboard`] — copies that clear themselves
 //! - [`system`] — updates and links out of the app
 
 mod account;
 mod clipboard;
 mod extras;
+mod hello;
 mod live;
+mod moving;
+mod session_lock;
 mod system;
 mod updates;
 mod vault;
@@ -48,9 +54,12 @@ pub fn run() {
             let storage = account::Storage::new(dir)?;
             tracing::info!(path = %storage.dir().display(), "data folder");
             app.manage(vault::VaultState::new(storage));
+            app.manage(moving::MoveState::default());
             vault::start(app.handle());
             live::start(app.handle());
             extras::start(app.handle());
+            session_lock::start(app.handle());
+            hello::probe();
             updates::start(app.handle());
             Ok(())
         })
@@ -62,6 +71,8 @@ pub fn run() {
             vault::login_send_email,
             vault::login_cancel,
             vault::unlock,
+            vault::unlock_with_hello,
+            vault::set_hello,
             vault::lock,
             vault::logout,
             vault::switch_account,
@@ -114,6 +125,14 @@ pub fn run() {
             extras::delete_masked_address,
             extras::send_options,
             extras::share_as_send,
+            moving::move_target,
+            moving::move_login,
+            moving::move_login_two_factor,
+            moving::move_login_new_device,
+            moving::move_login_send_email,
+            moving::move_start,
+            moving::move_cancel,
+            moving::move_close,
             system::set_update_channel,
             system::update_status,
             system::check_for_updates,

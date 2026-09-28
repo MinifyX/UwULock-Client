@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { logout, switchAccount, unlock, type Status } from '../lib/api';
+import { logout, switchAccount, unlock, unlockWithHello, type Status } from '../lib/api';
 import { errorText } from '../lib/errors';
 import { ago } from '../lib/format';
 import { t, useLanguage } from '../lib/i18n';
@@ -47,6 +47,18 @@ export function LockScreen({ status, onUnlocked, onLoggedOut, onAddAccount }: Pr
     }
   };
 
+  const hello = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      onUnlocked(await unlockWithHello());
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="lock">
       <form className="lock-card" onSubmit={submit} aria-busy={busy}>
@@ -71,6 +83,16 @@ export function LockScreen({ status, onUnlocked, onLoggedOut, onAddAccount }: Pr
         <button className="primary lock-button" type="submit" disabled={busy || !password}>
           {busy ? t('Entsperrt …') : t('Entsperren')}
         </button>
+        {status.hello && (
+          <button
+            type="button"
+            className="lock-button"
+            disabled={busy}
+            onClick={() => void hello()}
+          >
+            {t('Mit Windows Hello entsperren')}
+          </button>
+        )}
         <p className="lock-meta">
           {t('Zuletzt synchronisiert: {when}', { when: ago(status.lastSync) })}
           {' · '}

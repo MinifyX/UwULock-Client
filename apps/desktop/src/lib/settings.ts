@@ -30,6 +30,8 @@ export type Settings = {
   updateChannel: UpdateChannel;
   autoLock: AutoLock;
   clipboardClear: ClipboardClear;
+  /** Lock when the screen locks or the computer goes to sleep. */
+  lockWithSystem: boolean;
   /** Items in the trash show up in their own section only. */
   showTrash: boolean;
   /** Websites' icons from UwULock Server (it learns which sites they are for). */
@@ -48,6 +50,7 @@ export const DEFAULT_SETTINGS: Settings = {
   updateChannel: pkg.version.includes('-') ? 'beta' : 'stable',
   autoLock: 15,
   clipboardClear: 30,
+  lockWithSystem: true,
   showTrash: true,
   siteIcons: true,
   lastServerKind: 'self-hosted',
@@ -74,6 +77,7 @@ export function sanitize(raw: unknown): Settings {
     updateChannel: oneOf(input.updateChannel, ['stable', 'beta'] as const, d.updateChannel),
     autoLock: oneOf(input.autoLock, [0, 1, 5, 15, 30, 60, 240] as const, d.autoLock),
     clipboardClear: oneOf(input.clipboardClear, [0, 10, 30, 60, 120] as const, d.clipboardClear),
+    lockWithSystem: bool(input.lockWithSystem, d.lockWithSystem),
     showTrash: bool(input.showTrash, d.showTrash),
     siteIcons: bool(input.siteIcons, d.siteIcons),
     lastServerKind: oneOf(

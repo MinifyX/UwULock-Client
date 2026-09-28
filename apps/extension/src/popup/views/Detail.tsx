@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Icon } from '@desktop/components/Icon';
-import { ItemTile } from '@desktop/components/ItemTile';
 import { N_, t } from '../../shared/i18n';
+import { ItemIcon } from '../icons';
 import type { ItemDetail, ItemKind, TotpCode } from '../../shared/protocol';
 import {
   copyField,
@@ -63,10 +63,12 @@ export function Detail({
   id,
   onBack,
   onEdit,
+  onShare,
 }: {
   id: string;
   onBack: () => void;
   onEdit: (id: string, kind: ItemKind) => void;
+  onShare: (id: string) => void;
 }) {
   const [item, setItem] = useState<ItemDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -136,6 +138,17 @@ export function Detail({
             >
               <Icon name="star" size={16} className={summary.favorite ? 'badge-star' : undefined} />
             </button>
+            {!summary.broken && (
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => onShare(id)}
+                aria-label={t('Als Send teilen')}
+                title={t('Als Send teilen')}
+              >
+                <Icon name="export" size={16} />
+              </button>
+            )}
             {!summary.broken && summary.kind !== 'ssh-key' && (
               <button
                 type="button"
@@ -177,7 +190,7 @@ export function Detail({
       </BackBar>
 
       <div className="detail-head">
-        <ItemTile item={summary} size="large" />
+        <ItemIcon item={summary} size="large" />
         <div className="detail-title">
           <h2>{summary.name || t('(ohne Namen)')}</h2>
           <span className="muted">{t(KIND_LABEL[summary.kind])}</span>

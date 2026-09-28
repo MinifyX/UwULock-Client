@@ -42,9 +42,23 @@ windows-sys = { workspace = true, features = [
   "Win32_Foundation",
   "Win32_System_Diagnostics_ToolHelp",
   "Win32_System_LibraryLoader",
+  "Win32_System_StationsAndDesktops",
   "Win32_System_Threading",
+] }
+
+# Windows Hello (KeyCredentialManager): the same windows crate Tauri brings.
+windows = { version = "0.61", features = [
+  "Foundation",
+  "Security_Credentials",
+  "Security_Cryptography",
+  "Storage_Streams",
+  "Win32_Foundation",
+  "Win32_UI_WindowsAndMessaging",
 ] }
 
 # A package update is handed to the package manager from a private scratch folder.
 [target.'cfg(target_os = "linux")'.dependencies]
 tempfile = "3"
+# logind and the screen saver say when the screen locks or the system sleeps.
+# The same zbus (and features) tauri-plugin-opener already brings.
+zbus = { version = "5", default-features = false, features = ["async-io", "blocking-api"] }

@@ -7,7 +7,15 @@
  * Needs the module built (`pnpm wasm`); CI builds it before the tests.
  */
 
-import { createCipheriv, createHmac, pbkdf2Sync, randomBytes, webcrypto } from 'node:crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHmac,
+  hkdfSync,
+  pbkdf2Sync,
+  randomBytes,
+  webcrypto,
+} from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 
@@ -130,6 +138,46 @@ describe.skipIf(!built)('the WebAssembly', () => {
     core.unlockWithKey(EMAIL, KDF, protectedKey, key);
     core.open(JSON.stringify(sync));
     expect(core.reveal('login-1', 'password', 0)).toBe('hunter2');
+    core.lock();
+  });
+
+  it('shares a login as a Send that opens elsewhere, without its authenticator key', () => {
+    const { protectedKey, sync } = account();
+    core.unlockWithPassword(EMAIL, KDF, protectedKey, PASSWORD);
+    core.open(JSON.stringify(sync));
+    expect(JSON.parse(core.shareableFields('login-1'))).toEqual([
+      { name: 'username' },
+      { name: 'password' },
+      { name: 'uri:0' },
+    ]);
+    const request = JSON.parse(
+      core.sealShare(
+        'login-1',
+        JSON.stringify({
+          fields: [
+            ['username', 'Username'],
+            ['totp', 'Code'],
+          ],
+          deletionDate: '2026-09-29T12:00:00.000Z',
+          maxAccessCount: 1,
+        }),
+      ),
+    );
+    const decrypt = (value: string, key: Buffer) => {
+      const [iv, data] = value
+        .slice(2)
+        .split('|')
+        .map((part) => Buffer.from(part, 'base64'));
+      const decipher = createDecipheriv('aes-256-cbc', key.subarray(0, 32), iv!);
+      return Buffer.concat([decipher.update(data!), decipher.final()]);
+    };
+    const seed = decrypt(request.key, Buffer.from(core.userKey(), 'base64'));
+    // Bitwarden's derive_shareable_key: HKDF-SHA256, salt "bitwarden-send", info "send".
+    const sendKey = Buffer.from(hkdfSync('sha256', seed, 'bitwarden-send', 'send', 64));
+    expect(decrypt(request.text.text, sendKey).toString()).toBe('Example\nUsername: nyu');
+    expect(core.sendLink(request.key, 'acc', 'https://lock.example.com', false)).toBe(
+      `https://lock.example.com/#/send/acc/${b64url(seed)}`,
+    );
     core.lock();
   });
 

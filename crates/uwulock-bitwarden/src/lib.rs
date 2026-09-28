@@ -4,6 +4,8 @@
 //! - [`delta`] — the offline copy, kept up to date by UwULock Server's delta sync
 //! - [`icons`] — icons of devices on the local network, made into own icons
 //! - [`live`] — live updates: UwULock's realtime channel, Bitwarden's SignalR hub
+//! - [`moving`] — moving a vault from Bitwarden or Vaultwarden to a UwULock Server
+//! - [`suite`] — the suite vault for UwUSSH and UwURDP: spaces, their keys, pull and push
 //! - [`uwu`] — UwULock Server's own API: its features, the extras key, delta sync,
 //!   and the calls behind its extras (icons, versions, file requests, …)
 //!
@@ -23,10 +25,12 @@ pub mod api;
 pub mod delta;
 pub mod icons;
 pub mod live;
+pub mod moving;
+pub mod suite;
 pub mod uwu;
 
 pub use uwulock_core::{crypto, extras, file_request, generator, send, totp, vault, wire, Error};
 
-pub use api::{Client, Device, LoginOutcome, Server, Session, TwoFactorMethod};
+pub use api::{App, Client, Device, LoginOutcome, Server, Session, TwoFactorMethod};
 pub use crypto::{EncString, Kdf, SymmetricKey};
 pub use vault::{Item, ItemKind, Vault};
