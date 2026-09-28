@@ -5,11 +5,13 @@
 //!
 //! - [`vault`] — logging in, unlocking, syncing, items, copying
 //! - [`account`] — what is kept on disk, and where
+//! - [`moving`] — moving a vault in from Bitwarden or Vaultwarden
 //! - [`clipboard`] — copies that clear themselves
 //! - [`system`] — updates and links out of the app
 
 mod account;
 mod clipboard;
+mod moving;
 mod system;
 mod updates;
 mod vault;
@@ -43,6 +45,7 @@ pub fn run() {
             let storage = account::Storage::new(dir)?;
             tracing::info!(path = %storage.dir().display(), "data folder");
             app.manage(vault::VaultState::new(storage));
+            app.manage(moving::MoveState::default());
             vault::start(app.handle());
             updates::start(app.handle());
             Ok(())
@@ -78,6 +81,14 @@ pub fn run() {
             vault::restore_item,
             vault::save_folder,
             vault::delete_folder,
+            moving::move_target,
+            moving::move_login,
+            moving::move_login_two_factor,
+            moving::move_login_new_device,
+            moving::move_login_send_email,
+            moving::move_start,
+            moving::move_cancel,
+            moving::move_close,
             system::set_update_channel,
             system::update_status,
             system::check_for_updates,
