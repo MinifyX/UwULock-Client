@@ -84,9 +84,21 @@ bitwarden.com or bitwarden.eu — with the same encryption the official apps use
 > - Auto-lock, clipboard clearing, sync on unlock and every five minutes.
 > - Its own installer with Nyu, signed automatic updates, German and English.
 >
-> **What doesn't, yet.** Attachments, sends, passkeys, moving items into an
-> organisation, Duo and FIDO2 as second step, SSO, unlocking with Windows
-> Hello. The [roadmap](docs/roadmap.md) has the order.
+> **With UwULock Server 0.6** (coming as 0.3): changes from your other devices
+> arrive as they happen, over the server's realtime channel and delta sync (or
+> Bitwarden's notification hub elsewhere); item icons, earlier versions of an
+> item, reminders to renew a password, file requests, masked addresses from
+> UwUMail, sharing an item as a Send (also only for given addresses, or on a
+> send domain), families and travel mode — each where the server offers it.
+> UwULock locks with the computer, unlocks with Windows Hello, and moves a
+> whole vault over from Bitwarden, attachments, Sends and organisations
+> included. [Extras](docs/uwu-extras.md) ·
+> [Moving from Bitwarden](docs/moving-from-bitwarden.md).
+>
+> **What doesn't, yet.** Attachments and Sends of their own in the desktop app
+> (they move and stay intact), moving items into an organisation, Duo and
+> FIDO2 as second step, SSO, Touch ID. The [roadmap](docs/roadmap.md) has the
+> order.
 
 ## Install
 
@@ -112,19 +124,19 @@ LibreWolf and loads temporarily elsewhere. [How to install it](docs/extension.md
 
 ## Project layout
 
-| Path                       | What lives there                                                            |
-| -------------------------- | --------------------------------------------------------------------------- |
-| `apps/desktop`             | The Tauri 2 app (React UI + Rust shell)                                     |
-| `apps/desktop/e2e`         | End-to-end run of the real app against a toy Vaultwarden                    |
-| `apps/setup`               | The installer, updater and uninstaller, for all three systems               |
-| `apps/extension`           | The browser extension for Chromium and Firefox (Manifest V3, React)         |
-| `crates/uwulock-core`      | Bitwarden's crypto and data formats, no network; also builds to WebAssembly |
-| `crates/uwulock-bitwarden` | Bitwarden's protocol over HTTP: login, two-step login, sync, saving         |
-| `crates/uwulock-wasm`      | uwulock-core as WebAssembly, for the browser extension                      |
-| `brand/`                   | Nyu as a padlock: the UwULock icon, symbol, mono symbol                     |
-| `docs/`                    | Vision, architecture, design, roadmap, install guide                        |
-| `release-notes/`           | What's new, per version                                                     |
-| `scripts/`                 | Icons, building the setup, releasing                                        |
+| Path                       | What lives there                                                             |
+| -------------------------- | ---------------------------------------------------------------------------- |
+| `apps/desktop`             | The Tauri 2 app (React UI + Rust shell)                                      |
+| `apps/desktop/e2e`         | End-to-end run of the real app against a toy Vaultwarden                     |
+| `apps/setup`               | The installer, updater and uninstaller, for all three systems                |
+| `apps/extension`           | The browser extension for Chromium and Firefox (Manifest V3, React)          |
+| `crates/uwulock-core`      | Bitwarden's crypto and data formats, no network; also builds to WebAssembly  |
+| `crates/uwulock-bitwarden` | Bitwarden's and UwULock Server's protocol: login, sync, live updates, saving |
+| `crates/uwulock-wasm`      | uwulock-core as WebAssembly, for the browser extension                       |
+| `brand/`                   | Nyu as a padlock: the UwULock icon, symbol, mono symbol                      |
+| `docs/`                    | Vision, architecture, design, roadmap, install guide                         |
+| `release-notes/`           | What's new, per version                                                      |
+| `scripts/`                 | Icons, building the setup, releasing                                         |
 
 ## Development
 
@@ -172,6 +184,8 @@ The installer, with the app packed inside: `pnpm build:setup`. Releasing is
 
 - [Install guide](docs/install.md) — installing, updating, uninstalling, in English and German
 - [Browser extension](docs/extension.md) — what it does, installing it in Chromium and Firefox
+- [UwULock Server's extras](docs/uwu-extras.md) — icons, versions, reminders, file requests, masked addresses, Sends, travel mode
+- [Moving from Bitwarden](docs/moving-from-bitwarden.md) — a whole vault into UwULock, attachments and Sends included
 - [Konzept](KONZEPT.md) — the concept, in German
 - [Vision](docs/vision.md) — what I want UwULock to be and what it will never do
 - [Architecture](docs/architecture.md) — how the pieces fit together, and the crypto
