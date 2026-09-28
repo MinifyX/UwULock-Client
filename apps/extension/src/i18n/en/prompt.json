@@ -1,0 +1,17 @@
+{
+  "Master-Passwort": "Master password",
+  "Anmelden": "Log in",
+  "Browser verwenden": "Use the browser",
+  "Für dieses Konto liegt schon ein Passkey in deinem Tresor.": "Your vault already has a passkey for this account.",
+  "Speichern in": "Save to",
+  "Neuer Login „{name}“": "New login “{name}”",
+  "ersetzt den Passkey darin": "replaces its passkey",
+  "In deinem Tresor ist kein Passkey für diese Seite.": "Your vault has no passkey for this site.",
+  "Anmelden als": "Sign in as",
+  "Die Seite oder der Eintrag verlangt, dass du es bestätigst.": "The site or the item asks you to confirm it.",
+  "Passkey speichern": "Save passkey",
+  "Passkey erstellen": "Create a passkey",
+  "Mit Passkey anmelden": "Sign in with a passkey",
+  "{site} möchte einen Passkey für {user} anlegen.": "{site} wants to create a passkey for {user}.",
+  "{site} möchte, dass du dich mit einem Passkey anmeldest.": "{site} wants you to sign in with a passkey."
+}
