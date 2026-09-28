@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "crates/uwulock-core",
   "crates/uwulock-bitwarden",
+  "crates/uwulock-wasm",
   "apps/desktop/src-tauri",
   "apps/setup/src-tauri",
 ]

@@ -6,6 +6,8 @@ dist/
 target/
 *.tsbuildinfo
 apps/*/src-tauri/gen/schemas/
+# The extension's crypto, built by apps/extension/scripts/build-wasm.mjs
+apps/extension/src/wasm/pkg/
 
 # Local environment
 .env
