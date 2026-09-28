@@ -170,6 +170,18 @@ function Appearance() {
           onChange={(showTrash) => updateSettings({ showTrash })}
         />
       </Row>
+      <Row
+        label={t('Website-Symbole')}
+        description={t(
+          'Nur mit UwULock Server: Er holt die Symbole der Websites und erfährt dabei, welche Seiten in deinem Tresor sind. Eigene Symbole bleiben verschlüsselt und erscheinen immer.',
+        )}
+      >
+        <Toggle
+          label={t('Website-Symbole')}
+          checked={settings.siteIcons}
+          onChange={(siteIcons) => updateSettings({ siteIcons })}
+        />
+      </Row>
     </>
   );
 }

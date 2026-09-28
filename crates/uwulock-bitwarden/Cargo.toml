@@ -20,6 +20,15 @@ zeroize.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 url = "2"
+# Icons of devices on the local network: whatever they serve (ICO, PNG, JPEG,
+# WebP, GIF), made into a small PNG. Only the decoders that are needed.
+image = { version = "0.25", default-features = false, features = [
+  "png",
+  "ico",
+  "jpeg",
+  "webp",
+  "gif",
+] }
 # rustls with both the bundled roots and the system's own store: a homelab
 # Vaultwarden behind a private CA works once that CA is trusted by the system.
 reqwest = { version = "0.12", default-features = false, features = [

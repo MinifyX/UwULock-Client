@@ -251,6 +251,8 @@ pub struct PasswordLogin<'a> {
     pub new_device_code: Option<&'a str>,
 }
 
+/// Cheap to clone: the connection pool is shared.
+#[derive(Clone)]
 pub struct Client {
     http: reqwest::Client,
     server: Server,
@@ -1122,6 +1124,21 @@ pub fn parse_sync(text: &str) -> Result<wire::Sync, Error> {
     serde_json::from_value(lowercase_keys(value)).map_err(|e| Error::Server {
         status: 200,
         message: format!("the sync doesn't look like Bitwarden's: {e}"),
+    })
+}
+
+/// One cipher as the server writes it (an answer to a save, an entry
+/// version), in whatever case its keys come. A version carries no `id`; give
+/// it the item's.
+pub fn parse_cipher(mut value: Value, id: Option<&str>) -> Result<wire::Cipher, Error> {
+    if let (Some(id), Some(object)) = (id, value.as_object_mut()) {
+        if !object.keys().any(|k| k.eq_ignore_ascii_case("id")) {
+            object.insert("id".into(), Value::String(id.to_string()));
+        }
+    }
+    serde_json::from_value(lowercase_keys(value)).map_err(|e| Error::Server {
+        status: 200,
+        message: format!("an item doesn't look like Bitwarden's: {e}"),
     })
 }
 

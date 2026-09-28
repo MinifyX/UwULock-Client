@@ -298,6 +298,603 @@ impl Client {
     }
 }
 
+// ── Typed calls for UwULock's extras ───────────────────────
+//
+// Each is one endpoint of the contract, named after it. The values that are
+// encrypted stay EncStrings here; opening them is the caller's business.
+
+/// `GET /uwu/v1/account` (§2): the parts a client shows.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct UwuAccount {
+    /// The account's default send domain; `None` is the main host.
+    pub send_domain_id: Option<String>,
+    pub travel: Option<Value>,
+    pub masked_connected: bool,
+    pub security_notices_unseen: u32,
+}
+
+/// An own icon (§7.3). `data` only when it was asked for.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct OwnIcon {
+    pub cipher_id: String,
+    /// `extras` or `organization`.
+    pub key_type: String,
+    pub data: Option<String>,
+    pub revision_date: Option<String>,
+}
+
+/// The most own icons one `POST /uwu/v1/icons/own/get` may ask for.
+pub const OWN_ICONS_PER_CALL: usize = 500;
+
+/// An entry version (§8.4). `cipher` has the shape of a cipher in `/api/sync`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CipherVersion {
+    pub id: String,
+    pub cipher_id: String,
+    pub revision_date: Option<String>,
+    pub replaced_date: Option<String>,
+    pub size: u64,
+    pub cipher: Value,
+}
+
+/// Travel mode (§9.1).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Travel {
+    pub enabled: bool,
+    pub enabled_date: Option<String>,
+    pub folder_ids: Vec<String>,
+    pub hidden_count: u32,
+}
+
+/// A password renewal reminder (§10).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Reminder {
+    pub cipher_id: String,
+    /// `YYYY-MM-DD`.
+    pub due: Option<String>,
+    pub every_months: Option<u32>,
+    pub is_due: bool,
+    pub mailed_date: Option<String>,
+}
+
+/// A file request as its owner sees it (§11.4).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct FileRequest {
+    pub id: String,
+    pub access_id: String,
+    /// The owner's label, under the extras key.
+    pub name: Option<String>,
+    /// The link secret, under the extras key.
+    pub link_secret: Option<String>,
+    /// Title, note, owner and public key, under the link key.
+    pub public_info: Option<String>,
+    pub password_set: bool,
+    pub expiration_date: Option<String>,
+    pub deletion_date: Option<String>,
+    pub max_submissions: Option<u32>,
+    pub submission_count: u32,
+    pub max_files: u32,
+    pub max_file_bytes: Option<u64>,
+    pub text_allowed: bool,
+    pub send_domain_id: Option<String>,
+    pub disabled: bool,
+    pub unseen: u32,
+    pub bytes: u64,
+    pub creation_date: Option<String>,
+    pub revision_date: Option<String>,
+}
+
+/// The body of `POST`/`PUT /uwu/v1/file-requests[/{id}]`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileRequestBody {
+    pub name: String,
+    pub link_secret: String,
+    pub public_info: String,
+    /// Left out on a change: the password stays as it is.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub password_hash: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub remove_password: bool,
+    pub expiration_date: String,
+    pub max_submissions: Option<u32>,
+    pub max_files: u32,
+    pub max_file_bytes: Option<u64>,
+    pub text_allowed: bool,
+    pub send_domain_id: Option<String>,
+    pub disabled: bool,
+}
+
+/// One upload to a file request (§11.4).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Submission {
+    pub id: String,
+    pub request_id: String,
+    pub creation_date: Option<String>,
+    /// The submission key for the owner's public key (type 4).
+    pub wrapped_key: String,
+    pub sender: Option<String>,
+    pub text: Option<String>,
+    pub files: Vec<SubmissionFile>,
+    pub seen: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SubmissionFile {
+    pub id: String,
+    pub file_name: String,
+    pub key: String,
+    pub size: u64,
+}
+
+/// The account's connection to UwUMail for masked addresses (§13.2).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct MaskedConnection {
+    pub connected: bool,
+    pub server: Option<String>,
+    pub username: Option<String>,
+    pub domains: Option<Vec<String>>,
+    pub default_domain: Option<String>,
+    /// `ok`, `revoked` or `unreachable`.
+    pub status: Option<String>,
+}
+
+/// A masked address (§13.3).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct MaskedAddress {
+    pub id: String,
+    pub email: String,
+    /// `enabled`, `disabled`, `deleted` (or UwUMail's `pending`).
+    pub state: String,
+    pub for_domain: Option<String>,
+    pub description: Option<String>,
+    pub created_at: Option<String>,
+    pub last_message_at: Option<String>,
+    pub cipher_id: Option<String>,
+}
+
+/// What a new masked address is for (`POST /uwu/v1/masked/addresses`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewMaskedAddress {
+    pub for_domain: String,
+    pub description: String,
+    pub domain: Option<String>,
+    pub email_prefix: Option<String>,
+    pub cipher_id: Option<String>,
+}
+
+/// The `data` of a list answer, each element read as `T`. Elements that don't
+/// read are left out rather than failing the whole list.
+fn list_of<T: serde::de::DeserializeOwned>(value: &Value) -> Vec<T> {
+    value
+        .get("data")
+        .and_then(Value::as_array)
+        .or_else(|| value.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| serde_json::from_value(item.clone()).ok())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn read<T: serde::de::DeserializeOwned>(value: Value, what: &str) -> UwuResult<T> {
+    serde_json::from_value(value).map_err(|e| {
+        UwuError::Core(Error::Server {
+            status: 200,
+            message: format!("the server's {what} doesn't read: {e}"),
+        })
+    })
+}
+
+impl Client {
+    /// Every page of a list under `/uwu/v1`, following `continuationToken`.
+    pub async fn uwu_list<T: serde::de::DeserializeOwned>(
+        &self,
+        access_token: &str,
+        path: &str,
+    ) -> UwuResult<Vec<T>> {
+        let mut out = Vec::new();
+        let mut token: Option<String> = None;
+        // Not an endless loop, whatever the server says.
+        for _ in 0..100 {
+            let page_path = match &token {
+                None => path.to_string(),
+                Some(next) => {
+                    let joiner = if path.contains('?') { '&' } else { '?' };
+                    format!("{path}{joiner}continuationToken={}", uwu_path(next))
+                }
+            };
+            let page = self.uwu_get(access_token, &page_path).await?;
+            out.extend(list_of::<T>(&page));
+            token = page
+                .get("continuationToken")
+                .and_then(Value::as_str)
+                .filter(|t| !t.is_empty())
+                .map(str::to_string);
+            if token.is_none() {
+                break;
+            }
+        }
+        Ok(out)
+    }
+
+    /// `GET /uwu/v1/account`.
+    pub async fn uwu_account(&self, access_token: &str) -> UwuResult<UwuAccount> {
+        read(self.uwu_get(access_token, "/account").await?, "account")
+    }
+
+    // ── Icons (§7) ─────────────────────────────────────────
+
+    /// The own icons of these items, those that exist and are visible, with
+    /// their `data`. Asks in batches of [`OWN_ICONS_PER_CALL`].
+    pub async fn own_icons(
+        &self,
+        access_token: &str,
+        cipher_ids: &[String],
+    ) -> UwuResult<Vec<OwnIcon>> {
+        let mut out = Vec::new();
+        for chunk in cipher_ids.chunks(OWN_ICONS_PER_CALL) {
+            let answer = self
+                .uwu_post(
+                    access_token,
+                    "/icons/own/get",
+                    &serde_json::json!({ "cipherIds": chunk }),
+                )
+                .await?;
+            out.extend(list_of::<OwnIcon>(&answer));
+        }
+        Ok(out)
+    }
+
+    /// Stores an own icon: `data` is the sealed PNG
+    /// ([`uwulock_core::extras::seal_icon`]), `key_type` `extras` or
+    /// `organization`.
+    pub async fn put_own_icon(
+        &self,
+        access_token: &str,
+        cipher_id: &str,
+        data: &str,
+        key_type: &str,
+    ) -> UwuResult<OwnIcon> {
+        let answer = self
+            .uwu_put(
+                access_token,
+                &format!("/icons/own/{}", uwu_path(cipher_id)),
+                &serde_json::json!({ "data": data, "keyType": key_type }),
+            )
+            .await?;
+        read(answer, "icon")
+    }
+
+    pub async fn delete_own_icon(&self, access_token: &str, cipher_id: &str) -> UwuResult<()> {
+        self.uwu_delete(access_token, &format!("/icons/own/{}", uwu_path(cipher_id)))
+            .await
+            .map(drop)
+    }
+
+    /// An automatic icon (§7.1): `<icons_url>/<host>/icon.png`, no session.
+    /// `None` when the server has none (404) or sends something that isn't a
+    /// PNG.
+    pub async fn automatic_icon(
+        &self,
+        icons_url: &str,
+        host: &str,
+    ) -> Result<Option<Vec<u8>>, Error> {
+        let url = format!(
+            "{}/{}/icon.png",
+            icons_url.trim_end_matches('/'),
+            escape(host)
+        );
+        let response = self
+            .request(reqwest::Method::GET, url)
+            .header("Accept", "image/png")
+            .send()
+            .await
+            .map_err(crate::api::network_error)?;
+        if !response.status().is_success() {
+            return Ok(None);
+        }
+        let bytes = response.bytes().await.map_err(crate::api::network_error)?;
+        Ok(extras::png_size(&bytes).map(|_| bytes.to_vec()))
+    }
+
+    // ── Entry versions (§8) ────────────────────────────────
+
+    /// An item's versions, newest first.
+    pub async fn versions(
+        &self,
+        access_token: &str,
+        cipher_id: &str,
+    ) -> UwuResult<Vec<CipherVersion>> {
+        self.uwu_list(
+            access_token,
+            &format!("/ciphers/{}/versions", uwu_path(cipher_id)),
+        )
+        .await
+    }
+
+    /// Brings a version back. `last_known` is the item's `revisionDate` as
+    /// this client has it; another one on the server is 409 `conflict`.
+    /// Answers with the cipher as `PUT /api/ciphers/{id}` would.
+    pub async fn restore_version(
+        &self,
+        access_token: &str,
+        cipher_id: &str,
+        version_id: &str,
+        last_known: Option<&str>,
+    ) -> UwuResult<Value> {
+        self.uwu_post(
+            access_token,
+            &format!(
+                "/ciphers/{}/versions/{}/restore",
+                uwu_path(cipher_id),
+                uwu_path(version_id)
+            ),
+            &serde_json::json!({ "lastKnownRevisionDate": last_known }),
+        )
+        .await
+    }
+
+    /// One version, or with `None` all of them.
+    pub async fn delete_versions(
+        &self,
+        access_token: &str,
+        cipher_id: &str,
+        version_id: Option<&str>,
+    ) -> UwuResult<()> {
+        let mut path = format!("/ciphers/{}/versions", uwu_path(cipher_id));
+        if let Some(version) = version_id {
+            path.push('/');
+            path.push_str(&uwu_path(version));
+        }
+        self.uwu_delete(access_token, &path).await.map(drop)
+    }
+
+    // ── Travel mode (§9) ───────────────────────────────────
+
+    pub async fn travel(&self, access_token: &str) -> UwuResult<Travel> {
+        read(self.uwu_get(access_token, "/travel").await?, "travel mode")
+    }
+
+    // ── Reminders (§10) ────────────────────────────────────
+
+    /// Sets an item's reminder: a date, every so many months, or both.
+    pub async fn set_reminder(
+        &self,
+        access_token: &str,
+        cipher_id: &str,
+        due: Option<&str>,
+        every_months: Option<u32>,
+    ) -> UwuResult<Reminder> {
+        let answer = self
+            .uwu_put(
+                access_token,
+                &format!("/reminders/{}", uwu_path(cipher_id)),
+                &serde_json::json!({ "due": due, "everyMonths": every_months }),
+            )
+            .await?;
+        read(answer, "reminder")
+    }
+
+    pub async fn delete_reminder(&self, access_token: &str, cipher_id: &str) -> UwuResult<()> {
+        self.uwu_delete(access_token, &format!("/reminders/{}", uwu_path(cipher_id)))
+            .await
+            .map(drop)
+    }
+
+    // ── File requests (§11.4) ──────────────────────────────
+
+    pub async fn file_requests(&self, access_token: &str) -> UwuResult<Vec<FileRequest>> {
+        self.uwu_list(access_token, "/file-requests").await
+    }
+
+    pub async fn create_file_request(
+        &self,
+        access_token: &str,
+        body: &FileRequestBody,
+    ) -> UwuResult<FileRequest> {
+        read(
+            self.uwu_post(access_token, "/file-requests", body).await?,
+            "file request",
+        )
+    }
+
+    pub async fn update_file_request(
+        &self,
+        access_token: &str,
+        id: &str,
+        body: &FileRequestBody,
+    ) -> UwuResult<FileRequest> {
+        read(
+            self.uwu_put(
+                access_token,
+                &format!("/file-requests/{}", uwu_path(id)),
+                body,
+            )
+            .await?,
+            "file request",
+        )
+    }
+
+    pub async fn delete_file_request(&self, access_token: &str, id: &str) -> UwuResult<()> {
+        self.uwu_delete(access_token, &format!("/file-requests/{}", uwu_path(id)))
+            .await
+            .map(drop)
+    }
+
+    pub async fn submissions(
+        &self,
+        access_token: &str,
+        request_id: &str,
+    ) -> UwuResult<Vec<Submission>> {
+        self.uwu_list(
+            access_token,
+            &format!("/file-requests/{}/submissions", uwu_path(request_id)),
+        )
+        .await
+    }
+
+    fn submission_path(request_id: &str, submission_id: &str) -> String {
+        format!(
+            "/file-requests/{}/submissions/{}",
+            uwu_path(request_id),
+            uwu_path(submission_id)
+        )
+    }
+
+    /// A submitted file, still encrypted (an EncArrayBuffer under its key).
+    pub async fn submission_file(
+        &self,
+        access_token: &str,
+        request_id: &str,
+        submission_id: &str,
+        file_id: &str,
+    ) -> UwuResult<Vec<u8>> {
+        let path = format!(
+            "{}/files/{}",
+            Self::submission_path(request_id, submission_id),
+            uwu_path(file_id)
+        );
+        self.uwu_download(access_token, &path).await
+    }
+
+    pub async fn submission_seen(
+        &self,
+        access_token: &str,
+        request_id: &str,
+        submission_id: &str,
+    ) -> UwuResult<()> {
+        let path = format!("{}/seen", Self::submission_path(request_id, submission_id));
+        self.uwu_post(access_token, &path, &serde_json::json!({}))
+            .await
+            .map(drop)
+    }
+
+    pub async fn delete_submission(
+        &self,
+        access_token: &str,
+        request_id: &str,
+        submission_id: &str,
+    ) -> UwuResult<()> {
+        self.uwu_delete(
+            access_token,
+            &Self::submission_path(request_id, submission_id),
+        )
+        .await
+        .map(drop)
+    }
+
+    /// Moves a submitted file into an item's attachments: its name and key
+    /// already under the item's key ([`uwulock_core::file_request::FileKey::for_item`]).
+    /// Answers with the cipher as after an attachment upload.
+    pub async fn attach_submission_file(
+        &self,
+        access_token: &str,
+        request_id: &str,
+        submission_id: &str,
+        file_id: &str,
+        cipher_id: &str,
+        file: &uwulock_core::file_request::SealedFile,
+    ) -> UwuResult<Value> {
+        let path = format!(
+            "{}/files/{}/attach",
+            Self::submission_path(request_id, submission_id),
+            uwu_path(file_id)
+        );
+        self.uwu_post(
+            access_token,
+            &path,
+            &serde_json::json!({
+                "cipherId": cipher_id,
+                "fileName": file.file_name,
+                "key": file.key,
+            }),
+        )
+        .await
+    }
+
+    // ── Masked addresses (§13) ─────────────────────────────
+
+    pub async fn masked_connection(&self, access_token: &str) -> UwuResult<MaskedConnection> {
+        read(
+            self.uwu_get(access_token, "/masked/connection").await?,
+            "masked connection",
+        )
+    }
+
+    pub async fn masked_addresses(&self, access_token: &str) -> UwuResult<Vec<MaskedAddress>> {
+        self.uwu_list(access_token, "/masked/addresses").await
+    }
+
+    pub async fn create_masked_address(
+        &self,
+        access_token: &str,
+        new: &NewMaskedAddress,
+    ) -> UwuResult<MaskedAddress> {
+        read(
+            self.uwu_post(access_token, "/masked/addresses", new)
+                .await?,
+            "masked address",
+        )
+    }
+
+    /// Changes an address: any of `state`, `description`, `forDomain`,
+    /// `cipherId` (a `null` there unlinks it).
+    pub async fn update_masked_address(
+        &self,
+        access_token: &str,
+        id: &str,
+        change: &Value,
+    ) -> UwuResult<MaskedAddress> {
+        read(
+            self.uwu_patch(
+                access_token,
+                &format!("/masked/addresses/{}", uwu_path(id)),
+                change,
+            )
+            .await?,
+            "masked address",
+        )
+    }
+
+    pub async fn delete_masked_address(&self, access_token: &str, id: &str) -> UwuResult<()> {
+        self.uwu_delete(access_token, &format!("/masked/addresses/{}", uwu_path(id)))
+            .await
+            .map(drop)
+    }
+
+    // ── Send domains (§14.2) ───────────────────────────────
+
+    /// Which domain a Send's link uses; `None` is the main host.
+    pub async fn set_send_domain(
+        &self,
+        access_token: &str,
+        send_id: &str,
+        send_domain_id: Option<&str>,
+    ) -> UwuResult<()> {
+        self.uwu_put(
+            access_token,
+            &format!("/sends/{}/domain", uwu_path(send_id)),
+            &serde_json::json!({ "sendDomainId": send_domain_id }),
+        )
+        .await
+        .map(drop)
+    }
+}
+
 /// A value for a path segment or query of `/uwu/v1`: ids, cursors.
 pub fn uwu_path(value: &str) -> String {
     escape(value)

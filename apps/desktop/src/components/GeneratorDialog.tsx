@@ -5,8 +5,17 @@ import { copiedText } from '../lib/format';
 import { t, useLanguage } from '../lib/i18n';
 import { getSettings } from '../lib/settings';
 import { toast } from '../lib/toast';
+import {
+  createMaskedAddress,
+  has,
+  maskedConnection,
+  useUwu,
+  type MaskedAddress,
+  type MaskedConnection,
+} from '../lib/uwu';
 import { Icon } from './Icon';
 import { Colored } from './ItemDetail';
+import { copyAddress, MaskedNotConnected } from './MaskedDialog';
 import { Modal } from './Modal';
 
 const KEY = 'uwulock.generator';
@@ -55,6 +64,11 @@ export function GeneratorDialog({
   onUse?: (password: string) => void;
 }) {
   useLanguage();
+  const uwu = useUwu();
+  // A masked address instead of a password: only on its own, not for the
+  // editor's password field.
+  const maskable = !onUse && has(uwu, 'masked-addresses');
+  const [mode, setMode] = useState<'password' | 'masked'>('password');
   const [options, setOptions] = useState<GeneratorOptions>(loadOptions);
   const [result, setResult] = useState<{ password: string; bits: number } | null>(null);
 
@@ -100,9 +114,26 @@ export function GeneratorDialog({
     { key: 'symbols', label: '!@#$%^&*' },
   ];
 
+  if (maskable && mode === 'masked')
+    return (
+      <Modal
+        title={t('Generator')}
+        onCancel={onClose}
+        footer={
+          <>
+            <span className="spacer" />
+            <button onClick={onClose}>{t('Schließen')}</button>
+          </>
+        }
+      >
+        <ModeSwitch mode={mode} onChange={setMode} />
+        <MaskedGenerator />
+      </Modal>
+    );
+
   return (
     <Modal
-      title={t('Passwort-Generator')}
+      title={maskable ? t('Generator') : t('Passwort-Generator')}
       onCancel={onClose}
       footer={
         <>
@@ -133,6 +164,7 @@ export function GeneratorDialog({
         </>
       }
     >
+      {maskable && <ModeSwitch mode={mode} onChange={setMode} />}
       <div className="generator">
         <output className="generated" aria-live="polite">
           {result ? <Colored text={result.password} /> : '…'}
@@ -184,5 +216,108 @@ export function GeneratorDialog({
         </label>
       </div>
     </Modal>
+  );
+}
+
+function ModeSwitch({
+  mode,
+  onChange,
+}: {
+  mode: 'password' | 'masked';
+  onChange: (mode: 'password' | 'masked') => void;
+}) {
+  useLanguage();
+  return (
+    <div className="segmented" role="radiogroup" aria-label={t('Was erzeugt wird')}>
+      <button role="radio" aria-checked={mode === 'password'} onClick={() => onChange('password')}>
+        {t('Passwort')}
+      </button>
+      <button role="radio" aria-checked={mode === 'masked'} onClick={() => onChange('masked')}>
+        {t('Maskierte Adresse')}
+      </button>
+    </div>
+  );
+}
+
+/** A new masked address from UwUMail, for a site, copied right away. */
+function MaskedGenerator() {
+  useLanguage();
+  const [connection, setConnection] = useState<MaskedConnection | null>(null);
+  const [site, setSite] = useState('');
+  const [description, setDescription] = useState('');
+  const [made, setMade] = useState<MaskedAddress | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    void maskedConnection()
+      .then(setConnection)
+      .catch((e) => {
+        toast(errorText(e), 'error');
+        setConnection({
+          connected: false,
+          server: null,
+          username: null,
+          domains: null,
+          defaultDomain: null,
+          status: null,
+        });
+      });
+  }, []);
+
+  if (!connection) return <p className="dialog-lead">{t('Einen Moment …')}</p>;
+  if (!connection.connected || connection.status === 'revoked')
+    return <MaskedNotConnected connection={connection} />;
+
+  const create = async () => {
+    setBusy(true);
+    try {
+      const address = await createMaskedAddress(site || null, description || null, null);
+      setMade(address);
+      await copyAddress(address.email);
+    } catch (e) {
+      toast(errorText(e), 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="generator">
+      <output className="generated mono" aria-live="polite">
+        {made?.email ?? '…'}
+      </output>
+      <label className="field">
+        <span>{t('Für Website')}</span>
+        <input
+          type="text"
+          value={site}
+          spellCheck={false}
+          placeholder="shop.example.com"
+          onChange={(e) => setSite(e.target.value)}
+        />
+      </label>
+      <label className="field">
+        <span>{t('Beschreibung')}</span>
+        <input
+          type="text"
+          value={description}
+          maxLength={200}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+      </label>
+      <div className="form-actions">
+        {made && (
+          <button onClick={() => void copyAddress(made.email)}>
+            <Icon name="copy" size={15} />
+            {t('Kopieren')}
+          </button>
+        )}
+        <span className="spacer" />
+        <button className="primary" disabled={busy} onClick={() => void create()}>
+          <Icon name="mask" size={15} />
+          {made ? t('Noch eine') : t('Adresse erstellen')}
+        </button>
+      </div>
+    </div>
   );
 }

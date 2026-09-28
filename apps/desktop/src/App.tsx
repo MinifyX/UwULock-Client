@@ -6,6 +6,7 @@ import { LockScreen } from './components/LockScreen';
 import { LoginScreen } from './components/LoginScreen';
 import { SettingsDialog, type SettingsSection } from './components/SettingsDialog';
 import { TitleBar } from './components/TitleBar';
+import { TravelBadge } from './components/TravelBadge';
 import { UpdateHint } from './components/UpdateHint';
 import { VaultScreen } from './components/VaultScreen';
 import {
@@ -127,6 +128,7 @@ export function App() {
     <div className="shell">
       <div className="background" ref={backgroundRef}>
         <TitleBar onSettings={() => setSettingsOpen('appearance')}>
+          {unlocked && <TravelBadge />}
           <button
             className="titlebar-action"
             onClick={() => setGenerator(true)}

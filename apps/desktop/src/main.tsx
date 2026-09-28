@@ -6,6 +6,7 @@ import './components/nyu/nyu.css';
 import { applyAppearance } from './lib/settings';
 import './styles/app.css';
 import './styles/vault.css';
+import './styles/extras.css';
 import './styles/tokens.css';
 
 // Dark by default, like the other UwU apps; Settings → Appearance switches to
