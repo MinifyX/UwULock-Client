@@ -110,9 +110,31 @@ the permission is there now.
 ## For UwULock Server
 
 On a UwULock Server the extension asks `GET /uwu/v1/info` at login and keeps the feature list.
-UwULock's own extras (masked addresses, the server's icons, file requests, sharing an item as a
-Send) switch on per feature when the server lists them; with Vaultwarden and Bitwarden the
-extension stays a plain Bitwarden client.
+UwULock's own extras switch on per feature when the server lists them; with Vaultwarden and
+Bitwarden the extension stays a plain Bitwarden client (sharing as a Send works there too).
+Everything goes through the extension's background: the popup and web pages never talk to the
+server and never see a key.
+
+- **Icons** in the vault list: an item's own icon (encrypted, opened in the extension — a
+  personal item's with your account's extras key, an organisation's item's with its key), else
+  the icon your server fetched for the site, else the letter tile. Only your own server is
+  asked, never the site. Settings → UwULock Server → _Icons in the list_ switches them off.
+- **Masked addresses** from UwUMail (once your account is connected in the web vault, Settings →
+  Masked addresses): in the generator (_Masked address_), with the **@** button next to an
+  item's username in the editor, and as _New masked address_ in the inline menu of a username or
+  email field — sign-up forms included. The address is made for the site of the tab you are on
+  and typed into the field.
+- **Share as a Send** (the share button of an item): pick the values (never the authenticator
+  key), how long the link lives (a day by default), how often it opens (once by default) and an
+  optional password. The link is copied from the popup; on UwULock Server it uses your default
+  send domain if you chose one.
+- **File requests** (Settings → UwULock Server → _File requests_): your links with their label,
+  until when they run and what arrived; copy a link again, or open it in the web vault, where
+  you make and manage them.
+
+The extension only _opens_ the extras key. If your account has none yet, the web vault or the
+desktop app makes it the first time you use an extra there; until then own icons of personal
+items and file requests stay off.
 
 ## Building it yourself
 
@@ -151,6 +173,12 @@ im Format von Bitwarden, sodass Passkeys aus Bitwardens Apps hier funktionieren 
 Dein Master-Passwort verlässt den Browser nie, Schlüssel gibt es nur im Hintergrund der
 Erweiterung, und eine Webseite bekommt nur die Werte des Eintrags, den du ausgewählt hast – und
 nur, wenn seine Adresse zu genau diesem Frame passt.
+
+Mit UwULock Server kommen die Extras dazu, sobald der Server sie anbietet: Icons in der Liste
+(eigene Icons und die, die dein Server lädt), maskierte Adressen von UwUMail im Generator, im
+Editor (**@**) und im Menü von Benutzername- und E-Mail-Feldern, Einträge als Send teilen (auch
+mit Vaultwarden und Bitwarden; nie mit dem Einmal-Code-Schlüssel) und deine Dateianfragen zum
+Nachsehen und Link-Kopieren.
 
 ## In Chrome, Edge, Brave, Vivaldi oder Opera installieren
 

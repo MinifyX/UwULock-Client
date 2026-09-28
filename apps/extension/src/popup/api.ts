@@ -9,6 +9,12 @@ import { ext } from '../shared/browser';
 import { ask } from '../shared/messages';
 import type {
   Draft,
+  FileRequests,
+  MaskedAddress,
+  MaskedConnection,
+  ShareableField,
+  SharedSend,
+  ShareOptions,
   Generated,
   GeneratorSettings,
   ItemDetail,
@@ -104,3 +110,16 @@ export const answerPendingSave = (id: string, answer: SaveAnswer) =>
 export const passkeyPrompt = (id: string) => ask<PasskeyPrompt>({ type: 'passkey-prompt', id });
 export const passkeyDecide = (decision: PasskeyDecision) =>
   ask<void>({ type: 'passkey-decide', decision });
+
+// ── UwULock Server's extras ───────────────────────────────
+
+export const itemIcons = (ids: string[]) => ask<Record<string, string>>({ type: 'icons', ids });
+export const maskedConnection = () => ask<MaskedConnection>({ type: 'masked-connection' });
+export const createMasked = (cipherId: string | null) =>
+  ask<MaskedAddress>({ type: 'masked-create', cipherId });
+export const shareFields = (id: string) => ask<ShareableField[]>({ type: 'share-fields', id });
+export const shareItem = (id: string, options: ShareOptions) =>
+  ask<SharedSend>({ type: 'share-item', id, options });
+export const fileRequests = () => ask<FileRequests>({ type: 'file-requests' });
+export const copyFileRequestLink = (id: string) =>
+  ask<void>({ type: 'copy-file-request-link', id });

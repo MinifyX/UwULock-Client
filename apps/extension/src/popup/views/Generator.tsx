@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '@desktop/components/Icon';
 import { t } from '../../shared/i18n';
-import type { Generated, GeneratorSettings } from '../../shared/protocol';
+import type { Generated, GeneratorSettings, Status } from '../../shared/protocol';
 import { clearGeneratorHistory, copyText, generate, generatorHistory, setSettings } from '../api';
 import {
   Colored,
@@ -11,15 +11,20 @@ import {
   toast,
   Toggle,
   useSettings,
+  uwuFeature,
   when,
 } from '../lib';
+import { MaskedPanel } from './Masked';
 
 /**
  * Passwords and passphrases, with the settings kept for next time, and the last ones generated
  * until the browser closes.
  */
-export function Generator() {
+export function Generator({ status }: { status: Status }) {
   const settings = useSettings();
+  // Masked addresses are made only on a click, so this mode is not kept for next time.
+  const [masked, setMasked] = useState(false);
+  const maskable = uwuFeature(status, 'masked-addresses');
   const [options, setOptions] = useState<GeneratorSettings | null>(settings?.generator ?? null);
   const [result, setResult] = useState<{ password: string; bits: number } | null>(null);
   const [history, setHistory] = useState<Generated[]>([]);
@@ -74,136 +79,155 @@ export function Generator() {
         <button
           type="button"
           role="radio"
-          aria-checked={options.mode === 'password'}
-          onClick={() => change({ ...options, mode: 'password' })}
+          aria-checked={!masked && options.mode === 'password'}
+          onClick={() => {
+            setMasked(false);
+            change({ ...options, mode: 'password' });
+          }}
         >
           {t('Passwort')}
         </button>
         <button
           type="button"
           role="radio"
-          aria-checked={options.mode === 'passphrase'}
-          onClick={() => change({ ...options, mode: 'passphrase' })}
+          aria-checked={!masked && options.mode === 'passphrase'}
+          onClick={() => {
+            setMasked(false);
+            change({ ...options, mode: 'passphrase' });
+          }}
         >
           {t('Passphrase')}
         </button>
+        {maskable && (
+          <button type="button" role="radio" aria-checked={masked} onClick={() => setMasked(true)}>
+            {t('Maskierte Adresse')}
+          </button>
+        )}
       </div>
 
-      <div className="generated">{result ? <Colored text={result.password} /> : '…'}</div>
-      <div
-        className="meter"
-        data-level={level}
-        aria-label={t('Stärke: {bits} Bit', { bits: result?.bits ?? 0 })}
-      >
-        <span className="meter-bar">
-          <span />
-          <span />
-          <span />
-          <span />
-        </span>
-        <span className="muted">{t('{bits} Bit', { bits: result?.bits ?? 0 })}</span>
-      </div>
-      <div className="form-actions">
-        <button type="button" onClick={() => void run(options)}>
-          <Icon name="refresh" size={14} /> {t('Neu')}
-        </button>
-        <span className="spacer" />
-        <button
-          type="button"
-          className="primary"
-          onClick={() => result && void copy(result.password)}
-        >
-          <Icon name="copy" size={14} /> {t('Kopieren')}
-        </button>
-      </div>
-
-      {options.mode === 'password' ? (
-        <div className="setting-list">
-          <label className="field">
-            <span>{t('Länge: {n}', { n: pw.length })}</span>
-            <input
-              type="range"
-              min={5}
-              max={64}
-              value={pw.length}
-              onChange={(e) =>
-                change({ ...options, password: { ...pw, length: Number(e.target.value) } })
-              }
-            />
-          </label>
-          {(
-            [
-              ['uppercase', 'A–Z'],
-              ['lowercase', 'a–z'],
-              ['digits', '0–9'],
-              ['symbols', '!@#$%^&*'],
-            ] as const
-          ).map(([key, label]) => (
-            <div className="setting-row" key={key}>
-              <span className="setting-label mono">{label}</span>
-              <Toggle
-                checked={pw[key]}
-                label={label}
-                onChange={(checked) => change({ ...options, password: { ...pw, [key]: checked } })}
-              />
-            </div>
-          ))}
-          <div className="setting-row">
-            <span className="setting-label">{t('Verwechselbare Zeichen weglassen')}</span>
-            <Toggle
-              checked={pw.avoidAmbiguous}
-              label={t('Verwechselbare Zeichen weglassen')}
-              onChange={(checked) =>
-                change({ ...options, password: { ...pw, avoidAmbiguous: checked } })
-              }
-            />
-          </div>
-        </div>
+      {masked && maskable ? (
+        <MaskedPanel />
       ) : (
-        <div className="setting-list">
-          <label className="field">
-            <span>{t('Wörter: {n}', { n: pp.words })}</span>
-            <input
-              type="range"
-              min={3}
-              max={20}
-              value={pp.words}
-              onChange={(e) =>
-                change({ ...options, passphrase: { ...pp, words: Number(e.target.value) } })
-              }
-            />
-          </label>
-          <label className="field">
-            <span>{t('Trennzeichen')}</span>
-            <input
-              value={pp.separator}
-              maxLength={3}
-              onChange={(e) =>
-                change({ ...options, passphrase: { ...pp, separator: e.target.value } })
-              }
-            />
-          </label>
-          <div className="setting-row">
-            <span className="setting-label">{t('Großbuchstaben am Wortanfang')}</span>
-            <Toggle
-              checked={pp.capitalize}
-              label={t('Großbuchstaben am Wortanfang')}
-              onChange={(checked) =>
-                change({ ...options, passphrase: { ...pp, capitalize: checked } })
-              }
-            />
+        <>
+          <div className="generated">{result ? <Colored text={result.password} /> : '…'}</div>
+          <div
+            className="meter"
+            data-level={level}
+            aria-label={t('Stärke: {bits} Bit', { bits: result?.bits ?? 0 })}
+          >
+            <span className="meter-bar">
+              <span />
+              <span />
+              <span />
+              <span />
+            </span>
+            <span className="muted">{t('{bits} Bit', { bits: result?.bits ?? 0 })}</span>
           </div>
-          <div className="setting-row">
-            <span className="setting-label">{t('Eine Zahl dazu')}</span>
-            <Toggle
-              checked={pp.includeNumber}
-              label={t('Eine Zahl dazu')}
-              onChange={(checked) =>
-                change({ ...options, passphrase: { ...pp, includeNumber: checked } })
-              }
-            />
+          <div className="form-actions">
+            <button type="button" onClick={() => void run(options)}>
+              <Icon name="refresh" size={14} /> {t('Neu')}
+            </button>
+            <span className="spacer" />
+            <button
+              type="button"
+              className="primary"
+              onClick={() => result && void copy(result.password)}
+            >
+              <Icon name="copy" size={14} /> {t('Kopieren')}
+            </button>
           </div>
-        </div>
+
+          {options.mode === 'password' ? (
+            <div className="setting-list">
+              <label className="field">
+                <span>{t('Länge: {n}', { n: pw.length })}</span>
+                <input
+                  type="range"
+                  min={5}
+                  max={64}
+                  value={pw.length}
+                  onChange={(e) =>
+                    change({ ...options, password: { ...pw, length: Number(e.target.value) } })
+                  }
+                />
+              </label>
+              {(
+                [
+                  ['uppercase', 'A–Z'],
+                  ['lowercase', 'a–z'],
+                  ['digits', '0–9'],
+                  ['symbols', '!@#$%^&*'],
+                ] as const
+              ).map(([key, label]) => (
+                <div className="setting-row" key={key}>
+                  <span className="setting-label mono">{label}</span>
+                  <Toggle
+                    checked={pw[key]}
+                    label={label}
+                    onChange={(checked) =>
+                      change({ ...options, password: { ...pw, [key]: checked } })
+                    }
+                  />
+                </div>
+              ))}
+              <div className="setting-row">
+                <span className="setting-label">{t('Verwechselbare Zeichen weglassen')}</span>
+                <Toggle
+                  checked={pw.avoidAmbiguous}
+                  label={t('Verwechselbare Zeichen weglassen')}
+                  onChange={(checked) =>
+                    change({ ...options, password: { ...pw, avoidAmbiguous: checked } })
+                  }
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="setting-list">
+              <label className="field">
+                <span>{t('Wörter: {n}', { n: pp.words })}</span>
+                <input
+                  type="range"
+                  min={3}
+                  max={20}
+                  value={pp.words}
+                  onChange={(e) =>
+                    change({ ...options, passphrase: { ...pp, words: Number(e.target.value) } })
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>{t('Trennzeichen')}</span>
+                <input
+                  value={pp.separator}
+                  maxLength={3}
+                  onChange={(e) =>
+                    change({ ...options, passphrase: { ...pp, separator: e.target.value } })
+                  }
+                />
+              </label>
+              <div className="setting-row">
+                <span className="setting-label">{t('Großbuchstaben am Wortanfang')}</span>
+                <Toggle
+                  checked={pp.capitalize}
+                  label={t('Großbuchstaben am Wortanfang')}
+                  onChange={(checked) =>
+                    change({ ...options, passphrase: { ...pp, capitalize: checked } })
+                  }
+                />
+              </div>
+              <div className="setting-row">
+                <span className="setting-label">{t('Eine Zahl dazu')}</span>
+                <Toggle
+                  checked={pp.includeNumber}
+                  label={t('Eine Zahl dazu')}
+                  onChange={(checked) =>
+                    change({ ...options, passphrase: { ...pp, includeNumber: checked } })
+                  }
+                />
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       <button

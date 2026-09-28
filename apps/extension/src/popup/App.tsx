@@ -7,23 +7,31 @@ import { useEffect, useState } from 'react';
 import { Icon } from '@desktop/components/Icon';
 import { t } from '../shared/i18n';
 import { lock, syncNow } from './api';
-import { errorText, ToastView, toast, useSettings, useStatus } from './lib';
+import { setIconsEnabled } from './icons';
+import { errorText, ToastView, toast, useSettings, useStatus, uwuFeature } from './lib';
 import { Detail } from './views/Detail';
 import { Editor, type EditorTarget } from './views/Editor';
+import { FileRequestsView } from './views/FileRequests';
 import { Generator } from './views/Generator';
 import { LockView } from './views/Lock';
 import { LoginView } from './views/Login';
 import { SettingsView } from './views/Settings';
+import { ShareView } from './views/Share';
 import { TabView } from './views/TabView';
 import { VaultView } from './views/VaultView';
 
 export type Tab = 'page' | 'vault' | 'generator' | 'settings';
 
 /** What is on top of the tabs: an item, the editor, or nothing. */
-export type Layer = { kind: 'item'; id: string } | { kind: 'edit'; target: EditorTarget } | null;
+export type Layer =
+  | { kind: 'item'; id: string }
+  | { kind: 'edit'; target: EditorTarget }
+  | { kind: 'share'; id: string }
+  | { kind: 'file-requests' }
+  | null;
 
 export function App() {
-  useSettings();
+  const settings = useSettings();
   const [status, refresh] = useStatus();
   const [tab, setTab] = useState<Tab>('page');
   const [layer, setLayer] = useState<Layer>(null);
@@ -34,6 +42,13 @@ export function App() {
     if (status?.state !== 'unlocked') setLayer(null);
     if (status?.state === 'unlocked') setAdding(false);
   }, [status?.state]);
+
+  // Icons come from UwULock Server only: own ones, or its automatic ones.
+  const icons = Boolean(
+    settings?.showIcons &&
+    (uwuFeature(status, 'own-icons') || status?.uwu?.icons?.automatic === true),
+  );
+  useEffect(() => setIconsEnabled(icons), [icons]);
 
   if (!status) return <div className="popup popup-loading" aria-busy />;
 
@@ -126,10 +141,16 @@ export function App() {
             id={layer.id}
             onBack={() => setLayer(null)}
             onEdit={(id, kind) => setLayer({ kind: 'edit', target: { id, kind } })}
+            onShare={(id) => setLayer({ kind: 'share', id })}
           />
         )}
+        {layer?.kind === 'share' && (
+          <ShareView id={layer.id} onBack={() => setLayer({ kind: 'item', id: layer.id })} />
+        )}
+        {layer?.kind === 'file-requests' && <FileRequestsView onBack={() => setLayer(null)} />}
         {layer?.kind === 'edit' && (
           <Editor
+            status={status}
             target={layer.target}
             onDone={(id) => setLayer(id ? { kind: 'item', id } : null)}
             onCancel={() =>
@@ -144,9 +165,13 @@ export function App() {
           />
         )}
         {!layer && tab === 'vault' && <VaultView onOpen={(id) => setLayer({ kind: 'item', id })} />}
-        {!layer && tab === 'generator' && <Generator />}
+        {!layer && tab === 'generator' && <Generator status={status} />}
         {!layer && tab === 'settings' && (
-          <SettingsView status={status} onAddAccount={() => setAdding(true)} />
+          <SettingsView
+            status={status}
+            onAddAccount={() => setAdding(true)}
+            onFileRequests={() => setLayer({ kind: 'file-requests' })}
+          />
         )}
       </main>
 
