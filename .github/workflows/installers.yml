@@ -55,39 +55,34 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
             librsvg2-dev libdbus-1-dev libssl-dev pkg-config patchelf file libfuse2
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-      - run: corepack enable
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      # tauri-build wants every app's frontendDist to exist.
-      - run: pnpm -r build
+      # tauri-build wants every app's frontendDist to exist; checking needs no real build,
+      # and no Node (ci.yml typechecks the pages).
+      - run: mkdir -p apps/desktop/dist apps/setup/dist
 
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
           toolchain: stable
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Linux shares ci.yml's cache from main: a tag starts warm.
+          shared-key: ${{ runner.os == 'Linux' && 'linux' || 'macos' }}
 
       - run: cargo fmt --all --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace --no-fail-fast
-      # uwulock-core also runs in UwULock-Server's web vault and in the
-      # browser extension (uwulock-wasm), compiled to WebAssembly: nothing
-      # networked or browser-unsafe may creep in.
-      - name: Check uwulock-core and uwulock-wasm for WebAssembly
+      - name: Everything, on Linux
         if: runner.os == 'Linux'
         run: |
-          rustup target add wasm32-unknown-unknown
-          cargo check -p uwulock-core -p uwulock-wasm --target wasm32-unknown-unknown
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace --no-fail-fast
+      # On macOS only what is different there: the two apps. The crates' tests don't depend
+      # on the system and ran on Linux.
+      - name: The apps, on macOS
+        if: runner.os == 'macOS'
+        run: cargo clippy -p uwulock-desktop -p uwulock-setup --all-targets -- -D warnings
 
+  # In parallel with the checks: `pnpm release` only takes a run where everything passed.
   installers:
     name: Setup (${{ matrix.name }})
-    needs: check
     strategy:
       fail-fast: false
       matrix:
@@ -131,13 +126,10 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
             librsvg2-dev libdbus-1-dev libssl-dev pkg-config patchelf file libfuse2 xdg-utils
 
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 22
-      - run: corepack enable
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
