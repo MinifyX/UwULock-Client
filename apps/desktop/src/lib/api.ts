@@ -44,6 +44,8 @@ export type Status = {
   sessionExpired: boolean;
   /** Changes from other devices arrive as they happen, over this channel. */
   live: 'realtime' | 'hub' | null;
+  /** Unlocking with Windows Hello: null where there is none, else whether it is on. */
+  hello: boolean | null;
   accounts: AccountBrief[];
 };
 
@@ -194,6 +196,8 @@ export const loginNewDevice = (code: string) => invoke<LoginStep>('login_new_dev
 export const loginSendEmail = () => invoke<void>('login_send_email');
 export const loginCancel = () => invoke<void>('login_cancel');
 export const unlock = (password: string) => invoke<Status>('unlock', { password });
+export const unlockWithHello = () => invoke<Status>('unlock_with_hello');
+export const setHello = (enabled: boolean) => invoke<Status>('set_hello', { enabled });
 export const lock = () => invoke<void>('lock');
 /** Without an id: the account on screen. The others stay. */
 export const logout = (id?: string) => invoke<Status>('logout', { id: id ?? null });
@@ -201,8 +205,11 @@ export const switchAccount = (id: string) => invoke<Status>('switch_account', { 
 export const renameAccount = (id: string, label: string) =>
   invoke<Status>('rename_account', { id, label });
 export const touch = () => invoke<void>('touch');
-export const setSecurity = (autoLockMinutes: number | null, clipboardSeconds: number | null) =>
-  invoke<void>('set_security', { autoLockMinutes, clipboardSeconds });
+export const setSecurity = (
+  autoLockMinutes: number | null,
+  clipboardSeconds: number | null,
+  lockWithSystem: boolean,
+) => invoke<void>('set_security', { autoLockMinutes, clipboardSeconds, lockWithSystem });
 export const syncNow = () => invoke<Status>('sync_now');
 export const vaultOverview = () => invoke<Overview>('vault_overview');
 export const vaultItems = () => invoke<ItemSummary[]>('vault_items');

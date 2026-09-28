@@ -45,10 +45,12 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    void setSecurity(settings.autoLock || null, settings.clipboardClear || null).catch(
-      () => undefined,
-    );
-  }, [settings.autoLock, settings.clipboardClear]);
+    void setSecurity(
+      settings.autoLock || null,
+      settings.clipboardClear || null,
+      settings.lockWithSystem,
+    ).catch(() => undefined);
+  }, [settings.autoLock, settings.clipboardClear, settings.lockWithSystem]);
 
   // What counts as activity for auto-lock: keys, clicks, the wheel. Told to
   // Rust at most every 20 seconds.

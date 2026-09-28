@@ -5496,7 +5496,9 @@ dependencies = [
  "url",
  "uuid",
  "uwulock-bitwarden",
+ "windows",
  "windows-sys 0.61.2",
+ "zbus",
  "zeroize",
 ]
 

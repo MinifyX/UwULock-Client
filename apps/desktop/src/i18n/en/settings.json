@@ -32,5 +32,9 @@
   "Bereiche": "Sections",
   "Schließen": "Close",
   "Jetzt synchronisieren": "Sync now",
-  "Zuletzt {when} – Änderungen von deinen anderen Geräten kommen sofort an.": "Last {when} – changes from your other devices arrive right away."
+  "Zuletzt {when} – Änderungen von deinen anderen Geräten kommen sofort an.": "Last {when} – changes from your other devices arrive right away.",
+  "Mit dem Computer sperren": "Lock with the computer",
+  "Sperrt UwULock, sobald der Bildschirm gesperrt wird oder der Computer in den Ruhezustand geht.": "Locks UwULock as soon as the screen locks or the computer goes to sleep.",
+  "Mit Windows Hello entsperren": "Unlock with Windows Hello",
+  "Gesicht, Finger oder PIN statt des Master-Passworts. Nach einem Neustart von UwULock geht das auch.": "Face, finger or PIN instead of the master password. Works after restarting UwULock too."
 }

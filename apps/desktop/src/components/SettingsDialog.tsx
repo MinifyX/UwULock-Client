@@ -6,6 +6,7 @@ import {
   logout,
   openProjectPage,
   openWebVault,
+  setHello,
   syncNow,
   type ProjectPage,
   type Status,
@@ -16,6 +17,7 @@ import { ago } from '../lib/format';
 import { N_, t, useLanguage } from '../lib/i18n';
 import { systemName } from '../lib/platform';
 import { updateSettings, useSettings, type AutoLock, type ClipboardClear } from '../lib/settings';
+import { toast } from '../lib/toast';
 import { Modal } from './Modal';
 import { Nyu } from './nyu/Nyu';
 
@@ -171,7 +173,7 @@ function Appearance() {
   );
 }
 
-function Security({ onClose }: { onClose: () => void }) {
+function Security({ status, onClose }: { status: Status; onClose: () => void }) {
   const settings = useSettings();
   const minutes = (n: number) => (n === 1 ? t('1 Minute') : t('{n} Minuten', { n }));
   return (
@@ -217,6 +219,34 @@ function Security({ onClose }: { onClose: () => void }) {
           ))}
           <option value={0}>{t('Nie')}</option>
         </select>
+      </Row>
+      {status.hello !== null && (
+        <Row
+          label={t('Mit Windows Hello entsperren')}
+          description={t(
+            'Gesicht, Finger oder PIN statt des Master-Passworts. Nach einem Neustart von UwULock geht das auch.',
+          )}
+        >
+          <Toggle
+            label={t('Mit Windows Hello entsperren')}
+            checked={status.hello}
+            onChange={(enabled) =>
+              void setHello(enabled).catch((e) => toast(errorText(e), 'error'))
+            }
+          />
+        </Row>
+      )}
+      <Row
+        label={t('Mit dem Computer sperren')}
+        description={t(
+          'Sperrt UwULock, sobald der Bildschirm gesperrt wird oder der Computer in den Ruhezustand geht.',
+        )}
+      >
+        <Toggle
+          label={t('Mit dem Computer sperren')}
+          checked={settings.lockWithSystem}
+          onChange={(lockWithSystem) => updateSettings({ lockWithSystem })}
+        />
       </Row>
       <Row label={t('Jetzt sperren')} description={t('Auch mit Strg+L, von überall in UwULock.')}>
         <button
@@ -469,7 +499,7 @@ export function SettingsDialog({
         </nav>
         <div className="settings-content">
           {section === 'appearance' && <Appearance />}
-          {section === 'security' && loggedIn && <Security onClose={onClose} />}
+          {section === 'security' && loggedIn && <Security status={status} onClose={onClose} />}
           {section === 'account' && loggedIn && <Account status={status} onClose={onClose} />}
           {section === 'updates' && (
             <Updates

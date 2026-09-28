@@ -111,6 +111,10 @@ pub struct Account {
     /// Unix seconds of the last successful sync.
     #[serde(default)]
     pub last_sync: Option<u64>,
+    /// The user key sealed under what Windows Hello signs (`hello`), when
+    /// unlocking with Windows Hello is on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hello_user_key: Option<String>,
 }
 
 impl Account {
@@ -373,6 +377,7 @@ mod tests {
             protected_refresh_token: None,
             protected_remember_token: None,
             last_sync: None,
+            hello_user_key: None,
         }
     }
 

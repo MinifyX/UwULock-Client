@@ -30,6 +30,8 @@ export type Settings = {
   updateChannel: UpdateChannel;
   autoLock: AutoLock;
   clipboardClear: ClipboardClear;
+  /** Lock when the screen locks or the computer goes to sleep. */
+  lockWithSystem: boolean;
   /** Items in the trash show up in their own section only. */
   showTrash: boolean;
   /** Where the last login went, to fill the login form next time. Not secret. */
@@ -46,6 +48,7 @@ export const DEFAULT_SETTINGS: Settings = {
   updateChannel: pkg.version.includes('-') ? 'beta' : 'stable',
   autoLock: 15,
   clipboardClear: 30,
+  lockWithSystem: true,
   showTrash: true,
   lastServerKind: 'self-hosted',
   lastServerUrl: '',
@@ -71,6 +74,7 @@ export function sanitize(raw: unknown): Settings {
     updateChannel: oneOf(input.updateChannel, ['stable', 'beta'] as const, d.updateChannel),
     autoLock: oneOf(input.autoLock, [0, 1, 5, 15, 30, 60, 240] as const, d.autoLock),
     clipboardClear: oneOf(input.clipboardClear, [0, 10, 30, 60, 120] as const, d.clipboardClear),
+    lockWithSystem: bool(input.lockWithSystem, d.lockWithSystem),
     showTrash: bool(input.showTrash, d.showTrash),
     lastServerKind: oneOf(
       input.lastServerKind,
