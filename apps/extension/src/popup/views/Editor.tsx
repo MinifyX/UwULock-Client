@@ -1,9 +1,16 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Icon } from '@desktop/components/Icon';
 import { N_, t } from '../../shared/i18n';
-import type { Draft, FieldKind, ItemDetail, ItemKind, Overview } from '../../shared/protocol';
-import { generate, revealField, saveItem, vaultItem, vaultOverview } from '../api';
-import { errorText, PasswordInput, toast, useSettings } from '../lib';
+import type {
+  Draft,
+  FieldKind,
+  ItemDetail,
+  ItemKind,
+  Overview,
+  Status,
+} from '../../shared/protocol';
+import { createMasked, generate, revealField, saveItem, vaultItem, vaultOverview } from '../api';
+import { errorText, PasswordInput, toast, useSettings, uwuFeature } from '../lib';
 import { BackBar, IDENTITY_LABEL, KIND_LABEL } from './Detail';
 
 export type EditorTarget = { id: string | null; kind: ItemKind; name?: string; uri?: string };
@@ -43,10 +50,12 @@ type FieldState = {
  * of showing dots that could be typed over.
  */
 export function Editor({
+  status,
   target,
   onDone,
   onCancel,
 }: {
+  status: Status;
   target: EditorTarget;
   onDone: (id: string | null) => void;
   onCancel: () => void;
@@ -127,6 +136,21 @@ export function Editor({
       setPassword(await revealField(target.id, 'password'));
     } catch (e) {
       toast(errorText(e), 'error');
+    }
+  };
+
+  const [masking, setMasking] = useState(false);
+  /** A masked address from UwUMail for the tab's site, linked to this item if it exists. */
+  const masked = async () => {
+    setMasking(true);
+    try {
+      const address = await createMasked(target.id);
+      setUsername(address.email);
+      toast(t('Maskierte Adresse angelegt ✧'));
+    } catch (e) {
+      toast(errorText(e), 'error');
+    } finally {
+      setMasking(false);
     }
   };
 
@@ -233,15 +257,30 @@ export function Editor({
 
       {kind === 'login' && (
         <>
-          <label className="field">
+          <div className="field">
             <span>{t('Benutzername')}</span>
-            <input
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              spellCheck={false}
-              autoComplete="off"
-            />
-          </label>
+            <div className="inline-controls">
+              <input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                spellCheck={false}
+                autoComplete="off"
+                aria-label={t('Benutzername')}
+              />
+              {uwuFeature(status, 'masked-addresses') && (
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={() => void masked()}
+                  disabled={masking}
+                  title={t('Neue maskierte Adresse')}
+                  aria-label={t('Neue maskierte Adresse')}
+                >
+                  @
+                </button>
+              )}
+            </div>
+          </div>
           <div className="field">
             <span>{t('Passwort')}</span>
             <div className="inline-controls">

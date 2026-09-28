@@ -22,7 +22,7 @@ import type {
   PageInfo,
   SavePrompt,
 } from '../shared/protocol';
-import { fillCard, fillIdentity, fillLogin } from './fill';
+import { fillCard, fillField, fillIdentity, fillLogin } from './fill';
 import {
   scanFields,
   type CardFields,
@@ -189,7 +189,16 @@ function onFillOffer(offer: { token: string; itemId: string; kind: ItemKind }) {
 
 // ── The page's info ───────────────────────────────────────
 
-const menu = createInlineMenu({ info: () => info, fill: apply });
+function fillText(field: HTMLInputElement, value: string) {
+  filling = true;
+  try {
+    fillField(field, value);
+  } finally {
+    filling = false;
+  }
+}
+
+const menu = createInlineMenu({ info: () => info, fill: apply, fillText });
 
 function loadInfo(force = false): Promise<PageInfo | null> {
   if (infoAsked) return infoAsked;
@@ -215,6 +224,14 @@ function loadInfo(force = false): Promise<PageInfo | null> {
 
 // ── Focus, and fields that come and go ────────────────────
 
+/** A username or email field of any login form (sign-ups too) or address form. */
+function isUsernameField(s: Scan, el: Element): boolean {
+  return (
+    s.logins.some((login) => login.username === el) ||
+    s.identities.some((identity) => identity.fields.email === el)
+  );
+}
+
 function onFocus(el: HTMLInputElement) {
   if (filling || !info?.inlineMenu) return;
   let s = fields();
@@ -223,13 +240,20 @@ function onFocus(el: HTMLInputElement) {
     s = fields(true);
     kind = contextOf(s, el);
   }
+  // UwULock Server's masked addresses, in the username or email field of any form.
+  const maskable =
+    info.state === 'unlocked' &&
+    info.uwuFeatures.includes('masked-addresses') &&
+    isUsernameField(s, el);
+  if (!kind && maskable) kind = 'signup';
   if (!kind) return;
   if (
     kind !== 'login' &&
+    !maskable &&
     (info.state !== 'unlocked' || !(kind === 'card' ? info.cards : info.identities).length)
   )
     return;
-  menu.attach(el, kind);
+  menu.attach(el, kind, maskable);
 }
 
 function onFocusIn(event: FocusEvent) {

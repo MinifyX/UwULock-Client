@@ -10,6 +10,7 @@ import { ext } from '../shared/browser';
 import { RequestFailed } from '../shared/messages';
 import { locale, resolveLanguage, setLanguage, t } from '../shared/i18n';
 import type { Settings, Status, StatusMessage } from '../shared/protocol';
+import { uwuErrorText } from '../shared/uwu-errors';
 import { getSettings, touch, vaultStatus } from './api';
 
 // ── Status and settings ───────────────────────────────────
@@ -89,6 +90,8 @@ export function useSettings(): Settings | null {
 export function errorText(error: unknown): string {
   const kind = error instanceof RequestFailed ? error.kind : 'unknown';
   const m = error instanceof Error ? error.message : String(error);
+  const uwu = uwuErrorText(kind, m);
+  if (uwu) return uwu;
   switch (kind) {
     case 'network':
       return t('Der Server ist nicht erreichbar.');

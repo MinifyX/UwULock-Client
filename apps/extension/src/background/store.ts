@@ -15,7 +15,7 @@
  */
 
 import { ext } from '../shared/browser';
-import type { ServerChoice, Settings } from '../shared/protocol';
+import type { ServerChoice, Settings, UwuInfo } from '../shared/protocol';
 
 export type Account = {
   /** The user id from the access token. */
@@ -39,7 +39,7 @@ export type Account = {
   /** The server logged this browser out; shown once on the login screen. */
   sessionExpired?: boolean;
   /** UwULock Server's `/uwu/v1/info`, or null for other servers. */
-  uwu: { version: string | null; features: string[] } | null;
+  uwu: UwuInfo | null;
 };
 
 type Local = {

@@ -10,20 +10,27 @@
 import { t } from '../shared/i18n';
 import { ask, RequestFailed } from '../shared/messages';
 import type { FillAnswer, FillValues, PageInfo, PageItem } from '../shared/protocol';
+import { uwuErrorText } from '../shared/uwu-errors';
 import { isVisible } from './forms';
 import { createHost, genuine, h, lockGlyph, type Host } from './ui';
 
-export type MenuKind = 'login' | 'card' | 'identity';
+/** `signup`: a sign-up form's username or email field, where only a masked address is offered. */
+export type MenuKind = 'login' | 'card' | 'identity' | 'signup';
 
 export type InlineMenuDeps = {
   info: () => PageInfo | null;
   /** Writes an item's values into the form of `field`. */
   fill: (values: FillValues, itemId: string, field: HTMLElement) => void;
+  /** Writes one value into `field`, as typing would. */
+  fillText: (field: HTMLInputElement, value: string) => void;
 };
 
 export type InlineMenu = {
-  /** A field of `kind` got focus. */
-  attach: (field: HTMLInputElement, kind: MenuKind) => void;
+  /**
+   * A field of `kind` got focus. `maskable`: it is a username or email field, where UwULock
+   * Server's masked addresses may be offered.
+   */
+  attach: (field: HTMLInputElement, kind: MenuKind, maskable?: boolean) => void;
   detach: () => void;
   /** The page's info changed: redraw an open list. */
   refresh: () => void;
@@ -92,6 +99,7 @@ type Entry = { label: string; sub?: string | null; letter?: string; run: () => v
 export function createInlineMenu(deps: InlineMenuDeps): InlineMenu {
   let field: HTMLInputElement | null = null;
   let kind: MenuKind = 'login';
+  let maskable = false;
   let ui: Host | null = null;
   let button: HTMLElement | null = null;
   let menu: HTMLElement | null = null;
@@ -102,7 +110,22 @@ export function createInlineMenu(deps: InlineMenuDeps): InlineMenu {
   const items = (): PageItem[] => {
     const info = deps.info();
     if (!info) return [];
+    if (kind === 'signup') return [];
     return kind === 'login' ? info.logins : kind === 'card' ? info.cards : info.identities;
+  };
+
+  /** "New masked address", where the field and the server allow it. */
+  const maskedEntries = (): Entry[] => {
+    const info = deps.info();
+    if (!maskable || !info?.uwuFeatures.includes('masked-addresses')) return [];
+    return [
+      {
+        label: t('Neue maskierte Adresse'),
+        sub: t('Von UwUMail, nur für diese Seite'),
+        letter: '@',
+        run: () => void createMasked(),
+      },
+    ];
   };
 
   const openPopup = () => {
@@ -199,20 +222,25 @@ export function createInlineMenu(deps: InlineMenuDeps): InlineMenu {
       return { note: null, list: [{ label: t('UwULock entsperren'), run: openPopup }] };
     }
     const found = items();
+    const masked = maskedEntries();
+    if (kind === 'signup') return { note: null, list: masked };
     if (!found.length) {
       return {
         note: t('Keine passenden Einträge'),
-        list: [{ label: t('UwULock öffnen'), run: openPopup }],
+        list: [{ label: t('UwULock öffnen'), run: openPopup }, ...masked],
       };
     }
     return {
       note: null,
-      list: found.map((item) => ({
-        label: item.name,
-        sub: item.subtitle,
-        letter: (item.name.trim()[0] ?? '?').toUpperCase(),
-        run: () => void pick(item, false),
-      })),
+      list: [
+        ...found.map((item) => ({
+          label: item.name,
+          sub: item.subtitle,
+          letter: (item.name.trim()[0] ?? '?').toUpperCase(),
+          run: () => void pick(item, false),
+        })),
+        ...masked,
+      ],
     };
   };
 
@@ -309,6 +337,49 @@ export function createInlineMenu(deps: InlineMenuDeps): InlineMenu {
     }
   };
 
+  /** A new masked address from the account's UwUMail, for this tab's site, into the field. */
+  const createMasked = async () => {
+    if (busy || !field) return;
+    busy = true;
+    const target = field;
+    message(t('Maskierte Adresse wird angelegt …'), []);
+    let email: string;
+    try {
+      ({ email } = await ask<{ email: string }>({ type: 'content:masked-create' }));
+    } catch (error) {
+      busy = false;
+      if (field !== target) return;
+      const failed = error instanceof RequestFailed ? error : null;
+      const text =
+        (failed && uwuErrorText(failed.kind, failed.message)) ??
+        (failed?.kind === 'locked'
+          ? t('UwULock ist gesperrt.')
+          : t('Die maskierte Adresse ließ sich nicht anlegen.'));
+      const connect = failed?.kind === 'uwu:not_connected' || failed?.kind === 'uwu:revoked';
+      message(
+        text,
+        connect
+          ? [
+              {
+                label: t('Web-Tresor öffnen'),
+                primary: true,
+                run: () => {
+                  void ask<unknown>({ type: 'content:open-masked-settings' }).catch(
+                    () => undefined,
+                  );
+                  closeList(false);
+                },
+              },
+            ]
+          : [],
+      );
+      return;
+    }
+    busy = false;
+    detach();
+    deps.fillText(target, email);
+  };
+
   function onListKey(event: KeyboardEvent) {
     if (!event.isTrusted) return;
     const all = options();
@@ -400,11 +471,12 @@ export function createInlineMenu(deps: InlineMenuDeps): InlineMenu {
     busy = false;
   }
 
-  const attach = (next: HTMLInputElement, nextKind: MenuKind) => {
-    if (field === next && kind === nextKind && ui) return;
+  const attach = (next: HTMLInputElement, nextKind: MenuKind, nextMaskable = false) => {
+    if (field === next && kind === nextKind && maskable === nextMaskable && ui) return;
     detach();
     field = next;
     kind = nextKind;
+    maskable = nextMaskable;
     ui = createHost(CSS);
     ui.root.addEventListener('focusout', onRootBlur);
     const host = ui.host;

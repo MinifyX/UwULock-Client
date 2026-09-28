@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '@desktop/components/Icon';
-import { ItemTile } from '@desktop/components/ItemTile';
 import { NyuScene } from '@desktop/components/nyu/scenes';
 import { N_, t } from '../../shared/i18n';
+import { ItemIcon } from '../icons';
 import type { ItemKind, ItemSummary, Overview, StatusMessage } from '../../shared/protocol';
 import { ext } from '../../shared/browser';
 import { vaultItems, vaultOverview } from '../api';
@@ -149,7 +149,7 @@ export function VaultView({ onOpen }: { onOpen: (id: string) => void }) {
             onClick={() => onOpen(item.id)}
             onKeyDown={(e) => e.key === 'Enter' && onOpen(item.id)}
           >
-            <ItemTile item={item} />
+            <ItemIcon item={item} />
             <span className="item-text">
               <span className="item-name">{item.name || t('(ohne Namen)')}</span>
               {item.subtitle && <span className="item-sub">{item.subtitle}</span>}

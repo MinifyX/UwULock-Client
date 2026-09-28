@@ -19,6 +19,7 @@
 
 mod autofill;
 mod draft;
+mod extras;
 mod generator;
 mod passkeys;
 mod session;
@@ -87,6 +88,12 @@ pub struct Unlocked {
     pub vault: Vault,
     /// Items with a master password re-prompt whose prompt was answered.
     pub reprompt_ok: HashSet<String>,
+    /// The account's private key as the sync has it (under the user key):
+    /// what opens the extras key after an official client rotated the user
+    /// key.
+    pub private_key: Option<String>,
+    /// UwULock Server's extras key, once [`open_extras`] opened it.
+    pub extras: Option<SymmetricKey>,
 }
 
 thread_local! {
@@ -337,6 +344,58 @@ pub fn passphrase(options: &str) -> Result<String, JsValue> {
 pub fn entropy_bits(password: String) -> u32 {
     let password = Zeroizing::new(password);
     uwulock_core::generator::entropy_bits(&password)
+}
+
+// ── UwULock Server's extras ───────────────────────────────
+
+/// Opens the extras key from `GET /uwu/v1/keys`: `{"state": "open" | "none"
+/// | "lost"}`. The extension never makes one nor wraps it again.
+#[wasm_bindgen(js_name = openExtras)]
+pub fn open_extras(keys: &str) -> Result<String, JsValue> {
+    js(extras::open_extras(keys))
+}
+
+/// Own icons from `POST /uwu/v1/icons/own/get`, opened: `[{cipherId, png}]`,
+/// the PNG as base64. Those that don't open are left out.
+#[wasm_bindgen(js_name = openIcons)]
+pub fn open_icons(icons: &str) -> Result<String, JsValue> {
+    js(extras::open_icons(icons))
+}
+
+/// The owner's labels of file requests: `[{id, label}]`.
+#[wasm_bindgen(js_name = fileRequestLabels)]
+pub fn file_request_labels(requests: &str) -> Result<String, JsValue> {
+    js(extras::file_request_labels(requests))
+}
+
+/// A file request's link, on the main host or a send domain.
+#[wasm_bindgen(js_name = fileRequestLink)]
+pub fn file_request_link(request: &str, base: &str, send_domain: bool) -> Result<String, JsValue> {
+    js(extras::file_request_link(request, base, send_domain))
+}
+
+/// The names of an item's values that can be shared in a Send:
+/// `[{name, label?}]`. Never the authenticator key.
+#[wasm_bindgen(js_name = shareableFields)]
+pub fn shareable_fields(id: &str) -> Result<String, JsValue> {
+    js(extras::shareable_fields(id))
+}
+
+/// A text Send with chosen values of an item: the body of `POST /api/sends`.
+#[wasm_bindgen(js_name = sealShare)]
+pub fn seal_share(id: &str, options: &str) -> Result<String, JsValue> {
+    js(extras::seal_share(id, options))
+}
+
+/// A Send's link from the `key` and `accessId` the server answered.
+#[wasm_bindgen(js_name = sendLink)]
+pub fn send_link(
+    key: &str,
+    access_id: &str,
+    base: &str,
+    send_domain: bool,
+) -> Result<String, JsValue> {
+    js(extras::send_link(key, access_id, base, send_domain))
 }
 
 // ── Autofill ──────────────────────────────────────────────

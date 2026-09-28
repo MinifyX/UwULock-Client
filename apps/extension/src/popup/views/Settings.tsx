@@ -4,7 +4,16 @@ import { ext } from '../../shared/browser';
 import { N_, t } from '../../shared/i18n';
 import type { LockTimeout, Settings, Status } from '../../shared/protocol';
 import { logout, setPin, setSettings, switchAccount, syncNow } from '../api';
-import { ago, errorText, PasswordInput, publishSettings, toast, Toggle, useSettings } from '../lib';
+import {
+  ago,
+  errorText,
+  PasswordInput,
+  publishSettings,
+  toast,
+  Toggle,
+  useSettings,
+  uwuFeature,
+} from '../lib';
 
 const TIMEOUTS: { value: LockTimeout; label: string }[] = [
   { value: 0, label: N_('Sobald das Fenster zugeht') },
@@ -57,9 +66,11 @@ function Row({
 export function SettingsView({
   status,
   onAddAccount,
+  onFileRequests,
 }: {
   status: Status;
   onAddAccount: () => void;
+  onFileRequests: () => void;
 }) {
   const settings = useSettings();
   const [pinOpen, setPinOpen] = useState(false);
@@ -258,6 +269,36 @@ export function SettingsView({
           {t('Tastenkürzel: Strg+Umschalt+L füllt den Login dieser Seite aus.')}
         </p>
       </div>
+
+      {status.uwu && (
+        <>
+          <h2 className="section-title">UwULock Server</h2>
+          <div className="setting-list">
+            {(uwuFeature(status, 'own-icons') || status.uwu.icons?.automatic) && (
+              <Row
+                label={t('Icons in der Liste')}
+                description={t('Eigene Icons deiner Einträge und die Icons, die dein Server lädt')}
+              >
+                <Toggle
+                  checked={settings.showIcons}
+                  label={t('Icons in der Liste')}
+                  onChange={(checked) => void change({ showIcons: checked })}
+                />
+              </Row>
+            )}
+            {uwuFeature(status, 'file-requests') && (
+              <Row
+                label={t('Dateianfragen')}
+                description={t('Deine Links, über die dir jemand Dateien schickt')}
+              >
+                <button type="button" className="quiet" onClick={onFileRequests}>
+                  {t('Anzeigen')}
+                </button>
+              </Row>
+            )}
+          </div>
+        </>
+      )}
 
       <h2 className="section-title">{t('Aussehen')}</h2>
       <div className="setting-list">

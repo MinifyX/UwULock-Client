@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '@desktop/components/Icon';
-import { ItemTile } from '@desktop/components/ItemTile';
 import { NyuScene } from '@desktop/components/nyu/scenes';
 import { t } from '../../shared/i18n';
+import { ItemIcon } from '../icons';
 import type { ItemSummary, PendingSave, StatusMessage, TabItems } from '../../shared/protocol';
 import { ext } from '../../shared/browser';
 import { answerPendingSave, copyField, fillTab, pendingSaves, tabItems } from '../api';
@@ -80,7 +80,7 @@ export function TabView({
 
   const row = (item: ItemSummary, fillable: boolean) => (
     <li key={item.id} className="item-row" onClick={() => onOpen(item.id)}>
-      <ItemTile item={item} />
+      <ItemIcon item={item} />
       <span className="item-text">
         <span className="item-name">{item.name || t('(ohne Namen)')}</span>
         {item.subtitle && <span className="item-sub">{item.subtitle}</span>}
