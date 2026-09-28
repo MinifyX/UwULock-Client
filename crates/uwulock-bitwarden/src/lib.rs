@@ -1,6 +1,8 @@
 //! UwULock's way into Bitwarden and Vaultwarden.
 //!
 //! - [`api`] — prelogin, login with two-step login, token refresh, sync, saving
+//! - [`delta`] — the offline copy, kept up to date by UwULock Server's delta sync
+//! - [`uwu`] — UwULock Server's own API: its features, the extras key, delta sync
 //!
 //! The crypto and the data formats live in `uwulock-core` (no network, also
 //! built for WebAssembly) and are re-exported here under their old paths:
@@ -15,6 +17,8 @@
 //! what is kept where.
 
 pub mod api;
+pub mod delta;
+pub mod uwu;
 
 pub use uwulock_core::{crypto, generator, totp, vault, wire, Error};
 

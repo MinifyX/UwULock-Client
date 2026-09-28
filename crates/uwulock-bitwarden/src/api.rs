@@ -279,7 +279,7 @@ impl Client {
         &self.server
     }
 
-    fn request(&self, method: reqwest::Method, url: String) -> reqwest::RequestBuilder {
+    pub(crate) fn request(&self, method: reqwest::Method, url: String) -> reqwest::RequestBuilder {
         self.http
             .request(method, url)
             .header("Accept", "application/json")
@@ -655,7 +655,7 @@ impl Client {
 /// An id goes into a path; a server that hands out something odd shouldn't be
 /// able to steer the request somewhere else. Ids are UUIDs, so this rarely has
 /// anything to do.
-fn escape(id: &str) -> String {
+pub(crate) fn escape(id: &str) -> String {
     id.bytes()
         .map(|byte| match byte {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
@@ -716,13 +716,13 @@ fn refusal_message(refusal: &wire::TokenError, fallback: &str) -> String {
         .unwrap_or_else(|| fallback.to_string())
 }
 
-struct Response {
-    status: u16,
-    body: String,
+pub(crate) struct Response {
+    pub(crate) status: u16,
+    pub(crate) body: String,
 }
 
 impl Response {
-    fn ok(&self) -> bool {
+    pub(crate) fn ok(&self) -> bool {
         (200..300).contains(&self.status)
     }
 
@@ -776,14 +776,14 @@ impl Response {
     }
 }
 
-async fn send(request: reqwest::RequestBuilder) -> Result<Response, Error> {
+pub(crate) async fn send(request: reqwest::RequestBuilder) -> Result<Response, Error> {
     let response = request.send().await.map_err(network_error)?;
     let status = response.status().as_u16();
     let body = response.text().await.map_err(network_error)?;
     Ok(Response { status, body })
 }
 
-fn network_error(error: reqwest::Error) -> Error {
+pub(crate) fn network_error(error: reqwest::Error) -> Error {
     use std::error::Error as _;
     // reqwest's own message ("error sending request") says nothing; the cause does.
     let mut message = error.to_string();

@@ -17,6 +17,8 @@ base64.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 zeroize.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
 url = "2"
 # rustls with both the bundled roots and the system's own store: a homelab
 # Vaultwarden behind a private CA works once that CA is trusted by the system.

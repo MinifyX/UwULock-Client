@@ -23,6 +23,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, State};
 use uwulock_bitwarden::api::{parse_sync, PasswordLogin, TwoFactorAnswer};
 use uwulock_bitwarden::crypto::{self, decrypt_user_key};
+use uwulock_bitwarden::delta::UwuState;
+use uwulock_bitwarden::uwu::Info;
 use uwulock_bitwarden::vault::{Field, FieldKind, Item, ItemKind, LoginUri, Secret};
 use uwulock_bitwarden::wire;
 use uwulock_bitwarden::{
@@ -31,7 +33,7 @@ use uwulock_bitwarden::{
 };
 use zeroize::Zeroizing;
 
-use crate::account::{Account, Storage, Stored};
+use crate::account::{synced_from_cache, synced_to_cache, Account, Storage, Stored};
 use crate::clipboard::Clipboard;
 
 const SYNC_EVERY: Duration = Duration::from_secs(5 * 60);
@@ -80,6 +82,33 @@ struct Unlocked {
     session: Option<Session>,
     /// Items whose master password re-prompt was answered in this unlock.
     reprompt_ok: HashSet<String>,
+    /// UwULock Server only: what it can do (`/uwu/v1/info`), asked at every
+    /// sync. `None` for Bitwarden and Vaultwarden.
+    info: Option<Info>,
+    /// UwULock's own state from the delta sync: own icons, reminders, masked
+    /// addresses, travel mode, badges.
+    uwu: UwuState,
+    /// The extras key, once something needed it.
+    extras: Option<SymmetricKey>,
+}
+
+impl Unlocked {
+    fn new(user_key: SymmetricKey, vault: Vault, session: Option<Session>) -> Self {
+        Unlocked {
+            user_key,
+            vault,
+            session,
+            reprompt_ok: HashSet::new(),
+            info: None,
+            uwu: UwuState::default(),
+            extras: None,
+        }
+    }
+
+    /// Whether the server offers one of UwULock's features.
+    pub(crate) fn has(&self, feature: &str) -> bool {
+        self.info.as_ref().is_some_and(|info| info.has(feature))
+    }
 }
 
 /// A login between the password and the two-step code.
@@ -601,15 +630,10 @@ async fn finish_login(
             }),
         }
     }
-    state.unlocked.write().insert(
-        id.clone(),
-        Unlocked {
-            user_key,
-            vault,
-            session: Some(session),
-            reprompt_ok: HashSet::new(),
-        },
-    );
+    state
+        .unlocked
+        .write()
+        .insert(id.clone(), Unlocked::new(user_key, vault, Some(session)));
     *state.active.lock() = Some(id.clone());
     state.set_trouble(&id, Trouble::default());
     state.touch();
@@ -662,8 +686,9 @@ pub(crate) async fn unlock(
         }
     };
 
-    let vault = match state.storage.load_cache(&id) {
-        Some(text) => match parse_sync(&text).and_then(|sync| Vault::open(&sync, &user_key)) {
+    let cached = state.storage.load_cache(&id);
+    let vault = match &cached {
+        Some(text) => match parse_sync(text).and_then(|sync| Vault::open(&sync, &user_key)) {
             Ok(vault) => vault,
             Err(error) => {
                 tracing::warn!(%error, "the cached vault didn't open");
@@ -672,15 +697,14 @@ pub(crate) async fn unlock(
         },
         None => Vault::default(),
     };
-    state.unlocked.write().insert(
-        id,
-        Unlocked {
-            user_key,
-            vault,
-            session: None,
-            reprompt_ok: HashSet::new(),
-        },
-    );
+    let mut unlocked = Unlocked::new(user_key, vault, None);
+    if let Some(synced) = cached
+        .as_deref()
+        .and_then(|text| synced_from_cache(text, &unlocked.user_key))
+    {
+        unlocked.uwu = synced.uwu;
+    }
+    state.unlocked.write().insert(id, unlocked);
     state.touch();
     tracing::info!("unlocked");
     emit_status(&app);
@@ -919,7 +943,14 @@ async fn sync_inner(state: &VaultState, id: &str) -> Result<()> {
             .clone()
     };
 
-    let text = client.sync(&access).await?;
+    // UwULock Server says what it can do; the others don't answer.
+    let info = client.uwu_info().await.unwrap_or(None);
+    let (text, uwu) = if info.as_ref().is_some_and(|i| i.has("delta-sync")) {
+        let synced = delta_sync(state, id, &client, &access, &user_key).await?;
+        (synced_to_cache(&synced, &user_key), synced.uwu)
+    } else {
+        (client.sync(&access).await?, UwuState::default())
+    };
     let sync = parse_sync(&text)?;
     let vault = Vault::open(&sync, &user_key)?;
     state
@@ -941,8 +972,50 @@ async fn sync_inner(state: &VaultState, id: &str) -> Result<()> {
     });
     if let Some(unlocked) = state.unlocked.write().get_mut(id) {
         unlocked.vault = vault;
+        unlocked.uwu = uwu;
+        if info.is_none() {
+            unlocked.extras = None;
+        }
+        unlocked.info = info;
     }
     Ok(())
+}
+
+/// UwULock Server's delta sync: what changed since the cursor kept with the
+/// offline copy, merged into it; everything, when there is no cursor or the
+/// server can't serve it (`reset`). Pages until the server has no more.
+async fn delta_sync(
+    state: &VaultState,
+    id: &str,
+    client: &Client,
+    access: &str,
+    user_key: &SymmetricKey,
+) -> Result<uwulock_bitwarden::delta::Synced> {
+    let mut synced = state
+        .storage
+        .load_cache(id)
+        .and_then(|text| synced_from_cache(&text, user_key))
+        .unwrap_or_default();
+    // No page limit from the server's side, but not an endless loop either.
+    for _ in 0..1000 {
+        let page = match client.uwu_sync(access, synced.cursor.as_deref()).await {
+            Ok(page) => page,
+            // A cursor the server can't read: drop it, start over.
+            Err(error) if error.code() == Some("invalid") && synced.cursor.is_some() => {
+                tracing::info!("the server didn't take the sync cursor; syncing everything");
+                synced.cursor = None;
+                continue;
+            }
+            Err(error) => return Err(Error::from(error).into()),
+        };
+        if !synced.apply(&page)? {
+            return Ok(synced);
+        }
+    }
+    Err(Failure::new(
+        "server",
+        "The server kept sending more changes.",
+    ))
 }
 
 /// Auto-lock and the periodic sync.
