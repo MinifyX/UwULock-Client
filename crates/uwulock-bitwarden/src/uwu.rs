@@ -405,7 +405,9 @@ pub struct FileRequestBody {
     pub expiration_date: String,
     pub max_submissions: Option<u32>,
     pub max_files: u32,
-    pub max_file_bytes: Option<u64>,
+    /// Always a number: the server's own limit (`limits.maxFileBytes` of
+    /// `/uwu/v1/info`) when the person set none. Ignored when `max_files` is 0.
+    pub max_file_bytes: u64,
     pub text_allowed: bool,
     pub send_domain_id: Option<String>,
     pub disabled: bool,

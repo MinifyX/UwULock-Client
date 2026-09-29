@@ -406,6 +406,28 @@ describe('file requests', () => {
     });
   });
 
+  it('find an extras key made elsewhere after the next sync', async () => {
+    extrasState = 'none';
+    route('GET', `${WEB}/uwu/v1/keys`, () => json({ object: 'uwuKeys', extrasKey: null }));
+    route('GET', `${WEB}/uwu/v1/file-requests`, () => json({ object: 'list', data: [] }));
+    expect((await extras.fileRequests(account())).state).toBe('none');
+    expect((await extras.fileRequests(account())).state).toBe('none');
+    expect(core.openExtras).toHaveBeenCalledTimes(1);
+    // The desktop app made it; a sync opens the vault again.
+    extrasState = 'open';
+    const synced = vi.spyOn(vault, 'generation').mockReturnValue(vault.generation() + 1);
+    try {
+      expect((await extras.fileRequests(account())).state).toBe('open');
+      expect(core.openExtras).toHaveBeenCalledTimes(2);
+      // An open key stays open until the vault closes: no more asking.
+      synced.mockReturnValue(vault.generation() + 1);
+      await extras.fileRequests(account());
+      expect(core.openExtras).toHaveBeenCalledTimes(2);
+    } finally {
+      synced.mockRestore();
+    }
+  });
+
   it('are off where the server has none', async () => {
     await expect(extras.fileRequests(account({ uwu: null }))).rejects.toMatchObject({
       kind: 'uwu:feature_off',

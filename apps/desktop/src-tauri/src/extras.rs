@@ -1182,6 +1182,19 @@ pub struct FileRequestInput {
     disabled: bool,
 }
 
+/// The largest file a request takes: the person's own limit, else the one it
+/// had, else the server's. The server wants a number, never `null`.
+fn file_limit(mib: Option<u64>, had: Option<u64>, info: Option<&Info>) -> u64 {
+    mib.map(|m| m * 1024 * 1024)
+        .or(had)
+        .or_else(|| {
+            info.and_then(|i| i.limits.as_ref())
+                .and_then(|l| l.max_file_bytes)
+        })
+        // A server that names no limit: Bitwarden's own for a file.
+        .unwrap_or(500 * 1024 * 1024)
+}
+
 /// Checks the input against the contract and the server's limits.
 fn checked_input(input: &FileRequestInput, info: Option<&Info>) -> Result<()> {
     let limits = info.and_then(|i| i.limits.clone()).unwrap_or_default();
@@ -1277,7 +1290,7 @@ pub(crate) async fn create_file_request(
         expiration_date: in_days(input.expires_in_days.unwrap_or(7)),
         max_submissions: input.max_submissions,
         max_files: input.max_files,
-        max_file_bytes: input.max_file_mib.map(|m| m * 1024 * 1024),
+        max_file_bytes: file_limit(input.max_file_mib, None, info.as_ref()),
         text_allowed: input.text_allowed,
         send_domain_id: input.send_domain_id.clone(),
         disabled: input.disabled,
@@ -1365,10 +1378,7 @@ pub(crate) async fn update_file_request(
         },
         max_submissions: input.max_submissions,
         max_files: input.max_files,
-        max_file_bytes: input
-            .max_file_mib
-            .map(|m| m * 1024 * 1024)
-            .or(existing.max_file_bytes),
+        max_file_bytes: file_limit(input.max_file_mib, existing.max_file_bytes, info.as_ref()),
         text_allowed: input.text_allowed,
         send_domain_id: input.send_domain_id.clone(),
         disabled: input.disabled,
@@ -2255,5 +2265,17 @@ mod tests {
         let mut elsewhere = input(1, true);
         elsewhere.send_domain_id = Some("d1".into());
         assert!(checked_input(&elsewhere, None).is_err());
+    }
+
+    #[test]
+    fn a_file_request_always_names_a_file_limit() {
+        let info: Info = serde_json::from_value(serde_json::json!({
+            "name": "UwULock Server", "limits": { "maxFileBytes": 1000 }
+        }))
+        .unwrap();
+        assert_eq!(file_limit(Some(2), Some(7), Some(&info)), 2 * 1024 * 1024);
+        assert_eq!(file_limit(None, Some(7), Some(&info)), 7);
+        assert_eq!(file_limit(None, None, Some(&info)), 1000);
+        assert_eq!(file_limit(None, None, None), 500 * 1024 * 1024);
     }
 }

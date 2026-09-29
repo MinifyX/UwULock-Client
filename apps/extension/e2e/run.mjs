@@ -8,13 +8,29 @@
 // 3. a login page: sign in by hand, the save bar offers to save it, save;
 // 4. the same page again: the inline menu fills it;
 // 5. a WebAuthn page: register a passkey in the vault, sign in with it, the page checks the
-//    signature with WebCrypto.
+//    signature with WebCrypto;
+// 6. with a server that has UwULock's extras (0.6 on): an extras key, an own icon and a file
+//    request made the way the web vault makes them, then the icon in the vault list, the file
+//    request in the settings, and an item shared as a Send.
 //
 // Needs Playwright's Chromium (PLAYWRIGHT_BROWSERS_PATH, or `playwright-core install chromium`)
-// and Docker unless UWULOCK_SERVER_BIN is set. Screenshots of a failure go to e2e/shots/.
+// and Docker unless UWULOCK_SERVER_BIN is set. Or a server that already runs (plain http on
+// localhost): UWULOCK_SERVER_URL=<its address> UWULOCK_SERVER_INVITE=<an invitation for
+// nyu@example.com> — for this test in Playwright's image against a server built on the host.
+// Screenshots of a failure go to e2e/shots/.
 
 import { execFileSync, spawn } from 'node:child_process';
-import { createCipheriv, createHmac, pbkdf2Sync, randomBytes } from 'node:crypto';
+import {
+  constants,
+  createCipheriv,
+  createHmac,
+  createPublicKey,
+  generateKeyPairSync,
+  hkdfSync,
+  pbkdf2Sync,
+  publicEncrypt,
+  randomBytes,
+} from 'node:crypto';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -71,6 +87,11 @@ async function startServer() {
     UWULOCK_LOGIN_ATTEMPTS: '200',
   };
   let invite;
+  if (process.env.UWULOCK_SERVER_URL) {
+    const token = /token=([^&\s]+)/.exec(process.env.UWULOCK_SERVER_INVITE ?? '')?.[1];
+    if (!token) throw new Error('UWULOCK_SERVER_INVITE is no invitation link');
+    return { url: process.env.UWULOCK_SERVER_URL, token: decodeURIComponent(token) };
+  }
   if (process.env.UWULOCK_SERVER_BIN) {
     const data = mkdtempSync(join(tmpdir(), 'uwulock-e2e-data-'));
     cleanups.push(() => rmSync(data, { recursive: true, force: true }));
@@ -101,23 +122,52 @@ async function startServer() {
   return { url, token: decodeURIComponent(token) };
 }
 
-/** Registers the account the way Bitwarden's apps do: PBKDF2 master key, HKDF, AES-CBC + HMAC. */
+/** An EncString of type 2: AES-256-CBC under the first half of `key`, HMAC-SHA256 under the second. */
+function encrypt(plain, key) {
+  const iv = randomBytes(16);
+  const cipher = createCipheriv('aes-256-cbc', key.subarray(0, 32), iv);
+  const data = Buffer.concat([cipher.update(plain), cipher.final()]);
+  const tag = createHmac('sha256', key.subarray(32))
+    .update(Buffer.concat([iv, data]))
+    .digest();
+  return `2.${iv.toString('base64')}|${data.toString('base64')}|${tag.toString('base64')}`;
+}
+
+/** An EncString of type 4: `key` wrapped for an RSA public key (SPKI DER, base64), OAEP with SHA-1. */
+function wrapFor(publicKey, key) {
+  const spki = createPublicKey({
+    key: Buffer.from(publicKey, 'base64'),
+    format: 'der',
+    type: 'spki',
+  });
+  const wrapped = publicEncrypt(
+    { key: spki, padding: constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha1' },
+    key,
+  );
+  return `4.${wrapped.toString('base64')}`;
+}
+
+/**
+ * Registers the account the way Bitwarden's apps do: PBKDF2 master key, HKDF, AES-CBC + HMAC,
+ * and a key pair under the user key. Returns what the extras step needs.
+ */
 async function register(server) {
-  const iterations = 100_000;
+  // What servers ask for at least today (Bitwarden, and UwULock Server from 0.6).
+  const iterations = 600_000;
   const master = pbkdf2Sync(PASSWORD, EMAIL, iterations, 32, 'sha256');
   const hash = pbkdf2Sync(master, PASSWORD, 1, 32, 'sha256').toString('base64');
   const expand = (info) =>
     createHmac('sha256', master)
       .update(Buffer.concat([Buffer.from(info), Buffer.from([1])]))
       .digest();
-  const [enc, mac] = [expand('enc'), expand('mac')];
-  const iv = randomBytes(16);
-  const cipher = createCipheriv('aes-256-cbc', enc, iv);
-  const data = Buffer.concat([cipher.update(randomBytes(64)), cipher.final()]);
-  const tag = createHmac('sha256', mac)
-    .update(Buffer.concat([iv, data]))
-    .digest();
-  const key = `2.${iv.toString('base64')}|${data.toString('base64')}|${tag.toString('base64')}`;
+  const userKey = randomBytes(64);
+  const key = encrypt(userKey, Buffer.concat([expand('enc'), expand('mac')]));
+  const pair = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const publicKey = pair.publicKey.export({ type: 'spki', format: 'der' }).toString('base64');
+  const encryptedPrivateKey = encrypt(
+    pair.privateKey.export({ type: 'pkcs8', format: 'der' }),
+    userKey,
+  );
   const response = await fetch(
     `${server.url.replace('localhost', '127.0.0.1')}/identity/accounts/register/finish`,
     {
@@ -130,13 +180,55 @@ async function register(server) {
         key,
         kdf: 0,
         kdfIterations: iterations,
+        keys: { publicKey, encryptedPrivateKey },
         emailVerificationToken: server.token,
       }),
     },
   );
   if (!response.ok)
     throw new Error(`Registering failed: ${response.status} ${await response.text()}`);
+  return { hash, userKey, publicKey };
 }
+
+/** The account on the server's API, as another device: for setting the scene only. */
+async function apiSession(server, account) {
+  const base = server.url.replace('localhost', '127.0.0.1');
+  const login = await fetch(`${base}/identity/connect/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'password',
+      username: EMAIL,
+      password: account.hash,
+      scope: 'api offline_access',
+      client_id: 'web',
+      deviceType: '9',
+      deviceIdentifier: '6f3c1d2e-8a4b-4c5d-9e6f-7a8b9c0d1e2f',
+      deviceName: 'e2e',
+    }),
+  });
+  if (!login.ok) throw new Error(`API login failed: ${login.status} ${await login.text()}`);
+  const { access_token: token } = await login.json();
+  return async (method, path, body) => {
+    const response = await fetch(`${base}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const text = await response.text();
+    if (!response.ok) throw new Error(`${method} ${path}: ${response.status} ${text}`);
+    return text ? JSON.parse(text) : null;
+  };
+}
+
+/** A 1 × 1 PNG. */
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  'base64',
+);
 
 // ── The browser ───────────────────────────────────────────
 
@@ -189,7 +281,7 @@ async function main() {
   cleanups.push(() => pages.close());
   step('UwULock Server, and an account');
   const server = await startServer();
-  await register(server);
+  const account = await register(server);
 
   step('Chromium with the extension');
   const profile = mkdtempSync(join(tmpdir(), 'uwulock-e2e-profile-'));
@@ -279,6 +371,87 @@ async function main() {
       async () => (await site.locator('#result').textContent()) === 'verified',
     );
     console.log('✓ log in, save, fill and passkeys all work');
+
+    const info = await fetch(`${server.url.replace('localhost', '127.0.0.1')}/uwu/v1/info`)
+      .then((r) => r.json())
+      .catch(() => ({}));
+    const features = new Set(info.features ?? []);
+    if (features.has('own-icons') && features.has('file-requests')) {
+      step("UwULock's extras, made the way the web vault makes them");
+      const api = await apiSession(server, account);
+      const extrasKey = randomBytes(64);
+      await api('POST', '/uwu/v1/keys', {
+        userKeyWrapped: encrypt(extrasKey, account.userKey),
+        publicKeyWrapped: wrapFor(account.publicKey, extrasKey),
+      });
+      const sync = await api('GET', '/api/sync');
+      const saved = sync.ciphers.find((c) => c.type === 1);
+      await api('PUT', `/uwu/v1/icons/own/${saved.id}`, {
+        data: encrypt(PNG, extrasKey),
+        keyType: 'extras',
+      });
+      const secret = randomBytes(16);
+      const linkKey = Buffer.from(
+        hkdfSync('sha256', secret, 'bitwarden-filerequest', 'filerequest', 64),
+      );
+      const publicInfo = {
+        v: 1,
+        title: 'Passport',
+        note: null,
+        publicKey: account.publicKey,
+        owner: null,
+      };
+      await api('POST', '/uwu/v1/file-requests', {
+        name: encrypt(Buffer.from('Passport for the bank'), extrasKey),
+        linkSecret: encrypt(secret, extrasKey),
+        publicInfo: encrypt(Buffer.from(JSON.stringify(publicInfo)), linkKey),
+        passwordHash: null,
+        expirationDate: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+        maxSubmissions: null,
+        maxFiles: 2,
+        maxFileBytes: 1_048_576,
+        textAllowed: true,
+        sendDomainId: null,
+        disabled: false,
+      });
+
+      step('After a sync, the own icon shows in the vault list');
+      // Neither the key nor the icon is news on Bitwarden's hub: a sync finds them. The popup
+      // keeps what it asked for while it is open, so it opens again, as a person would.
+      await popup.reload();
+      await popup.getByRole('button', { name: 'Sync now' }).click();
+      await until('the own icon', async () => {
+        await popup.reload();
+        await popup.getByRole('button', { name: 'Vault' }).click();
+        const src = await popup
+          .locator('.item-row', { hasText: 'localhost' })
+          .first()
+          .locator('img.item-icon')
+          .getAttribute('src', { timeout: 2000 });
+        return src?.startsWith('data:image/png;base64,');
+      });
+
+      step('The file request in the settings');
+      await popup.getByRole('button', { name: 'Settings' }).click();
+      await popup.getByRole('button', { name: 'Show' }).click();
+      await popup.locator('.file-request-row', { hasText: 'Passport for the bank' }).waitFor();
+      await popup.getByRole('button', { name: 'Back' }).click();
+
+      step('An item shared as a Send');
+      await popup.getByRole('button', { name: 'Vault' }).click();
+      await popup.locator('.item-row', { hasText: 'localhost' }).first().click();
+      await popup.getByRole('button', { name: 'Share as a Send' }).click();
+      await popup.getByRole('button', { name: 'Create link' }).click();
+      await popup.getByText('Link created ✧').waitFor();
+      const link = await popup.locator('.share-link').textContent();
+      if (!link?.startsWith(`${server.url}/#/send/`)) throw new Error(`the Send's link: ${link}`);
+      const sends = await api('GET', '/api/sends');
+      if (sends.data.length !== 1 || sends.data[0].authType !== 2)
+        throw new Error(`the Sends: ${JSON.stringify(sends.data)}`);
+      console.log("✓ UwULock's extras: own icon, file requests, sharing as a Send");
+    } else {
+      console.log("– this server has no extras (own icons, file requests): they aren't checked");
+    }
 
     if (process.env.UWULOCK_E2E_SHOTS) {
       // Pictures of the popup, for looking at it: UWULOCK_E2E_SHOTS=1.

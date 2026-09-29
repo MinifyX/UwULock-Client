@@ -171,6 +171,14 @@ node apps/desktop/e2e/run.mjs     # end to end, Windows
 The browser extension: `pnpm --filter @uwulock/extension wasm` (needs `wasm-bindgen-cli`
 0.2.129), then `… build`, `… test` and `… e2e` — see [the extension guide](docs/extension.md).
 
+Against a real UwULock Server instead of the fakes (a checkout of UwULock-Server with a
+`cargo build` done there): `scripts/live-server.sh ../UwULock-Server` starts it with a test CA,
+registers an account per test and runs the ignored tests of `uwulock-bitwarden`'s `server`
+module — delta sync, the realtime channel and Bitwarden's hub, the extras key (also after an
+official key rotation), own icons, versions, reminders, file requests, Sends.
+`LIVE_VAULTWARDEN=1` adds the move from a filled Vaultwarden (Docker), `LIVE_BROWSER=1` an
+upload through the web vault's file request page (Playwright's Docker image).
+
 `uwulock-core` is kept free of anything networked so the web vault of
 UwULock-Server can run it compiled to WebAssembly: the same crypto, checked
 against the same vectors from Bitwarden's SDK
