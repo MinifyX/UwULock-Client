@@ -472,6 +472,7 @@ function RequestView({
                       request.id,
                       asking.submission.id,
                       asking.file.id,
+                      asking.file.risky,
                     );
                     toast(t('Gespeichert: {path}', { path }));
                   })
@@ -489,6 +490,13 @@ function RequestView({
               { name: asking.file.name ?? '' },
             )}
           </p>
+          {asking.file.risky && (
+            <p className="notice" data-tone="error" role="alert">
+              {t(
+                'Achtung: Diese Datei ist ein Programm, ein Skript oder ein Dokument mit Makros. Sie kann beim Öffnen alles tun, was du auf diesem Rechner darfst. Öffne sie nur, wenn du weißt, von wem sie ist und dass du sie erwartest.',
+              )}
+            </p>
+          )}
         </Modal>
       )}
 

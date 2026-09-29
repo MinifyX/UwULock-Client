@@ -1494,6 +1494,8 @@ pub struct SubmissionFileView {
     id: String,
     name: Option<String>,
     size: u64,
+    /// A type that runs when opened: the page warns before saving it.
+    risky: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -1543,12 +1545,18 @@ fn submission_view(submission: &Submission, key: Option<&SubmissionKey>) -> Subm
         files: submission
             .files
             .iter()
-            .map(|file| SubmissionFileView {
-                id: file.id.clone(),
-                name: key
+            .map(|file| {
+                let name = key
                     .and_then(|key| key.open_file(&sealed(file)).ok())
-                    .map(|(name, _)| name.to_string()),
-                size: file.size,
+                    .map(|(name, _)| name.to_string());
+                SubmissionFileView {
+                    id: file.id.clone(),
+                    risky: name
+                        .as_deref()
+                        .is_some_and(|n| runs_when_opened(&safe_file_name(n))),
+                    name,
+                    size: file.size,
+                }
             })
             .collect(),
         broken: key.is_none(),
@@ -1671,8 +1679,78 @@ fn free_path(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
         .unwrap_or(first)
 }
 
+/// Whether a file of this name runs something when it is opened: programs,
+/// scripts, installers, shortcuts, disk images and documents with macros.
+/// Anyone can upload to a file request, so the page warns before saving one.
+/// The list: Windows, then macOS, then Linux and scripts anywhere.
+fn runs_when_opened(name: &str) -> bool {
+    const RISKY: &str = "\
+        exe com scr pif bat cmd msi msix msixbundle msp mst appx appxbundle appinstaller \
+        application ps1 psm1 psd1 ps1xml vbs vbe js jse wsf wsh wsc hta cpl lnk url scf reg \
+        inf dll sys ocx gadget chm hlp settingcontent-ms library-ms search-ms xll xlam docm \
+        dotm xlsm xltm pptm potm ppsm one iso img vhd vhdx jar jnlp \
+        app command tool pkg mpkg dmg terminal workflow scpt \
+        sh bash zsh csh ksh run bin desktop appimage deb rpm flatpakref snap py pyw pl rb php";
+    let Some((_, ext)) = name.rsplit_once('.') else {
+        return false;
+    };
+    let ext = ext.trim().to_ascii_lowercase();
+    RISKY.split_whitespace().any(|risky| risky == ext)
+}
+
+/// Marks a file that came from the internet as such, so the system treats it
+/// like a download from a browser: `Zone.Identifier` (Internet zone) on
+/// Windows — SmartScreen and Office's Protected View look at it — and
+/// `com.apple.quarantine` on macOS (Gatekeeper). Linux has no such mark.
+/// A failure (FAT32, a file system without streams or attributes) is logged:
+/// the file is saved anyway, and the page warned before.
+fn mark_downloaded(path: &std::path::Path) {
+    #[cfg(windows)]
+    {
+        let mut stream = path.as_os_str().to_owned();
+        stream.push(":Zone.Identifier");
+        if let Err(error) = std::fs::write(&stream, "[ZoneTransfer]\r\nZoneId=3\r\n") {
+            tracing::warn!(%error, "couldn't mark the file as downloaded");
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let seconds = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or_default();
+        // Flags 0081: downloaded, not yet opened; the agent that saved it.
+        let value = format!("0081;{seconds:08x};UwULock;");
+        let (Ok(file), Ok(name)) = (
+            std::ffi::CString::new(path.as_os_str().as_bytes()),
+            std::ffi::CString::new("com.apple.quarantine"),
+        ) else {
+            return;
+        };
+        // SAFETY: both are NUL-terminated, the value is `value.len()` bytes.
+        let result = unsafe {
+            libc::setxattr(
+                file.as_ptr(),
+                name.as_ptr(),
+                value.as_ptr().cast(),
+                value.len(),
+                0,
+                0,
+            )
+        };
+        if result != 0 {
+            let error = std::io::Error::last_os_error();
+            tracing::warn!(%error, "couldn't mark the file as downloaded");
+        }
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    let _ = path;
+}
+
 /// Saves a submitted file, decrypted, into the Downloads folder (the page
-/// asked first). Returns where it went.
+/// asked first, and warned for a type that runs when opened: `allow_risky`
+/// says it did). Marked as downloaded from the internet. Returns where it went.
 #[tauri::command]
 pub(crate) async fn save_submission_file(
     app: AppHandle,
@@ -1680,6 +1758,7 @@ pub(crate) async fn save_submission_file(
     request_id: String,
     submission_id: String,
     file_id: String,
+    allow_risky: Option<bool>,
 ) -> Result<String> {
     state.touch();
     need(&state, "file-requests")?;
@@ -1691,6 +1770,13 @@ pub(crate) async fn save_submission_file(
         .find(|f| f.id == file_id)
         .ok_or_else(|| Failure::new("not-found", "This file is gone."))?;
     let (name, file_key) = key.open_file(&sealed(file))?;
+    let file_name = safe_file_name(&name);
+    if runs_when_opened(&file_name) && allow_risky != Some(true) {
+        return Err(Failure::new(
+            "risky-file",
+            "This type of file runs when it is opened; the page didn't warn.",
+        ));
+    }
     let encrypted = ctx
         .client
         .submission_file(&ctx.token, &request_id, &submission_id, &file_id)
@@ -1702,9 +1788,10 @@ pub(crate) async fn save_submission_file(
         .download_dir()
         .or_else(|_| app.path().home_dir())
         .map_err(|e| Failure::new("io", format!("No Downloads folder: {e}")))?;
-    let path = free_path(&dir, &safe_file_name(&name));
+    let path = free_path(&dir, &file_name);
     std::fs::write(&path, contents.as_slice())
         .map_err(|e| Failure::new("io", format!("Couldn't save the file: {e}")))?;
+    mark_downloaded(&path);
     tracing::info!("a file request's file saved");
     Ok(path.display().to_string())
 }
@@ -2291,6 +2378,34 @@ mod tests {
     }
 
     #[test]
+    fn a_field_hidden_on_either_side_stays_hidden() {
+        // The version had a hidden "PIN" first and a text "Note" second; the
+        // PIN was deleted since, so the note is field 0 now.
+        let mut old = item();
+        old.fields.push(Field {
+            name: Some(Zeroizing::new("Note".into())),
+            value: Some(Zeroizing::new("plain".into())),
+            kind: FieldKind::Text,
+            linked_id: None,
+        });
+        let mut new = old.clone();
+        new.fields.remove(0);
+
+        let changes = compare(&old, &new);
+        let first = changes.iter().find(|c| c.field == "field:0").unwrap();
+        assert_eq!(first.kind, "changed");
+        assert!(first.secret && first.before.is_none() && first.after.is_none());
+        let second = changes.iter().find(|c| c.field == "field:1").unwrap();
+        assert_eq!(second.kind, "removed");
+        assert!(!second.secret && second.before.as_deref() == Some("plain"));
+
+        // And the other way round: a text field that is hidden now.
+        let changes = compare(&new, &old);
+        let first = changes.iter().find(|c| c.field == "field:0").unwrap();
+        assert!(first.secret && first.before.is_none() && first.after.is_none());
+    }
+
+    #[test]
     fn version_values_include_the_authenticator_key() {
         let mut version = item();
         version.login.as_mut().unwrap().totp = Some(Zeroizing::new("JBSWY3DPEHPK3PXP".into()));
@@ -2300,6 +2415,46 @@ mod tests {
         );
         assert_eq!(version_value(&version, "name").unwrap().as_str(), "Shop");
         assert!(version_value(&version, "history:0").is_none());
+    }
+
+    #[test]
+    fn programs_and_scripts_are_risky() {
+        for name in [
+            "setup.exe",
+            "Rechnung.PDF.js",
+            "x.ps1",
+            "a.lnk",
+            "b.docm",
+            "c.dmg",
+            "d.sh",
+        ] {
+            assert!(runs_when_opened(name), "{name}");
+        }
+        for name in [
+            "scan.pdf",
+            "photo.jpeg",
+            "notes.txt",
+            "exe",
+            "archive.zip",
+            "table.xlsx",
+        ] {
+            assert!(!runs_when_opened(name), "{name}");
+        }
+        // The name is cleaned first: a trailing dot doesn't hide the type.
+        assert!(runs_when_opened(&safe_file_name("setup.exe.")));
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn a_saved_file_is_in_the_internet_zone() {
+        let path = std::env::temp_dir().join(format!("uwulock-{}.txt", uuid::Uuid::new_v4()));
+        std::fs::write(&path, b"x").unwrap();
+        mark_downloaded(&path);
+        let mut stream = path.as_os_str().to_owned();
+        stream.push(":Zone.Identifier");
+        let mark = std::fs::read_to_string(stream);
+        let _ = std::fs::remove_file(&path);
+        assert!(mark.unwrap().contains("ZoneId=3"));
     }
 
     #[test]
@@ -2360,34 +2515,6 @@ mod tests {
         let mut elsewhere = input(1, true);
         elsewhere.send_domain_id = Some("d1".into());
         assert!(checked_input(&elsewhere, None).is_err());
-    }
-
-    #[test]
-    fn a_field_hidden_on_either_side_stays_hidden() {
-        // The version had a hidden "PIN" first and a text "Note" second; the
-        // PIN was deleted since, so the note is field 0 now.
-        let mut old = item();
-        old.fields.push(Field {
-            name: Some(Zeroizing::new("Note".into())),
-            value: Some(Zeroizing::new("plain".into())),
-            kind: FieldKind::Text,
-            linked_id: None,
-        });
-        let mut new = old.clone();
-        new.fields.remove(0);
-
-        let changes = compare(&old, &new);
-        let first = changes.iter().find(|c| c.field == "field:0").unwrap();
-        assert_eq!(first.kind, "changed");
-        assert!(first.secret && first.before.is_none() && first.after.is_none());
-        let second = changes.iter().find(|c| c.field == "field:1").unwrap();
-        assert_eq!(second.kind, "removed");
-        assert!(!second.secret && second.before.as_deref() == Some("plain"));
-
-        // And the other way round: a text field that is hidden now.
-        let changes = compare(&new, &old);
-        let first = changes.iter().find(|c| c.field == "field:0").unwrap();
-        assert!(first.secret && first.before.is_none() && first.after.is_none());
     }
 
     #[test]

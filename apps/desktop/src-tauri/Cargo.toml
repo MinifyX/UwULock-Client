@@ -62,3 +62,7 @@ tempfile = "3"
 # logind and the screen saver say when the screen locks or the system sleeps.
 # The same zbus (and features) tauri-plugin-opener already brings.
 zbus = { version = "5", default-features = false, features = ["async-io", "blocking-api"] }
+
+# Files saved from a file request get `com.apple.quarantine` (setxattr).
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"

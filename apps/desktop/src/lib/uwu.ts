@@ -292,7 +292,8 @@ export type Submission = {
   text: string | null;
   senderName: string | null;
   senderEmail: string | null;
-  files: { id: string; name: string | null; size: number }[];
+  /** `risky`: a type that runs when opened (a program, a script, a macro document). */
+  files: { id: string; name: string | null; size: number; risky: boolean }[];
   broken: boolean;
 };
 
@@ -309,8 +310,12 @@ export const deleteFileRequest = (id: string) => invoke<void>('delete_file_reque
 export const fileRequestSubmissions = (requestId: string) =>
   invoke<Submission[]>('file_request_submissions', { requestId });
 /** Saves into the Downloads folder; returns the path. */
-export const saveSubmissionFile = (requestId: string, submissionId: string, fileId: string) =>
-  invoke<string>('save_submission_file', { requestId, submissionId, fileId });
+export const saveSubmissionFile = (
+  requestId: string,
+  submissionId: string,
+  fileId: string,
+  allowRisky: boolean,
+) => invoke<string>('save_submission_file', { requestId, submissionId, fileId, allowRisky });
 export const markSubmissionSeen = (requestId: string, submissionId: string) =>
   invoke<void>('mark_submission_seen', { requestId, submissionId });
 export const deleteSubmission = (requestId: string, submissionId: string) =>
