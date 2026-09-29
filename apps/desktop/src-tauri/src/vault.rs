@@ -165,6 +165,8 @@ pub(crate) struct VaultState {
     last_activity: Mutex<Instant>,
     clipboard: Arc<Clipboard>,
     live: Live,
+    /// Moving a vault in (`moving`): dropped whenever the vault locks.
+    pub(crate) moves: Arc<crate::moving::MoveState>,
 }
 
 impl VaultState {
@@ -189,6 +191,7 @@ impl VaultState {
             last_activity: Mutex::new(Instant::now()),
             clipboard: Arc::new(Clipboard::default()),
             live: Live::default(),
+            moves: Arc::default(),
         }
     }
 
@@ -262,6 +265,7 @@ impl VaultState {
         self.unlocked.write().clear();
         *self.pending.lock() = None;
         self.clipboard.clear_now();
+        self.moves.forget();
     }
 
     /// Runs `f` on the open vault of the account on screen. Doesn't count as
@@ -934,6 +938,8 @@ impl VaultState {
         self.unlocked.write().remove(id);
         *self.pending.lock() = None;
         self.clipboard.clear_now();
+        let on_screen = self.active.lock().as_deref() == Some(id);
+        self.moves.forget_for(id, on_screen);
         self.storage
             .forget(id)
             .map_err(|e| Failure::new("io", format!("Couldn't remove the account: {e}")))?;
@@ -1070,10 +1076,12 @@ impl VaultState {
     /// nothing decrypted, and asks for a new login.
     pub(crate) fn session_ended(&self, id: &str) {
         self.unlocked.write().remove(id);
-        if self.active.lock().as_deref() == Some(id) {
+        let on_screen = self.active.lock().as_deref() == Some(id);
+        if on_screen {
             *self.pending.lock() = None;
             self.clipboard.clear_now();
         }
+        self.moves.forget_for(id, on_screen);
         let mut trouble = self.trouble(id);
         trouble.session_expired = true;
         self.set_trouble(id, trouble);
