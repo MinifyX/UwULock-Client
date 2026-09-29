@@ -70,6 +70,8 @@ const store = await import('../src/background/store');
 
 const SERVER = { kind: 'self-hosted', url: 'https://vault.example.com' } as const;
 const EMAIL = 'nyu@example.com';
+/** The account's key here: its server's identity endpoint and its user id. */
+const ID = store.accountKey('https://vault.example.com/identity', 'user-1');
 
 async function waitFor(check: () => Promise<boolean>) {
   for (let i = 0; i < 100 && !(await check()); i++) await new Promise((r) => setTimeout(r, 0));
@@ -99,7 +101,7 @@ describe('a weaker KDF than the last login', () => {
 
   it('stays refused after the server ended the session', async () => {
     await session.login(SERVER, EMAIL, 'pw');
-    sessionEnds((await store.account('user-1'))!);
+    sessionEnds((await store.account(ID))!);
     await waitFor(async () => (await store.accounts()).length === 0);
     expect(await store.accounts()).toEqual([]);
     prelogin = { kdf: 0, kdfIterations: 5_000 };
@@ -111,7 +113,7 @@ describe('a weaker KDF than the last login', () => {
   it('is accepted after forgetting it by hand, which needs the account logged out', async () => {
     await session.login(SERVER, EMAIL, 'pw');
     await expect(session.forgetKdf(SERVER, EMAIL)).rejects.toMatchObject({ kind: 'invalid' });
-    sessionEnds((await store.account('user-1'))!);
+    sessionEnds((await store.account(ID))!);
     await waitFor(async () => (await store.accounts()).length === 0);
     await session.forgetKdf(SERVER, ' NYU@example.com ');
     prelogin = { kdf: 0, kdfIterations: 5_000 };
@@ -120,7 +122,7 @@ describe('a weaker KDF than the last login', () => {
 
   it('is accepted after logging out on purpose', async () => {
     await session.login(SERVER, EMAIL, 'pw');
-    await session.logout('user-1');
+    await session.logout(ID);
     prelogin = { kdf: 0, kdfIterations: 5_000 };
     expect(await session.login(SERVER, EMAIL, 'pw')).toMatchObject({ step: 'done' });
   });

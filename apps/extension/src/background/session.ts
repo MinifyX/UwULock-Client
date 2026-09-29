@@ -22,6 +22,7 @@ import { deviceType, endpoints, normalizeServerUrl } from './server';
 import {
   type Account,
   account,
+  accountKey,
   accounts,
   activeAccount,
   cachedSync,
@@ -29,6 +30,7 @@ import {
   forgetKdfFloor,
   kdfFloor,
   local,
+  migrateAccounts,
   pinAttempts,
   removeAccount,
   removeSession,
@@ -60,6 +62,7 @@ export function unlockedAccountId(): string | null {
  */
 export const restored: Promise<void> = (async () => {
   try {
+    await migrateAccounts();
     const saved = await session('unlocked');
     if (!saved) return;
     const found = await account(saved.accountId);
@@ -388,10 +391,14 @@ async function loggedIn(pending: PendingLogin, body: Record<string, unknown>): P
   const lowered = lowerKeys(body);
   const accessToken = String(lowered.access_token);
   const who = claims(accessToken);
-  const id = String(who.sub ?? pending.email);
+  const userId = String(who.sub ?? pending.email);
+  // Keyed by the server too: what another server's account with the same user id keeps (its
+  // protected user key, its remember-me token) is never taken over.
+  const id = accountKey(endpoints(pending.server).identity, userId);
   const previous = await account(id);
   const next: Account = {
     id,
+    userId,
     email: pending.email,
     name: typeof who.name === 'string' ? who.name : (previous?.name ?? null),
     server: pending.server,

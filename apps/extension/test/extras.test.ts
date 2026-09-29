@@ -120,6 +120,7 @@ const WEB = 'https://lock.example.com';
 function account(patch: Partial<Account> = {}): Account {
   return {
     id: 'u1',
+    userId: 'u1',
     email: 'nyu@example.com',
     name: null,
     server: { kind: 'self-hosted', url: WEB },

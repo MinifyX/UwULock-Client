@@ -57,6 +57,9 @@ release checks the download (see the [install guide](install.md)).
   also kept in the browser's session storage — in memory, never on disk, closed to web pages —
   so the background can open the vault again when the browser ends and restarts it. On disk
   there is only what the server stores anyway: the encrypted vault and the session tokens.
+  Each account is kept by its server and its user id, so a server that names another server's
+  user id gets an entry of its own and never takes over that account's key or its "remember
+  this device" token.
 - A PIN works until the browser closes, unless you let it work after a restart too. Then the
   user key sits on disk under the PIN alone, and a copy of the browser profile lets somebody guess
   it offline, so that option wants six characters or more and says so. Five wrong PINs in a row
