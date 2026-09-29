@@ -28,7 +28,7 @@ always gets the newest stable one.
 | Ubuntu / Debian            | `UwULock-linux-x64.deb` · ARM: `UwULock-linux-arm64.deb`             |
 | Fedora / openSUSE          | `UwULock-linux-x64.rpm` · ARM: `UwULock-linux-arm64.rpm`             |
 | Linux, portable            | `UwULock-linux-x64-portable.tar.gz` · ARM: `…-arm64-portable.tar.gz` |
-| Arch Linux                 | planned: an AUR package `uwulock-bin`; until then the portable one   |
+| Arch Linux                 | `PKGBUILD` (`makepkg -si`); an AUR package `uwulock-bin` is planned  |
 
 The `UwULock-update-…` files next to them are for the in-app updater; you
 don't need them.
@@ -90,8 +90,10 @@ administrator password. Uninstall with `sudo apt remove uwulock` or
 `./UwULock/uwulock`. It brings its own WebKit, installs nothing and doesn't
 update itself — fetch the newest one to update.
 
-**Arch Linux:** an AUR package `uwulock-bin` is planned. Until it exists, the
-portable folder works.
+**Arch Linux:** put the release's `PKGBUILD` into an empty folder and run
+`makepkg -si` there. It repacks the release's `.deb` (checked against its
+SHA-256) as the package `uwulock-bin`; pacman updates it, not the app. An AUR
+package `uwulock-bin` is planned. The portable folder works too.
 
 ## First steps
 
@@ -208,7 +210,7 @@ holt also immer die neueste stabile.
 | Ubuntu / Debian            | `UwULock-linux-x64.deb` · ARM: `UwULock-linux-arm64.deb`             |
 | Fedora / openSUSE          | `UwULock-linux-x64.rpm` · ARM: `UwULock-linux-arm64.rpm`             |
 | Linux, portabel            | `UwULock-linux-x64-portable.tar.gz` · ARM: `…-arm64-portable.tar.gz` |
-| Arch Linux                 | geplant: ein AUR-Paket `uwulock-bin`; bis dahin die portable Version |
+| Arch Linux                 | `PKGBUILD` (`makepkg -si`); ein AUR-Paket `uwulock-bin` ist geplant  |
 
 Die `UwULock-update-…`-Dateien daneben sind für den Updater in der App; du
 brauchst sie nicht.
@@ -273,8 +275,11 @@ Deinstallieren mit `sudo apt remove uwulock` bzw. `sudo dnf remove uwulock`.
 `./UwULock/uwulock` starten. Bringt sein eigenes WebKit mit, installiert nichts
 und aktualisiert sich nicht — zum Aktualisieren die neueste holen.
 
-**Arch Linux:** Ein AUR-Paket `uwulock-bin` ist geplant. Bis es das gibt, geht
-die portable Version.
+**Arch Linux:** Die `PKGBUILD` des Releases in einen leeren Ordner legen und
+dort `makepkg -si` ausführen. Sie packt die `.deb` des Releases (geprüft gegen
+ihre SHA-256) als Paket `uwulock-bin` um; aktualisiert wird es von pacman, nicht
+von der App. Ein AUR-Paket `uwulock-bin` ist geplant. Die portable Version geht
+auch.
 
 ## Erste Schritte
 

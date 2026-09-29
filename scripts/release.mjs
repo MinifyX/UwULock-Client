@@ -31,9 +31,9 @@
 // copy under that versioned name, the same bytes are published under the
 // plain name, and the feed points there — old and new apps both accept it.
 //
-// Creates the GitHub release with every file and a SHA256SUMS.txt, updates the
-// feeds on the `updates` branch (creating it the first time) and writes the AUR
-// package for it (see the end of this file).
+// Creates the GitHub release with every file, a SHA256SUMS.txt and the Arch Linux
+// PKGBUILD, updates the feeds on the `updates` branch (creating it the first time)
+// and writes the AUR package for it (see the end of this file).
 
 import { execFileSync } from 'node:child_process';
 import { createHash, createPublicKey, verify } from 'node:crypto';
@@ -236,6 +236,13 @@ try {
   );
   writeFileSync(sums, `${lines.join('\n')}\n`);
   files.set('SHA256SUMS.txt', sums);
+  // The Arch Linux package as a PKGBUILD on the release too (`makepkg -si` next to it), while
+  // uwulock-bin isn't on the AUR. Not in SHA256SUMS.txt: it carries the .debs' sums itself.
+  if (!windowsOnly) {
+    const arch = join(work, 'arch');
+    writeAur(arch, { PKGBUILD: aurFiles({ version, sums: readFileSync(sums, 'utf8') }).PKGBUILD });
+    files.set('PKGBUILD', join(arch, 'PKGBUILD'));
+  }
 
   console.log(`\n▸ Creating the release on ${REPOSITORY}`);
   const notesPath = join(work, 'notes.md');
@@ -356,7 +363,7 @@ function releaseBody(aurLive) {
       : [
           'Arch Linux',
           'Arch Linux',
-          `${code('UwULock-linux-x64-portable.tar.gz')} (AUR: ${code('uwulock-bin')} folgt / coming)`,
+          `${code('PKGBUILD')} (\`makepkg -si\`) · AUR: ${code('uwulock-bin')} folgt / coming`,
         ],
     [
       'Linux portabel',

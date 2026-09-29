@@ -18,7 +18,7 @@ My wish list, roughly in order, without dates.
       field
 - [x] Several accounts side by side (private and work), one open at a time
 
-## 0.2.x · Next
+## 0.2.x · Next (shipped with 0.3.0-beta.1)
 
 - [x] Notifications from the server (Bitwarden's WebSocket hub, UwULock
       Server's realtime channel) instead of polling
@@ -26,7 +26,7 @@ My wish list, roughly in order, without dates.
 - [ ] Touch ID — needs an Apple Developer ID signature (keychain items that
       only open with a finger); not possible for an unsigned app
 
-## 0.3 · The suite (now)
+## 0.3 · The suite (0.3.0-beta.1 released)
 
 - [x] A browser extension for Chromium and Firefox, from one code base:
       login and unlock (PIN too), the page's logins first, filling from the
@@ -43,6 +43,10 @@ My wish list, roughly in order, without dates.
       preview first and a restart that picks up where it stopped
 - [x] The suite vault's keys and transport for UwUSSH and UwURDP in
       `uwulock-bitwarden`
+- [x] Security review before the release
+      ([security-review-0.3.md](security-review-0.3.md))
+
+Still to come:
 
 - UwUSSH takes SSH keys from UwULock, UwURDP takes logins, UwUMail account
   passwords — through a local, authenticated channel, one confirmation per
