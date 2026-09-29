@@ -17,7 +17,7 @@ vi.mock('../src/shared/browser', () => ({
       sendMessage: async (tabId: number, message: { token?: string }) => {
         sent.push({ tabId, message });
       },
-      query: async () => [],
+      query: async () => [{ id: 7, url: 'https://bank.example/login' }],
     },
     runtime: { getURL: (path: string) => `chrome-extension://test${path}` },
   },
@@ -70,6 +70,18 @@ vi.mock('../src/background/vault', () => ({
       uris: [{ uri: 'https://bank.example', match: null }],
     },
     {
+      id: 'guarded',
+      kind: 'login',
+      name: 'Guarded',
+      subtitle: 'nyu',
+      favorite: false,
+      reprompt: true,
+      hasTotp: false,
+      hasPassword: true,
+      hasUsername: true,
+      uris: [{ uri: 'https://vault.example.net', match: null }],
+    },
+    {
       id: 'intranet',
       kind: 'login',
       name: 'Intranet',
@@ -94,6 +106,9 @@ vi.mock('../src/background/vault', () => ({
     },
   ],
   domains: () => equivalents,
+  verifyReprompt: async (_id: string, password: string) => {
+    if (password !== 'master') throw { kind: 'wrong-password', message: 'Wrong.' };
+  },
   items: async () => [],
 }));
 
@@ -102,7 +117,7 @@ vi.mock('../src/background/wasm', () => ({
   call: async () => undefined,
 }));
 
-const { fill, fillBest, offer, pageInfo } = await import('../src/background/autofill');
+const { fill, fillBest, fillTab, offer, pageInfo } = await import('../src/background/autofill');
 
 type Sender = chrome.runtime.MessageSender;
 const frame = (url: string, frameId = 0, tabId = 7): Sender => ({
@@ -234,5 +249,45 @@ describe('address matching (CL-L11)', () => {
     equivalents = { global: [['bank.example', 'evil.example']], custom: [] };
     await fillBest({ id: 7, url: 'https://evil.example/login' } as chrome.tabs.Tab);
     expect(sent).toHaveLength(1);
+  });
+});
+
+describe('the re-prompt, per fill (CL-I3)', () => {
+  beforeEach(async () => {
+    equivalents = { global: [], custom: [] };
+    await pageInfo(frame('https://vault.example.net/login'));
+  });
+
+  it("never fills from the page's menu or an offer without the master password", async () => {
+    const page = frame('https://vault.example.net/login');
+    expect(await fill(page, 'guarded', undefined, false)).toEqual({
+      filled: false,
+      reason: 'reprompt',
+    });
+    const token = await offered(7, 'guarded', true);
+    expect(await fill(page, 'guarded', token, false)).toEqual({
+      filled: false,
+      reason: 'reprompt',
+    });
+  });
+
+  it('fills once with the master password asked for that fill', async () => {
+    await expect(fillTab('guarded', false, undefined)).rejects.toMatchObject({ kind: 'verify' });
+    await expect(fillTab('guarded', false, 'wrong')).rejects.toMatchObject({
+      kind: 'wrong-password',
+    });
+    sent.length = 0;
+    await fillTab('guarded', false, 'master');
+    const token = sent[0]!.message.token!;
+    const page = frame('https://vault.example.net/login');
+    expect((await fill(page, 'guarded', token, false)).filled).toBe(true);
+    // The answer was for that fill: the same offer fills nothing more.
+    expect((await fill(page, 'guarded', token, false)).filled).toBe(false);
+  });
+
+  it('the shortcut opens the popup instead', async () => {
+    sent.length = 0;
+    await fillBest({ id: 7, url: 'https://vault.example.net/login' } as chrome.tabs.Tab);
+    expect(sent).toEqual([]);
   });
 });

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from
 import { Icon } from '@desktop/components/Icon';
 import { N_, t } from '../../shared/i18n';
 import { ItemIcon } from '../icons';
+import { FillReprompt } from './FillReprompt';
 import type { ItemDetail, ItemKind, TotpCode } from '../../shared/protocol';
 import {
   copyField,
@@ -264,8 +265,20 @@ function Body({ item }: { item: ItemDetail }) {
   const id = item.summary.id;
   const login = item.login;
   const card = item.card;
+  // An item with the re-prompt asks for the master password again for every fill.
+  const [asking, setAsking] = useState(false);
   return (
     <div className="detail-cards">
+      {asking && (
+        <FillReprompt
+          name={item.summary.name}
+          onFill={async (password) => {
+            await fillTab(id, false, password);
+            window.close();
+          }}
+          onCancel={() => setAsking(false)}
+        />
+      )}
       {login && (
         <section className="detail-card">
           {item.summary.deleted === false && (login.hasPassword || login.username) && (
@@ -274,9 +287,11 @@ function Body({ item }: { item: ItemDetail }) {
                 type="button"
                 className="primary wide"
                 onClick={() =>
-                  void fillTab(id)
-                    .then(() => window.close())
-                    .catch((e) => toast(errorText(e), 'error'))
+                  item.summary.reprompt
+                    ? setAsking(true)
+                    : void fillTab(id)
+                        .then(() => window.close())
+                        .catch((e) => toast(errorText(e), 'error'))
                 }
               >
                 {t('Auf dieser Seite ausfüllen')}

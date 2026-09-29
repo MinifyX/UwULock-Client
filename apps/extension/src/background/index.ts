@@ -159,7 +159,11 @@ async function handlePage(message: PageRequest): Promise<unknown> {
       return autofill.tabItems();
     case 'fill-tab':
       await session.requireUnlocked();
-      return autofill.fillTab(message.id, message.confirmedInsecure);
+      return autofill.fillTab(
+        message.id,
+        message.confirmedInsecure,
+        typeof message.password === 'string' ? message.password : undefined,
+      );
     case 'pending-saves':
       return autofill.pendingSaves();
     case 'answer-pending-save':

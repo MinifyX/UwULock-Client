@@ -607,7 +607,8 @@ export type PageRequest =
   | { type: 'set-settings'; patch: Partial<Settings> }
   /** The items for the active tab, and whether it is plain http. */
   | { type: 'tab-items' }
-  | { type: 'fill-tab'; id: string; confirmedInsecure: boolean }
+  /** `password`: the master password, which an item with the re-prompt needs for every fill. */
+  | { type: 'fill-tab'; id: string; confirmedInsecure: boolean; password?: string }
   | { type: 'pending-saves' }
   | { type: 'answer-pending-save'; id: string; answer: SaveAnswer }
   | { type: 'passkey-prompt'; id: string }

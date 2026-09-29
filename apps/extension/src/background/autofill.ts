@@ -187,6 +187,11 @@ type Offer = {
   explicit: boolean;
   /** The popup asked about plain http already. */
   insecureOk: boolean;
+  /**
+   * The master password was asked for this very fill (an item with the re-prompt): good for one
+   * fill, as in Bitwarden, which asks every time.
+   */
+  reprompted: boolean;
 };
 
 const OFFER_LIFETIME = 15_000;
@@ -200,13 +205,19 @@ function token(): string {
 }
 
 /** Ask every frame of a tab to claim an item's values; each is judged on its own address. */
-export async function offer(tabId: number, itemId: string, explicit: boolean, insecureOk = false) {
+export async function offer(
+  tabId: number,
+  itemId: string,
+  explicit: boolean,
+  insecureOk = false,
+  reprompted = false,
+) {
   const entry = vault.autofillIndex().find((e) => e.id === itemId);
   if (!entry) throw { kind: 'not-found', message: "This item isn't in the vault any more." };
   for (const [key, old] of offers)
     if (Date.now() - old.created > OFFER_LIFETIME) offers.delete(key);
   const id = token();
-  offers.set(id, { tabId, itemId, created: Date.now(), explicit, insecureOk });
+  offers.set(id, { tabId, itemId, created: Date.now(), explicit, insecureOk, reprompted });
   const message: BackgroundMessage = { type: 'bg:fill-offer', token: id, itemId, kind: entry.kind };
   await ext.tabs.sendMessage(tabId, message).catch(() => undefined);
 }
@@ -248,6 +259,10 @@ export async function fill(
 
   if (isInsecureUrl(url) && !confirmedInsecure && !fromOffer?.insecureOk) return refuse('insecure');
 
+  // An item with the re-prompt is filled only right after the master password was asked for
+  // this fill — never on the strength of an earlier answer (CL-I3).
+  if (entry.reprompt && !fromOffer?.reprompted) return refuse('reprompt');
+
   let values: FillValues;
   try {
     values = await callJson<FillValues>((core) => core.fillValues(itemId, Date.now() / 1000));
@@ -255,6 +270,7 @@ export async function fill(
     const kind = (error as { kind?: string }).kind;
     return refuse(kind === 'reprompt' ? 'reprompt' : 'not-found');
   }
+  if (fromOffer?.reprompted && offerToken !== undefined) offers.delete(offerToken);
   lastUsed.set(itemId, Date.now());
   lastFill.set(tabId, { itemId, at: Date.now() });
   await session.touch();
@@ -283,7 +299,9 @@ export async function fillBest(tab: chrome.tabs.Tab) {
   if (!url) return;
   // Nobody picked an item: only a match by the page's own domain or Bitwarden's global list.
   const best = (await matchingLogins(url, { topFrame: true, strict: true }))[0];
-  if (best) await offer(tab.id, best.id, false);
+  // An item with the re-prompt asks for the master password in the popup first.
+  if (best?.reprompt) await session.openPopup();
+  else if (best) await offer(tab.id, best.id, false);
 }
 
 // ── The popup's view of the tab ───────────────────────────
@@ -333,10 +351,28 @@ export async function tabItems(): Promise<TabItems> {
   };
 }
 
-export async function fillTab(itemId: string, confirmedInsecure: boolean) {
+/**
+ * A pick in the popup. An item with the re-prompt needs the master password with every fill
+ * (`password`), checked here before the page is offered anything.
+ */
+export async function fillTab(
+  itemId: string,
+  confirmedInsecure: boolean,
+  password: string | undefined,
+) {
   const tab = await activeTab();
   if (tab?.id === undefined) throw { kind: 'no-tab', message: 'No page to fill.' };
-  await offer(tab.id, itemId, true, confirmedInsecure);
+  const entry = vault.autofillIndex().find((e) => e.id === itemId);
+  if (!entry) throw { kind: 'not-found', message: "This item isn't in the vault any more." };
+  let reprompted = false;
+  if (entry.reprompt) {
+    if (typeof password !== 'string' || !password) {
+      throw { kind: 'verify', message: 'This item asks for the master password.' };
+    }
+    await vault.verifyReprompt(itemId, password);
+    reprompted = true;
+  }
+  await offer(tab.id, itemId, true, confirmedInsecure, reprompted);
 }
 
 // ── Saving what was sent ──────────────────────────────────

@@ -119,6 +119,11 @@ export async function onMenuClick(info: chrome.contextMenus.OnClickData, tab?: c
   }
   // A pick from the menu is a pick like in the popup: the tab's page itself may have it.
   if (action === 'fill' || action === 'fill-card' || action === 'fill-identity') {
+    // An item with the re-prompt asks for the master password in the popup, every time.
+    if (vault.autofillIndex().find((e) => e.id === itemId)?.reprompt) {
+      await session.openPopup();
+      return;
+    }
     await offer(tab.id, itemId, action !== 'fill');
   }
 }

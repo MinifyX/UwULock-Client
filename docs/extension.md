@@ -72,6 +72,10 @@ release checks the download (see the [install guide](install.md)).
   never reaches an iframe of another site. Picking an item in the popup for a page it doesn't
   match fills the page itself, never its frames. Cards and addresses reach only the page itself
   and frames of its own origin. Plain `http://` pages ask before filling.
+- An item with the master-password re-prompt asks for the master password every time it is
+  filled, as Bitwarden does: in the popup, and the page's menu, the context menu and the
+  shortcut open the popup for it. Seeing or copying its values in the popup asks once until the
+  vault locks.
 - Matching addresses is a little stricter than Bitwarden's: "starts with" also wants the same
   origin (`https://bank.example` doesn't match `https://bank.example.evil.test/`); a regular
   expression is tried only in the top frame, and only when it is short and can't run for long;

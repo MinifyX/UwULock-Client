@@ -103,8 +103,8 @@ export const setSettings = (patch: Partial<Settings>) =>
   ask<Settings>({ type: 'set-settings', patch });
 
 export const tabItems = () => ask<TabItems>({ type: 'tab-items' });
-export const fillTab = (id: string, confirmedInsecure = false) =>
-  ask<void>({ type: 'fill-tab', id, confirmedInsecure });
+export const fillTab = (id: string, confirmedInsecure = false, password?: string) =>
+  ask<void>({ type: 'fill-tab', id, confirmedInsecure, ...(password ? { password } : {}) });
 export const pendingSaves = () => ask<PendingSave[]>({ type: 'pending-saves' });
 export const answerPendingSave = (id: string, answer: SaveAnswer) =>
   ask<void>({ type: 'answer-pending-save', id, answer });
