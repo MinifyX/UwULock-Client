@@ -43,7 +43,8 @@ async function build() {
   const url = tab?.id !== undefined ? (tab.url ?? tabUrl(tab.id)) : undefined;
   shownFor = tab?.id ?? null;
   const unlocked = Boolean(session.unlockedAccountId());
-  const logins = unlocked && url && isFillableUrl(url) ? await matchingLogins(url) : [];
+  const logins =
+    unlocked && url && isFillableUrl(url) ? await matchingLogins(url, { topFrame: true }) : [];
   const index = unlocked ? vault.autofillIndex() : [];
   const cards = index.filter((e) => e.kind === 'card').slice(0, MAX_ITEMS);
   const identities = index.filter((e) => e.kind === 'identity').slice(0, MAX_ITEMS);

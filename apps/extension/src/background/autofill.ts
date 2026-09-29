@@ -32,13 +32,7 @@ import type {
   BackgroundMessage,
 } from '../shared/protocol';
 import { resolveLanguage } from '../shared/i18n';
-import {
-  hostnameOf,
-  isFillableUrl,
-  isInsecureUrl,
-  itemMatches,
-  matchingDomains,
-} from '../shared/uri';
+import { hostnameOf, isFillableUrl, isInsecureUrl, itemMatches, pageDomains } from '../shared/uri';
 import * as clipboard from './clipboard';
 import { changed } from './events';
 import * as session from './session';
@@ -73,16 +67,38 @@ function order(a: vault.IndexEntry, b: vault.IndexEntry): number {
   );
 }
 
+export type MatchScope = {
+  /** The address is a top frame's: regular expressions are tried (never in frames, CL-L11). */
+  topFrame: boolean;
+  /**
+   * Leave out logins that match only through the account's own equivalent domains, which the
+   * server hands out unencrypted: for fills nobody picked an item for (the shortcut).
+   */
+  strict?: boolean;
+};
+
+/** Whether a login's addresses match `url`. */
+async function loginMatches(entry: vault.IndexEntry, url: string, scope: MatchScope) {
+  const { defaultMatch } = await settings();
+  const { strict, wide } = pageDomains(url, vault.domains());
+  return itemMatches(entry.uris ?? [], url, scope.strict ? strict : wide, defaultMatch, {
+    regex: scope.topFrame,
+  });
+}
+
 /** The logins whose addresses match `url`, best first. */
-export async function matchingLogins(url: string): Promise<vault.IndexEntry[]> {
+export async function matchingLogins(url: string, scope: MatchScope): Promise<vault.IndexEntry[]> {
   if (!session.unlockedAccountId() || !isFillableUrl(url)) return [];
   const { defaultMatch } = await settings();
-  const domains = matchingDomains(url, vault.domains());
+  const { strict, wide } = pageDomains(url, vault.domains());
+  const domains = scope.strict ? strict : wide;
   return vault
     .autofillIndex()
     .filter(
       (e) =>
-        e.kind === 'login' && !e.archived && itemMatches(e.uris ?? [], url, domains, defaultMatch),
+        e.kind === 'login' &&
+        !e.archived &&
+        itemMatches(e.uris ?? [], url, domains, defaultMatch, { regex: scope.topFrame }),
     )
     .sort(order);
 }
@@ -137,7 +153,9 @@ export async function pageInfo(sender: Sender): Promise<PageInfo> {
   const own = unlocked && sameOriginAsTop(sender);
   return {
     state: await state(),
-    logins: unlocked ? (await matchingLogins(url)).map(pageItem) : [],
+    logins: unlocked
+      ? (await matchingLogins(url, { topFrame: sender.frameId === 0 })).map(pageItem)
+      : [],
     cards: own ? ofKind('card').map(pageItem) : [],
     identities: own ? ofKind('identity').map(pageItem) : [],
     insecure: isInsecureUrl(url),
@@ -219,13 +237,7 @@ export async function fill(
   }
 
   if (entry.kind === 'login') {
-    const { defaultMatch } = await settings();
-    const matches = itemMatches(
-      entry.uris ?? [],
-      url,
-      matchingDomains(url, vault.domains()),
-      defaultMatch,
-    );
+    const matches = await loginMatches(entry, url, { topFrame: sender.frameId === 0 });
     // An item picked for a page it doesn't match goes to that page itself, not into its frames.
     if (!matches && !(fromOffer?.explicit && sender.frameId === 0)) return refuse('no-match');
   } else if (!sameOriginAsTop(sender)) {
@@ -269,7 +281,8 @@ export async function fillBest(tab: chrome.tabs.Tab) {
   }
   const url = tab.url ?? tabUrls.get(tab.id);
   if (!url) return;
-  const best = (await matchingLogins(url))[0];
+  // Nobody picked an item: only a match by the page's own domain or Bitwarden's global list.
+  const best = (await matchingLogins(url, { topFrame: true, strict: true }))[0];
   if (best) await offer(tab.id, best.id, false);
 }
 
@@ -314,7 +327,7 @@ export async function tabItems(): Promise<TabItems> {
     host: url ? hostnameOf(url) : null,
     insecure: url ? isInsecureUrl(url) : false,
     fillable,
-    logins: url && fillable ? pick(await matchingLogins(url)) : [],
+    logins: url && fillable ? pick(await matchingLogins(url, { topFrame: true })) : [],
     cards: pick(ofKind('card')),
     identities: pick(ofKind('identity')),
   };
@@ -331,6 +344,8 @@ export async function fillTab(itemId: string, confirmedInsecure: boolean) {
 type Sent = {
   id: string;
   tabId: number;
+  /** The frame the form was sent in (older entries have none: not the top frame). */
+  frameId?: number;
   url: string;
   host: string;
   username: string | null;
@@ -359,7 +374,7 @@ function forgetOld() {
 
 /** What to offer for a sent login: nothing (it's known), an update, or a new item. */
 async function decide(sent: Sent): Promise<Prompted | null> {
-  const candidates = await matchingLogins(sent.url);
+  const candidates = await matchingLogins(sent.url, { topFrame: sent.frameId === 0 });
   const wanted = sent.username?.trim().toLowerCase() ?? '';
   for (const entry of candidates) {
     let values: FillValues;
@@ -418,6 +433,7 @@ export async function submitted(
   const sent: Sent = {
     id: token(),
     tabId,
+    frameId: sender.frameId,
     url,
     host,
     username: typed ?? (seen && seen.host === host ? seen.username : null),

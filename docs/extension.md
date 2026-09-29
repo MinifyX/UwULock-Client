@@ -31,8 +31,9 @@ release checks the download (see the [install guide](install.md)).
   passphrases that keeps its settings.
 - **Filling**: a small UwULock button in login fields opens the matching logins; the popup, the
   context menu and **Ctrl+Shift+L** fill too. Addresses match the way Bitwarden matches them
-  (domain, host, starts with, exact, regular expression, never) with your server's equivalent
-  domains. Cards and addresses fill checkout forms. Logins in two steps (the username first,
+  (domain, host, starts with, exact, regular expression, never) with Bitwarden's equivalent
+  domains and your own, a little stricter where that keeps a login on its site (see below).
+  Cards and addresses fill checkout forms. Logins in two steps (the username first,
   the password on the next page) and one-time code fields work; when a page has no field for
   the code, it is copied instead.
 - **Saving**: after you sign in somewhere, a bar offers to save the login — or to update the
@@ -69,6 +70,13 @@ release checks the download (see the [install guide](install.md)).
   never reaches an iframe of another site. Picking an item in the popup for a page it doesn't
   match fills the page itself, never its frames. Cards and addresses reach only the page itself
   and frames of its own origin. Plain `http://` pages ask before filling.
+- Matching addresses is a little stricter than Bitwarden's: "starts with" also wants the same
+  origin (`https://bank.example` doesn't match `https://bank.example.evil.test/`); a regular
+  expression is tried only in the top frame, and only when it is short and can't run for long;
+  Bitwarden's global list of equivalent domains comes with the extension, and the server only
+  says which of its groups you switched off. Your own equivalent domains come from the server
+  unencrypted, so a login that matches a page only through one of them is listed there but not
+  filled by the shortcut.
 - The button, the menu and the save bar sit in closed shadow roots and ignore clicks the page
   fakes. Against a page that lays a decoy over them (clickjacking), they take a click only when
   the pointer went down on them after they had been shown, unchanged and uncovered, for half a

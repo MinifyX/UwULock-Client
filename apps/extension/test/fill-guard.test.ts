@@ -52,6 +52,9 @@ vi.mock('../src/background/store', () => ({
 vi.mock('../src/background/clipboard', () => ({ copy: async () => undefined }));
 vi.mock('../src/background/events', () => ({ changed: () => undefined }));
 
+/** The account's own equivalent domains, as the server sends them. */
+let equivalents: { global: string[][]; custom: string[][] } = { global: [], custom: [] };
+
 vi.mock('../src/background/vault', () => ({
   autofillIndex: () => [
     {
@@ -67,6 +70,18 @@ vi.mock('../src/background/vault', () => ({
       uris: [{ uri: 'https://bank.example', match: null }],
     },
     {
+      id: 'intranet',
+      kind: 'login',
+      name: 'Intranet',
+      subtitle: 'nyu',
+      favorite: false,
+      reprompt: false,
+      hasTotp: false,
+      hasPassword: true,
+      hasUsername: true,
+      uris: [{ uri: '^https://intra\\.example\\.org/', match: 4 }],
+    },
+    {
       id: 'card',
       kind: 'card',
       name: 'Visa',
@@ -78,7 +93,7 @@ vi.mock('../src/background/vault', () => ({
       hasUsername: false,
     },
   ],
-  domains: () => [],
+  domains: () => equivalents,
   items: async () => [],
 }));
 
@@ -87,7 +102,7 @@ vi.mock('../src/background/wasm', () => ({
   call: async () => undefined,
 }));
 
-const { fill, offer, pageInfo } = await import('../src/background/autofill');
+const { fill, fillBest, offer, pageInfo } = await import('../src/background/autofill');
 
 type Sender = chrome.runtime.MessageSender;
 const frame = (url: string, frameId = 0, tabId = 7): Sender => ({
@@ -188,5 +203,36 @@ describe('filling', () => {
     const own = await pageInfo(frame('https://www.bank.example/'));
     expect(own.logins.map((l) => l.id)).toEqual(['bank']);
     expect(JSON.stringify(own)).not.toContain('hunter2');
+  });
+});
+
+describe('address matching (CL-L11)', () => {
+  beforeEach(() => {
+    equivalents = { global: [], custom: [] };
+  });
+
+  it('tries a regular expression in the top frame only', async () => {
+    const top = frame('https://intra.example.org/login');
+    expect((await pageInfo(top)).logins.map((l) => l.id)).toEqual(['intranet']);
+    expect((await fill(top, 'intranet', undefined, false)).filled).toBe(true);
+    const inner = frame('https://intra.example.org/login', 2);
+    expect((await pageInfo(inner)).logins).toEqual([]);
+    expect(await fill(inner, 'intranet', undefined, false)).toEqual({
+      filled: false,
+      reason: 'no-match',
+    });
+  });
+
+  it("lists a login matched through the account's own equivalent domains, but the shortcut doesn't fill it", async () => {
+    equivalents = { global: [], custom: [['bank.example', 'evil.example']] };
+    const evil = frame('https://evil.example/login');
+    expect((await pageInfo(evil)).logins.map((l) => l.id)).toEqual(['bank']);
+    sent.length = 0;
+    await fillBest({ id: 7, url: 'https://evil.example/login' } as chrome.tabs.Tab);
+    expect(sent).toEqual([]);
+    // Bitwarden's global groups count for the shortcut.
+    equivalents = { global: [['bank.example', 'evil.example']], custom: [] };
+    await fillBest({ id: 7, url: 'https://evil.example/login' } as chrome.tabs.Tab);
+    expect(sent).toHaveLength(1);
   });
 });

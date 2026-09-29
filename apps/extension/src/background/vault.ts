@@ -9,7 +9,7 @@
  */
 
 import type { Draft, ItemDetail, ItemSummary, Overview, TotpCode } from '../shared/protocol';
-import { equivalentDomains, type EquivalentDomains } from '../shared/uri';
+import { equivalentDomains, type EquivalentDomains, NO_EQUIVALENTS } from '../shared/uri';
 import { changed } from './events';
 import { ApiError, failure, MAX_SYNC_BYTES, request } from './http';
 import * as live from './live';
@@ -44,7 +44,7 @@ export type IndexEntry = {
 };
 
 let index: IndexEntry[] = [];
-let equivalents: EquivalentDomains = [];
+let equivalents: EquivalentDomains = NO_EQUIVALENTS;
 let syncing = false;
 let syncError: string | null = null;
 /** The account whose vault is in the module. */
@@ -89,7 +89,7 @@ export async function open(account: Account, text: string): Promise<void> {
     const profile = (parsed.profile ?? parsed.Profile) as Record<string, unknown> | undefined;
     userId = (profile?.id ?? profile?.Id ?? null) as string | null;
   } catch {
-    equivalents = [];
+    equivalents = NO_EQUIVALENTS;
   }
   index = await callJson<IndexEntry[]>((core) => core.autofillIndex());
   opened += 1;
@@ -100,7 +100,7 @@ export async function open(account: Account, text: string): Promise<void> {
 /** The vault closed: forget the index too. */
 export function closed() {
   index = [];
-  equivalents = [];
+  equivalents = NO_EQUIVALENTS;
   current = null;
   userId = null;
   knownRevision = null;
