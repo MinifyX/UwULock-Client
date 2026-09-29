@@ -222,9 +222,14 @@ mod tests {
 
     #[test]
     fn a_passphrase_is_words_from_the_list() {
+        assert_eq!(PassphraseOptions::default().separator, "-");
         let list: Vec<&str> = (0..crypto::WORD_COUNT as usize).map(crypto::word).collect();
-        let phrase = passphrase(&PassphraseOptions::default());
-        let words = words_of(&phrase, "-");
+        // Split on a space: four words of the list have a `-` of their own (t-shirt, yo-yo, …).
+        let phrase = passphrase(&PassphraseOptions {
+            separator: " ".into(),
+            ..PassphraseOptions::default()
+        });
+        let words = words_of(&phrase, " ");
         assert_eq!(words.len(), 6);
         assert!(words.iter().all(|word| list.contains(&word.as_str())));
     }
@@ -258,9 +263,10 @@ mod tests {
         let count = |words| {
             let options = PassphraseOptions {
                 words,
+                separator: " ".into(),
                 ..PassphraseOptions::default()
             };
-            words_of(&passphrase(&options), "-").len()
+            words_of(&passphrase(&options), " ").len()
         };
         assert_eq!(count(0), MIN_WORDS);
         assert_eq!(count(99), MAX_WORDS);
