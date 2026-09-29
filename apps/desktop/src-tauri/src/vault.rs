@@ -809,6 +809,14 @@ pub(crate) async fn unlock_with_hello(
         .hello_user_key
         .clone()
         .ok_or_else(|| Failure::new("unsupported", "Windows Hello isn't on for this account."))?;
+    // A copy with the old, fixed challenge: dropped, with its Hello key.
+    if crate::hello::is_outdated(&sealed) {
+        state.update_account(&id, |account| account.hello_user_key = None);
+        let account_id = id.clone();
+        let _ =
+            tauri::async_runtime::spawn_blocking(move || crate::hello::forget(&account_id)).await;
+        emit_status(&app);
+    }
     let account_id = id.clone();
     let user_key =
         tauri::async_runtime::spawn_blocking(move || crate::hello::open(&account_id, &sealed))
