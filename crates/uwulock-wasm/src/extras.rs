@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uwulock_core::crypto::{EncString, PrivateKey};
 use uwulock_core::extras::{self, Keys, Resolved};
-use uwulock_core::file_request::{self, LinkSecret};
+use uwulock_core::file_request::{self, LinkSecret, PublicInfo};
 use uwulock_core::send::{self, TextSend};
 use uwulock_core::vault::{FieldKind, Item};
 use zeroize::Zeroizing;
@@ -27,8 +27,10 @@ use crate::{json, with_unlocked, Failure, Result, Unlocked};
 /// `open`; `none` (no client made one yet); `lost` (the key pair changed, or
 /// only the private key's wrap is left and this account has no private key).
 /// After an official client rotated the user key, the key opens with the
-/// account's private key; wrapping it again for the new user key is left to
-/// the web vault or the desktop app.
+/// account's private key; wrapping it again for the new user key, and adding
+/// the private key's wrap to a key from before it existed, is left to the
+/// web vault or the desktop app. A wrap that doesn't fit — the two wraps
+/// disagree, or an RSA wrap the server could have made — is an error.
 pub fn open_extras(keys: &str) -> Result<String> {
     let keys: Keys = serde_json::from_str(keys)?;
     with_unlocked(|unlocked| {
@@ -36,16 +38,11 @@ pub fn open_extras(keys: &str) -> Result<String> {
         if keys.lost {
             return json(&json!({ "state": "lost" }));
         }
-        let Some(wrapped) = &keys.extras_key else {
+        if keys.extras_key.is_none() {
             return json(&json!({ "state": "none" }));
-        };
-        let private = match (&wrapped.user_key_wrapped, &unlocked.private_key) {
-            (None, Some(sealed)) => {
-                let der = sealed.parse::<EncString>()?.decrypt(&unlocked.user_key)?;
-                Some(PrivateKey::from_der(&der)?)
-            }
-            _ => None,
-        };
+        }
+        // Also with a user wrap: the private key's wrap is checked against it.
+        let private = own_private_key(unlocked)?;
         // A wrong key here is not a wrong password: say what didn't open.
         let resolved =
             extras::resolve(&keys, &unlocked.user_key, private.as_ref()).map_err(|error| {
@@ -62,6 +59,15 @@ pub fn open_extras(keys: &str) -> Result<String> {
         };
         json(&json!({ "state": state }))
     })
+}
+
+/// The account's private key, from the sync (under the user key).
+fn own_private_key(unlocked: &Unlocked) -> Result<Option<PrivateKey>> {
+    let Some(sealed) = &unlocked.private_key else {
+        return Ok(None);
+    };
+    let der = sealed.parse::<EncString>()?.decrypt(&unlocked.user_key)?;
+    Ok(Some(PrivateKey::from_der(&der)?))
 }
 
 fn no_extras() -> Failure {
@@ -129,6 +135,8 @@ struct FileRequest {
     name: Option<String>,
     #[serde(default)]
     link_secret: Option<String>,
+    #[serde(default)]
+    public_info: Option<String>,
 }
 
 /// The owner's labels of file requests (`GET /uwu/v1/file-requests`'s list):
@@ -164,6 +172,22 @@ pub fn file_request_link(request: &str, base: &str, send_domain: bool) -> Result
             .as_deref()
             .ok_or_else(|| Failure::new("invalid", "This file request has no link secret."))?;
         let secret = LinkSecret::open(sealed, extras)?;
+        // What the uploader's page encrypts for has to be this account's key:
+        // details naming another were made by someone else who knows the
+        // secret, and what is uploaded to them isn't for us.
+        let own = own_private_key(unlocked)?
+            .ok_or_else(|| Failure::new("crypto", "This account has no key pair."))?;
+        let info = request
+            .public_info
+            .as_deref()
+            .ok_or_else(|| Failure::new("invalid", "This file request has no details."))?;
+        if !PublicInfo::open(info, &secret)?.is_for(&own.public()) {
+            return Err(Failure::new(
+                "crypto",
+                "This file request's link encrypts for a key that isn't yours. Don't share \
+                 it; edit or delete the request in the web vault.",
+            ));
+        }
         let access_id = match request.access_id.filter(|a| !a.is_empty()) {
             Some(access_id) => access_id,
             None => file_request::access_id(&request.id)?,

@@ -20,6 +20,7 @@ struct Fake {
     records: HashMap<String, Value>,
     seq: u64,
     user_wraps: u32,
+    private_wraps: u32,
 }
 
 fn start(fake: Arc<Mutex<Fake>>) -> String {
@@ -99,6 +100,18 @@ fn route(fake: &mut Fake, method: &str, path: &str, body: Value) -> (u16, Value)
             }
             extras["userKeyWrapped"] = body["userKeyWrapped"].clone();
             fake.user_wraps += 1;
+            (
+                200,
+                json!({ "object": "uwuKeys", "extrasKey": fake.extras, "lost": false }),
+            )
+        }
+        ("PUT", "/uwu/v1/keys/private-wrap") => {
+            let extras = fake.extras.as_mut().unwrap();
+            if !extras["privateKeyWrapped"].is_null() {
+                return (409, json!({ "message": "exists", "code": "exists" }));
+            }
+            extras["privateKeyWrapped"] = body["privateKeyWrapped"].clone();
+            fake.private_wraps += 1;
             (
                 200,
                 json!({ "object": "uwuKeys", "extrasKey": fake.extras, "lost": false }),
@@ -223,6 +236,35 @@ async fn a_suite_app_gets_its_keys_and_syncs_its_space() {
         .await
         .unwrap()
         .is_some());
+
+    // A key from before the private wrap gets one the next time it opens.
+    fake.lock().unwrap().extras.as_mut().unwrap()["privateKeyWrapped"] = Value::Null;
+    let opened = client
+        .extras_key(token, &rotated, Some(&private))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(opened.to_bytes(), made.to_bytes());
+    assert_eq!(fake.lock().unwrap().private_wraps, 1);
+    // An RSA wrap the server made itself is never taken.
+    {
+        let mut fake = fake.lock().unwrap();
+        let extras = fake.extras.as_mut().unwrap();
+        extras["userKeyWrapped"] = Value::Null;
+        extras["privateKeyWrapped"] = Value::Null;
+        extras["publicKeyWrapped"] = json!(uwulock_bitwarden::crypto::wrap_for(
+            &private.public(),
+            &SymmetricKey::generate()
+        )
+        .unwrap()
+        .to_string());
+    }
+    assert!(client
+        .extras_key(token, &rotated, Some(&private))
+        .await
+        .unwrap()
+        .is_none());
+    assert_eq!(fake.lock().unwrap().user_wraps, 1);
 
     // The space: made once, then the same id and key for everyone.
     let (id, key) = client.suite_space(token, "ssh", &opened).await.unwrap();

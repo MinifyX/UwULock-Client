@@ -7,25 +7,43 @@
 //! server keeps the extras key wrapped twice (`/uwu/v1/keys`):
 //!
 //! - `userKeyWrapped`: the 64-byte key as a type 2 value under the user key;
-//! - `publicKeyWrapped`: the same key RSA-OAEP-SHA1-wrapped for the account's
-//!   public key (type 4), the way an organisation key is wrapped for a member.
+//! - `privateKeyWrapped`: the same key as a type 2 value under a key derived
+//!   from the account's RSA **private** key ([`private_wrap_key`]).
+//!
+//! Both are made with a secret the server never has, so the server can't hand
+//! out an extras key of its own choosing: whatever it would learn from that
+//! (suite space keys, file-request link secrets) stays out of its reach. An
+//! RSA wrap for the public key (type 4, how 0.3's betas did it) can't be told
+//! apart from one the server made — it knows the public key — so it is never
+//! taken.
 //!
 //! Bitwarden's clients keep the key pair when they rotate, so after an
 //! official rotation the server drops `userKeyWrapped` and the next UwULock
 //! client opens the key with the private key and wraps it again for the new
-//! user key ([`resolve`] says so with [`Resolved::rewrap`]).
+//! user key ([`resolve`] says so with `rewrap`). A key made before
+//! `privateKeyWrapped` existed gets it the next time a client opens it
+//! (`private_wrap`). Whenever both wraps are there and the private key is at
+//! hand, they must hold the same key.
 //!
 //! Also here: what lives under the extras key or next to it — a suite
 //! space's key ([`SpaceKey`]), an own icon ([`seal_icon`]), and re-encrypting
 //! entry versions for a rotation made by UwULock itself
 //! ([`reencrypt_version`]).
 
+use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::Sha256;
+use subtle::ConstantTimeEq;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
-use crate::crypto::{wrap_for, EncString, PrivateKey, PublicKey, SymmetricKey};
+use crate::crypto::{EncString, PrivateKey, SymmetricKey};
 use crate::Error;
+
+/// HKDF-SHA256 salt of [`private_wrap_key`].
+pub const PRIVATE_WRAP_SALT: &str = "uwulock-extras-key-v1";
+/// HKDF-SHA256 info of [`private_wrap_key`].
+pub const PRIVATE_WRAP_INFO: &str = "private-key-wrap";
 
 /// The extras key as `GET /uwu/v1/keys` hands it out (`extrasKey`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -35,8 +53,10 @@ pub struct WrappedExtrasKey {
     /// client wraps it again.
     #[serde(default)]
     pub user_key_wrapped: Option<String>,
+    /// `null` for a key made before this wrap existed, until a UwULock client
+    /// adds it.
     #[serde(default)]
-    pub public_key_wrapped: Option<String>,
+    pub private_key_wrapped: Option<String>,
     #[serde(default)]
     pub revision_date: Option<String>,
 }
@@ -59,7 +79,7 @@ pub struct Keys {
 #[serde(rename_all = "camelCase")]
 pub struct ExtrasKeyRequest {
     pub user_key_wrapped: String,
-    pub public_key_wrapped: String,
+    pub private_key_wrapped: String,
 }
 
 /// The body of `PUT /uwu/v1/keys/user-wrap`.
@@ -67,6 +87,13 @@ pub struct ExtrasKeyRequest {
 #[serde(rename_all = "camelCase")]
 pub struct UserWrapRequest {
     pub user_key_wrapped: String,
+}
+
+/// The body of `PUT /uwu/v1/keys/private-wrap`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrivateWrapRequest {
+    pub private_key_wrapped: String,
 }
 
 /// A fresh extras key and both its wraps, for `POST /uwu/v1/keys`.
@@ -83,27 +110,56 @@ impl std::fmt::Debug for NewExtrasKey {
     }
 }
 
+/// The key `privateKeyWrapped` is under: HKDF-SHA256 over the account's
+/// private key as PKCS#8 DER ([`PrivateKey::to_der`], so it doesn't depend on
+/// how the client that made the key pair encoded it), salt
+/// [`PRIVATE_WRAP_SALT`], info [`PRIVATE_WRAP_INFO`], 64 bytes (32 for
+/// AES-256, 32 for HMAC-SHA256).
+pub fn private_wrap_key(private: &PrivateKey) -> Result<SymmetricKey, Error> {
+    let der = private.to_der()?;
+    let hkdf = hkdf::Hkdf::<Sha256>::new(Some(PRIVATE_WRAP_SALT.as_bytes()), &der);
+    let mut bytes = Zeroizing::new([0u8; 64]);
+    hkdf.expand(PRIVATE_WRAP_INFO.as_bytes(), bytes.as_mut())
+        .expect("64 bytes is a valid length");
+    SymmetricKey::from_bytes(bytes.as_ref())
+}
+
+/// Tells extras keys apart without showing them: the first 16 bytes of
+/// HMAC-SHA256 under the key over `uwulock-extras-key-id-v1`, in hex. A
+/// client keeps it to notice when the account's extras key is a different one
+/// than last time (someone started over).
+pub fn key_id(extras: &SymmetricKey) -> String {
+    let bytes = extras.to_bytes();
+    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(&bytes).expect("any key length");
+    mac.update(b"uwulock-extras-key-id-v1");
+    mac.finalize().into_bytes()[..16]
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
 /// Makes an extras key: 64 random bytes, wrapped for the user key and for the
-/// account's public key (SPKI DER, from the token response's
-/// `AccountKeys.publicKeyEncryptionKeyPair.publicKey` or from
-/// `PrivateKey::public`).
-pub fn create(user_key: &SymmetricKey, public_key: &PublicKey) -> Result<NewExtrasKey, Error> {
+/// account's private key (the profile's `privateKey`, opened).
+pub fn create(user_key: &SymmetricKey, private_key: &PrivateKey) -> Result<NewExtrasKey, Error> {
     let key = SymmetricKey::generate();
-    let request = wrap(&key, user_key, public_key)?;
+    let request = wrap(&key, user_key, private_key)?;
     Ok(NewExtrasKey { key, request })
 }
 
 /// Both wraps of an existing extras key: for a new user key in a rotation
-/// made by UwULock (`POST /uwu/v1/accounts/rotate-keys`), or when the key
-/// pair changed.
+/// made by UwULock (`POST /uwu/v1/accounts/rotate-keys`).
 pub fn wrap(
     extras: &SymmetricKey,
     user_key: &SymmetricKey,
-    public_key: &PublicKey,
+    private_key: &PrivateKey,
 ) -> Result<ExtrasKeyRequest, Error> {
     Ok(ExtrasKeyRequest {
         user_key_wrapped: EncString::encrypt(&extras.to_bytes(), user_key).to_string(),
-        public_key_wrapped: wrap_for(public_key, extras)?.to_string(),
+        private_key_wrapped: EncString::encrypt(
+            &extras.to_bytes(),
+            &private_wrap_key(private_key)?,
+        )
+        .to_string(),
     })
 }
 
@@ -120,19 +176,28 @@ pub enum Resolved {
         /// the private key, and `PUT /uwu/v1/keys/user-wrap` should get this.
         /// A failed PUT costs nothing but doing it again next time.
         rewrap: Option<UserWrapRequest>,
+        /// The key has no `privateKeyWrapped` yet (made before it existed):
+        /// `PUT /uwu/v1/keys/private-wrap` should get this, so it survives
+        /// an official rotation. Best effort too.
+        private_wrap: Option<PrivateWrapRequest>,
     },
-    /// Neither wrap opens any more (`lost`): the key pair was replaced. The
-    /// person is asked whether to start over.
+    /// Nothing opens it here: the key pair was replaced (`lost`), or only a
+    /// wrap is left that this client can't open or mustn't trust. The person
+    /// is asked whether to start over.
     Lost,
 }
 
 /// Opens the extras key, or says how to get one.
 ///
 /// `private_key` is the account's own (the profile's `privateKey` under the
-/// user key); it is only needed after an official rotation, and to make a new
-/// key (its public half is what the second wrap is for). Without it, a key
-/// that exists but has no user wrap is [`Resolved::Lost`] for this client
-/// only — nothing is written.
+/// user key). It is needed after an official rotation, to make a new key, and
+/// to add or check `privateKeyWrapped`. Without it, a key that exists but has
+/// no user wrap is [`Resolved::Lost`] for this client only — nothing is
+/// written.
+///
+/// An error, not `Lost`, when a wrap is there but wrong: the user wrap doesn't
+/// open under the user key, `privateKeyWrapped` isn't type 2, or the two
+/// wraps hold different keys. A server can do that, an honest one doesn't.
 pub fn resolve(
     keys: &Keys,
     user_key: &SymmetricKey,
@@ -145,28 +210,69 @@ pub fn resolve(
         let private = private_key.ok_or_else(|| {
             Error::Crypto("the account has no key pair to wrap an extras key for".into())
         })?;
-        return Ok(Resolved::Create(create(user_key, &private.public())?));
+        return Ok(Resolved::Create(create(user_key, private)?));
     };
+    let bound = private_key.map(private_wrap_key).transpose()?;
+    let under_private = wrapped
+        .private_key_wrapped
+        .as_deref()
+        .map(parse_private_wrap)
+        .transpose()?;
     if let Some(under_user) = &wrapped.user_key_wrapped {
         let key = under_user.parse::<EncString>()?.decrypt_key(user_key)?;
-        return Ok(Resolved::Open { key, rewrap: None });
+        let private_wrap = match (&under_private, &bound) {
+            (Some(under_private), Some(bound)) => {
+                let other = under_private.decrypt_key(bound).map_err(|_| disagree())?;
+                if !bool::from(other.to_bytes().as_slice().ct_eq(key.to_bytes().as_slice())) {
+                    return Err(disagree());
+                }
+                None
+            }
+            (None, Some(bound)) => Some(PrivateWrapRequest {
+                private_key_wrapped: EncString::encrypt(&key.to_bytes(), bound).to_string(),
+            }),
+            (_, None) => None,
+        };
+        return Ok(Resolved::Open {
+            key,
+            rewrap: None,
+            private_wrap,
+        });
     }
-    let (Some(under_public), Some(private)) = (&wrapped.public_key_wrapped, private_key) else {
+    let (Some(under_private), Some(bound)) = (&under_private, &bound) else {
         return Ok(Resolved::Lost);
     };
-    let key = under_public
-        .parse::<EncString>()?
-        .decrypt_key_rsa(private)
-        .map_err(|_| {
-            Error::Crypto("the extras key doesn't open with this account's private key".into())
-        })?;
+    let key = under_private.decrypt_key(bound).map_err(|_| {
+        Error::Crypto("the extras key doesn't open with this account's private key".into())
+    })?;
     let rewrap = UserWrapRequest {
         user_key_wrapped: EncString::encrypt(&key.to_bytes(), user_key).to_string(),
     };
     Ok(Resolved::Open {
         key,
         rewrap: Some(rewrap),
+        private_wrap: None,
     })
+}
+
+/// `privateKeyWrapped`, which has to be type 2: a type 4 value is what
+/// anyone with the public key can make.
+fn parse_private_wrap(text: &str) -> Result<EncString, Error> {
+    match text.parse::<EncString>()? {
+        enc @ EncString::AesCbc256HmacSha256 { .. } => Ok(enc),
+        _ => Err(Error::Crypto(
+            "the server offered an extras key that isn't bound to this account's private key"
+                .into(),
+        )),
+    }
+}
+
+fn disagree() -> Error {
+    Error::Crypto(
+        "the extras key's wraps don't match this account's keys; the server may have changed \
+         one of them"
+            .into(),
+    )
 }
 
 // ── Suite spaces ───────────────────────────────────────────
