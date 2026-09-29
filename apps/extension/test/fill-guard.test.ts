@@ -1,8 +1,9 @@
 // @vitest-environment node
 /**
  * Which frame gets an item's values (background/autofill.ts): only a frame whose own address
- * matches the item; a pick in the popup reaches the page itself but never its iframes; plain
- * http asks first; an offer is only good for its tab, its item and a few seconds.
+ * matches the item; a pick in the popup reaches the page itself but never its iframes; cards
+ * and addresses only the page and frames of its origin; plain http asks first; an offer is
+ * only good for its tab, its item and a few seconds.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -157,15 +158,28 @@ describe('filling', () => {
     expect((await fill(plain, 'bank', undefined, true)).filled).toBe(true);
   });
 
-  it('cards from the popup only into the page and frames of its own origin', async () => {
+  it('cards only into the page and frames of its own origin, offer or not', async () => {
     const token = await offered(7, 'card', true);
     const payment = frame('https://pay.example/card', 5);
-    expect(await fill(payment, 'card', token, false)).toEqual({
-      filled: false,
-      reason: 'no-match',
-    });
-    // Picked in that frame's own menu, it may.
-    expect((await fill(payment, 'card', undefined, false)).filled).toBe(true);
+    const refused = { filled: false, reason: 'no-match' };
+    expect(await fill(payment, 'card', token, false)).toEqual(refused);
+    // Not from a pick in that frame's own menu either: an ad's frame could fake one.
+    expect(await fill(payment, 'card', undefined, false)).toEqual(refused);
+    const own = frame('https://bank.example/checkout', 4);
+    expect((await fill(own, 'card', undefined, false)).filled).toBe(true);
+    expect((await fill(frame('https://bank.example/'), 'card', undefined, false)).filled).toBe(
+      true,
+    );
+  });
+
+  it('lists cards and addresses to the page and frames of its own origin only', async () => {
+    expect((await pageInfo(frame('https://ads.example/', 2))).cards).toEqual([]);
+    expect((await pageInfo(frame('https://bank.example/pay', 2))).cards.map((c) => c.id)).toEqual([
+      'card',
+    ]);
+    expect((await pageInfo(frame('https://bank.example/'))).cards.map((c) => c.id)).toEqual([
+      'card',
+    ]);
   });
 
   it('lists names, never values, and only the frame’s own logins', async () => {

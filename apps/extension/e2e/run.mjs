@@ -6,7 +6,8 @@
 //    port, an account registered by invitation — crypto done here the way Bitwarden's apps do it;
 // 2. the built extension (dist/chromium) in Chromium: log in through the popup;
 // 3. a login page: sign in by hand, the save bar offers to save it, save;
-// 4. the same page again: the inline menu fills it;
+// 4. the same page again: the inline menu fills it — but not while the page lays a see-through
+//    layer over it that lets clicks through (clickjacking);
 // 5. a WebAuthn page: register a passkey in the vault, sign in with it, the page checks the
 //    signature with WebCrypto.
 //
@@ -151,30 +152,44 @@ function extensionCopy() {
   return dir;
 }
 
+/** The accessibility tree's node for `role` and `name` (or a name starting with it). */
+async function findAx(cdp, role, name, prefix = false) {
+  const { nodes } = await cdp.send('Accessibility.getFullAXTree');
+  return nodes.find(
+    (n) =>
+      !n.ignored &&
+      n.role?.value === role &&
+      (prefix ? String(n.name?.value ?? '').startsWith(name) : n.name?.value === name),
+  );
+}
+
+async function hasAx(page, role, name, { prefix = false } = {}) {
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    return Boolean((await findAx(cdp, role, name, prefix))?.backendDOMNodeId);
+  } finally {
+    await cdp.detach().catch(() => undefined);
+  }
+}
+
 /**
  * Clicks what the accessibility tree calls `name`: the extension draws its menu and bar in
  * closed shadow roots, which no selector reaches — like assistive technology, the test finds
  * them by role and name. It waits until the element has been there a moment, as the extension
- * ignores clicks on what just appeared.
+ * ignores clicks on what just appeared (half a second).
  */
 async function clickAx(page, role, name, { prefix = false } = {}) {
   const cdp = await page.context().newCDPSession(page);
   try {
     let seen = 0;
     const box = await until(`${role} “${name}”`, async () => {
-      const { nodes } = await cdp.send('Accessibility.getFullAXTree');
-      const node = nodes.find(
-        (n) =>
-          !n.ignored &&
-          n.role?.value === role &&
-          (prefix ? String(n.name?.value ?? '').startsWith(name) : n.name?.value === name),
-      );
+      const node = await findAx(cdp, role, name, prefix);
       if (!node?.backendDOMNodeId) {
         seen = 0;
         return null;
       }
       seen ||= Date.now();
-      if (Date.now() - seen < 400) return null;
+      if (Date.now() - seen < 800) return null;
       const { model } = await cdp.send('DOM.getBoxModel', { backendNodeId: node.backendDOMNodeId });
       return model.content;
     });
@@ -251,6 +266,34 @@ async function main() {
       async () =>
         (await site.locator('#username').inputValue()) === SITE_USER &&
         (await site.locator('#password').inputValue()) === SITE_PASSWORD,
+    );
+
+    step('A see-through layer over the menu that lets clicks through: the menu takes none');
+    await site.goto(`${pages.url}/login`);
+    await site.locator('#username').click();
+    // The page's decoy, in the top layer above any z-index, with `pointer-events: none`.
+    await site.evaluate(() => {
+      const layer = document.createElement('div');
+      layer.id = 'decoy';
+      layer.popover = 'manual';
+      layer.textContent = 'Click twice to accept cookies';
+      layer.style.cssText =
+        'pointer-events:none;inset:0;width:100vw;height:100vh;margin:0;border:0;opacity:0.9';
+      document.body.append(layer);
+      layer.showPopover();
+    });
+    await clickAx(site, 'button', 'Open the UwULock menu');
+    // The list would open on the click itself; after a round trip to the page it is there or not.
+    await site.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+    if (await hasAx(site, 'option', 'localhost', { prefix: true })) {
+      throw new Error('The inline menu took a click through a layer over it');
+    }
+    await site.evaluate(() => document.getElementById('decoy').hidePopover());
+    await clickAx(site, 'button', 'Open the UwULock menu');
+    await clickAx(site, 'option', 'localhost', { prefix: true });
+    await until(
+      'the form filled once the layer is gone',
+      async () => (await site.locator('#password').inputValue()) === SITE_PASSWORD,
     );
 
     step('A passkey: register it in the vault');

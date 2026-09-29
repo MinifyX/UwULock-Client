@@ -9,6 +9,10 @@
  * when somebody explicitly picks an item in the popup for a page it doesn't match, the top
  * frame may have it — never an iframe. Plain http pages ask first.
  *
+ * Cards and addresses have no address to match. They are listed to, and filled into, only the
+ * page itself and frames from the same origin as it — never an ad's or another site's frame,
+ * whatever that frame asks — and only after somebody picked one, in the page's menu or the popup.
+ *
  * Sent logins are kept in the background's memory, and offered to save in the page's
  * notification bar — or, while the vault is locked, in `storage.session` until it is unlocked.
  */
@@ -106,6 +110,20 @@ function state(): Promise<PageInfo['state']> {
   return session.vaultState();
 }
 
+/** The frame is the page itself, or from the same origin as the page's top frame. */
+export function sameOriginAsTop(sender: Sender): boolean {
+  if (sender.frameId === 0) return true;
+  const tabId = sender.tab?.id;
+  const top = (tabId !== undefined ? tabUrls.get(tabId) : undefined) ?? sender.tab?.url;
+  if (!top || !sender.url) return false;
+  try {
+    const origin = new URL(sender.url).origin;
+    return origin !== 'null' && origin === new URL(top).origin;
+  } catch {
+    return false;
+  }
+}
+
 /** What a content script may know about its frame. */
 export async function pageInfo(sender: Sender): Promise<PageInfo> {
   const url = sender.url ?? '';
@@ -116,11 +134,12 @@ export async function pageInfo(sender: Sender): Promise<PageInfo> {
   }
   const config = await settings();
   const unlocked = Boolean(session.unlockedAccountId());
+  const own = unlocked && sameOriginAsTop(sender);
   return {
     state: await state(),
     logins: unlocked ? (await matchingLogins(url)).map(pageItem) : [],
-    cards: unlocked ? ofKind('card').map(pageItem) : [],
-    identities: unlocked ? ofKind('identity').map(pageItem) : [],
+    cards: own ? ofKind('card').map(pageItem) : [],
+    identities: own ? ofKind('identity').map(pageItem) : [],
     insecure: isInsecureUrl(url),
     inlineMenu: config.inlineMenu && isFillableUrl(url),
     savePrompt: config.savePrompt && isFillableUrl(url),
@@ -209,11 +228,10 @@ export async function fill(
     );
     // An item picked for a page it doesn't match goes to that page itself, not into its frames.
     if (!matches && !(fromOffer?.explicit && sender.frameId === 0)) return refuse('no-match');
-  } else if (fromOffer && sender.frameId !== 0) {
-    // Cards and addresses have no address to match: from the popup only into the page itself,
-    // from the page's own menu into the frame it was picked in.
-    const top = tabUrls.get(tabId);
-    if (!top || new URL(top).origin !== new URL(url).origin) return refuse('no-match');
+  } else if (!sameOriginAsTop(sender)) {
+    // Cards and addresses have no address to match: only into the page itself, or a frame of
+    // its own origin — with an offer from the popup or without, from the page's own menu.
+    return refuse('no-match');
   }
 
   if (isInsecureUrl(url) && !confirmedInsecure && !fromOffer?.insecureOk) return refuse('insecure');
