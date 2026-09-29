@@ -9,6 +9,24 @@ Vaultwarden sees none of it — except **Share as Send**, which works there too.
 Everything stays end-to-end encrypted: what the server keeps for these extras
 it keeps encrypted, and the app decrypts it on your computer.
 
+## When the admin switches an extra off
+
+Since UwULock Server 0.6.0-beta.2 an admin can switch each extra off
+(_Admin portal → Features_). The app follows at once — the server tells it
+through the live connection, and every sync asks again:
+
+- menus, buttons, marks and windows of that extra go away (an open window
+  closes, the _Due for a new password_ list goes back to all items);
+- nothing of it is fetched any more, and what the sync still brings for it
+  (reminders, own icons, masked addresses, travel mode, file request badges)
+  isn't shown — it stays in the offline copy, so it is all back when the admin
+  switches it on again;
+- should a click still reach the server in the meantime, the app says calmly
+  that the server doesn't offer it any more and catches up; no error, no
+  retrying.
+
+A server before 0.6.0-beta.2 has no switches: the app offers what it lists.
+
 ## Item icons
 
 - **Website icons** come from your UwULock Server, which fetches and caches
