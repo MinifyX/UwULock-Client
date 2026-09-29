@@ -16,7 +16,7 @@
 
 import { hasFeature } from './uwu';
 import { extrasKey } from './extras';
-import { uwu } from './http';
+import { readBody, uwu } from './http';
 import { endpoints } from './server';
 import { settings } from './settings';
 import type { Account } from './store';
@@ -101,13 +101,15 @@ async function limited<T>(work: () => Promise<T>): Promise<T> {
 
 async function fetchAutomatic(base: string, host: string): Promise<string | null> {
   try {
+    // Only from the account's own server: a redirect elsewhere is not followed.
     const response = await fetch(`${base}/${encodeURIComponent(host)}/icon.png`, {
       credentials: 'omit',
+      redirect: 'error',
     });
     if (!response.ok) return null;
     if (!(response.headers.get('Content-Type') ?? '').startsWith('image/png')) return null;
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (!bytes.length || bytes.length > MAX_ICON_BYTES) return null;
+    const bytes = await readBody(response, MAX_ICON_BYTES);
+    if (!bytes.length) return null;
     return `data:image/png;base64,${base64(bytes)}`;
   } catch {
     return null;

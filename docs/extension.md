@@ -70,6 +70,8 @@ release checks the download (see the [install guide](install.md)).
   page's own address by WebAuthn's rules, on `https://` pages (and `http://localhost`).
 - The clipboard is cleared after 30 seconds (adjustable). No remote code, a strict content
   security policy, and the extension asks for access to your server only when you log in.
+  Requests to your server never follow a redirect (one would send the login form or the session
+  somewhere else), and no answer is read past a size limit.
 
 ## Install in Chrome, Edge, Brave, Vivaldi or Opera
 

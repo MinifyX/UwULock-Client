@@ -11,7 +11,7 @@
 import type { Draft, ItemDetail, ItemSummary, Overview, TotpCode } from '../shared/protocol';
 import { equivalentDomains, type EquivalentDomains } from '../shared/uri';
 import { changed } from './events';
-import { ApiError, failure, request } from './http';
+import { ApiError, failure, MAX_SYNC_BYTES, request } from './http';
 import * as live from './live';
 import { uwuInfo } from './uwu';
 import { type Account, cacheSync, updateAccount } from './store';
@@ -116,7 +116,9 @@ export async function sync(account: Account): Promise<void> {
   try {
     // Asked first: a change made while the sync runs shows up as newer the next time.
     const revision = await revisionDate(account).catch(() => null);
-    const body = await request<Record<string, unknown>>(account, '/api/sync?excludeDomains=false');
+    const body = await request<Record<string, unknown>>(account, '/api/sync?excludeDomains=false', {
+      maxBytes: MAX_SYNC_BYTES,
+    });
     const text = JSON.stringify(body);
     await open(account, text);
     await cacheSync(account.id, text);
