@@ -801,10 +801,14 @@ fn version_value(item: &Item, name: &str) -> Option<Zeroizing<String>> {
 
 /// What differs between a version (`old`) and the item now (`new`).
 fn compare(old: &Item, new: &Item) -> Vec<Change> {
+    // A value is secret when it is on either side: custom fields compare by
+    // index, so a deleted hidden field moves a text field into its place, and
+    // the hidden value of the version must not show in clear because of that.
     let mut names = value_names(new);
     for (name, secret) in value_names(old) {
-        if !names.iter().any(|(n, _)| *n == name) {
-            names.push((name, secret));
+        match names.iter_mut().find(|(n, _)| *n == name) {
+            Some((_, known)) => *known |= secret,
+            None => names.push((name, secret)),
         }
     }
     let label = |item: &Item, name: &str| {
@@ -2346,6 +2350,34 @@ mod tests {
         let mut elsewhere = input(1, true);
         elsewhere.send_domain_id = Some("d1".into());
         assert!(checked_input(&elsewhere, None).is_err());
+    }
+
+    #[test]
+    fn a_field_hidden_on_either_side_stays_hidden() {
+        // The version had a hidden "PIN" first and a text "Note" second; the
+        // PIN was deleted since, so the note is field 0 now.
+        let mut old = item();
+        old.fields.push(Field {
+            name: Some(Zeroizing::new("Note".into())),
+            value: Some(Zeroizing::new("plain".into())),
+            kind: FieldKind::Text,
+            linked_id: None,
+        });
+        let mut new = old.clone();
+        new.fields.remove(0);
+
+        let changes = compare(&old, &new);
+        let first = changes.iter().find(|c| c.field == "field:0").unwrap();
+        assert_eq!(first.kind, "changed");
+        assert!(first.secret && first.before.is_none() && first.after.is_none());
+        let second = changes.iter().find(|c| c.field == "field:1").unwrap();
+        assert_eq!(second.kind, "removed");
+        assert!(!second.secret && second.before.as_deref() == Some("plain"));
+
+        // And the other way round: a text field that is hidden now.
+        let changes = compare(&new, &old);
+        let first = changes.iter().find(|c| c.field == "field:0").unwrap();
+        assert!(first.secret && first.before.is_none() && first.after.is_none());
     }
 
     #[test]
