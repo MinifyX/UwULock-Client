@@ -569,4 +569,20 @@ async fn a_device_gives_its_icon() {
     assert!(icons::device_icon("https://shop.example.com")
         .await
         .is_err());
+
+    // A start page naming icons on the internet: they aren't asked for (the
+    // fetch would tell a third party about the device), /favicon.ico is. By
+    // name this time, which the local-only resolver answers.
+    let elsewhere = FakeHttp::start(|request| match request.path.as_str() {
+        "/" => Answer::bytes(
+            "text/html",
+            br#"<link rel="icon" href="https://cdn.example.net/logo.png">"#.to_vec(),
+        ),
+        "/favicon.ico" => Answer::bytes("image/png", png(16, 16)),
+        _ => Answer::empty(404),
+    });
+    let by_name = elsewhere.url.replace("127.0.0.1", "localhost");
+    let icon = icons::device_icon(&by_name).await.unwrap();
+    assert_eq!(extras::png_size(&icon), Some((16, 16)));
+    assert_eq!(elsewhere.calls(), ["GET /", "GET /favicon.ico"]);
 }

@@ -275,14 +275,39 @@ fn attributes(tag: &str) -> Vec<(String, String)> {
     out
 }
 
+/// Resolves names for [`device_icon`] and keeps only addresses on the local
+/// network: a name that is local by its looks (`nas.local`) but points
+/// elsewhere, or a start page naming an icon on the internet, gets nothing.
+/// Checked at every connection, redirects and every icon link included, so
+/// a name can't change its answer between the check and the fetch.
+struct LocalOnly;
+
+impl reqwest::dns::Resolve for LocalOnly {
+    fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+        let host = name.as_str().to_string();
+        Box::pin(async move {
+            let found = tokio::net::lookup_host((host.as_str(), 0)).await?;
+            let local: Vec<std::net::SocketAddr> =
+                found.filter(|addr| local_ip(addr.ip())).collect();
+            if local.is_empty() {
+                return Err(format!("{host} isn't on the local network").into());
+            }
+            let addrs: reqwest::dns::Addrs = Box::new(local.into_iter());
+            Ok(addrs)
+        })
+    }
+}
+
 /// Fetches a device's icon from the device itself: the icons its start page
 /// names, then `/favicon.ico`, over the scheme the address has first (https
-/// without one) and then the other. Only for [`is_local_host`] addresses;
-/// short timeouts; redirects only within the local network.
+/// without one) and then the other. Only for [`is_local_host`] addresses that
+/// also resolve to local addresses ([`LocalOnly`]); only icon links and
+/// redirects within the local network; short timeouts.
 ///
 /// Devices on the local network rarely have a certificate anyone signed, so
 /// this one fetch doesn't check it: what comes back is only ever decoded as an
-/// image, and nothing is sent but the request for it.
+/// image, nothing is sent but the request for it, and it never leaves the
+/// local network.
 pub async fn device_icon(address: &str) -> Result<Vec<u8>, Error> {
     let with_scheme = if address.contains("://") {
         address.trim().to_string()
@@ -304,6 +329,7 @@ pub async fn device_icon(address: &str) -> Result<Vec<u8>, Error> {
         .connect_timeout(Duration::from_secs(3))
         .timeout(Duration::from_secs(6))
         .danger_accept_invalid_certs(true)
+        .dns_resolver(std::sync::Arc::new(LocalOnly))
         .redirect(reqwest::redirect::Policy::custom(|attempt| {
             let local = attempt.url().host_str().is_some_and(is_local_host);
             if attempt.previous().len() >= 3 || !local {
@@ -341,7 +367,11 @@ pub async fn device_icon(address: &str) -> Result<Vec<u8>, Error> {
             }
             Err(_) => Vec::new(),
         };
-        let mut candidates = icon_links(&String::from_utf8_lossy(&page), &base);
+        // A start page may name icons anywhere; only local ones are asked.
+        let mut candidates: Vec<url::Url> = icon_links(&String::from_utf8_lossy(&page), &base)
+            .into_iter()
+            .filter(|link| link.host_str().is_some_and(is_local_host))
+            .collect();
         if let Ok(ico) = base.join("/favicon.ico") {
             if !candidates.contains(&ico) {
                 candidates.push(ico);
@@ -419,6 +449,17 @@ mod tests {
         let out = to_png(ico.get_ref()).unwrap();
         assert_eq!(uwulock_core::extras::png_size(&out), Some((32, 32)));
         assert!(to_png(b"<html>not an image</html>").is_err());
+    }
+
+    #[tokio::test]
+    async fn names_resolve_only_to_local_addresses() {
+        use reqwest::dns::Resolve;
+        let resolve = |name: &str| LocalOnly.resolve(name.parse().unwrap());
+        let found: Vec<_> = resolve("localhost").await.unwrap().collect();
+        assert!(!found.is_empty() && found.iter().all(|a| a.ip().is_loopback()));
+        // A public address, as a name that looks local might answer.
+        assert!(resolve("192.0.2.1").await.is_err());
+        assert!(resolve("192.168.1.1").await.is_ok());
     }
 
     #[test]
