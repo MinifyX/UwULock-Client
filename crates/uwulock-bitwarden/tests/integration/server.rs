@@ -467,7 +467,7 @@ async fn two_devices_racing_for_the_extras_key_end_with_the_same_one() {
     assert_eq!(*again.to_bytes(), *a.to_bytes());
     // Made twice on purpose: 409 `exists`.
     let private = one.private_key().await;
-    let made = extras::create(&one.user_key, &private.public()).unwrap();
+    let made = extras::create(&one.user_key, &private).unwrap();
     let error = one
         .client
         .uwu_post(one.token(), "/keys", &made.request)
