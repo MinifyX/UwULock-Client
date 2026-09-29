@@ -2,46 +2,50 @@
  * What the content script shows in a page (the button and menu in fields, the notification
  * bar) lives in a closed shadow root on its own host element under `<html>`: the page can't
  * look inside, and its styles don't reach in. The host's own styles are set inline with
- * `!important`, which beats anything a page's style sheets say about it.
+ * `!important`, which beats anything a page's style sheets say about it, and are put back when
+ * the page's script changes them.
  *
- * The page can still see the host and cover or hide the whole document; `obscured()` refuses
- * clicks while the host or the root element is made see-through.
+ * The page can still draw over our UI, or make it nearly invisible, and trick somebody into
+ * clicking it (clickjacking). `createGuard()` accepts a click only when it can tell that the
+ * person saw what they clicked; see there.
  */
 
 const CSS = `
+/* Custom properties are the one thing 'all: initial' doesn't reset. Without '!important' a
+   page's rule for our host would win over ':host' and could make the menu see-through. */
 :host {
-  --uwu-surface: #ffffff;
-  --uwu-elevated: #fcf8fa;
-  --uwu-ink: #1c1420;
-  --uwu-muted: #716672;
-  --uwu-hairline: #f2e8ee;
-  --uwu-border: #e9dde4;
-  --uwu-pink: #ff4d8d;
-  --uwu-pink-solid: #e11d74;
-  --uwu-on-pink: #ffffff;
-  --uwu-pink-ink: #a3154f;
-  --uwu-pink-tint: #ffe4ef;
-  --uwu-alarm: #8e5510;
-  --uwu-shadow: 0 12px 32px rgba(28, 20, 32, 0.18), 0 2px 6px rgba(28, 20, 32, 0.08);
-  --uwu-font: 'Manrope Variable', 'Manrope', 'Segoe UI', system-ui, -apple-system, sans-serif;
-  color-scheme: light;
+  --uwu-surface: #ffffff !important;
+  --uwu-elevated: #fcf8fa !important;
+  --uwu-ink: #1c1420 !important;
+  --uwu-muted: #716672 !important;
+  --uwu-hairline: #f2e8ee !important;
+  --uwu-border: #e9dde4 !important;
+  --uwu-pink: #ff4d8d !important;
+  --uwu-pink-solid: #e11d74 !important;
+  --uwu-on-pink: #ffffff !important;
+  --uwu-pink-ink: #a3154f !important;
+  --uwu-pink-tint: #ffe4ef !important;
+  --uwu-alarm: #8e5510 !important;
+  --uwu-shadow: 0 12px 32px rgba(28, 20, 32, 0.18), 0 2px 6px rgba(28, 20, 32, 0.08) !important;
+  --uwu-font: 'Manrope Variable', 'Manrope', 'Segoe UI', system-ui, -apple-system, sans-serif !important;
+  color-scheme: light !important;
 }
 @media (prefers-color-scheme: dark) {
   :host {
-    --uwu-surface: #1c171f;
-    --uwu-elevated: #241e28;
-    --uwu-ink: #f8f2f6;
-    --uwu-muted: #b3a8b3;
-    --uwu-hairline: #2c2430;
-    --uwu-border: #3a3040;
-    --uwu-pink: #ff7fac;
-    --uwu-pink-solid: #ff7fac;
-    --uwu-on-pink: #1c1420;
-    --uwu-pink-ink: #ffa3c4;
-    --uwu-pink-tint: #3a1a2a;
-    --uwu-alarm: #d8a25c;
-    --uwu-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
-    color-scheme: dark;
+    --uwu-surface: #1c171f !important;
+    --uwu-elevated: #241e28 !important;
+    --uwu-ink: #f8f2f6 !important;
+    --uwu-muted: #b3a8b3 !important;
+    --uwu-hairline: #2c2430 !important;
+    --uwu-border: #3a3040 !important;
+    --uwu-pink: #ff7fac !important;
+    --uwu-pink-solid: #ff7fac !important;
+    --uwu-on-pink: #1c1420 !important;
+    --uwu-pink-ink: #ffa3c4 !important;
+    --uwu-pink-tint: #3a1a2a !important;
+    --uwu-alarm: #d8a25c !important;
+    --uwu-shadow: 0 12px 32px rgba(0, 0, 0, 0.5) !important;
+    color-scheme: dark !important;
   }
 }
 * { box-sizing: border-box; }
@@ -115,9 +119,11 @@ function addStyles(root: ShadowRoot, extra: string) {
 
 export type Host = { host: HTMLElement; root: ShadowRoot };
 
-/** A host under `<html>`, on top of everything, with a closed shadow root and our styles. */
-export function createHost(extraCss: string): Host {
-  const host = document.createElement('div');
+/** Our hosts in this document, which may sit on top of each other. */
+const hosts = new WeakSet<Element>();
+
+function pinHost(host: HTMLElement) {
+  host.removeAttribute('style');
   const set = (name: string, value: string) => host.style.setProperty(name, value, 'important');
   set('all', 'initial');
   set('position', 'fixed');
@@ -131,28 +137,291 @@ export function createHost(extraCss: string): Host {
   set('opacity', '1');
   set('pointer-events', 'auto');
   set('z-index', '2147483647');
+}
+
+/** A host under `<html>`, on top of everything, with a closed shadow root and our styles. */
+export function createHost(extraCss: string): Host {
+  const host = document.createElement('div');
+  pinHost(host);
   const root = host.attachShadow({ mode: 'closed' });
   addStyles(root, extraCss);
+  hosts.add(host);
   document.documentElement.append(host);
   return { host, root };
 }
 
-/** The host, or the whole page, is made (nearly) invisible: a click on it wasn't meant. */
-export function obscured(host: HTMLElement): boolean {
-  const view = host.ownerDocument.defaultView;
-  if (!view) return true;
-  for (const el of [host, host.ownerDocument.documentElement]) {
-    const style = view.getComputedStyle(el);
-    if (style.visibility === 'hidden' || style.display === 'none') return true;
-    if (style.opacity && Number(style.opacity) < 0.9) return true;
-    if (style.filter && style.filter !== 'none' && /opacity|blur/.test(style.filter)) return true;
+// ── Seeing before clicking ────────────────────────────────
+
+/** Clicks sooner than this after our UI appeared, moved or the page changed around it were not aimed at it. */
+export const MIN_SHOW_MS = 500;
+/** How long the browser's own visibility check must have seen it whole before a click. */
+const VISIBLE_MS = 300;
+
+/** Where the browser can tell whether an element is really seen (Chromium's IntersectionObserver v2). */
+const tracksVisibility =
+  typeof IntersectionObserverEntry !== 'undefined' &&
+  'isVisible' in IntersectionObserverEntry.prototype;
+
+/** In a frame from another origin than the page around it, which could hide or cover it. */
+export function inForeignFrame(): boolean {
+  try {
+    if (window.top === window) return false;
+    return window.top!.location.origin !== location.origin;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * A filter that makes things faint, blurry, washed out or grey, or does whatever an SVG filter
+ * does. A colour filter (a dark mode's invert and hue-rotate) is fine.
+ */
+export function hidingFilter(filter: string): boolean {
+  if (!filter || filter === 'none') return false;
+  if (/url\(/.test(filter)) return true;
+  for (const [, name, raw] of filter.matchAll(/([a-z-]+)\(([^)]*)\)/g)) {
+    const text = (raw ?? '').trim();
+    const value = text.endsWith('%') ? parseFloat(text) / 100 : parseFloat(text);
+    if (name === 'blur') {
+      if (parseFloat(text) > 0.5) return true;
+      continue;
+    }
+    if (Number.isNaN(value)) continue;
+    if (name === 'opacity' && value < 0.9) return true;
+    if (name === 'brightness' && (value < 0.5 || value > 3)) return true;
+    if (name === 'contrast' && value < 0.5) return true;
+    if (name === 'invert' && value > 0.3 && value < 0.7) return true;
   }
   return false;
 }
 
-/** A trusted event, and the page isn't hiding our UI. */
-export function genuine(event: Event, host: HTMLElement): boolean {
-  return event.isTrusted && !obscured(host);
+/** The host, or the whole page, is made (nearly) invisible, clipped, masked or blended away. */
+export function obscured(host: HTMLElement): boolean {
+  const doc = host.ownerDocument;
+  const view = doc.defaultView;
+  if (!view || host.parentNode !== doc.documentElement) return true;
+  for (const el of [host, doc.documentElement]) {
+    const style = view.getComputedStyle(el);
+    if (style.visibility !== 'visible' || style.display === 'none') return true;
+    if (style.opacity && Number(style.opacity) < 0.9) return true;
+    if (hidingFilter(style.filter)) return true;
+    if (style.clipPath && style.clipPath !== 'none') return true;
+    const mask =
+      style.getPropertyValue('mask-image') || style.getPropertyValue('-webkit-mask-image');
+    if (mask && mask !== 'none') return true;
+    if (style.mixBlendMode && style.mixBlendMode !== 'normal') return true;
+    // In a 3D context, depth decides what is on top, not the z-index.
+    if (style.transformStyle === 'preserve-3d') return true;
+  }
+  const own = view.getComputedStyle(host);
+  if (own.position !== 'fixed' || own.zIndex !== '2147483647') return true;
+  // `html::after` comes after our host and paints over it at the same z-index.
+  const after = view.getComputedStyle(doc.documentElement, '::after');
+  if (after.content && after.content !== 'none' && after.display !== 'none') return true;
+  return false;
+}
+
+function rendered(el: Element): boolean {
+  if (el instanceof HTMLStyleElement || el instanceof HTMLScriptElement) return false;
+  if (el instanceof HTMLHeadElement || el instanceof HTMLBodyElement) return false;
+  return getComputedStyle(el).display !== 'none';
+}
+
+/** Something that is drawn above any z-index: the top layer, or what comes after our host. */
+function coveredFromAbove(host: HTMLElement): boolean {
+  // The top layer (popovers, modal dialogs, full screen) is above every z-index, and a layer
+  // with `pointer-events: none` over us isn't found by hit testing.
+  for (const selector of [':popover-open', ':modal', ':fullscreen']) {
+    let found: Element[];
+    try {
+      found = Array.from(document.querySelectorAll(selector));
+    } catch {
+      continue;
+    }
+    if (found.some((el) => !hosts.has(el))) return true;
+  }
+  for (let el = host.nextElementSibling; el; el = el.nextElementSibling) {
+    if (!hosts.has(el) && rendered(el)) return true;
+  }
+  return false;
+}
+
+/** Whether a click at (x, y) lands on `el` of our host. */
+function hits(host: Host, el: Element, x: number, y: number): boolean {
+  if (document.elementFromPoint(x, y) !== host.host) return false;
+  const inner = host.root.elementFromPoint?.(x, y);
+  return inner === undefined || (inner !== null && el.contains(inner));
+}
+
+/**
+ * `el` is where it is drawn, at full size, and nothing of the page is on top of it: the same
+ * element answers at its middle and near its corners, and nothing is above our host.
+ */
+export function uncovered(host: Host, el: HTMLElement): boolean {
+  if (obscured(host.host) || coveredFromAbove(host.host)) return false;
+  const rect = el.getBoundingClientRect();
+  if (rect.width < 4 || rect.height < 4) return false;
+  // A transform on the page's root shrinks what we drew; the layout size doesn't know.
+  if (rect.width < el.offsetWidth * 0.9 || rect.height < el.offsetHeight * 0.9) return false;
+  let tested = 0;
+  for (const [fx, fy] of [
+    [0.5, 0.5],
+    [0.15, 0.2],
+    [0.85, 0.2],
+    [0.15, 0.8],
+    [0.85, 0.8],
+  ] as const) {
+    const x = rect.left + rect.width * fx;
+    const y = rect.top + rect.height * fy;
+    if (x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight) continue;
+    if (!hits(host, el, x, y)) return false;
+    tested += 1;
+  }
+  return tested > 0;
+}
+
+export type Guard = {
+  /** The UI was just shown or moved: the clock starts again. */
+  shown: () => void;
+  /** Checks `el` (and what is inside it) with the browser's visibility tracking, where it has one. */
+  watch: (el: Element) => void;
+  /**
+   * Whether `event` (a click, or Enter/Space) is somebody knowingly using `el`: a real event;
+   * a pointer that went down on `el` while it had been shown, unchanged and uncovered for a
+   * moment and is still over it; or the keyboard with the focus in `el`.
+   */
+  accepts: (event: Event, el: HTMLElement) => boolean;
+  /** Whether picks can be checked at all here (not in a frame from another origin that could hide it, unless the browser tracks visibility). */
+  verifiable: boolean;
+  dispose: () => void;
+};
+
+export function createGuard(ui: Host, now: () => number = () => performance.now()): Guard {
+  let shownAt = now();
+  let press: { pressed: HTMLElement | null; ok: boolean } | null = null;
+  const watched = new Map<Element, number | null>();
+  let repinned = 0;
+
+  const visibleEnough = (el: Element, at: number): boolean => {
+    if (!tracksVisibility) return true;
+    for (const [target, since] of watched) {
+      if (target.contains(el)) return since !== null && at - since >= VISIBLE_MS;
+    }
+    return false;
+  };
+
+  const seen = (el: HTMLElement, at: number): boolean =>
+    at - shownAt >= MIN_SHOW_MS && visibleEnough(el, at) && uncovered(ui, el);
+
+  const intersections = tracksVisibility
+    ? new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            const visible = (entry as IntersectionObserverEntry & { isVisible?: boolean })
+              .isVisible;
+            const before = watched.get(entry.target) ?? null;
+            watched.set(entry.target, visible ? (before ?? now()) : null);
+          }
+        },
+        { trackVisibility: true, delay: 100, threshold: [1] } as IntersectionObserverInit,
+      )
+    : null;
+
+  // The page changing the styles around us (or ours) starts the clock again; our host's own
+  // styles are put back.
+  const pinned = ui.host.style.cssText;
+  const mutations = new MutationObserver((records) => {
+    const restyled = records.some(
+      (record) => record.target === ui.host && record.attributeName === 'style',
+    );
+    if (restyled && ui.host.style.cssText !== pinned && repinned < 50) {
+      repinned += 1;
+      pinHost(ui.host);
+    }
+    lastAgain();
+    shownAt = now();
+  });
+  // Something added after our host would be drawn over it: go last again, unless that takes
+  // the focus from our UI (or a page keeps fighting over it; then clicks are refused).
+  const lastAgain = () => {
+    const html = document.documentElement;
+    if (repinned >= 50 || ui.host.parentNode !== html || ui.root.activeElement) return;
+    for (let el = ui.host.nextElementSibling; el; el = el.nextElementSibling) {
+      if (!hosts.has(el) && rendered(el)) {
+        repinned += 1;
+        html.append(ui.host);
+        return;
+      }
+    }
+  };
+  mutations.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['style', 'class', 'hidden', 'popover'],
+    childList: true,
+  });
+  if (document.body) {
+    mutations.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['style', 'class', 'hidden'],
+    });
+  }
+  mutations.observe(ui.host, { attributes: true });
+  lastAgain();
+
+  // What the pointer went down on, and whether it had been seen whole long enough then: what
+  // the person saw when they pressed is what counts.
+  const onPointerDown = (event: Event) => {
+    const at = now();
+    const pressed =
+      event
+        .composedPath()
+        .find(
+          (node): node is HTMLElement =>
+            node instanceof HTMLElement &&
+            (node.tagName === 'BUTTON' || node.getAttribute('role') === 'option'),
+        ) ?? null;
+    press = { pressed, ok: event.isTrusted && !!pressed && seen(pressed, at) };
+  };
+  ui.root.addEventListener('pointerdown', onPointerDown, true);
+
+  return {
+    shown: () => {
+      lastAgain();
+      shownAt = now();
+    },
+    watch: (el) => {
+      if (!intersections || watched.has(el)) return;
+      for (const old of watched.keys()) {
+        if (!old.isConnected) {
+          intersections.unobserve(old);
+          watched.delete(old);
+        }
+      }
+      watched.set(el, null);
+      intersections.observe(el);
+    },
+    verifiable: tracksVisibility || !inForeignFrame(),
+    accepts: (event, el) => {
+      if (!event.isTrusted) return false;
+      if (!tracksVisibility && inForeignFrame()) return false;
+      const at = now();
+      if (event instanceof MouseEvent && event.detail > 0) {
+        // A pointer: it went down on this very element after it had been seen long enough,
+        // and it is still over it.
+        const down = press;
+        press = null;
+        return !!down?.ok && down.pressed === el && hits(ui, el, event.clientX, event.clientY);
+      }
+      // The keyboard: the focus is in our UI, which the page can't put there.
+      const focused = ui.root.activeElement;
+      return !!focused && el.contains(focused) && seen(el, at);
+    },
+    dispose: () => {
+      intersections?.disconnect();
+      mutations.disconnect();
+      ui.root.removeEventListener('pointerdown', onPointerDown, true);
+    },
+  };
 }
 
 type Children = (Node | string | null | false | undefined)[];

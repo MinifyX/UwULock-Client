@@ -34,5 +34,6 @@
   "Dein Server bietet das gerade nicht an.": "Your server doesn't offer this right now.",
   "Dein Konto hat noch keinen Schlüssel für UwULocks Extras. Öffne einmal den Web-Tresor oder UwULock am Rechner.": "Your account has no key for UwULock's extras yet. Open the web vault or UwULock on your computer once.",
   "Das ist nicht erlaubt.": "That isn't allowed.",
-  "Der Server hat die Anfrage abgelehnt: {reason}": "The server refused the request: {reason}"
+  "Der Server hat die Anfrage abgelehnt: {reason}": "The server refused the request: {reason}",
+  "In diesem eingebetteten Bereich füllst du über das UwULock-Fenster aus.": "In this embedded part of the page, fill from the UwULock window."
 }

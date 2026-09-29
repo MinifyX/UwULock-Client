@@ -1,13 +1,14 @@
 /**
  * The bar at the top right of a page that offers to save or update a login after a form was
  * sent (top frame only), and asks before filling a plain-http page. One bar at a time; a new
- * one replaces the old.
+ * one replaces the old. Its buttons take only clicks the guard of ui.ts accepts: the bar seen
+ * whole and unchanged for a moment, the pointer pressed on the button then.
  */
 
 import { t } from '../shared/i18n';
 import { ask, RequestFailed } from '../shared/messages';
 import type { SaveAnswer, SavePrompt } from '../shared/protocol';
-import { createHost, crossGlyph, genuine, h, lockGlyph, type Host } from './ui';
+import { createGuard, createHost, crossGlyph, h, lockGlyph, type Guard, type Host } from './ui';
 
 const CSS = `
 .bar {
@@ -44,13 +45,14 @@ const CSS = `
 .result { font-weight: 700; }
 `;
 
-type Bar = Host & { timer: ReturnType<typeof setTimeout> | null };
+type Bar = Host & { guard: Guard; timer: ReturnType<typeof setTimeout> | null };
 
 let current: Bar | null = null;
 
 export function closeBar() {
   if (!current) return;
   if (current.timer) clearTimeout(current.timer);
+  current.guard.dispose();
   current.host.remove();
   current = null;
 }
@@ -85,14 +87,15 @@ type Action = { label: string; primary?: boolean; run: () => void | Promise<void
 function open(title: string, detail: string | null, actions: Action[], onClose: () => void): Bar {
   closeBar();
   const host = createHost(CSS);
-  const bar: Bar = { ...host, timer: null };
+  const bar: Bar = { ...host, guard: createGuard(host), timer: null };
   current = bar;
 
   const busy = (on: boolean) => {
     for (const button of Array.from(bar.root.querySelectorAll('button'))) button.disabled = on;
   };
   const guard = (run: () => void | Promise<void>) => async (event: Event) => {
-    if (!genuine(event, bar.host)) return;
+    const button = event.currentTarget;
+    if (!(button instanceof HTMLElement) || !bar.guard.accepts(event, button)) return;
     busy(true);
     try {
       await run();
@@ -129,6 +132,8 @@ function open(title: string, detail: string | null, actions: Action[], onClose: 
     h('div', { class: 'actions' }, ...buttons),
   );
   bar.root.append(panel);
+  bar.guard.watch(panel);
+  bar.guard.shown();
   return bar;
 }
 
