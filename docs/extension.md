@@ -158,7 +158,8 @@ server and never see a key.
 - **Icons** in the vault list: an item's own icon (encrypted, opened in the extension — a
   personal item's with your account's extras key, an organisation's item's with its key), else
   the icon your server fetched for the site, else the letter tile. Only your own server is
-  asked, never the site. Settings → UwULock Server → _Icons in the list_ switches them off.
+  asked, never the site — so your server learns which sites are in your vault, which it
+  otherwise never sees. Settings → UwULock Server → _Icons in the list_ switches them off.
 - **Masked addresses** from UwUMail (once your account is connected in the web vault, Settings →
   Masked addresses): in the generator (_Masked address_), with the **@** button next to an
   item's username in the editor, and as _New masked address_ in the inline menu of a username or
@@ -215,7 +216,8 @@ Erweiterung, und eine Webseite bekommt nur die Werte des Eintrags, den du ausgew
 nur, wenn seine Adresse zu genau diesem Frame passt.
 
 Mit UwULock Server kommen die Extras dazu, sobald der Server sie anbietet: Icons in der Liste
-(eigene Icons und die, die dein Server lädt), maskierte Adressen von UwUMail im Generator, im
+(eigene Icons und die, die dein Server lädt – er erfährt dadurch, welche Websites in deinem
+Tresor sind; in den Einstellungen abschaltbar), maskierte Adressen von UwUMail im Generator, im
 Editor (**@**) und im Menü von Benutzername- und E-Mail-Feldern, Einträge als Send teilen (auch
 mit Vaultwarden und Bitwarden; nie mit dem Einmal-Code-Schlüssel) und deine Dateianfragen zum
 Nachsehen und Link-Kopieren.
