@@ -256,13 +256,16 @@ fn shareable_item<'a>(unlocked: &'a Unlocked, id: &str) -> Result<&'a Item> {
 }
 
 /// What of an item can go into a Send: the names of its values that have
-/// one. Never the authenticator key, nor the password history.
+/// one. Never the authenticator key, nor the password history, nor what the
+/// organisation hides from this member (`send::withheld`).
 pub fn shareable_fields(id: &str) -> Result<String> {
     with_unlocked(|unlocked| {
         let item = shareable_item(unlocked, id)?;
         let fields: Vec<Shareable> = candidates(item)
             .into_iter()
-            .filter(|(name, _)| send::shareable_value(item, name).is_some())
+            .filter(|(name, _)| {
+                !send::withheld(item, name) && send::shareable_value(item, name).is_some()
+            })
             .map(|(name, label)| Shareable { name, label })
             .collect();
         json(&fields)
@@ -298,7 +301,9 @@ pub fn seal_share(id: &str, options: &str) -> Result<String> {
         let chosen = options
             .fields
             .iter()
-            .filter(|(name, _)| send::shareable_value(item, name).is_some())
+            .filter(|(name, _)| {
+                !send::withheld(item, name) && send::shareable_value(item, name).is_some()
+            })
             .count();
         if chosen == 0 {
             return Err(Failure::new(

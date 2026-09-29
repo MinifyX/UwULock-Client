@@ -218,15 +218,44 @@ pub fn shareable_value(item: &Item, name: &str) -> Option<Secret> {
     }
 }
 
+/// Whether a value is kept out of a Send because the organisation hides the
+/// item's passwords from this member (`viewPassword: false`): the password,
+/// the authenticator key, hidden custom fields, a card's number and code, and
+/// an SSH private key.
+/// Official Bitwarden clients have no way to take these off the device, so
+/// neither does a Send.
+pub fn withheld(item: &Item, name: &str) -> bool {
+    if item.view_password {
+        return false;
+    }
+    match name {
+        "password" | "totp" | "card-number" | "card-code" | "ssh-private" => true,
+        _ => match name
+            .strip_prefix("field:")
+            .and_then(|n| n.parse::<usize>().ok())
+        {
+            Some(index) => item
+                .fields
+                .get(index)
+                .is_some_and(|f| f.kind == FieldKind::Hidden),
+            None => false,
+        },
+    }
+}
+
 /// The text of a Send that shares an item: its name, then one line per chosen
 /// field, `label: value` (a custom field is labelled with its own name).
 /// `fields` pairs a field's name ([`shareable_value`]) with the label the
 /// person reads, in their language. Fields without a value are left out; the
-/// authenticator key is never shared, whatever is asked for.
+/// authenticator key is never shared, whatever is asked for, and neither is
+/// what [`withheld`] names.
 pub fn share_text(item: &Item, fields: &[(String, String)]) -> Zeroizing<String> {
     let mut out = Zeroizing::new(String::new());
     out.push_str(&item.name);
     for (name, label) in fields {
+        if withheld(item, name) {
+            continue;
+        }
         let Some(value) = shareable_value(item, name) else {
             continue;
         };
@@ -303,6 +332,51 @@ mod tests {
         );
         assert!(!text.contains("JBSWY3DPEHPK3PXP"));
         assert!(shareable_value(&item, "totp").is_none());
+    }
+
+    #[test]
+    fn hidden_passwords_stay_out_of_a_send() {
+        let mut item = login();
+        item.fields.push(Field {
+            name: Some(Zeroizing::new("Note".into())),
+            value: Some(Zeroizing::new("plain".into())),
+            kind: FieldKind::Text,
+            linked_id: None,
+        });
+        item.card = Some(crate::vault::Card {
+            number: Some(Zeroizing::new("4111111111111111".into())),
+            code: Some(Zeroizing::new("123".into())),
+            cardholder_name: Some(Zeroizing::new("Nyu".into())),
+            ..Default::default()
+        });
+        item.view_password = false;
+        let fields: Vec<(String, String)> = [
+            ("username", "Username"),
+            ("password", "Password"),
+            ("field:0", "Field"),
+            ("field:1", "Field"),
+            ("card-name", "Name"),
+            ("card-number", "Number"),
+            ("card-code", "Code"),
+        ]
+        .iter()
+        .map(|(a, b)| (a.to_string(), b.to_string()))
+        .collect();
+        let text = share_text(&item, &fields);
+        assert_eq!(text.as_str(), "Shop\nUsername: nyu\nNote: plain\nName: Nyu");
+        for name in [
+            "password",
+            "totp",
+            "field:0",
+            "card-number",
+            "card-code",
+            "ssh-private",
+        ] {
+            assert!(withheld(&item, name), "{name}");
+        }
+        assert!(!withheld(&item, "field:1") && !withheld(&item, "username"));
+        item.view_password = true;
+        assert!(!withheld(&item, "password"));
     }
 
     #[test]

@@ -2108,6 +2108,16 @@ pub(crate) async fn share_as_send(
     if input.fields.is_empty() {
         return Err(Failure::new("invalid", "Choose something to share."));
     }
+    if input
+        .fields
+        .iter()
+        .any(|(name, _)| send_core::withheld(&item, name))
+    {
+        return Err(Failure::new(
+            "hidden-by-org",
+            "The organisation hides this item's passwords from you.",
+        ));
+    }
     if !(1..=31).contains(&input.deletion_days) {
         return Err(Failure::new("invalid", "A Send lasts 1 to 31 days."));
     }

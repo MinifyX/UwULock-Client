@@ -1439,6 +1439,9 @@ pub struct ItemSummary {
     collection_ids: Vec<String>,
     deleted: bool,
     reprompt: bool,
+    /// The organisation hides this item's passwords from this member: they
+    /// can't go into a Send.
+    view_password: bool,
     has_totp: bool,
     has_password: bool,
     has_username: bool,
@@ -1460,6 +1463,7 @@ fn summary(item: &Item) -> ItemSummary {
         collection_ids: item.collection_ids.clone(),
         deleted: item.deleted,
         reprompt: item.reprompt,
+        view_password: item.view_password,
         has_totp: login.is_some_and(|l| l.totp.as_ref().is_some_and(|t| !t.is_empty())),
         has_password: login.is_some_and(|l| l.password.as_ref().is_some_and(|p| !p.is_empty())),
         has_username: login.is_some_and(|l| l.username.as_ref().is_some_and(|u| !u.is_empty())),

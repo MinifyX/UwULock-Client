@@ -52,6 +52,10 @@ export function errorText(error: unknown): string {
     case 'not-found':
       return t('Das gibt es in diesem Eintrag nicht (mehr).');
     // UwULock Server's extras.
+    case 'hidden-by-org':
+      return t(
+        'Die Organisation verbirgt die Passwörter dieses Eintrags vor dir. Sie können nicht in ein Send.',
+      );
     case 'feature-off':
       return t('Das bietet dieser Server nicht (mehr) an.');
     case 'not-connected':

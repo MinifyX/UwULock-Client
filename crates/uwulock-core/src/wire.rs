@@ -224,6 +224,10 @@ pub struct Cipher {
     pub favorite: bool,
     #[serde(default, deserialize_with = "flexible_u32")]
     pub reprompt: Option<u32>,
+    /// `false` for an organisation item whose collection hides passwords
+    /// from this member. Missing means `true`.
+    #[serde(default, rename = "viewpassword")]
+    pub view_password: Option<bool>,
     /// The item's own key, under the user or organisation key. Newer items only.
     #[serde(default)]
     pub key: Option<String>,
