@@ -247,15 +247,6 @@ async function findAx(cdp, role, name, prefix = false) {
   );
 }
 
-async function hasAx(page, role, name, { prefix = false } = {}) {
-  const cdp = await page.context().newCDPSession(page);
-  try {
-    return Boolean((await findAx(cdp, role, name, prefix))?.backendDOMNodeId);
-  } finally {
-    await cdp.detach().catch(() => undefined);
-  }
-}
-
 /**
  * Clicks what the accessibility tree calls `name`: the extension draws its menu and bar in
  * closed shadow roots, which no selector reaches — like assistive technology, the test finds
@@ -281,6 +272,36 @@ async function clickAx(page, role, name, { prefix = false } = {}) {
   } finally {
     await cdp.detach().catch(() => undefined);
   }
+}
+
+/** The inline menu's list: UwULock's own page, in a frame under the field. */
+function menuFrame(page) {
+  return page.frames().find((frame) => /^chrome-extension:\/\/[^/]+\/menu\.html/.test(frame.url()));
+}
+
+async function hasMenuOption(page, name) {
+  const frame = menuFrame(page);
+  if (!frame) return false;
+  return (await frame.getByRole('option', { name: new RegExp(`^${name}`) }).count()) > 0;
+}
+
+/**
+ * Clicks the list's entry starting with `name`, with the mouse, where the page shows it — after
+ * it has been there a moment, as the menu ignores clicks on what just appeared.
+ */
+async function clickMenuOption(page, name) {
+  let seen = 0;
+  const box = await until(`the menu's “${name}”`, async () => {
+    const option = menuFrame(page)?.getByRole('option', { name: new RegExp(`^${name}`) });
+    const found = option && (await option.count()) > 0 ? await option.first().boundingBox() : null;
+    if (!found) {
+      seen = 0;
+      return null;
+    }
+    seen ||= Date.now();
+    return Date.now() - seen < 800 ? null : found;
+  });
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
 }
 
 async function main() {
@@ -344,7 +365,12 @@ async function main() {
     await site.goto(`${pages.url}/login`);
     await site.locator('#username').click();
     await clickAx(site, 'button', 'Open the UwULock menu');
-    await clickAx(site, 'option', 'localhost', { prefix: true });
+    if (process.env.UWULOCK_E2E_SHOTS) {
+      await until('the list', () => hasMenuOption(site, 'localhost'));
+      await site.evaluate(() => new Promise((resolve) => setTimeout(resolve, 300)));
+      await site.screenshot({ path: join(shots, 'ui-inline-menu.png') });
+    }
+    await clickMenuOption(site, 'localhost');
     await until(
       'the filled form',
       async () =>
@@ -369,14 +395,42 @@ async function main() {
     await clickAx(site, 'button', 'Open the UwULock menu');
     // The list would open on the click itself; after a round trip to the page it is there or not.
     await site.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
-    if (await hasAx(site, 'option', 'localhost', { prefix: true })) {
+    if (await hasMenuOption(site, 'localhost')) {
       throw new Error('The inline menu took a click through a layer over it');
     }
     await site.evaluate(() => document.getElementById('decoy').hidePopover());
     await clickAx(site, 'button', 'Open the UwULock menu');
-    await clickAx(site, 'option', 'localhost', { prefix: true });
+    await clickMenuOption(site, 'localhost');
     await until(
       'the form filled once the layer is gone',
+      async () => (await site.locator('#password').inputValue()) === SITE_PASSWORD,
+    );
+
+    step('The same layer laid over the open list: its frame takes no pick');
+    await site.goto(`${pages.url}/login`);
+    await site.locator('#username').click();
+    await clickAx(site, 'button', 'Open the UwULock menu');
+    await until('the list', () => hasMenuOption(site, 'localhost'));
+    await site.evaluate(() => {
+      const layer = document.createElement('div');
+      layer.id = 'decoy';
+      layer.popover = 'manual';
+      layer.textContent = 'Click twice to accept cookies';
+      layer.style.cssText =
+        'pointer-events:none;inset:0;width:100vw;height:100vh;margin:0;border:0;opacity:0.9';
+      document.body.append(layer);
+      layer.showPopover();
+    });
+    await clickMenuOption(site, 'localhost');
+    // The pick goes to the background and back; give it the time a fill takes, then look.
+    await site.evaluate(() => new Promise((resolve) => setTimeout(resolve, 500)));
+    if ((await site.locator('#password').inputValue()) !== '') {
+      throw new Error("The menu's frame took a pick through a layer over it");
+    }
+    await site.evaluate(() => document.getElementById('decoy').hidePopover());
+    await clickMenuOption(site, 'localhost');
+    await until(
+      'the form filled from the frame once the layer is gone',
       async () => (await site.locator('#password').inputValue()) === SITE_PASSWORD,
     );
 

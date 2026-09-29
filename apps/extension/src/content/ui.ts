@@ -10,7 +10,8 @@
  * person saw what they clicked; see there.
  */
 
-const CSS = `
+/** The design's tokens and controls: in the page's shadow roots and in the menu's frame. */
+export const BASE_CSS = `
 /* Custom properties are the one thing 'all: initial' doesn't reset. Without '!important' a
    page's rule for our host would win over ':host' and could make the menu see-through. */
 :host {
@@ -97,7 +98,7 @@ function addStyles(root: ShadowRoot, extra: string) {
   if (sheet === undefined) {
     try {
       sheet = new CSSStyleSheet();
-      sheet.replaceSync(CSS);
+      sheet.replaceSync(BASE_CSS);
     } catch {
       sheet = null;
     }
@@ -113,7 +114,7 @@ function addStyles(root: ShadowRoot, extra: string) {
     }
   }
   const style = document.createElement('style');
-  style.textContent = CSS + extra;
+  style.textContent = BASE_CSS + extra;
   root.append(style);
 }
 
@@ -227,19 +228,78 @@ function rendered(el: Element): boolean {
   return getComputedStyle(el).display !== 'none';
 }
 
-/** Something that is drawn above any z-index: the top layer, or what comes after our host. */
-function coveredFromAbove(host: HTMLElement): boolean {
-  // The top layer (popovers, modal dialogs, full screen) is above every z-index, and a layer
-  // with `pointer-events: none` over us isn't found by hit testing.
+/** Whether `root` has something open in the top layer (popovers, modal dialogs, full screen). */
+function topLayerIn(root: Document | ShadowRoot): boolean {
   for (const selector of [':popover-open', ':modal', ':fullscreen']) {
     let found: Element[];
     try {
-      found = Array.from(document.querySelectorAll(selector));
+      found = Array.from(root.querySelectorAll(selector));
     } catch {
       continue;
     }
     if (found.some((el) => !hosts.has(el))) return true;
   }
+  return false;
+}
+
+type ClosedRoots = { openOrClosedShadowRoot?: (el: HTMLElement) => ShadowRoot | null };
+
+/**
+ * `el`'s shadow root, a closed one too: extensions may see those (Firefox's
+ * `Element.openOrClosedShadowRoot`, Chromium's `chrome.dom.openOrClosedShadowRoot`).
+ */
+function anyShadowRoot(el: Element): ShadowRoot | null {
+  const firefox = (el as Element & { openOrClosedShadowRoot?: ShadowRoot | null })
+    .openOrClosedShadowRoot;
+  if (firefox !== undefined) return firefox;
+  const dom = (globalThis as { chrome?: { dom?: ClosedRoots } }).chrome?.dom;
+  if (dom?.openOrClosedShadowRoot && el instanceof HTMLElement) {
+    try {
+      return dom.openOrClosedShadowRoot(el);
+    } catch {
+      // Not an element that can have one.
+    }
+  }
+  return el.shadowRoot;
+}
+
+/** More than this many elements to look through: refused rather than half checked. */
+const MAX_SHADOW_WALK = 100_000;
+
+/**
+ * Whether a shadow root of the page, a closed one too, has something open in the top layer
+ * (CL-L13): a popover in there lies over any z-index, and `document`'s selectors don't reach it.
+ */
+function topLayerInShadows(): boolean {
+  const roots: (Document | ShadowRoot)[] = [document];
+  let walked = 0;
+  while (roots.length) {
+    const root = roots.pop()!;
+    if (root !== document && topLayerIn(root)) return true;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (++walked > MAX_SHADOW_WALK) return true;
+      const el = node as Element;
+      if (hosts.has(el)) continue;
+      const shadow = anyShadowRoot(el);
+      if (shadow) roots.push(shadow);
+    }
+  }
+  return false;
+}
+
+/** Something that is drawn above any z-index: the top layer, or what comes after our host. */
+function coveredFromAbove(host: HTMLElement): boolean {
+  // The top layer (popovers, modal dialogs, full screen) is above every z-index, and a layer
+  // with `pointer-events: none` over us isn't found by hit testing.
+  if (topLayerIn(document)) return true;
+  // Full screen shows the page's element alone (retargeted to its shadow host, if any).
+  const full = document.fullscreenElement;
+  if (full && !hosts.has(full)) return true;
+  // Without the browser's visibility tracking, the page's shadow roots are searched too; with
+  // it, the browser sees what lies over us wherever it comes from. (A modal dialog anywhere
+  // makes the rest of the page, us too, inert, and the hit tests fail.)
+  if (!tracksVisibility && topLayerInShadows()) return true;
   for (let el = host.nextElementSibling; el; el = el.nextElementSibling) {
     if (!hosts.has(el) && rendered(el)) return true;
   }
@@ -293,6 +353,17 @@ export type Guard = {
   accepts: (event: Event, el: HTMLElement) => boolean;
   /** Whether picks can be checked at all here (not in a frame from another origin that could hide it, unless the browser tracks visibility). */
   verifiable: boolean;
+  /**
+   * The inline menu's frame (an extension page) took a click or a key: was the frame, as this
+   * page shows it, in place, unchanged and uncovered long enough — and is it now? The frame
+   * sees its own pointer; this is the page's side of it.
+   */
+  frameSeen: (frame: HTMLElement) => boolean;
+  /**
+   * Checks `frame` every 100 ms while it is shown: whatever covers it for a moment starts the
+   * clock again, so a decoy taken away just before the check doesn't count as not there.
+   */
+  watchFrame: (frame: HTMLElement) => void;
   dispose: () => void;
 };
 
@@ -312,6 +383,8 @@ export function createGuard(ui: Host, now: () => number = () => performance.now(
 
   const seen = (el: HTMLElement, at: number): boolean =>
     at - shownAt >= MIN_SHOW_MS && visibleEnough(el, at) && uncovered(ui, el);
+
+  let frameTimer: ReturnType<typeof setInterval> | null = null;
 
   const intersections = tracksVisibility
     ? new IntersectionObserver(
@@ -401,6 +474,21 @@ export function createGuard(ui: Host, now: () => number = () => performance.now(
       intersections.observe(el);
     },
     verifiable: tracksVisibility || !inForeignFrame(),
+    frameSeen: (frame) => {
+      if (!tracksVisibility && inForeignFrame()) return false;
+      return frame.isConnected && seen(frame, now());
+    },
+    watchFrame: (frame) => {
+      if (frameTimer) clearInterval(frameTimer);
+      frameTimer = setInterval(() => {
+        if (!frame.isConnected) {
+          if (frameTimer) clearInterval(frameTimer);
+          frameTimer = null;
+          return;
+        }
+        if (!uncovered(ui, frame)) shownAt = now();
+      }, 100);
+    },
     accepts: (event, el) => {
       if (!event.isTrusted) return false;
       if (!tracksVisibility && inForeignFrame()) return false;
@@ -417,6 +505,7 @@ export function createGuard(ui: Host, now: () => number = () => performance.now(
       return !!focused && el.contains(focused) && seen(el, at);
     },
     dispose: () => {
+      if (frameTimer) clearInterval(frameTimer);
       intersections?.disconnect();
       mutations.disconnect();
       ui.root.removeEventListener('pointerdown', onPointerDown, true);

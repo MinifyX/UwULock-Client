@@ -22,7 +22,8 @@ release checks the download (see the [install guide](install.md)).
   (authenticator app, email code, YubiKey OTP, a security key through your server's WebAuthn
   page) and Bitwarden's check of new devices. Several accounts, one open at a time.
 - **Unlock** with the master password, or a PIN you set up in this browser. It locks after the
-  time you chose, when the browser closes, or right when the popup closes.
+  time you chose, when the browser closes, when the computer's screen locks (a setting, on by
+  default), or right when the popup closes.
 - **The vault in the popup**: the logins of the page in the tab first, then everything —
   search, favourites, kinds, folders, the trash. Copy username, password and the one-time code
   (live, with its countdown), reveal, open the site. Create, edit and delete logins, notes,
@@ -30,13 +31,16 @@ release checks the download (see the [install guide](install.md)).
   passphrases that keeps its settings.
 - **Filling**: a small UwULock button in login fields opens the matching logins; the popup, the
   context menu and **Ctrl+Shift+L** fill too. Addresses match the way Bitwarden matches them
-  (domain, host, starts with, exact, regular expression, never) with your server's equivalent
-  domains. Cards and addresses fill checkout forms. Logins in two steps (the username first,
+  (domain, host, starts with, exact, regular expression, never) with Bitwarden's equivalent
+  domains and your own, a little stricter where that keeps a login on its site (see below).
+  Cards and addresses fill checkout forms. Logins in two steps (the username first,
   the password on the next page) and one-time code fields work; when a page has no field for
   the code, it is copied instead.
 - **Saving**: after you sign in somewhere, a bar offers to save the login — or to update the
   password if it changed. Signed in while the vault was locked? The popup asks after you
-  unlock it.
+  unlock it. A login is only ever saved into the account it was typed for: if you open another
+  account before answering, the bar asks again for that one, and logins typed while locked wait
+  for their own account.
 - **Passkeys**: sites that use passkeys can create them in your vault and sign you in with
   them, in Bitwarden's format — so passkeys made by Bitwarden's apps work here, and the other
   way round. Cancel, and the browser's own passkey dialog takes over.
@@ -56,20 +60,49 @@ release checks the download (see the [install guide](install.md)).
   also kept in the browser's session storage — in memory, never on disk, closed to web pages —
   so the background can open the vault again when the browser ends and restarts it. On disk
   there is only what the server stores anyway: the encrypted vault and the session tokens.
-- Web pages get nothing unless you pick an item. Then only the frame that asked gets that
-  item's values, and only if the item's address matches **that frame's own address** — a login
+  Each account is kept by its server and its user id, so a server that names another server's
+  user id gets an entry of its own and never takes over that account's key or its "remember
+  this device" token.
+- A PIN works until the browser closes, unless you let it work after a restart too. Then the
+  user key sits on disk under the PIN alone, and a copy of the browser profile lets somebody guess
+  it offline, so that option wants six characters or more and says so. Five wrong PINs in a row
+  remove the PIN; they are counted on disk, one try at a time, so a restart gives no new tries.
+- Web pages get nothing unless you pick an item. The list of the inline menu is a page of the
+  extension in a frame under the field: the web page never sees the names in it (only how many
+  there are, for the button), and can't make up a pick, which goes from that frame straight to
+  UwULock. A pick becomes a one-time token for the field's frame alone. Then only that frame gets
+  the item's values, and only if the item's address matches **that frame's own address** — a login
   never reaches an iframe of another site. Picking an item in the popup for a page it doesn't
   match fills the page itself, never its frames. Cards and addresses reach only the page itself
   and frames of its own origin. Plain `http://` pages ask before filling.
-- The button, the menu and the save bar sit in closed shadow roots and ignore clicks the page
-  fakes. Against a page that lays a decoy over them (clickjacking), they take a click only when
-  the pointer went down on them after they had been shown, unchanged and uncovered, for half a
-  second — on Chromium checked by the browser itself. In an embedded frame of another site,
-  Firefox can't tell, so there the menu only opens UwULock's window.
+- An item with the master-password re-prompt asks for the master password every time it is
+  filled, as Bitwarden does: in the popup, and the page's menu, the context menu and the
+  shortcut open the popup for it. Seeing or copying its values in the popup asks once until the
+  vault locks.
+- Matching addresses is a little stricter than Bitwarden's: "starts with" also wants the same
+  origin (`https://bank.example` doesn't match `https://bank.example.evil.test/`); a regular
+  expression is tried only in the top frame, and only when it is short and can't run for long;
+  Bitwarden's global list of equivalent domains comes with the extension, and the server only
+  says which of its groups you switched off. Your own equivalent domains come from the server
+  unencrypted, so a login that matches a page only through one of them is listed there but not
+  filled by the shortcut.
+- The button and the save bar sit in closed shadow roots and ignore clicks the page fakes.
+  Against a page that lays a decoy over them or over the menu's frame (clickjacking), they take a
+  click only when the pointer went down on them after they had been shown, unchanged and
+  uncovered, for half a second — on Chromium checked by the browser itself. The menu's frame
+  checks the same inside, and a pick in it counts only when the page's side saw the frame
+  uncovered too. In an embedded frame of another site, Firefox can't tell, so there the menu only
+  opens UwULock's window. Since Firefox doesn't see for itself what lies over them, the guard
+  there also looks through the page's shadow roots, closed ones too, and refuses the click while
+  a popover or anything in full screen is open anywhere. Chromium gives the frame a new address
+  each session (`use_dynamic_url`), so pages can't tell the extension is installed; Firefox's
+  address is fixed per profile but random.
 - Passkeys are only offered for the site that asks: its relying party is checked against the
   page's own address by WebAuthn's rules, on `https://` pages (and `http://localhost`).
 - The clipboard is cleared after 30 seconds (adjustable). No remote code, a strict content
   security policy, and the extension asks for access to your server only when you log in.
+  Requests to your server never follow a redirect (one would send the login form or the session
+  somewhere else), and no answer is read past a size limit.
 
 ## Install in Chrome, Edge, Brave, Vivaldi or Opera
 
@@ -110,7 +143,7 @@ the permission is there now.
   extension shortcut settings can change it).
 - **Context menu**: right-click in a page → UwULock → fill a login, card or address, copy a
   password, or generate one.
-- **Settings** in the popup: lock timeout, PIN, clipboard clearing, the inline button, the save
+- **Settings** in the popup: lock timeout, locking with the computer, PIN, clipboard clearing, the inline button, the save
   prompt, copying the one-time code, passkeys, the default match detection, language and theme,
   and your accounts.
 
@@ -125,7 +158,8 @@ server and never see a key.
 - **Icons** in the vault list: an item's own icon (encrypted, opened in the extension — a
   personal item's with your account's extras key, an organisation's item's with its key), else
   the icon your server fetched for the site, else the letter tile. Only your own server is
-  asked, never the site. Settings → UwULock Server → _Icons in the list_ switches them off.
+  asked, never the site — so your server learns which sites are in your vault, which it
+  otherwise never sees. Settings → UwULock Server → _Icons in the list_ switches them off.
 - **Masked addresses** from UwUMail (once your account is connected in the web vault, Settings →
   Masked addresses): in the generator (_Masked address_), with the **@** button next to an
   item's username in the editor, and as _New masked address_ in the inline menu of a username or
@@ -182,7 +216,8 @@ Erweiterung, und eine Webseite bekommt nur die Werte des Eintrags, den du ausgew
 nur, wenn seine Adresse zu genau diesem Frame passt.
 
 Mit UwULock Server kommen die Extras dazu, sobald der Server sie anbietet: Icons in der Liste
-(eigene Icons und die, die dein Server lädt), maskierte Adressen von UwUMail im Generator, im
+(eigene Icons und die, die dein Server lädt – er erfährt dadurch, welche Websites in deinem
+Tresor sind; in den Einstellungen abschaltbar), maskierte Adressen von UwUMail im Generator, im
 Editor (**@**) und im Menü von Benutzername- und E-Mail-Feldern, Einträge als Send teilen (auch
 mit Vaultwarden und Bitwarden; nie mit dem Einmal-Code-Schlüssel) und deine Dateianfragen zum
 Nachsehen und Link-Kopieren.

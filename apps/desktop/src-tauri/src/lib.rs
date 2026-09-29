@@ -53,8 +53,9 @@ pub fn run() {
             };
             let storage = account::Storage::new(dir)?;
             tracing::info!(path = %storage.dir().display(), "data folder");
-            app.manage(vault::VaultState::new(storage));
-            app.manage(moving::MoveState::default());
+            let vault = vault::VaultState::new(storage);
+            app.manage(vault.moves.clone());
+            app.manage(vault);
             vault::start(app.handle());
             live::start(app.handle());
             extras::start(app.handle());

@@ -431,6 +431,10 @@ button.wide {
   padding: 8px 0;
 }
 
+.pin-form .notice {
+  margin: 0;
+}
+
 .about-line {
   margin: 4px 0 0;
   font-size: 12px;

@@ -69,8 +69,54 @@ export function messageOf(status: number, body: unknown): string {
   return `The server answered with HTTP ${status}.`;
 }
 
-export async function parse(response: Response): Promise<unknown> {
-  const text = await response.text();
+/** What an answer may weigh: more than any vault's JSON, less than what would stall the browser. */
+export const MAX_BODY_BYTES = 8 * 1024 * 1024;
+/** The whole vault in one answer (`/api/sync`): generous, but not unlimited. */
+export const MAX_SYNC_BYTES = 128 * 1024 * 1024;
+
+/** An answer larger than it may be; read no further. */
+export const TOO_LARGE = { kind: 'server', message: "The server's answer is too large." };
+
+/**
+ * The body of `response`, at most `max` bytes: a declared length above it is refused before
+ * reading, and the stream is cancelled as soon as it grows past it. A hostile or broken server
+ * can't fill the background's memory with one answer.
+ */
+export async function readBody(response: Response, max: number): Promise<Uint8Array> {
+  const declared = Number(response.headers.get('Content-Length') ?? Number.NaN);
+  if (Number.isFinite(declared) && declared > max) {
+    await response.body?.cancel().catch(() => undefined);
+    throw TOO_LARGE;
+  }
+  if (!response.body) {
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.length > max) throw TOO_LARGE;
+    return bytes;
+  }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > max) {
+      await reader.cancel().catch(() => undefined);
+      throw TOO_LARGE;
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, at);
+    at += chunk.length;
+  }
+  return out;
+}
+
+export async function parse(response: Response, max = MAX_BODY_BYTES): Promise<unknown> {
+  const text = new TextDecoder().decode(await readBody(response, max));
   if (!text) return null;
   try {
     return JSON.parse(text);
@@ -84,9 +130,16 @@ type Options = {
   body?: unknown;
   form?: URLSearchParams;
   extraHeaders?: Record<string, string>;
+  /** The largest answer taken, in bytes; `MAX_BODY_BYTES` unless said. */
+  maxBytes?: number;
 };
 
-/** A request without a session: prelogin, the token endpoint, two-step mails. */
+/**
+ * A request without a session: prelogin, the token endpoint, two-step mails — and, with the
+ * token added, every request of `request()`. A redirect is an error, never followed: a 307 or
+ * 308 from a hostile server would send the login form (the password hash) or the token again,
+ * to wherever it points. Bitwarden's servers don't redirect their API.
+ */
 export async function anonymous<T = unknown>(url: string, options: Options = {}): Promise<T> {
   const extra: Record<string, string> = { ...options.extraHeaders };
   if (options.form) extra['Content-Type'] = 'application/x-www-form-urlencoded; charset=utf-8';
@@ -99,11 +152,22 @@ export async function anonymous<T = unknown>(url: string, options: Options = {})
       body: options.form ?? (options.body !== undefined ? JSON.stringify(options.body) : undefined),
       credentials: 'omit',
       cache: 'no-store',
+      redirect: 'error',
     });
   } catch {
     throw new ApiError(0, messageOf(0, null), null);
   }
-  const body = await parse(response);
+  // `redirect: 'error'` makes fetch fail; a browser that hands back an opaque redirect instead
+  // gets the same answer.
+  if (response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new ApiError(
+      0,
+      'The server answered with a redirect, which UwULock does not follow.',
+      null,
+    );
+  }
+  const body = await parse(response, options.maxBytes ?? MAX_BODY_BYTES);
   if (!response.ok) throw new ApiError(response.status, messageOf(response.status, body), body);
   return body as T;
 }

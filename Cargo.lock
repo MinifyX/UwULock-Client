@@ -5552,8 +5552,10 @@ version = "0.3.0-beta.1"
 dependencies = [
  "arboard",
  "base64 0.22.1",
+ "libc",
  "minisign-verify",
  "parking_lot",
+ "rand 0.8.8",
  "semver",
  "serde",
  "serde_json",

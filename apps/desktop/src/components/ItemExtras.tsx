@@ -576,11 +576,16 @@ export function VersionsCard({ summary }: { summary: ItemSummary }) {
 
 type Choice = { field: string; label: string; checked: boolean; secret: boolean };
 
-/** What an item has that can be shared — never the authenticator key. */
-function choices(detail: Detail): Choice[] {
+/**
+ * What an item has that can be shared — never the authenticator key, and no
+ * secrets of an item whose organisation hides its passwords from this member.
+ */
+function choices(detail: Detail, viewPassword: boolean): Choice[] {
   const out: Choice[] = [];
-  const add = (field: string, label: string, checked: boolean, secret = false) =>
+  const add = (field: string, label: string, checked: boolean, secret = false) => {
+    if (!viewPassword && secret && !WITHHELD_EXCEPT.test(field)) return;
     out.push({ field, label, checked, secret });
+  };
   if (detail.login) {
     if (detail.login.username) add('username', t('Benutzername'), true);
     if (detail.login.hasPassword) add('password', t('Passwort'), true, true);
@@ -618,6 +623,9 @@ function choices(detail: Detail): Choice[] {
   return out;
 }
 
+/** Secret values that `viewPassword: false` doesn't cover (as `send::withheld`). */
+const WITHHELD_EXCEPT = /^identity:/;
+
 const DAYS = [1, 2, 3, 7, 14, 30];
 
 export function ShareSendDialog({
@@ -630,7 +638,7 @@ export function ShareSendDialog({
   onClose: () => void;
 }) {
   useLanguage();
-  const [fields, setFields] = useState<Choice[]>(() => choices(detail));
+  const [fields, setFields] = useState<Choice[]>(() => choices(detail, summary.viewPassword));
   const [options, setOptions] = useState<SendOptions | null>(null);
   const [days, setDays] = useState(1);
   const [maxAccess, setMaxAccess] = useState('1');

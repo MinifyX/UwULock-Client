@@ -713,13 +713,23 @@ impl Client {
     /// A file from a link the server handed out (an attachment's, a Send
     /// file's), without the session: such links carry their own token, and
     /// Bitwarden's point at Azure, which must never see the session. A link
-    /// without a host is taken as the server's own.
-    pub async fn download(&self, url: &str) -> Result<Vec<u8>, Error> {
+    /// without a host is taken as the server's own. Only links to the
+    /// server's own hosts or to Azure's blob storage ([`Client::may_download`])
+    /// are followed, and at most `max` bytes are read.
+    pub async fn download(&self, url: &str, max: u64) -> Result<Vec<u8>, Error> {
         let url = if url.starts_with('/') {
             format!("{}{url}", self.server.web())
         } else {
             url.to_string()
         };
+        let parsed = url::Url::parse(&url)
+            .map_err(|_| Error::Refused("the server named a file link that isn't one".into()))?;
+        if !self.may_download(&parsed) {
+            return Err(Error::Refused(format!(
+                "the server named a file link elsewhere ({})",
+                parsed.host_str().unwrap_or_default()
+            )));
+        }
         let response = self
             .http
             .get(url)
@@ -730,11 +740,41 @@ impl Client {
             .map_err(network_error)?;
         let status = response.status().as_u16();
         if !(200..300).contains(&status) {
-            let body = response.text().await.unwrap_or_default();
+            let body = error_text(response).await;
             return Err(Response { status, body }.error());
         }
-        let bytes = response.bytes().await.map_err(network_error)?;
-        Ok(bytes.to_vec())
+        read_capped(response, usize::try_from(max).unwrap_or(usize::MAX)).await
+    }
+
+    /// Whether [`Client::download`] may follow a file link: https (http only
+    /// for a server on this computer) to one of the server's own hosts, or,
+    /// since Bitwarden keeps files there, to Azure's blob storage; for
+    /// Bitwarden's cloud also its own domain. A hostile server can't make the
+    /// app fetch from anywhere else, the local network included.
+    pub fn may_download(&self, url: &url::Url) -> bool {
+        let Some(host) = url
+            .host_str()
+            .map(|h| h.trim_end_matches('.').to_ascii_lowercase())
+        else {
+            return false;
+        };
+        let own: Vec<String> = [self.server.web(), self.server.api(), self.server.identity()]
+            .iter()
+            .filter_map(|u| url::Url::parse(u).ok())
+            .filter_map(|u| u.host_str().map(str::to_ascii_lowercase))
+            .collect();
+        let is_own = own.contains(&host);
+        match url.scheme() {
+            "https" => {}
+            "http" if is_own && is_loopback(url) => {}
+            _ => return false,
+        }
+        let cloud = match self.server {
+            Server::BitwardenUs => host.ends_with(".bitwarden.com"),
+            Server::BitwardenEu => host.ends_with(".bitwarden.eu"),
+            Server::SelfHosted { .. } => false,
+        };
+        is_own || cloud || host.ends_with(".blob.core.windows.net")
     }
 
     /// Announces an attachment (`POST /api/ciphers/{id}/attachment/v2`, body
@@ -1243,8 +1283,60 @@ impl Response {
 pub(crate) async fn send(request: reqwest::RequestBuilder) -> Result<Response, Error> {
     let response = request.send().await.map_err(network_error)?;
     let status = response.status().as_u16();
-    let body = response.text().await.map_err(network_error)?;
+    let max = if (200..300).contains(&status) {
+        MAX_JSON
+    } else {
+        MAX_ERROR
+    };
+    let body = read_capped(response, max).await?;
+    let body = String::from_utf8(body).map_err(|_| Error::Server {
+        status,
+        message: "the server's answer isn't text".into(),
+    })?;
     Ok(Response { status, body })
+}
+
+/// The most an answer of the API may weigh. Not a few MiB: a full sync of a
+/// large vault with its organisations is tens of MiB, and that must work.
+pub(crate) const MAX_JSON: usize = 64 * 1024 * 1024;
+/// The most an error answer may weigh; only its message is shown.
+pub(crate) const MAX_ERROR: usize = 64 * 1024;
+
+/// A body, at most `max` bytes of it: a longer one — by its `Content-Length`
+/// or as it comes in — is refused before it all sits in memory. Every body
+/// this crate reads goes through here.
+pub(crate) async fn read_capped(
+    mut response: reqwest::Response,
+    max: usize,
+) -> Result<Vec<u8>, Error> {
+    let too_much = || Error::Refused(format!("the answer is larger than {max} bytes"));
+    if response
+        .content_length()
+        .is_some_and(|length| length > max as u64)
+    {
+        return Err(too_much());
+    }
+    let mut body = Vec::with_capacity(
+        response
+            .content_length()
+            .map_or(0, |length| length as usize)
+            .min(1024 * 1024),
+    );
+    while let Some(chunk) = response.chunk().await.map_err(network_error)? {
+        if body.len() + chunk.len() > max {
+            return Err(too_much());
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
+/// An error answer's text, at most [`MAX_ERROR`] bytes of it.
+pub(crate) async fn error_text(response: reqwest::Response) -> String {
+    read_capped(response, MAX_ERROR)
+        .await
+        .map(|body| String::from_utf8_lossy(&body).into_owned())
+        .unwrap_or_default()
 }
 
 pub(crate) fn network_error(error: reqwest::Error) -> Error {
@@ -1265,6 +1357,49 @@ pub(crate) fn network_error(error: reqwest::Error) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn file_links_only_to_the_server_or_its_storage() {
+        let device = || Device::this_system("7c1d1f0e-5b1a-4f8e-9d3c-0e2b6a1c9f00".into());
+        let allowed = |server: Server, link: &str| {
+            Client::new(server, device())
+                .unwrap()
+                .may_download(&url::Url::parse(link).unwrap())
+        };
+        let own = || Server::self_hosted("https://lock.example.com").unwrap();
+        assert!(allowed(
+            own(),
+            "https://lock.example.com/attachments/a/b?token=x"
+        ));
+        assert!(allowed(
+            own(),
+            "https://store.blob.core.windows.net/attachments/a"
+        ));
+        for elsewhere in [
+            "https://evil.example.net/a",
+            "https://192.168.1.1/admin",
+            "https://nas.local/a",
+            "http://lock.example.com/attachments/a",
+            "file:///etc/passwd",
+            "https://lock.example.com.evil.example/a",
+        ] {
+            assert!(!allowed(own(), elsewhere), "{elsewhere}");
+        }
+        assert!(allowed(
+            Server::BitwardenUs,
+            "https://attachments.bitwarden.com/a"
+        ));
+        assert!(!allowed(
+            Server::BitwardenUs,
+            "https://attachments.bitwarden.eu/a"
+        ));
+        let local = Server::self_hosted("http://127.0.0.1:8080").unwrap();
+        assert!(allowed(
+            local.clone(),
+            "http://127.0.0.1:8080/attachments/a"
+        ));
+        assert!(!allowed(local, "http://127.0.0.2:8080/attachments/a"));
+    }
 
     #[test]
     fn self_hosted_addresses() {

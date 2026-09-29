@@ -184,6 +184,9 @@ pub struct Item {
     pub favorite: bool,
     /// Asks for the master password again before showing or copying secrets.
     pub reprompt: bool,
+    /// The organisation lets this member see the item's secrets. `false`
+    /// keeps them out of anything that leaves the device ([`crate::send`]).
+    pub view_password: bool,
     pub revision_date: Option<String>,
     pub creation_date: Option<String>,
     /// In the trash.
@@ -222,6 +225,7 @@ impl Item {
             collection_ids: Vec::new(),
             favorite: false,
             reprompt: false,
+            view_password: true,
             revision_date: None,
             creation_date: None,
             deleted: false,
@@ -704,6 +708,7 @@ fn open_item(cipher: &wire::Cipher, kind: ItemKind, outer: &SymmetricKey) -> Ite
         collection_ids: cipher.collection_ids.clone(),
         favorite: cipher.favorite,
         reprompt: cipher.reprompt.unwrap_or(0) == 1,
+        view_password: cipher.view_password.unwrap_or(true),
         revision_date: cipher.revision_date.clone(),
         creation_date: cipher.creation_date.clone(),
         deleted: cipher.deleted_date.is_some(),

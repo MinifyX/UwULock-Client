@@ -16,10 +16,17 @@
 
 import { ext } from '../shared/browser';
 import type { ServerChoice, Settings, UwuInfo } from '../shared/protocol';
+import { endpoints } from './server';
 
 export type Account = {
-  /** The user id from the access token. */
+  /**
+   * This browser's key for the account: its server's identity endpoint and its user id
+   * (`accountKey`). Two servers may name the same user id — a hostile one can copy another's —
+   * and never share an entry, with its protected user key and its remember-me token.
+   */
   id: string;
+  /** The user id from the access token (`sub`), as its server names it. */
+  userId: string;
   email: string;
   name: string | null;
   server: ServerChoice;
@@ -53,6 +60,11 @@ type Local = {
    * hostile server can do at will; only logging out here, or forgetting it in the popup, drops it.
    */
   kdfFloors: Record<string, string>;
+  /**
+   * Wrong PINs in a row, per account. On disk, so a browser restart doesn't give a guesser five
+   * new tries; the fifth removes the PIN.
+   */
+  pinAttempts: Record<string, number>;
 };
 
 type Session = {
@@ -61,7 +73,6 @@ type Session = {
   lastActive: number;
   /** The PIN-wrapped user key until the browser restarts. */
   pin: { accountId: string; protected: string } | null;
-  pinAttempts: number;
   /** Logins sent while locked; see autofill.ts. */
   pendingSaves: unknown[];
   /** A login in progress: what the next step needs (the master password hash, not the password). */
@@ -122,6 +133,50 @@ export async function activeAccount(): Promise<Account | null> {
   return account(await local('activeAccount'));
 }
 
+/** The key of the account `userId` on the server whose identity endpoint is `identity`. */
+export function accountKey(identity: string, userId: string): string {
+  return `${identity} ${userId}`;
+}
+
+/**
+ * Up to 0.3.0-beta.1 accounts were kept by the token's user id alone. Each is given its key by
+ * its own server, and everything kept under the old id moves with it: the open account, the
+ * unlocked vault and the PIN of this browser session, wrong PIN tries and the cached sync. Two
+ * old entries can't have shared a key (the id was unique), so nothing is merged.
+ */
+export async function migrateAccounts(): Promise<void> {
+  const list = await accounts();
+  if (list.every((a) => typeof a.userId === 'string')) return;
+  const moved = new Map<string, string>();
+  const next = list.map((a) => {
+    if (typeof a.userId === 'string') return a;
+    const id = accountKey(endpoints(a.server).identity, a.id);
+    moved.set(a.id, id);
+    return { ...a, id, userId: a.id };
+  });
+  await setLocal('accounts', next);
+  const rename = (id: string | null | undefined) => (id ? (moved.get(id) ?? id) : id);
+  const active = await local('activeAccount');
+  if (active) await setLocal('activeAccount', rename(active) ?? null);
+  const attempts = await local('pinAttempts');
+  if (attempts) {
+    await setLocal(
+      'pinAttempts',
+      Object.fromEntries(Object.entries(attempts).map(([id, n]) => [rename(id)!, n])),
+    );
+  }
+  const unlocked = await session('unlocked');
+  if (unlocked)
+    await setSession('unlocked', { ...unlocked, accountId: rename(unlocked.accountId)! });
+  const pin = await session('pin');
+  if (pin) await setSession('pin', { ...pin, accountId: rename(pin.accountId)! });
+  for (const [old, id] of moved) {
+    const text = await cachedSync(old);
+    if (text) await cacheSync(id, text);
+    await forgetSync(old);
+  }
+}
+
 export async function saveAccount(next: Account): Promise<void> {
   const list = await accounts();
   const at = list.findIndex((a) => a.id === next.id);
@@ -143,6 +198,7 @@ export async function removeAccount(id: string): Promise<void> {
     'accounts',
     (await accounts()).filter((a) => a.id !== id),
   );
+  await setPinAttempts(id, 0);
   await forgetSync(id);
 }
 
@@ -164,6 +220,19 @@ export async function forgetKdfFloor(identity: string, email: string): Promise<v
   const floors = { ...(await local('kdfFloors')) };
   delete floors[floorKey(identity, email)];
   await setLocal('kdfFloors', floors);
+}
+
+// ── Wrong PINs ────────────────────────────────────────────
+
+export async function pinAttempts(accountId: string): Promise<number> {
+  return (await local('pinAttempts'))?.[accountId] ?? 0;
+}
+
+export async function setPinAttempts(accountId: string, attempts: number): Promise<void> {
+  const all = { ...(await local('pinAttempts')) };
+  if (attempts > 0) all[accountId] = attempts;
+  else delete all[accountId];
+  await setLocal('pinAttempts', all);
 }
 
 /** This browser, as a device of the account: made once. */

@@ -17,7 +17,7 @@
 
 use parking_lot::Mutex;
 use serde::Serialize;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
 use uwulock_bitwarden::api::{PasswordLogin, TwoFactorAnswer};
@@ -46,11 +46,57 @@ struct PendingSource {
 pub(crate) struct MoveState {
     pending: Mutex<Option<PendingSource>>,
     /// The prepared move, and the account it moves into.
-    mover: tokio::sync::Mutex<Option<(String, Mover)>>,
+    mover: Arc<tokio::sync::Mutex<Option<(String, Mover)>>>,
     running: AtomicBool,
     cancel: AtomicBool,
     /// The dialog closed while a run was going: it drops the move when it stops.
     closing: AtomicBool,
+    /// Counts [`MoveState::forget`]s, so a move prepared while the vault
+    /// locked isn't kept after all.
+    forgotten: AtomicU64,
+}
+
+impl MoveState {
+    /// Locking, a session the server ended and logging out drop the source
+    /// login and the prepared move: the source vault (decrypted), both user
+    /// keys and the source's tokens don't stay in memory behind a locked
+    /// vault. A running move stops after its current step and drops it then;
+    /// the journal keeps what it did, so the next move continues from there.
+    pub(crate) fn forget(&self) {
+        self.forgotten.fetch_add(1, Ordering::SeqCst);
+        *self.pending.lock() = None;
+        if self.running.load(Ordering::SeqCst) {
+            self.cancel.store(true, Ordering::SeqCst);
+            self.closing.store(true, Ordering::SeqCst);
+            return;
+        }
+        match self.mover.try_lock() {
+            Ok(mut mover) => *mover = None,
+            // Held for a moment (a move being stored, or a run starting):
+            // dropped as soon as it is free.
+            Err(_) => {
+                self.cancel.store(true, Ordering::SeqCst);
+                let mover = self.mover.clone();
+                tauri::async_runtime::spawn(async move {
+                    *mover.lock().await = None;
+                });
+            }
+        }
+    }
+
+    /// Like [`MoveState::forget`], for one account that locked or left: only
+    /// when the move goes into it, or it is on screen (the dialog's source
+    /// login belongs to the account on screen).
+    pub(crate) fn forget_for(&self, id: &str, on_screen: bool) {
+        let target = self
+            .mover
+            .try_lock()
+            .map(|mover| mover.as_ref().map(|(target, _)| target == id));
+        // A mover that is busy is running: better stopped than kept.
+        if on_screen || !matches!(target, Ok(None) | Ok(Some(false))) {
+            self.forget();
+        }
+    }
 }
 
 /// Whether the account on screen can take a move.
@@ -105,7 +151,7 @@ pub(crate) async fn move_target(state: State<'_, VaultState>) -> Result<MoveTarg
 pub(crate) async fn move_login(
     app: AppHandle,
     state: State<'_, VaultState>,
-    moves: State<'_, MoveState>,
+    moves: State<'_, Arc<MoveState>>,
     server: ServerInput,
     email: String,
     password: String,
@@ -113,6 +159,7 @@ pub(crate) async fn move_login(
     if moves.running.load(Ordering::SeqCst) {
         return Err(Failure::new("invalid", "A move is running."));
     }
+    let forgotten = moves.forgotten.load(Ordering::SeqCst);
     let password = Zeroizing::new(password);
     let email = crypto::normalize_email(&email);
     if email.is_empty() || !email.contains('@') {
@@ -126,6 +173,10 @@ pub(crate) async fn move_login(
     let kdf = client.prelogin(&email).await?;
     let master_key = derive_off_thread(password.clone(), email.clone(), kdf).await?;
     let hash = Zeroizing::new(crypto::master_password_hash(&master_key, &password));
+    // The vault locked while the key was derived: nothing is kept.
+    if moves.forgotten.load(Ordering::SeqCst) != forgotten {
+        return Err(Failure::locked());
+    }
     *moves.pending.lock() = Some(PendingSource {
         client,
         server,
@@ -157,7 +208,7 @@ pub(crate) async fn move_login_new_device(app: AppHandle, code: String) -> Resul
 }
 
 #[tauri::command]
-pub(crate) async fn move_login_send_email(moves: State<'_, MoveState>) -> Result<()> {
+pub(crate) async fn move_login_send_email(moves: State<'_, Arc<MoveState>>) -> Result<()> {
     let (client, email, hash) = pending_login(&moves)?;
     client.send_email_code(&email, &hash).await?;
     Ok(())
@@ -180,7 +231,8 @@ async fn login_step(
     two_factor: Option<TwoFactorAnswer>,
     new_device_code: Option<String>,
 ) -> Result<MoveStep> {
-    let moves = app.state::<MoveState>();
+    let moves = app.state::<Arc<MoveState>>();
+    let forgotten = moves.forgotten.load(Ordering::SeqCst);
     let (client, email, hash) = pending_login(&moves)?;
     let outcome = client
         .login(PasswordLogin {
@@ -234,9 +286,17 @@ async fn login_step(
     };
     let mover = Mover::prepare(source, target, &token, journal, &iso_now()).await?;
     let preview = Box::new(mover.preview().clone());
-    *moves.mover.lock().await = Some((target_id, mover));
-    moves.cancel.store(false, Ordering::SeqCst);
-    moves.closing.store(false, Ordering::SeqCst);
+    {
+        let mut slot = moves.mover.lock().await;
+        // Locked, logged out or ended while the source vault came in: it is
+        // dropped here instead of kept behind the lock.
+        if moves.forgotten.load(Ordering::SeqCst) != forgotten {
+            return Err(Failure::locked());
+        }
+        moves.cancel.store(false, Ordering::SeqCst);
+        moves.closing.store(false, Ordering::SeqCst);
+        *slot = Some((target_id, mover));
+    }
     tracing::info!(from = %pending.server.label(), "a move is ready");
     Ok(MoveStep::Done { preview })
 }
@@ -264,7 +324,7 @@ fn save_journal(state: &VaultState, id: &str, user_key: &SymmetricKey, mover: &M
 
 /// Starts (or continues) the prepared move in the background.
 #[tauri::command]
-pub(crate) async fn move_start(app: AppHandle, moves: State<'_, MoveState>) -> Result<()> {
+pub(crate) async fn move_start(app: AppHandle, moves: State<'_, Arc<MoveState>>) -> Result<()> {
     if moves.mover.lock().await.is_none() {
         return Err(Failure::new("invalid", "Nothing to move yet."));
     }
@@ -274,7 +334,7 @@ pub(crate) async fn move_start(app: AppHandle, moves: State<'_, MoveState>) -> R
     moves.cancel.store(false, Ordering::SeqCst);
     tauri::async_runtime::spawn(async move {
         let result = run(&app).await;
-        let moves = app.state::<MoveState>();
+        let moves = app.state::<Arc<MoveState>>();
         let target = moves.mover.lock().await.as_ref().map(|(id, _)| id.clone());
         match result {
             Ok(finished) => {
@@ -301,7 +361,7 @@ pub(crate) async fn move_start(app: AppHandle, moves: State<'_, MoveState>) -> R
 
 async fn run(app: &AppHandle) -> Result<Finished> {
     let state = app.state::<VaultState>();
-    let moves = app.state::<MoveState>();
+    let moves = app.state::<Arc<MoveState>>();
     let mut guard = moves.mover.lock().await;
     let (id, mover) = guard
         .as_mut()
@@ -339,14 +399,14 @@ async fn run(app: &AppHandle) -> Result<Finished> {
 }
 
 #[tauri::command]
-pub(crate) fn move_cancel(moves: State<'_, MoveState>) {
+pub(crate) fn move_cancel(moves: State<'_, Arc<MoveState>>) {
     moves.cancel.store(true, Ordering::SeqCst);
 }
 
 /// The dialog closed: the source session and the prepared move are dropped
 /// (a running move first stops after its current step).
 #[tauri::command]
-pub(crate) async fn move_close(moves: State<'_, MoveState>) -> Result<()> {
+pub(crate) async fn move_close(moves: State<'_, Arc<MoveState>>) -> Result<()> {
     *moves.pending.lock() = None;
     if moves.running.load(Ordering::SeqCst) {
         moves.cancel.store(true, Ordering::SeqCst);
@@ -355,4 +415,30 @@ pub(crate) async fn move_close(moves: State<'_, MoveState>) -> Result<()> {
     }
     *moves.mover.lock().await = None;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn forgetting_counts_and_stops_a_running_move() {
+        let moves = MoveState::default();
+        moves.forget();
+        assert_eq!(moves.forgotten.load(Ordering::SeqCst), 1);
+        assert!(!moves.cancel.load(Ordering::SeqCst));
+
+        moves.running.store(true, Ordering::SeqCst);
+        moves.forget();
+        assert!(moves.cancel.load(Ordering::SeqCst) && moves.closing.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn another_account_leaving_keeps_the_move() {
+        let moves = MoveState::default();
+        moves.forget_for("other", false);
+        assert_eq!(moves.forgotten.load(Ordering::SeqCst), 0);
+        moves.forget_for("on-screen", true);
+        assert_eq!(moves.forgotten.load(Ordering::SeqCst), 1);
+    }
 }

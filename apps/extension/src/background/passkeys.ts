@@ -251,16 +251,18 @@ export async function prompt(id: string): Promise<PasskeyPrompt> {
       );
     const candidates =
       state === 'unlocked'
-        ? (await matchingLogins(entry.url)).map((e): PageItem & { hasPasskey: boolean } => ({
-            id: e.id,
-            kind: e.kind,
-            name: e.name,
-            subtitle: e.subtitle,
-            favorite: e.favorite,
-            hasTotp: e.hasTotp,
-            reprompt: e.reprompt,
-            hasPasskey: (e.passkeys ?? []).length > 0,
-          }))
+        ? (await matchingLogins(entry.url, { topFrame: false })).map(
+            (e): PageItem & { hasPasskey: boolean } => ({
+              id: e.id,
+              kind: e.kind,
+              name: e.name,
+              subtitle: e.subtitle,
+              favorite: e.favorite,
+              hasTotp: e.hasTotp,
+              reprompt: e.reprompt,
+              hasPasskey: (e.passkeys ?? []).length > 0,
+            }),
+          )
         : [];
     return {
       id,

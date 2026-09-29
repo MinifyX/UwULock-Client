@@ -75,6 +75,8 @@ export type ItemSummary = {
   collectionIds: string[];
   deleted: boolean;
   reprompt: boolean;
+  /** False when the organisation hides this item's passwords from this member. */
+  viewPassword: boolean;
   hasTotp: boolean;
   hasPassword: boolean;
   hasUsername: boolean;

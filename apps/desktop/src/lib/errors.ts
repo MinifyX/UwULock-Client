@@ -39,6 +39,16 @@ export function errorText(error: unknown): string {
       return t('Das kann diese Beta noch nicht: {reason}', {
         reason: m.replace(/^not supported yet: /, ''),
       });
+    case 'hello':
+      if (m.includes('older UwULock'))
+        return t(
+          'Windows Hello ist in dieser Version sicherer eingerichtet, die alte Einrichtung gilt nicht mehr. Entsperre einmal mit dem Master-Passwort und schalte Windows Hello in den Einstellungen wieder ein.',
+        );
+      if (m.includes('key has changed'))
+        return t(
+          'Der Schlüssel von Windows Hello hat sich geändert. Entsperre mit dem Master-Passwort und schalte Windows Hello wieder ein.',
+        );
+      return m;
     case 'weaker-kdf':
       return t(
         'Der Server verlangt für dieses Konto eine schwächere Schlüsselableitung als bei der letzten Anmeldung, deshalb hat UwULock nichts gesendet. Wenn du sie selbst gesenkt hast, melde das Konto auf diesem Gerät ab und füge es neu hinzu.',
@@ -52,6 +62,10 @@ export function errorText(error: unknown): string {
     case 'not-found':
       return t('Das gibt es in diesem Eintrag nicht (mehr).');
     // UwULock Server's extras.
+    case 'hidden-by-org':
+      return t(
+        'Die Organisation verbirgt die Passwörter dieses Eintrags vor dir. Sie können nicht in ein Send.',
+      );
     case 'feature-off':
       return t('Das bietet dieser Server nicht (mehr) an.');
     case 'not-connected':

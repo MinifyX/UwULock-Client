@@ -79,6 +79,8 @@ pub struct ItemSummary {
     deleted: bool,
     archived: bool,
     reprompt: bool,
+    /// The organisation hides this item's passwords from this member.
+    view_password: bool,
     has_totp: bool,
     has_password: bool,
     has_username: bool,
@@ -101,6 +103,7 @@ pub fn summary(item: &Item) -> ItemSummary {
         deleted: item.deleted,
         archived: item.archived_date.is_some(),
         reprompt: item.reprompt,
+        view_password: item.view_password,
         has_totp: login.is_some_and(|l| present(&l.totp)),
         has_password: login.is_some_and(|l| present(&l.password)),
         has_username: login.is_some_and(|l| present(&l.username)),

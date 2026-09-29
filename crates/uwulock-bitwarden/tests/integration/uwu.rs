@@ -234,10 +234,15 @@ async fn a_file_request_from_making_it_to_taking_a_file_into_an_item() {
         .unwrap();
     assert_eq!(name.as_str(), "scan.pdf");
     let encrypted = client
-        .submission_file(TOKEN, REQUEST_ID, "s1", "f1")
+        .submission_file(TOKEN, REQUEST_ID, "s1", "f1", 1 << 20)
         .await
         .unwrap();
     assert_eq!(kf.decrypt(&encrypted).unwrap().as_slice(), contents);
+    // Nothing larger than the limit the caller names is read.
+    let too_large = client
+        .submission_file(TOKEN, REQUEST_ID, "s1", "f1", encrypted.len() as u64 - 1)
+        .await;
+    assert!(too_large.is_err());
 
     // Taken into an item: the name and key again, under the item's key.
     let item_key = SymmetricKey::generate();
@@ -296,6 +301,12 @@ async fn versions_icons_reminders_masked_addresses_and_sends() {
         {
             return match host {
                 "github.com" => Answer::bytes("image/png", png(32, 32)),
+                // A PNG header and then far more than an icon weighs.
+                "huge.example.com" => {
+                    let mut body = png(32, 32);
+                    body.resize(300 * 1024, 0);
+                    Answer::bytes("image/png", body)
+                }
                 _ => Answer::empty(404),
             };
         }
@@ -464,6 +475,13 @@ async fn versions_icons_reminders_masked_addresses_and_sends() {
             .unwrap(),
         None
     );
+    assert_eq!(
+        client
+            .automatic_icon(&icons_url, "huge.example.com")
+            .await
+            .unwrap(),
+        None
+    );
 
     // Reminders, travel mode, the account.
     let reminder = client
@@ -569,4 +587,20 @@ async fn a_device_gives_its_icon() {
     assert!(icons::device_icon("https://shop.example.com")
         .await
         .is_err());
+
+    // A start page naming icons on the internet: they aren't asked for (the
+    // fetch would tell a third party about the device), /favicon.ico is. By
+    // name this time, which the local-only resolver answers.
+    let elsewhere = FakeHttp::start(|request| match request.path.as_str() {
+        "/" => Answer::bytes(
+            "text/html",
+            br#"<link rel="icon" href="https://cdn.example.net/logo.png">"#.to_vec(),
+        ),
+        "/favicon.ico" => Answer::bytes("image/png", png(16, 16)),
+        _ => Answer::empty(404),
+    });
+    let by_name = elsewhere.url.replace("127.0.0.1", "localhost");
+    let icon = icons::device_icon(&by_name).await.unwrap();
+    assert_eq!(extras::png_size(&icon), Some((16, 16)));
+    assert_eq!(elsewhere.calls(), ["GET /", "GET /favicon.ico"]);
 }

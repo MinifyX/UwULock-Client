@@ -6,9 +6,12 @@
  *
  * - the popup and the prompt window (extension pages) with `PageRequest`s — they may ask for
  *   anything, as the desktop app's page asks its Rust side;
- * - the content scripts in web pages with `ContentRequest`s — they get lists of names for the
+ * - the content scripts in web pages with `ContentRequest`s — they learn how many items fit the
  *   page they run in, and the values of exactly one item after somebody picked it. Which page
- *   that is, the background takes from the sender, never from the message.
+ *   that is, the background takes from the sender, never from the message;
+ * - the inline menu's list, an extension page (menu.html) in a frame in the web page, over a
+ *   port (`MenuRequest`, `MenuMessage`): it lists the names and takes the pick, so what a page's
+ *   own renderer does can't forge one (security review 0.3, CL-L8).
  *
  * The background answers every request with `Reply<T>`: `{ ok: true, value }` or
  * `{ ok: false, error: { kind, message } }`.
@@ -39,14 +42,15 @@ export type PageItem = {
   reprompt: boolean;
 };
 
-/** What a content script learns about its page. */
+/** What a content script learns about its page: how many items fit it, not which. */
 export type PageInfo = {
   state: VaultState;
-  /** Logins whose addresses match this frame, best first. */
-  logins: PageItem[];
-  /** Offered in card and address forms, whatever the site. */
-  cards: PageItem[];
-  identities: PageItem[];
+  /**
+   * How many logins match this frame's address, and how many cards and addresses may be
+   * offered here (the page itself and frames of its origin). The names are for the menu's
+   * frame only (`MenuView`).
+   */
+  counts: { logins: number; cards: number; identities: number };
   /** The frame is plain http: filling asks first. */
   insecure: boolean;
   /** Show the button and menu in login fields. */
@@ -188,10 +192,19 @@ export type ContentRequest =
   /** Names for the page's inline menu, and the settings the page needs. */
   | { type: 'content:page-info' }
   /**
-   * The values of one item, after somebody picked it — in the inline menu (no `token`), or
-   * answering a `bg:fill-offer` (its `token`).
+   * The values of one item, answering a `bg:fill-offer` with its `token`: after somebody picked
+   * it in the popup, the context menu, the menu's frame, or pressed the shortcut. Nothing is
+   * filled without one.
    */
-  | { type: 'content:fill'; itemId: string; token?: string; confirmedInsecure?: boolean }
+  | { type: 'content:fill'; itemId: string; token: string; confirmedInsecure?: boolean }
+  /**
+   * The inline menu opens for a field of this frame: a session the menu's frame is shown for
+   * (`menu.html#<session>`). `kind`: what the field takes; `maskable`: a username or email field.
+   */
+  | { type: 'content:menu-open'; kind: MenuKind; maskable: boolean }
+  | { type: 'content:menu-close'; session: string }
+  /** The field's ↓ key: the list's first entry is selected and takes the keys. */
+  | { type: 'content:menu-focus'; session: string }
   /** A login form was sent (or a username on its own, the first step of two). */
   | {
       type: 'content:submitted';
@@ -202,18 +215,15 @@ export type ContentRequest =
     }
   /** A page loaded: is a save prompt waiting for this tab? (top frame only) */
   | { type: 'content:pending-prompt' }
+  /**
+   * The bar's answer. The reply is null, or — when another account was opened since the bar
+   * asked — the question again, for the account open now (nothing was saved).
+   */
   | { type: 'content:prompt-answer'; id: string; answer: SaveAnswer }
   /** The page had no field for the one-time code: copy it instead, like Bitwarden does. */
   | { type: 'content:copy-totp'; itemId: string }
   /** The vault is locked: open the popup to unlock. */
   | { type: 'content:open-popup' }
-  /**
-   * A new masked address for this tab's site, typed into the focused username or email field.
-   * Which site that is, the background takes from the sender.
-   */
-  | { type: 'content:masked-create' }
-  /** Open the web vault's page to connect a UwUMail account. */
-  | { type: 'content:open-masked-settings' }
   /** UwULock Server's / Bitwarden's WebAuthn fallback connector answered (two-step login). */
   | { type: 'content:webauthn-result'; data: string; remember: boolean }
   | { type: 'content:passkey-create'; requestId: string; options: PasskeyCreateOptions }
@@ -231,11 +241,65 @@ export type BackgroundMessage =
    * form claims the values with `content:fill` and this token; the background decides per
    * frame whether that frame may have them.
    */
-  | { type: 'bg:fill-offer'; token: string; itemId: string; kind: ItemKind }
+  | {
+      type: 'bg:fill-offer';
+      token: string;
+      itemId: string;
+      kind: ItemKind;
+      /** Picked in this frame's inline menu: fill the menu's field. */
+      session?: string;
+    }
+  /**
+   * The menu's frame took a pick: is the frame, as this page shows it, uncovered and unchanged
+   * long enough? Answered with a boolean (the clickjacking guard of what lives in the page).
+   */
+  | { type: 'bg:menu-guard'; session: string }
+  /** The menu's frame wants this height. */
+  | { type: 'bg:menu-size'; session: string; height: number }
+  /** Close the menu; `refocus`: back into its field. */
+  | { type: 'bg:menu-close'; session: string; refocus: boolean }
+  /** Type `value` into the menu's field (a new masked address). */
+  | { type: 'bg:fill-text'; session: string; value: string }
   /** Show the save/update bar (top frame). */
   | { type: 'bg:save-prompt'; prompt: SavePrompt }
   /** The vault was unlocked, locked or changed: ask for `content:page-info` again. */
   | { type: 'bg:vault-changed' };
+
+// ── The inline menu's frame ⇄ background (a port named `menu`) ─
+
+/** `signup`: a sign-up form's username or email field, where only a masked address is offered. */
+export type MenuKind = 'login' | 'card' | 'identity' | 'signup';
+
+/** What the menu's frame lists. */
+export type MenuView = {
+  state: VaultState;
+  kind: MenuKind;
+  items: PageItem[];
+  /** Offer "New masked address" (UwULock Server, a username or email field). */
+  masked: boolean;
+  language: 'de' | 'en';
+};
+
+/** What the frame answers after a pick; `unseen`: the page's side refused the click. */
+export type MenuPickAnswer = { filled: true } | { filled: false; reason: FillRefusal | 'unseen' };
+
+export type MenuRequest =
+  | { type: 'hello'; session: string }
+  | { type: 'pick'; itemId: string; confirmedInsecure?: boolean }
+  | { type: 'masked' }
+  | { type: 'open-popup' }
+  | { type: 'open-masked-settings' }
+  | { type: 'size'; height: number }
+  | { type: 'close'; refocus: boolean };
+
+export type MenuMessage =
+  | { type: 'view'; view: MenuView }
+  /** The session is over (the background was restarted, or the page closed the menu). */
+  | { type: 'gone' }
+  | { type: 'picked'; answer: MenuPickAnswer }
+  | { type: 'masked'; failure: Failure | null }
+  /** The field's arrow key opened the list: select its first entry. */
+  | { type: 'select-first' };
 
 // ── Extension pages (popup, prompt) → background ──────────
 
@@ -374,6 +438,8 @@ export type ItemSummary = {
   deleted: boolean;
   archived: boolean;
   reprompt: boolean;
+  /** False when the organisation hides this item's passwords from this member. */
+  viewPassword: boolean;
   hasTotp: boolean;
   hasPassword: boolean;
   hasUsername: boolean;
@@ -487,6 +553,8 @@ export type Settings = {
   theme: 'system' | 'light' | 'dark';
   /** Minutes without use. 0: as soon as the popup closes; -1: only when the browser restarts. */
   lockTimeout: LockTimeout;
+  /** Lock when the browser says the computer's screen was locked (`idle` state `locked`). */
+  lockWithSystem: boolean;
   /** Seconds; 0 never. */
   clipboardClear: number;
   inlineMenu: boolean;
@@ -601,7 +669,8 @@ export type PageRequest =
   | { type: 'set-settings'; patch: Partial<Settings> }
   /** The items for the active tab, and whether it is plain http. */
   | { type: 'tab-items' }
-  | { type: 'fill-tab'; id: string; confirmedInsecure: boolean }
+  /** `password`: the master password, which an item with the re-prompt needs for every fill. */
+  | { type: 'fill-tab'; id: string; confirmedInsecure: boolean; password?: string }
   | { type: 'pending-saves' }
   | { type: 'answer-pending-save'; id: string; answer: SaveAnswer }
   | { type: 'passkey-prompt'; id: string }

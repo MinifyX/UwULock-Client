@@ -362,9 +362,16 @@ pub struct Mover {
     next: usize,
     /// Families that may still be made; `None` for no limit.
     family_room: Option<usize>,
+    /// The most a file may weigh as it comes from the source: the target's
+    /// file limit (Bitwarden's 500 MiB when it names none), plus what
+    /// encryption adds. A source can't make the app read more.
+    max_download: u64,
     summary: Summary,
     preview: Preview,
 }
+
+/// Bitwarden's own limit for a file, for a server that names none.
+const DEFAULT_MAX_FILE: u64 = 500 * 1024 * 1024;
 
 impl Mover {
     /// Reads both vaults and plans the move. Nothing is written yet.
@@ -458,6 +465,9 @@ impl Mover {
             tasks: Vec::new(),
             next: 0,
             family_room,
+            // Type 2 of an encrypted file: a byte, the IV, the MAC and at most
+            // a block of padding.
+            max_download: max_file.unwrap_or(DEFAULT_MAX_FILE).saturating_add(1024),
             summary: Summary::default(),
         };
         mover.plan(&raw, now, max_file);
@@ -1045,7 +1055,7 @@ impl Mover {
             Err(error) if ends_the_run(&error) => return Err(error),
             Err(error) => listed_url.ok_or(error)?,
         };
-        let encrypted = self.source.client.download(&url).await?;
+        let encrypted = self.source.client.download(&url, self.max_download).await?;
         let plain = decrypt_file(&encrypted, &old_file_key)?;
         drop(encrypted);
 
@@ -1155,7 +1165,7 @@ impl Mover {
                 .client
                 .send_file_url(&source_id, access_id.as_deref(), &file_id)
                 .await?;
-            let encrypted = self.source.client.download(&url).await?;
+            let encrypted = self.source.client.download(&url, self.max_download).await?;
             let plain = decrypt_file(&encrypted, &old_key)?;
             drop(encrypted);
             let sealed = encrypt_file(&plain, &new_key);

@@ -8,6 +8,7 @@ import { ext } from '../../shared/browser';
 import { answerPendingSave, copyField, fillTab, pendingSaves, tabItems } from '../api';
 import { copiedText, errorText, toast, useSettings } from '../lib';
 import type { EditorTarget } from './Editor';
+import { FillReprompt } from './FillReprompt';
 
 /**
  * What belongs to the page in the active tab: its logins, with a button to fill them, and the
@@ -24,6 +25,8 @@ export function TabView({
   const [items, setItems] = useState<TabItems | null>(null);
   const [pending, setPending] = useState<PendingSave[]>([]);
   const [confirm, setConfirm] = useState<string | null>(null);
+  /** An item with the re-prompt, waiting for the master password to be filled. */
+  const [reprompt, setReprompt] = useState<{ item: ItemSummary; insecureOk: boolean } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -47,6 +50,10 @@ export function TabView({
   const fill = async (item: ItemSummary, insecureOk = false) => {
     if (items?.insecure && !insecureOk) {
       setConfirm(item.id);
+      return;
+    }
+    if (item.reprompt) {
+      setReprompt({ item, insecureOk });
       return;
     }
     try {
@@ -192,6 +199,17 @@ export function TabView({
             {t('Abbrechen')}
           </button>
         </div>
+      )}
+
+      {reprompt && (
+        <FillReprompt
+          name={reprompt.item.name}
+          onFill={async (password) => {
+            await fillTab(reprompt.item.id, reprompt.insecureOk, password);
+            window.close();
+          }}
+          onCancel={() => setReprompt(null)}
+        />
       )}
 
       {!canFill && (

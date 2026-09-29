@@ -49,7 +49,8 @@ const quiet = {
   resolve: { alias: { '@desktop': join(root, 'apps/desktop/src') } },
 };
 
-// The pages. Their HTML sits in src/, so the output has popup.html etc. at the top.
+// The pages. Their HTML sits in src/, so the output has popup.html etc. at the top. menu.html is
+// the inline menu's list, which content scripts show in a frame in web pages.
 await build({
   ...quiet,
   root: join(app, 'src'),
@@ -69,6 +70,7 @@ await build({
         popup: join(app, 'src/popup.html'),
         prompt: join(app, 'src/prompt.html'),
         offscreen: join(app, 'src/offscreen.html'),
+        menu: join(app, 'src/menu.html'),
       },
     },
   },

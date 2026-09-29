@@ -266,8 +266,11 @@ sleeps: logind (`PrepareForSleep`, `Lock`, `LockedHint`) and the screen
 saver's `ActiveChanged` on Linux, the input desktop on Windows, the session's
 `CGSSessionScreenIsLocked` on macOS, and everywhere a gap between the wall
 clock and the monotonic one. `hello.rs` unlocks with Windows Hello: its key
-(KeyCredentialManager) signs a fixed challenge per account, and the hashed,
-stretched signature seals a copy of the user key in `account.json`. Touch ID
+(KeyCredentialManager) signs a challenge of the account id and 32 random
+bytes, new at each switching on and kept under DPAPI next to the copy, and the
+hashed, stretched signature seals a copy of the user key in `account.json`.
+Switching Windows Hello off and on again makes a new key pair and challenge, so
+a signature obtained earlier opens nothing any more. Touch ID
 is not offered: a keychain item that only opens with a finger needs an Apple
 Developer ID signature and an entitlement, and a prompt in front of a key
 kept elsewhere would protect nothing.

@@ -43,7 +43,8 @@ async function build() {
   const url = tab?.id !== undefined ? (tab.url ?? tabUrl(tab.id)) : undefined;
   shownFor = tab?.id ?? null;
   const unlocked = Boolean(session.unlockedAccountId());
-  const logins = unlocked && url && isFillableUrl(url) ? await matchingLogins(url) : [];
+  const logins =
+    unlocked && url && isFillableUrl(url) ? await matchingLogins(url, { topFrame: true }) : [];
   const index = unlocked ? vault.autofillIndex() : [];
   const cards = index.filter((e) => e.kind === 'card').slice(0, MAX_ITEMS);
   const identities = index.filter((e) => e.kind === 'identity').slice(0, MAX_ITEMS);
@@ -118,6 +119,11 @@ export async function onMenuClick(info: chrome.contextMenus.OnClickData, tab?: c
   }
   // A pick from the menu is a pick like in the popup: the tab's page itself may have it.
   if (action === 'fill' || action === 'fill-card' || action === 'fill-identity') {
+    // An item with the re-prompt asks for the master password in the popup, every time.
+    if (vault.autofillIndex().find((e) => e.id === itemId)?.reprompt) {
+      await session.openPopup();
+      return;
+    }
     await offer(tab.id, itemId, action !== 'fill');
   }
 }

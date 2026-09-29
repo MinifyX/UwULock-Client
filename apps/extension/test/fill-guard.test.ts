@@ -8,16 +8,20 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const sent: { tabId: number; message: { token?: string } }[] = [];
+const sent: { tabId: number; message: { token?: string }; options?: { frameId?: number } }[] = [];
 
 vi.mock('../src/shared/browser', () => ({
   ext: {
     tabs: {
       onRemoved: { addListener: () => undefined },
-      sendMessage: async (tabId: number, message: { token?: string }) => {
-        sent.push({ tabId, message });
+      sendMessage: async (
+        tabId: number,
+        message: { token?: string },
+        options?: { frameId?: number },
+      ) => {
+        sent.push({ tabId, message, ...(options ? { options } : {}) });
       },
-      query: async () => [],
+      query: async () => [{ id: 7, url: 'https://bank.example/login' }],
     },
     runtime: { getURL: (path: string) => `chrome-extension://test${path}` },
   },
@@ -52,6 +56,9 @@ vi.mock('../src/background/store', () => ({
 vi.mock('../src/background/clipboard', () => ({ copy: async () => undefined }));
 vi.mock('../src/background/events', () => ({ changed: () => undefined }));
 
+/** The account's own equivalent domains, as the server sends them. */
+let equivalents: { global: string[][]; custom: string[][] } = { global: [], custom: [] };
+
 vi.mock('../src/background/vault', () => ({
   autofillIndex: () => [
     {
@@ -67,6 +74,30 @@ vi.mock('../src/background/vault', () => ({
       uris: [{ uri: 'https://bank.example', match: null }],
     },
     {
+      id: 'guarded',
+      kind: 'login',
+      name: 'Guarded',
+      subtitle: 'nyu',
+      favorite: false,
+      reprompt: true,
+      hasTotp: false,
+      hasPassword: true,
+      hasUsername: true,
+      uris: [{ uri: 'https://vault.example.net', match: null }],
+    },
+    {
+      id: 'intranet',
+      kind: 'login',
+      name: 'Intranet',
+      subtitle: 'nyu',
+      favorite: false,
+      reprompt: false,
+      hasTotp: false,
+      hasPassword: true,
+      hasUsername: true,
+      uris: [{ uri: '^https://intra\\.example\\.org/', match: 4 }],
+    },
+    {
       id: 'card',
       kind: 'card',
       name: 'Visa',
@@ -78,7 +109,10 @@ vi.mock('../src/background/vault', () => ({
       hasUsername: false,
     },
   ],
-  domains: () => [],
+  domains: () => equivalents,
+  verifyReprompt: async (_id: string, password: string) => {
+    if (password !== 'master') throw { kind: 'wrong-password', message: 'Wrong.' };
+  },
   items: async () => [],
 }));
 
@@ -87,7 +121,8 @@ vi.mock('../src/background/wasm', () => ({
   call: async () => undefined,
 }));
 
-const { fill, offer, pageInfo } = await import('../src/background/autofill');
+const { fill, fillBest, fillTab, frameItems, offer, pageInfo } =
+  await import('../src/background/autofill');
 
 type Sender = chrome.runtime.MessageSender;
 const frame = (url: string, frameId = 0, tabId = 7): Sender => ({
@@ -103,23 +138,54 @@ async function offered(tabId: number, itemId: string, explicit: boolean, insecur
   return sent[0]!.message.token!;
 }
 
+/** A pick in the inline menu's frame of `frameId`: an offer for that frame alone. */
+async function picked(frameId: number, itemId: string, tabId = 7, insecureOk = false) {
+  sent.length = 0;
+  await offer(tabId, itemId, false, insecureOk, false, { frameId, session: 'menu-1' });
+  return sent[0]!.message.token!;
+}
+
+const ids = (items: { id: string }[]) => items.map((item) => item.id);
+
 describe('filling', () => {
   beforeEach(async () => {
     // The tab's top frame, as its content script reported it.
     await pageInfo(frame('https://bank.example/login'));
   });
 
-  it('gives a login to a frame whose own address matches', async () => {
-    const answer = await fill(frame('https://login.bank.example/'), 'bank', undefined, false);
-    expect(answer).toEqual({
+  it('fills nothing without an offer: a pick the page reports is no pick', async () => {
+    const page = frame('https://bank.example/login');
+    for (const token of [undefined, 'made-up', 42]) {
+      expect(await fill(page, 'bank', token, false)).toEqual({ filled: false, reason: 'expired' });
+    }
+  });
+
+  it("gives a login to a frame whose own address matches, from that frame's menu", async () => {
+    const login = frame('https://login.bank.example/', 2);
+    const token = await picked(2, 'bank');
+    expect(sent[0]).toMatchObject({ options: { frameId: 2 } });
+    expect(await fill(login, 'bank', token, false)).toEqual({
       filled: true,
       values: expect.objectContaining({ password: 'hunter2' }),
+    });
+    // Once.
+    expect(await fill(login, 'bank', token, false)).toEqual({ filled: false, reason: 'expired' });
+  });
+
+  it("a menu's pick is for its own frame only", async () => {
+    const token = await picked(2, 'bank');
+    expect(await fill(frame('https://bank.example/', 0), 'bank', token, false)).toEqual({
+      filled: false,
+      reason: 'expired',
     });
   });
 
   it('never to a frame of another site, not even inside the bank’s page', async () => {
     const ad = frame('https://ads.example/frame', 3);
-    expect(await fill(ad, 'bank', undefined, false)).toEqual({ filled: false, reason: 'no-match' });
+    expect(await fill(ad, 'bank', await picked(3, 'bank'), false)).toEqual({
+      filled: false,
+      reason: 'no-match',
+    });
     const token = await offered(7, 'bank', true);
     expect(await fill(ad, 'bank', token, false)).toEqual({ filled: false, reason: 'no-match' });
   });
@@ -143,19 +209,16 @@ describe('filling', () => {
       filled: false,
       reason: 'expired',
     });
-    expect(await fill(frame('https://bank.example/'), 'bank', 'made-up', false)).toEqual({
-      filled: false,
-      reason: 'expired',
-    });
   });
 
   it('asks first on plain http', async () => {
     const plain = { ...frame('http://bank.example/'), url: 'http://bank.example/' };
-    expect(await fill(plain, 'bank', undefined, false)).toEqual({
+    expect(await fill(plain, 'bank', await picked(0, 'bank'), false)).toEqual({
       filled: false,
       reason: 'insecure',
     });
-    expect((await fill(plain, 'bank', undefined, true)).filled).toBe(true);
+    expect((await fill(plain, 'bank', await picked(0, 'bank'), true)).filled).toBe(true);
+    expect((await fill(plain, 'bank', await picked(0, 'bank', 7, true), false)).filled).toBe(true);
   });
 
   it('cards only into the page and frames of its own origin, offer or not', async () => {
@@ -163,30 +226,96 @@ describe('filling', () => {
     const payment = frame('https://pay.example/card', 5);
     const refused = { filled: false, reason: 'no-match' };
     expect(await fill(payment, 'card', token, false)).toEqual(refused);
-    // Not from a pick in that frame's own menu either: an ad's frame could fake one.
-    expect(await fill(payment, 'card', undefined, false)).toEqual(refused);
+    // Not from a pick in that frame's own menu either.
+    expect(await fill(payment, 'card', await picked(5, 'card'), false)).toEqual(refused);
     const own = frame('https://bank.example/checkout', 4);
-    expect((await fill(own, 'card', undefined, false)).filled).toBe(true);
-    expect((await fill(frame('https://bank.example/'), 'card', undefined, false)).filled).toBe(
-      true,
-    );
+    expect((await fill(own, 'card', await picked(4, 'card'), false)).filled).toBe(true);
+    expect((await fill(frame('https://bank.example/'), 'card', token, false)).filled).toBe(true);
   });
 
   it('lists cards and addresses to the page and frames of its own origin only', async () => {
-    expect((await pageInfo(frame('https://ads.example/', 2))).cards).toEqual([]);
-    expect((await pageInfo(frame('https://bank.example/pay', 2))).cards.map((c) => c.id)).toEqual([
-      'card',
-    ]);
-    expect((await pageInfo(frame('https://bank.example/'))).cards.map((c) => c.id)).toEqual([
-      'card',
-    ]);
+    expect(await frameItems(frame('https://ads.example/', 2), 'card')).toEqual([]);
+    expect(ids(await frameItems(frame('https://bank.example/pay', 2), 'card'))).toEqual(['card']);
+    expect(ids(await frameItems(frame('https://bank.example/'), 'card'))).toEqual(['card']);
   });
 
-  it('lists names, never values, and only the frame’s own logins', async () => {
+  it('the page learns how many items fit, never names or values', async () => {
     const info = await pageInfo(frame('https://ads.example/', 2));
-    expect(info.logins).toEqual([]);
+    expect(info.counts).toEqual({ logins: 0, cards: 0, identities: 0 });
     const own = await pageInfo(frame('https://www.bank.example/'));
-    expect(own.logins.map((l) => l.id)).toEqual(['bank']);
-    expect(JSON.stringify(own)).not.toContain('hunter2');
+    expect(own.counts).toEqual({ logins: 1, cards: 1, identities: 0 });
+    expect(JSON.stringify(own)).not.toContain('Bank');
+    expect(ids(await frameItems(frame('https://www.bank.example/'), 'login'))).toEqual(['bank']);
+  });
+});
+
+describe('address matching (CL-L11)', () => {
+  beforeEach(() => {
+    equivalents = { global: [], custom: [] };
+  });
+
+  it('tries a regular expression in the top frame only', async () => {
+    const top = frame('https://intra.example.org/login');
+    expect(ids(await frameItems(top, 'login'))).toEqual(['intranet']);
+    expect((await fill(top, 'intranet', await picked(0, 'intranet'), false)).filled).toBe(true);
+    const inner = frame('https://intra.example.org/login', 2);
+    expect(await frameItems(inner, 'login')).toEqual([]);
+    expect(await fill(inner, 'intranet', await picked(2, 'intranet'), false)).toEqual({
+      filled: false,
+      reason: 'no-match',
+    });
+  });
+
+  it("lists a login matched through the account's own equivalent domains, but the shortcut doesn't fill it", async () => {
+    equivalents = { global: [], custom: [['bank.example', 'evil.example']] };
+    const evil = frame('https://evil.example/login');
+    expect(ids(await frameItems(evil, 'login'))).toEqual(['bank']);
+    sent.length = 0;
+    await fillBest({ id: 7, url: 'https://evil.example/login' } as chrome.tabs.Tab);
+    expect(sent).toEqual([]);
+    // Bitwarden's global groups count for the shortcut.
+    equivalents = { global: [['bank.example', 'evil.example']], custom: [] };
+    await fillBest({ id: 7, url: 'https://evil.example/login' } as chrome.tabs.Tab);
+    expect(sent).toHaveLength(1);
+  });
+});
+
+describe('the re-prompt, per fill (CL-I3)', () => {
+  beforeEach(async () => {
+    equivalents = { global: [], custom: [] };
+    await pageInfo(frame('https://vault.example.net/login'));
+  });
+
+  it("never fills from the page's menu or an offer without the master password", async () => {
+    const page = frame('https://vault.example.net/login');
+    expect(await fill(page, 'guarded', await picked(0, 'guarded'), false)).toEqual({
+      filled: false,
+      reason: 'reprompt',
+    });
+    const token = await offered(7, 'guarded', true);
+    expect(await fill(page, 'guarded', token, false)).toEqual({
+      filled: false,
+      reason: 'reprompt',
+    });
+  });
+
+  it('fills once with the master password asked for that fill', async () => {
+    await expect(fillTab('guarded', false, undefined)).rejects.toMatchObject({ kind: 'verify' });
+    await expect(fillTab('guarded', false, 'wrong')).rejects.toMatchObject({
+      kind: 'wrong-password',
+    });
+    sent.length = 0;
+    await fillTab('guarded', false, 'master');
+    const token = sent[0]!.message.token!;
+    const page = frame('https://vault.example.net/login');
+    expect((await fill(page, 'guarded', token, false)).filled).toBe(true);
+    // The answer was for that fill: the same offer fills nothing more.
+    expect((await fill(page, 'guarded', token, false)).filled).toBe(false);
+  });
+
+  it('the shortcut opens the popup instead', async () => {
+    sent.length = 0;
+    await fillBest({ id: 7, url: 'https://vault.example.net/login' } as chrome.tabs.Tab);
+    expect(sent).toEqual([]);
   });
 });

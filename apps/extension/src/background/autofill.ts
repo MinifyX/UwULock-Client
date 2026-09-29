@@ -1,8 +1,10 @@
 /**
  * Filling pages, and saving what was typed into them.
  *
- * A content script learns names, never values, until somebody picked an item: in the page's
- * inline menu, in the popup, with the shortcut or the context menu. Which page asks is taken
+ * A content script learns how many items fit, never their names or values, until somebody
+ * picked an item: in the inline menu's frame (an extension page, menu.ts), in the popup, with
+ * the shortcut or the context menu. Every pick becomes an offer with a one-time token, and
+ * nothing is filled without one — a page's renderer can't make up a pick. Which page asks is taken
  * from the sender — the frame's own address — and an item is only handed to a frame whose
  * address matches one of its addresses (Bitwarden's match detection, see shared/uri.ts). So a
  * login for `bank.example` never reaches an iframe from `ads.example` on the bank's page. Only
@@ -23,6 +25,7 @@ import type {
   FillValues,
   ItemKind,
   ItemSummary,
+  MenuKind,
   PageInfo,
   PageItem,
   PendingSave,
@@ -32,13 +35,7 @@ import type {
   BackgroundMessage,
 } from '../shared/protocol';
 import { resolveLanguage } from '../shared/i18n';
-import {
-  hostnameOf,
-  isFillableUrl,
-  isInsecureUrl,
-  itemMatches,
-  matchingDomains,
-} from '../shared/uri';
+import { hostnameOf, isFillableUrl, isInsecureUrl, itemMatches, pageDomains } from '../shared/uri';
 import * as clipboard from './clipboard';
 import { changed } from './events';
 import * as session from './session';
@@ -73,16 +70,38 @@ function order(a: vault.IndexEntry, b: vault.IndexEntry): number {
   );
 }
 
+export type MatchScope = {
+  /** The address is a top frame's: regular expressions are tried (never in frames, CL-L11). */
+  topFrame: boolean;
+  /**
+   * Leave out logins that match only through the account's own equivalent domains, which the
+   * server hands out unencrypted: for fills nobody picked an item for (the shortcut).
+   */
+  strict?: boolean;
+};
+
+/** Whether a login's addresses match `url`. */
+async function loginMatches(entry: vault.IndexEntry, url: string, scope: MatchScope) {
+  const { defaultMatch } = await settings();
+  const { strict, wide } = pageDomains(url, vault.domains());
+  return itemMatches(entry.uris ?? [], url, scope.strict ? strict : wide, defaultMatch, {
+    regex: scope.topFrame,
+  });
+}
+
 /** The logins whose addresses match `url`, best first. */
-export async function matchingLogins(url: string): Promise<vault.IndexEntry[]> {
+export async function matchingLogins(url: string, scope: MatchScope): Promise<vault.IndexEntry[]> {
   if (!session.unlockedAccountId() || !isFillableUrl(url)) return [];
   const { defaultMatch } = await settings();
-  const domains = matchingDomains(url, vault.domains());
+  const { strict, wide } = pageDomains(url, vault.domains());
+  const domains = scope.strict ? strict : wide;
   return vault
     .autofillIndex()
     .filter(
       (e) =>
-        e.kind === 'login' && !e.archived && itemMatches(e.uris ?? [], url, domains, defaultMatch),
+        e.kind === 'login' &&
+        !e.archived &&
+        itemMatches(e.uris ?? [], url, domains, defaultMatch, { regex: scope.topFrame }),
     )
     .sort(order);
 }
@@ -124,7 +143,24 @@ export function sameOriginAsTop(sender: Sender): boolean {
   }
 }
 
-/** What a content script may know about its frame. */
+/**
+ * The items a frame's menu may list, for a field of `kind`: the logins matching the frame's own
+ * address, or — only in the page itself and frames of its origin — cards and addresses.
+ */
+export async function frameItems(sender: Sender, kind: MenuKind): Promise<PageItem[]> {
+  if (!session.unlockedAccountId()) return [];
+  if (kind === 'login') {
+    return (await matchingLogins(sender.url ?? '', { topFrame: sender.frameId === 0 })).map(
+      pageItem,
+    );
+  }
+  if ((kind === 'card' || kind === 'identity') && sameOriginAsTop(sender)) {
+    return ofKind(kind).map(pageItem);
+  }
+  return [];
+}
+
+/** What a content script may know about its frame: how many items fit, not which. */
 export async function pageInfo(sender: Sender): Promise<PageInfo> {
   const url = sender.url ?? '';
   const tabId = sender.tab?.id;
@@ -134,12 +170,13 @@ export async function pageInfo(sender: Sender): Promise<PageInfo> {
   }
   const config = await settings();
   const unlocked = Boolean(session.unlockedAccountId());
-  const own = unlocked && sameOriginAsTop(sender);
   return {
     state: await state(),
-    logins: unlocked ? (await matchingLogins(url)).map(pageItem) : [],
-    cards: own ? ofKind('card').map(pageItem) : [],
-    identities: own ? ofKind('identity').map(pageItem) : [],
+    counts: {
+      logins: (await frameItems(sender, 'login')).length,
+      cards: (await frameItems(sender, 'card')).length,
+      identities: (await frameItems(sender, 'identity')).length,
+    },
     insecure: isInsecureUrl(url),
     inlineMenu: config.inlineMenu && isFillableUrl(url),
     savePrompt: config.savePrompt && isFillableUrl(url),
@@ -169,6 +206,15 @@ type Offer = {
   explicit: boolean;
   /** The popup asked about plain http already. */
   insecureOk: boolean;
+  /**
+   * The master password was asked for this very fill (an item with the re-prompt): good for one
+   * fill, as in Bitwarden, which asks every time.
+   */
+  reprompted: boolean; /**
+   * Picked in a frame's inline menu: only that frame may claim it, once. (Offers from the popup
+   * go to every frame of the tab, each judged on its own address.)
+   */
+  frameId?: number;
 };
 
 const OFFER_LIFETIME = 15_000;
@@ -182,21 +228,45 @@ function token(): string {
 }
 
 /** Ask every frame of a tab to claim an item's values; each is judged on its own address. */
-export async function offer(tabId: number, itemId: string, explicit: boolean, insecureOk = false) {
+export async function offer(
+  tabId: number,
+  itemId: string,
+  explicit: boolean,
+  insecureOk = false,
+  reprompted = false,
+  menu?: { frameId: number; session: string },
+) {
   const entry = vault.autofillIndex().find((e) => e.id === itemId);
   if (!entry) throw { kind: 'not-found', message: "This item isn't in the vault any more." };
   for (const [key, old] of offers)
     if (Date.now() - old.created > OFFER_LIFETIME) offers.delete(key);
   const id = token();
-  offers.set(id, { tabId, itemId, created: Date.now(), explicit, insecureOk });
-  const message: BackgroundMessage = { type: 'bg:fill-offer', token: id, itemId, kind: entry.kind };
-  await ext.tabs.sendMessage(tabId, message).catch(() => undefined);
+  offers.set(id, {
+    tabId,
+    itemId,
+    created: Date.now(),
+    explicit,
+    insecureOk,
+    reprompted,
+    ...(menu ? { frameId: menu.frameId } : {}),
+  });
+  const message: BackgroundMessage = {
+    type: 'bg:fill-offer',
+    token: id,
+    itemId,
+    kind: entry.kind,
+    ...(menu ? { session: menu.session } : {}),
+  };
+  const options = menu ? { frameId: menu.frameId } : undefined;
+  await (
+    options ? ext.tabs.sendMessage(tabId, message, options) : ext.tabs.sendMessage(tabId, message)
+  ).catch(() => undefined);
 }
 
 export async function fill(
   sender: Sender,
   itemId: string,
-  offerToken: string | undefined,
+  offerToken: unknown,
   confirmedInsecure: boolean,
 ): Promise<FillAnswer> {
   const refuse = (reason: Extract<FillAnswer, { filled: false }>['reason']): FillAnswer => ({
@@ -210,31 +280,30 @@ export async function fill(
   const entry = vault.autofillIndex().find((e) => e.id === itemId);
   if (!entry) return refuse('not-found');
 
-  let fromOffer: Offer | null = null;
-  if (offerToken !== undefined) {
-    const found = offers.get(offerToken);
-    if (!found || Date.now() - found.created > OFFER_LIFETIME) return refuse('expired');
-    if (found.tabId !== tabId || found.itemId !== itemId) return refuse('expired');
-    fromOffer = found;
+  // Nothing without an offer: a pick the background saw, never one the page's side reports.
+  if (typeof offerToken !== 'string') return refuse('expired');
+  const fromOffer = offers.get(offerToken);
+  if (!fromOffer || Date.now() - fromOffer.created > OFFER_LIFETIME) return refuse('expired');
+  if (fromOffer.tabId !== tabId || fromOffer.itemId !== itemId) return refuse('expired');
+  if (fromOffer.frameId !== undefined && fromOffer.frameId !== sender.frameId) {
+    return refuse('expired');
   }
 
   if (entry.kind === 'login') {
-    const { defaultMatch } = await settings();
-    const matches = itemMatches(
-      entry.uris ?? [],
-      url,
-      matchingDomains(url, vault.domains()),
-      defaultMatch,
-    );
+    const matches = await loginMatches(entry, url, { topFrame: sender.frameId === 0 });
     // An item picked for a page it doesn't match goes to that page itself, not into its frames.
-    if (!matches && !(fromOffer?.explicit && sender.frameId === 0)) return refuse('no-match');
+    if (!matches && !(fromOffer.explicit && sender.frameId === 0)) return refuse('no-match');
   } else if (!sameOriginAsTop(sender)) {
     // Cards and addresses have no address to match: only into the page itself, or a frame of
-    // its own origin — with an offer from the popup or without, from the page's own menu.
+    // its own origin — from the popup or from the page's own menu.
     return refuse('no-match');
   }
 
-  if (isInsecureUrl(url) && !confirmedInsecure && !fromOffer?.insecureOk) return refuse('insecure');
+  if (isInsecureUrl(url) && !confirmedInsecure && !fromOffer.insecureOk) return refuse('insecure');
+
+  // An item with the re-prompt is filled only right after the master password was asked for
+  // this fill — never on the strength of an earlier answer (CL-I3).
+  if (entry.reprompt && !fromOffer.reprompted) return refuse('reprompt');
 
   let values: FillValues;
   try {
@@ -243,6 +312,8 @@ export async function fill(
     const kind = (error as { kind?: string }).kind;
     return refuse(kind === 'reprompt' ? 'reprompt' : 'not-found');
   }
+  // A menu's pick and an answered re-prompt are good for one fill.
+  if (fromOffer.reprompted || fromOffer.frameId !== undefined) offers.delete(offerToken);
   lastUsed.set(itemId, Date.now());
   lastFill.set(tabId, { itemId, at: Date.now() });
   await session.touch();
@@ -269,8 +340,11 @@ export async function fillBest(tab: chrome.tabs.Tab) {
   }
   const url = tab.url ?? tabUrls.get(tab.id);
   if (!url) return;
-  const best = (await matchingLogins(url))[0];
-  if (best) await offer(tab.id, best.id, false);
+  // Nobody picked an item: only a match by the page's own domain or Bitwarden's global list.
+  const best = (await matchingLogins(url, { topFrame: true, strict: true }))[0];
+  // An item with the re-prompt asks for the master password in the popup first.
+  if (best?.reprompt) await session.openPopup();
+  else if (best) await offer(tab.id, best.id, false);
 }
 
 // ── The popup's view of the tab ───────────────────────────
@@ -314,16 +388,34 @@ export async function tabItems(): Promise<TabItems> {
     host: url ? hostnameOf(url) : null,
     insecure: url ? isInsecureUrl(url) : false,
     fillable,
-    logins: url && fillable ? pick(await matchingLogins(url)) : [],
+    logins: url && fillable ? pick(await matchingLogins(url, { topFrame: true })) : [],
     cards: pick(ofKind('card')),
     identities: pick(ofKind('identity')),
   };
 }
 
-export async function fillTab(itemId: string, confirmedInsecure: boolean) {
+/**
+ * A pick in the popup. An item with the re-prompt needs the master password with every fill
+ * (`password`), checked here before the page is offered anything.
+ */
+export async function fillTab(
+  itemId: string,
+  confirmedInsecure: boolean,
+  password: string | undefined,
+) {
   const tab = await activeTab();
   if (tab?.id === undefined) throw { kind: 'no-tab', message: 'No page to fill.' };
-  await offer(tab.id, itemId, true, confirmedInsecure);
+  const entry = vault.autofillIndex().find((e) => e.id === itemId);
+  if (!entry) throw { kind: 'not-found', message: "This item isn't in the vault any more." };
+  let reprompted = false;
+  if (entry.reprompt) {
+    if (typeof password !== 'string' || !password) {
+      throw { kind: 'verify', message: 'This item asks for the master password.' };
+    }
+    await vault.verifyReprompt(itemId, password);
+    reprompted = true;
+  }
+  await offer(tab.id, itemId, true, confirmedInsecure, reprompted);
 }
 
 // ── Saving what was sent ──────────────────────────────────
@@ -331,6 +423,13 @@ export async function fillTab(itemId: string, confirmedInsecure: boolean) {
 type Sent = {
   id: string;
   tabId: number;
+  /** The frame the form was sent in (older entries have none: not the top frame). */
+  frameId?: number;
+  /**
+   * The account it is for: the one open when it was sent, or while locked the one that was to
+   * be unlocked. It is saved into that account only; entries without one are dropped.
+   */
+  accountId?: string | null;
   url: string;
   host: string;
   username: string | null;
@@ -357,9 +456,18 @@ function forgetOld() {
     if (now - seen.at > PROMPT_LIFETIME) seenUsernames.delete(tab);
 }
 
-/** What to offer for a sent login: nothing (it's known), an update, or a new item. */
+/**
+ * What to offer for a sent login in the vault open now: nothing (it's known), an update, or a
+ * new item. The question is then for the open account.
+ */
 async function decide(sent: Sent): Promise<Prompted | null> {
-  const candidates = await matchingLogins(sent.url);
+  const open = session.unlockedAccountId();
+  if (!open) return null;
+  return decideIn({ ...sent, accountId: open });
+}
+
+async function decideIn(sent: Sent): Promise<Prompted | null> {
+  const candidates = await matchingLogins(sent.url, { topFrame: sent.frameId === 0 });
   const wanted = sent.username?.trim().toLowerCase() ?? '';
   for (const entry of candidates) {
     let values: FillValues;
@@ -415,9 +523,14 @@ export async function submitted(
     return;
   }
   const seen = seenUsernames.get(tabId);
+  const open = session.unlockedAccountId();
+  const accountId = open ?? (await activeAccount())?.id ?? null;
+  if (!accountId) return;
   const sent: Sent = {
+    accountId,
     id: token(),
     tabId,
+    frameId: sender.frameId,
     url,
     host,
     username: typed ?? (seen && seen.host === host ? seen.username : null),
@@ -425,11 +538,13 @@ export async function submitted(
     previous: newPassword ? password : null,
     at: Date.now(),
   };
-  if (!session.unlockedAccountId()) {
-    // Locked: kept in memory until the vault is unlocked, then the popup asks.
+  if (!open) {
+    // Locked: kept in memory until this account's vault is unlocked, then the popup asks.
     const pending = ((await sessionStore('pendingSaves')) ?? []) as Sent[];
     const next = [
-      ...pending.filter((p) => !(p.host === host && p.username === sent.username)),
+      ...pending.filter(
+        (p) => !(p.host === host && p.username === sent.username && p.accountId === accountId),
+      ),
       sent,
     ];
     await setSession('pendingSaves', next.slice(-10));
@@ -456,7 +571,15 @@ export function pendingPrompt(sender: Sender): SavePrompt | null {
   return null;
 }
 
+/** The question was asked for another account than the one open now. */
+function otherAccount(prompted: Prompted): boolean {
+  return !prompted.accountId || prompted.accountId !== session.unlockedAccountId();
+}
+
 async function act(sent: Prompted, answer: SaveAnswer): Promise<void> {
+  if ((answer === 'save' || answer === 'update') && otherAccount(sent)) {
+    throw { kind: 'account-changed', message: 'Another account is open now. Nothing was saved.' };
+  }
   if (answer === 'never') {
     const config = await settings();
     await updateSettings({ neverSave: [...new Set([...config.neverSave, sent.host])] });
@@ -485,23 +608,48 @@ async function act(sent: Prompted, answer: SaveAnswer): Promise<void> {
   });
 }
 
-export async function promptAnswer(sender: Sender, id: string, answer: SaveAnswer) {
+/**
+ * The bar's answer. `null` when it was acted on; a new question when another account was opened
+ * since it was asked — the bar asks again, for the account open now, instead of saving into it.
+ */
+export async function promptAnswer(
+  sender: Sender,
+  id: string,
+  answer: SaveAnswer,
+): Promise<SavePrompt | null> {
   const prompted = prompts.get(id);
   if (!prompted || prompted.tabId !== sender.tab?.id) {
     throw { kind: 'expired', message: 'This question is out of date.' };
   }
   prompts.delete(id);
+  if ((answer === 'save' || answer === 'update') && otherAccount(prompted)) {
+    if (!session.unlockedAccountId()) throw { kind: 'locked', message: 'The vault is locked.' };
+    const again = await decide(prompted);
+    if (!again) return null;
+    const next = { ...again, id: token(), at: Date.now() };
+    prompts.set(next.id, next);
+    return promptOf(next);
+  }
   await act(prompted, answer === 'update' && !prompted.itemId ? 'save' : answer);
+  return null;
 }
 
-/** After unlocking: the logins sent while locked, each decided now. */
+/**
+ * After unlocking: the logins sent while locked for the account open now, each decided now.
+ * Those for another account wait until it is open; those for none are dropped.
+ */
 export async function pendingSaves(): Promise<PendingSave[]> {
-  await session.requireUnlocked();
+  const open = (await session.requireUnlocked()).id;
   const pending = ((await sessionStore('pendingSaves')) ?? []) as Sent[];
   const out: PendingSave[] = [];
   const keep: Sent[] = [];
   for (const sent of pending) {
-    const prompted = await decide(sent);
+    if (!sent.accountId) continue;
+    if (sent.accountId !== open) {
+      keep.push(sent);
+      continue;
+    }
+    const prompted = await decideIn(sent);
     if (!prompted) continue;
     keep.push(sent);
     prompts.set(prompted.id, { ...prompted, at: Date.now() });
@@ -518,10 +666,16 @@ export async function pendingSaves(): Promise<PendingSave[]> {
 }
 
 export async function answerPendingSave(id: string, answer: SaveAnswer) {
-  await session.requireUnlocked();
+  const open = (await session.requireUnlocked()).id;
   const pending = ((await sessionStore('pendingSaves')) ?? []) as Sent[];
   const prompted = prompts.get(id);
   const sent = pending.find((p) => p.id === id);
+  // Asked for another account than the one open now: it stays for that one.
+  if (sent && sent.accountId !== open) {
+    prompts.delete(id);
+    changed();
+    throw { kind: 'account-changed', message: 'Another account is open now. Nothing was saved.' };
+  }
   await setSession(
     'pendingSaves',
     pending.filter((p) => p.id !== id),
