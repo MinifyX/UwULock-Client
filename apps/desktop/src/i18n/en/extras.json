@@ -189,5 +189,11 @@
   "Wer diesen Link hat, kann die gewählten Werte ansehen – bis {when}.": "Whoever has this link can see the chosen values – until {when}.",
   "Wieder an ✧": "On again ✧",
   "z. B. Scan des Reisepasses": "e.g. passport scan",
-  "Zu viele Versuche in kurzer Zeit. Warte einen Moment.": "Too many tries in a short time. Wait a moment."
+  "Zu viele Versuche in kurzer Zeit. Warte einen Moment.": "Too many tries in a short time. Wait a moment.",
+  "Neuer Schlüssel für die Extras": "A new key for the extras",
+  "Verstanden": "Understood",
+  "Der Schlüssel für UwULocks Extras ist ein anderer als beim letzten Mal auf diesem Gerät. Was unter dem alten lag – eigene Icons, Links von Dateianfragen, Hosts von UwUSSH und UwURDP – lässt sich nicht mehr öffnen.": "The key for UwULock's extras is a different one than last time on this device. What was under the old one – own icons, file-request links, UwUSSH and UwURDP hosts – can't be opened any more.",
+  "Das ist in Ordnung, wenn du (oder jemand mit deinem Master-Passwort) im Web-Tresor neu angefangen hast. Wenn nicht, hat der Server den alten Schlüssel verloren oder entfernt – sag dem Betreiber Bescheid.": "That's fine if you (or someone with your master password) started over in the web vault. If not, the server lost or removed the old key – tell whoever runs it.",
+  "Dieser Link verschlüsselt Uploads für einen Schlüssel, der nicht deiner ist – jemand, der das Link-Geheimnis kannte, hat ihn eingesetzt. Gib den Link nicht weiter; bearbeite die Anfrage mit einem neuen Link oder lösche sie.": "This link encrypts uploads for a key that isn't yours – someone who knew the link's secret put it there. Don't share the link; edit the request with a new link or delete it.",
+  "Zurückgehalten: nicht für deinen Schlüssel.": "Held back: not for your key."
 }

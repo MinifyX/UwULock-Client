@@ -97,6 +97,7 @@ pub fn run() {
             vault::save_folder,
             vault::delete_folder,
             extras::uwu_status,
+            extras::uwu_extras_key_seen,
             extras::uwu_travel,
             extras::open_web_vault_at,
             extras::item_icons,

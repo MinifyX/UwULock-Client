@@ -293,11 +293,21 @@ function RequestView({
             </div>
           </div>
         )}
+        {request.foreignKey && (
+          <p className="notice" data-tone="error">
+            {t(
+              'Dieser Link verschlüsselt Uploads für einen Schlüssel, der nicht deiner ist – jemand, der das Link-Geheimnis kannte, hat ihn eingesetzt. Gib den Link nicht weiter; bearbeite die Anfrage mit einem neuen Link oder lösche sie.',
+            )}
+          </p>
+        )}
         <div className="detail-row">
           <div className="detail-text">
             <span className="detail-label">{t('Link')}</span>
             <span className="detail-value mono uri">
-              {request.link ?? t('Der Link lässt sich nicht mehr zeigen.')}
+              {request.link ??
+                (request.foreignKey
+                  ? t('Zurückgehalten: nicht für deinen Schlüssel.')
+                  : t('Der Link lässt sich nicht mehr zeigen.'))}
             </span>
           </div>
           {request.link && (
@@ -614,7 +624,7 @@ function RequestForm({
     removePassword: false,
     sendDomainId: request?.sendDomainId ?? '',
     disabled: request?.disabled ?? false,
-    newLink: false,
+    newLink: request?.foreignKey ?? false,
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
