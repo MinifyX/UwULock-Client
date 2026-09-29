@@ -109,6 +109,8 @@ export function errorText(error: unknown): string {
       );
     case 'wrong-password':
       return t('Das Master-Passwort ist falsch.');
+    case 'pin-too-short':
+      return t('Die PIN ist zu kurz.');
     case 'pin-cleared':
       return t(
         'Zu viele falsche PINs. Die PIN ist gelöscht, entsperre mit deinem Master-Passwort.',

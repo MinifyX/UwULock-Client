@@ -351,6 +351,8 @@ function PinForm({ onDone }: { onDone: () => void }) {
   const [pin, setPinValue] = useState('');
   const [afterRestart, setAfterRestart] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Kept on disk across restarts, a short PIN is guessed from a copy of the profile in minutes.
+  const min = afterRestart ? 6 : 4;
   return (
     <form
       className="form pin-form"
@@ -371,7 +373,7 @@ function PinForm({ onDone }: { onDone: () => void }) {
         autoFocus
         autoComplete="off"
         label={t('PIN')}
-        placeholder={t('Mindestens vier Zeichen')}
+        placeholder={afterRestart ? t('Mindestens sechs Zeichen') : t('Mindestens vier Zeichen')}
       />
       <label className="check">
         <input
@@ -381,10 +383,17 @@ function PinForm({ onDone }: { onDone: () => void }) {
         />
         <span>{t('Auch nach einem Neustart des Browsers (sonst dann das Master-Passwort)')}</span>
       </label>
+      {afterRestart && (
+        <p className="notice" data-tone="error" role="note">
+          {t(
+            'Dann liegt dein Tresorschlüssel, nur mit der PIN verschlüsselt, auf der Festplatte. Wer eine Kopie deines Browser-Profils hat, kann eine kurze PIN in wenigen Minuten erraten. Nimm mindestens sechs Zeichen, besser Wörter oder Buchstaben mit Ziffern.',
+          )}
+        </p>
+      )}
       {error && <p className="form-error">{error}</p>}
       <div className="form-actions">
         <span className="spacer" />
-        <button className="primary" type="submit" disabled={pin.length < 4}>
+        <button className="primary" type="submit" disabled={[...pin].length < min}>
           {t('Speichern')}
         </button>
       </div>

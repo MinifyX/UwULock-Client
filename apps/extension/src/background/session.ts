@@ -29,12 +29,14 @@ import {
   forgetKdfFloor,
   kdfFloor,
   local,
+  pinAttempts,
   removeAccount,
   removeSession,
   saveAccount,
   session,
   setLocal,
   setKdfFloor,
+  setPinAttempts,
   setSession,
   updateAccount,
 } from './store';
@@ -89,7 +91,7 @@ async function remember(found: Account) {
 /** The vault is open for `found`: remember the key, load what we have, fetch what's new. */
 async function opened(found: Account) {
   await remember(found);
-  await setSession('pinAttempts', 0);
+  await setPinAttempts(found.id, 0);
   const text = await cachedSync(found.id);
   if (text) await vault.open(found, text).catch(() => undefined);
   changed();
@@ -543,26 +545,52 @@ export async function unlock(password: string): Promise<Status> {
 }
 
 const PIN_ATTEMPTS = 5;
+/** A PIN that stays on disk across restarts guards the user key against a copied profile. */
+export const PIN_MIN = 4;
+export const PIN_MIN_AFTER_RESTART = 6;
 
-export async function unlockWithPin(pin: string): Promise<Status> {
+/** One PIN try at a time: tries sent at once can't slip past the count. */
+let pinQueue: Promise<unknown> = Promise.resolve();
+
+function oneAtATime<T>(work: () => Promise<T>): Promise<T> {
+  const run = pinQueue.then(work, work);
+  pinQueue = run.catch(() => undefined);
+  return run;
+}
+
+export function unlockWithPin(pin: string): Promise<Status> {
+  return oneAtATime(() => tryPin(pin));
+}
+
+async function clearPin(accountId: string) {
+  await removeSession('pin');
+  await updateAccount(accountId, { pinProtected: null });
+  await setPinAttempts(accountId, 0);
+  changed();
+}
+
+async function tryPin(pin: string): Promise<Status> {
   const found = await lockedAccount();
   const inSession = await session('pin');
   const wrapped =
     inSession && inSession.accountId === found.id ? inSession.protected : found.pinProtected;
   if (!wrapped) throw { kind: 'no-pin', message: 'No PIN is set.' };
+  // Counted before the try, in storage.local: ending the background (or the browser) halfway
+  // through a try doesn't take it back.
+  const attempts = (await pinAttempts(found.id)) + 1;
+  if (attempts > PIN_ATTEMPTS) {
+    await clearPin(found.id);
+    throw { kind: 'pin-cleared', message: 'Too many wrong PINs.' };
+  }
+  await setPinAttempts(found.id, attempts);
   try {
     await call((core) =>
       core.unlockWithPin(found.email, found.kdf, found.protectedKey!, pin, wrapped),
     );
   } catch (error) {
-    const attempts = ((await session('pinAttempts')) ?? 0) + 1;
-    await setSession('pinAttempts', attempts);
     if (attempts >= PIN_ATTEMPTS) {
       // Guessing goes no further: the PIN is gone, the master password is needed.
-      await removeSession('pin');
-      await updateAccount(found.id, { pinProtected: null });
-      await setSession('pinAttempts', 0);
-      changed();
+      await clearPin(found.id);
       throw { kind: 'pin-cleared', message: 'Too many wrong PINs.' };
     }
     throw error;
@@ -578,7 +606,10 @@ export async function setPin(pin: string | null, afterRestart: boolean): Promise
     await removeSession('pin');
     await updateAccount(found.id, { pinProtected: null });
   } else {
-    if (!/^\S{4,}$/.test(pin)) throw { kind: 'invalid', message: 'The PIN is too short.' };
+    const min = afterRestart ? PIN_MIN_AFTER_RESTART : PIN_MIN;
+    if (/\s/.test(pin) || [...pin].length < min) {
+      throw { kind: 'pin-too-short', message: `The PIN needs at least ${min} characters.` };
+    }
     const wrapped = await call((core) => core.pinProtect(pin));
     if (afterRestart) {
       await updateAccount(found.id, { pinProtected: wrapped });
@@ -587,6 +618,7 @@ export async function setPin(pin: string | null, afterRestart: boolean): Promise
       await setSession('pin', { accountId: found.id, protected: wrapped });
       await updateAccount(found.id, { pinProtected: null });
     }
+    await setPinAttempts(found.id, 0);
   }
   changed();
   return status();
