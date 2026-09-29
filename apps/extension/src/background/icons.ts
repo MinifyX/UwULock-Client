@@ -165,7 +165,9 @@ export async function icons(account: Account, ids: string[]): Promise<Record<str
   }
   const summaries = new Map((await vault.items()).map((item) => [item.id, item]));
   const wanted = [...new Set(ids)].filter((id) => summaries.has(id)).slice(0, 2 * OWN_BATCH);
-  if (hasFeature(account, 'own-icons')) {
+  // Switched off by the admin: own icons that were fetched before don't show either.
+  const ownOn = hasFeature(account, 'own-icons');
+  if (ownOn) {
     await loadOwn(
       account,
       wanted.filter((id) => !own.has(id)),
@@ -175,7 +177,7 @@ export async function icons(account: Account, ids: string[]): Promise<Record<str
   const base = iconsBase(account);
   const pending: Promise<void>[] = [];
   for (const id of wanted) {
-    const mine = own.get(id);
+    const mine = ownOn ? own.get(id) : undefined;
     if (mine) {
       result[id] = mine;
       continue;

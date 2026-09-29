@@ -10,6 +10,7 @@ import {
   PasswordInput,
   publishSettings,
   toast,
+  toastError,
   Toggle,
   useSettings,
   uwuFeature,
@@ -80,7 +81,7 @@ export function SettingsView({
     try {
       publishSettings(await setSettings(patch));
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     }
   };
 
@@ -105,9 +106,7 @@ export function SettingsView({
               {!account.active && (
                 <button
                   type="button"
-                  onClick={() =>
-                    void switchAccount(account.id).catch((e) => toast(errorText(e), 'error'))
-                  }
+                  onClick={() => void switchAccount(account.id).catch((e) => toastError(e))}
                 >
                   {t('Wechseln')}
                 </button>
@@ -119,7 +118,7 @@ export function SettingsView({
                   onClick={() =>
                     void syncNow().then(
                       () => toast(t('Synchronisiert ✧')),
-                      (e) => toast(errorText(e), 'error'),
+                      (e) => toastError(e),
                     )
                   }
                   aria-label={t('Jetzt synchronisieren')}
@@ -137,7 +136,7 @@ export function SettingsView({
                       t('{email} auf diesem Browser abmelden?', { email: account.email }),
                     )
                   )
-                    void logout(account.id).catch((e) => toast(errorText(e), 'error'));
+                    void logout(account.id).catch((e) => toastError(e));
                 }}
                 aria-label={t('Abmelden')}
                 title={t('Abmelden')}
@@ -193,7 +192,7 @@ export function SettingsView({
           {status.pinSet ? (
             <button
               type="button"
-              onClick={() => void setPin(null, false).catch((e) => toast(errorText(e), 'error'))}
+              onClick={() => void setPin(null, false).catch((e) => toastError(e))}
             >
               {t('Entfernen')}
             </button>

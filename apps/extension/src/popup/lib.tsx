@@ -181,6 +181,15 @@ export function toast(text: string, tone: Toast['tone'] = 'info') {
   toastTimer = window.setTimeout(() => setToast(null), tone === 'error' ? 6000 : 2600);
 }
 
+/**
+ * A failure as a toast. An extra the server switched off meanwhile is nothing the person can fix:
+ * a calm note, and the background has asked the server again, so it goes away.
+ */
+export function toastError(error: unknown) {
+  const off = error instanceof RequestFailed && error.kind === 'uwu:feature_off';
+  toast(errorText(error), off ? 'info' : 'error');
+}
+
 export function ToastView() {
   const current = useSyncExternalStore(
     (listener) => {

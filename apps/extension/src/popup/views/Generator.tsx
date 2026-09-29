@@ -6,9 +6,9 @@ import { clearGeneratorHistory, copyText, generate, generatorHistory, setSetting
 import {
   Colored,
   copiedText,
-  errorText,
   publishSettings,
   toast,
+  toastError,
   Toggle,
   useSettings,
   uwuFeature,
@@ -23,8 +23,10 @@ import { MaskedPanel } from './Masked';
 export function Generator({ status }: { status: Status }) {
   const settings = useSettings();
   // Masked addresses are made only on a click, so this mode is not kept for next time.
-  const [masked, setMasked] = useState(false);
+  const [maskedChosen, setMasked] = useState(false);
   const maskable = uwuFeature(status, 'masked-addresses');
+  // Switched off by the admin meanwhile: back to passwords.
+  const masked = maskedChosen && maskable;
   const [options, setOptions] = useState<GeneratorSettings | null>(settings?.generator ?? null);
   const [result, setResult] = useState<{ password: string; bits: number } | null>(null);
   const [history, setHistory] = useState<Generated[]>([]);
@@ -35,7 +37,7 @@ export function Generator({ status }: { status: Status }) {
       setResult(await generate(next));
       setHistory(await generatorHistory());
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     }
   }, []);
 
@@ -57,7 +59,7 @@ export function Generator({ status }: { status: Status }) {
       await copyText(text);
       toast(copiedText('password', settings.clipboardClear));
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     }
   };
 
@@ -105,7 +107,7 @@ export function Generator({ status }: { status: Status }) {
         )}
       </div>
 
-      {masked && maskable ? (
+      {masked ? (
         <MaskedPanel />
       ) : (
         <>

@@ -353,6 +353,11 @@ export type UwuInfo = {
   icons?: { automatic: boolean; url: string | null } | null;
   /** The admin's send domains, without the main host. */
   sendDomains?: SendDomain[];
+  /**
+   * The admin's feature switches (UwULock Server 0.6.0-beta.2), `true` when the extra works; what
+   * is off is already left out of `features`. Missing from an older server.
+   */
+  switches?: Record<string, boolean> | null;
 };
 
 export type SendDomain = { id: string; url: string };

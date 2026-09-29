@@ -3,7 +3,7 @@ import { Icon } from '@desktop/components/Icon';
 import { t } from '../../shared/i18n';
 import type { MaskedAddress, MaskedConnection } from '../../shared/protocol';
 import { copyText, createMasked, maskedConnection } from '../api';
-import { errorText, toast } from '../lib';
+import { errorText, toast, toastError } from '../lib';
 
 /**
  * The generator's masked addresses: a new address from the account's UwUMail for the site in
@@ -36,7 +36,7 @@ export function MaskedPanel() {
       await copyText(email);
       toast(`${t('Kopiert')} ✧`);
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     }
   };
 

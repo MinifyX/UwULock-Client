@@ -6,7 +6,7 @@ import { ItemIcon } from '../icons';
 import type { ItemSummary, PendingSave, StatusMessage, TabItems } from '../../shared/protocol';
 import { ext } from '../../shared/browser';
 import { answerPendingSave, copyField, fillTab, pendingSaves, tabItems } from '../api';
-import { copiedText, errorText, toast, useSettings } from '../lib';
+import { copiedText, toast, toastError, useSettings } from '../lib';
 import type { EditorTarget } from './Editor';
 import { FillReprompt } from './FillReprompt';
 
@@ -34,7 +34,7 @@ export function TabView({
       setPending(await pendingSaves());
     } catch (e) {
       // Locked meanwhile: the lock screen takes over, nothing to say here.
-      if ((e as { kind?: string }).kind !== 'locked') toast(errorText(e), 'error');
+      if ((e as { kind?: string }).kind !== 'locked') toastError(e);
     }
   }, []);
 
@@ -60,7 +60,7 @@ export function TabView({
       await fillTab(item.id, insecureOk);
       window.close();
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     }
   };
 
@@ -69,7 +69,7 @@ export function TabView({
       await copyField(item.id, field);
       toast(copiedText(field, settings?.clipboardClear ?? 30));
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     }
   };
 
@@ -78,7 +78,7 @@ export function TabView({
       await answerPendingSave(save.id, choice);
       if (choice === 'save' || choice === 'update') toast(t('Gespeichert ✧'));
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     }
     void load();
   };
