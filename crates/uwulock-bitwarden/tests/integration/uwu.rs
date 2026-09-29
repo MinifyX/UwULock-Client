@@ -161,7 +161,7 @@ async fn a_file_request_from_making_it_to_taking_a_file_into_an_item() {
         expiration_date: "2026-10-05T12:00:00Z".into(),
         max_submissions: Some(1),
         max_files: 10,
-        max_file_bytes: Some(1024 * 1024),
+        max_file_bytes: 1024 * 1024,
         text_allowed: true,
         send_domain_id: None,
         disabled: false,
