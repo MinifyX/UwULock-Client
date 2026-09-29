@@ -52,7 +52,13 @@ function featureOff(): never {
 
 export type ExtrasState = 'open' | 'none' | 'lost';
 
-let extras: { accountId: string; closings: number; state: Promise<ExtrasState> } | null = null;
+let extras: {
+  accountId: string;
+  closings: number;
+  generation: number;
+  state: Promise<ExtrasState>;
+  settled?: ExtrasState;
+} | null = null;
 
 async function openExtras(account: Account): Promise<ExtrasState> {
   let keys: unknown;
@@ -77,19 +83,35 @@ async function openExtras(account: Account): Promise<ExtrasState> {
 
 /**
  * The extras key, opened in the WebAssembly module once per unlocked vault. A failure to reach
- * the server is tried again on the next call.
+ * the server is tried again on the next call; so is "none" or "lost" after the next sync — the
+ * web vault or the desktop app may have made the key meanwhile.
  */
 export function extrasKey(account: Account): Promise<ExtrasState> {
   if (!hasFeature(account, 'own-icons') && !hasFeature(account, 'file-requests'))
     return Promise.resolve('none');
-  if (extras && extras.accountId === account.id && extras.closings === vault.closedCount())
+  if (
+    extras &&
+    extras.accountId === account.id &&
+    extras.closings === vault.closedCount() &&
+    (extras.settled === 'open' || extras.generation === vault.generation())
+  )
     return extras.state;
   const state = openExtras(account);
-  const entry = { accountId: account.id, closings: vault.closedCount(), state };
+  const entry: NonNullable<typeof extras> = {
+    accountId: account.id,
+    closings: vault.closedCount(),
+    generation: vault.generation(),
+    state,
+  };
   extras = entry;
-  state.catch(() => {
-    if (extras === entry) extras = null;
-  });
+  state.then(
+    (found) => {
+      entry.settled = found;
+    },
+    () => {
+      if (extras === entry) extras = null;
+    },
+  );
   return state;
 }
 
