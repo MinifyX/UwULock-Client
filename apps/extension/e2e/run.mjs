@@ -22,14 +22,11 @@
 
 import { execFileSync, spawn } from 'node:child_process';
 import {
-  constants,
   createCipheriv,
   createHmac,
-  createPublicKey,
   generateKeyPairSync,
   hkdfSync,
   pbkdf2Sync,
-  publicEncrypt,
   randomBytes,
 } from 'node:crypto';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -42,7 +39,7 @@ import { startPages } from './pages.mjs';
 
 const app = join(dirname(fileURLToPath(import.meta.url)), '..');
 const shots = join(app, 'e2e/shots');
-const IMAGE = `ghcr.io/minifyx/uwulock-server:${process.env.UWULOCK_SERVER_VERSION ?? '0.4.0-beta.2'}`;
+const IMAGE = `ghcr.io/minifyx/uwulock-server:${process.env.UWULOCK_SERVER_VERSION ?? '0.6.0-beta.1'}`;
 const EMAIL = 'nyu@example.com';
 const PASSWORD = 'correct horse battery staple';
 const SITE_USER = 'nyu';
@@ -134,18 +131,15 @@ function encrypt(plain, key) {
   return `2.${iv.toString('base64')}|${data.toString('base64')}|${tag.toString('base64')}`;
 }
 
-/** An EncString of type 4: `key` wrapped for an RSA public key (SPKI DER, base64), OAEP with SHA-1. */
-function wrapFor(publicKey, key) {
-  const spki = createPublicKey({
-    key: Buffer.from(publicKey, 'base64'),
-    format: 'der',
-    type: 'spki',
-  });
-  const wrapped = publicEncrypt(
-    { key: spki, padding: constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha1' },
-    key,
+/**
+ * The extras key's second wrap: type 2 under HKDF-SHA256 of the account's private key (PKCS#8
+ * DER), as `uwulock_core::extras::private_wrap_key` makes it.
+ */
+function privateWrap(privateKeyDer, key) {
+  const wrapKey = Buffer.from(
+    hkdfSync('sha256', privateKeyDer, 'uwulock-extras-key-v1', 'private-key-wrap', 64),
   );
-  return `4.${wrapped.toString('base64')}`;
+  return encrypt(key, wrapKey);
 }
 
 /**
@@ -165,10 +159,8 @@ async function register(server) {
   const key = encrypt(userKey, Buffer.concat([expand('enc'), expand('mac')]));
   const pair = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const publicKey = pair.publicKey.export({ type: 'spki', format: 'der' }).toString('base64');
-  const encryptedPrivateKey = encrypt(
-    pair.privateKey.export({ type: 'pkcs8', format: 'der' }),
-    userKey,
-  );
+  const privateKeyDer = pair.privateKey.export({ type: 'pkcs8', format: 'der' });
+  const encryptedPrivateKey = encrypt(privateKeyDer, userKey);
   const response = await fetch(
     `${server.url.replace('localhost', '127.0.0.1')}/identity/accounts/register/finish`,
     {
@@ -188,7 +180,7 @@ async function register(server) {
   );
   if (!response.ok)
     throw new Error(`Registering failed: ${response.status} ${await response.text()}`);
-  return { hash, userKey, publicKey };
+  return { hash, userKey, publicKey, privateKeyDer };
 }
 
 /** The account on the server's API, as another device: for setting the scene only. */
@@ -425,7 +417,7 @@ async function main() {
       const extrasKey = randomBytes(64);
       await api('POST', '/uwu/v1/keys', {
         userKeyWrapped: encrypt(extrasKey, account.userKey),
-        publicKeyWrapped: wrapFor(account.publicKey, extrasKey),
+        privateKeyWrapped: privateWrap(account.privateKeyDer, extrasKey),
       });
       const sync = await api('GET', '/api/sync');
       const saved = sync.ciphers.find((c) => c.type === 1);
