@@ -346,6 +346,11 @@ type Sent = {
   tabId: number;
   /** The frame the form was sent in (older entries have none: not the top frame). */
   frameId?: number;
+  /**
+   * The account it is for: the one open when it was sent, or while locked the one that was to
+   * be unlocked. It is saved into that account only; entries without one are dropped.
+   */
+  accountId?: string | null;
   url: string;
   host: string;
   username: string | null;
@@ -372,8 +377,17 @@ function forgetOld() {
     if (now - seen.at > PROMPT_LIFETIME) seenUsernames.delete(tab);
 }
 
-/** What to offer for a sent login: nothing (it's known), an update, or a new item. */
+/**
+ * What to offer for a sent login in the vault open now: nothing (it's known), an update, or a
+ * new item. The question is then for the open account.
+ */
 async function decide(sent: Sent): Promise<Prompted | null> {
+  const open = session.unlockedAccountId();
+  if (!open) return null;
+  return decideIn({ ...sent, accountId: open });
+}
+
+async function decideIn(sent: Sent): Promise<Prompted | null> {
   const candidates = await matchingLogins(sent.url, { topFrame: sent.frameId === 0 });
   const wanted = sent.username?.trim().toLowerCase() ?? '';
   for (const entry of candidates) {
@@ -430,7 +444,11 @@ export async function submitted(
     return;
   }
   const seen = seenUsernames.get(tabId);
+  const open = session.unlockedAccountId();
+  const accountId = open ?? (await activeAccount())?.id ?? null;
+  if (!accountId) return;
   const sent: Sent = {
+    accountId,
     id: token(),
     tabId,
     frameId: sender.frameId,
@@ -441,11 +459,13 @@ export async function submitted(
     previous: newPassword ? password : null,
     at: Date.now(),
   };
-  if (!session.unlockedAccountId()) {
-    // Locked: kept in memory until the vault is unlocked, then the popup asks.
+  if (!open) {
+    // Locked: kept in memory until this account's vault is unlocked, then the popup asks.
     const pending = ((await sessionStore('pendingSaves')) ?? []) as Sent[];
     const next = [
-      ...pending.filter((p) => !(p.host === host && p.username === sent.username)),
+      ...pending.filter(
+        (p) => !(p.host === host && p.username === sent.username && p.accountId === accountId),
+      ),
       sent,
     ];
     await setSession('pendingSaves', next.slice(-10));
@@ -472,7 +492,15 @@ export function pendingPrompt(sender: Sender): SavePrompt | null {
   return null;
 }
 
+/** The question was asked for another account than the one open now. */
+function otherAccount(prompted: Prompted): boolean {
+  return !prompted.accountId || prompted.accountId !== session.unlockedAccountId();
+}
+
 async function act(sent: Prompted, answer: SaveAnswer): Promise<void> {
+  if ((answer === 'save' || answer === 'update') && otherAccount(sent)) {
+    throw { kind: 'account-changed', message: 'Another account is open now. Nothing was saved.' };
+  }
   if (answer === 'never') {
     const config = await settings();
     await updateSettings({ neverSave: [...new Set([...config.neverSave, sent.host])] });
@@ -501,23 +529,48 @@ async function act(sent: Prompted, answer: SaveAnswer): Promise<void> {
   });
 }
 
-export async function promptAnswer(sender: Sender, id: string, answer: SaveAnswer) {
+/**
+ * The bar's answer. `null` when it was acted on; a new question when another account was opened
+ * since it was asked — the bar asks again, for the account open now, instead of saving into it.
+ */
+export async function promptAnswer(
+  sender: Sender,
+  id: string,
+  answer: SaveAnswer,
+): Promise<SavePrompt | null> {
   const prompted = prompts.get(id);
   if (!prompted || prompted.tabId !== sender.tab?.id) {
     throw { kind: 'expired', message: 'This question is out of date.' };
   }
   prompts.delete(id);
+  if ((answer === 'save' || answer === 'update') && otherAccount(prompted)) {
+    if (!session.unlockedAccountId()) throw { kind: 'locked', message: 'The vault is locked.' };
+    const again = await decide(prompted);
+    if (!again) return null;
+    const next = { ...again, id: token(), at: Date.now() };
+    prompts.set(next.id, next);
+    return promptOf(next);
+  }
   await act(prompted, answer === 'update' && !prompted.itemId ? 'save' : answer);
+  return null;
 }
 
-/** After unlocking: the logins sent while locked, each decided now. */
+/**
+ * After unlocking: the logins sent while locked for the account open now, each decided now.
+ * Those for another account wait until it is open; those for none are dropped.
+ */
 export async function pendingSaves(): Promise<PendingSave[]> {
-  await session.requireUnlocked();
+  const open = (await session.requireUnlocked()).id;
   const pending = ((await sessionStore('pendingSaves')) ?? []) as Sent[];
   const out: PendingSave[] = [];
   const keep: Sent[] = [];
   for (const sent of pending) {
-    const prompted = await decide(sent);
+    if (!sent.accountId) continue;
+    if (sent.accountId !== open) {
+      keep.push(sent);
+      continue;
+    }
+    const prompted = await decideIn(sent);
     if (!prompted) continue;
     keep.push(sent);
     prompts.set(prompted.id, { ...prompted, at: Date.now() });
@@ -534,10 +587,16 @@ export async function pendingSaves(): Promise<PendingSave[]> {
 }
 
 export async function answerPendingSave(id: string, answer: SaveAnswer) {
-  await session.requireUnlocked();
+  const open = (await session.requireUnlocked()).id;
   const pending = ((await sessionStore('pendingSaves')) ?? []) as Sent[];
   const prompted = prompts.get(id);
   const sent = pending.find((p) => p.id === id);
+  // Asked for another account than the one open now: it stays for that one.
+  if (sent && sent.accountId !== open) {
+    prompts.delete(id);
+    changed();
+    throw { kind: 'account-changed', message: 'Another account is open now. Nothing was saved.' };
+  }
   await setSession(
     'pendingSaves',
     pending.filter((p) => p.id !== id),

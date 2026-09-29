@@ -159,7 +159,10 @@ export async function status(): Promise<Status> {
       unlocked: a.id === unlockedId,
     })),
     uwu: active?.uwu ?? null,
-    pendingSaves: ((await session('pendingSaves')) ?? []).length,
+    // Only those for the open account: the others wait until theirs is open.
+    pendingSaves: ((await session('pendingSaves')) ?? []).filter(
+      (sent) => active && (sent as { accountId?: unknown }).accountId === active.id,
+    ).length,
     login: pending
       ? {
           email: pending.email,

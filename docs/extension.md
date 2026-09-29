@@ -38,7 +38,9 @@ release checks the download (see the [install guide](install.md)).
   the code, it is copied instead.
 - **Saving**: after you sign in somewhere, a bar offers to save the login — or to update the
   password if it changed. Signed in while the vault was locked? The popup asks after you
-  unlock it.
+  unlock it. A login is only ever saved into the account it was typed for: if you open another
+  account before answering, the bar asks again for that one, and logins typed while locked wait
+  for their own account.
 - **Passkeys**: sites that use passkeys can create them in your vault and sign you in with
   them, in Bitwarden's format — so passkeys made by Bitwarden's apps work here, and the other
   way round. Cancel, and the browser's own passkey dialog takes over.

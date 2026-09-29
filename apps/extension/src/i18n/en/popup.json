@@ -312,5 +312,6 @@
   "Sperrt UwULock, sobald der Bildschirm gesperrt wird.": "Locks UwULock as soon as the screen locks.",
   "Die PIN ist zu kurz.": "The PIN is too short.",
   "Mindestens sechs Zeichen": "At least six characters",
-  "Dann liegt dein Tresorschlüssel, nur mit der PIN verschlüsselt, auf der Festplatte. Wer eine Kopie deines Browser-Profils hat, kann eine kurze PIN in wenigen Minuten erraten. Nimm mindestens sechs Zeichen, besser Wörter oder Buchstaben mit Ziffern.": "Then your vault key sits on disk, encrypted with nothing but the PIN. Whoever has a copy of your browser profile can guess a short PIN in minutes. Use at least six characters – better words, or letters with digits."
+  "Dann liegt dein Tresorschlüssel, nur mit der PIN verschlüsselt, auf der Festplatte. Wer eine Kopie deines Browser-Profils hat, kann eine kurze PIN in wenigen Minuten erraten. Nimm mindestens sechs Zeichen, besser Wörter oder Buchstaben mit Ziffern.": "Then your vault key sits on disk, encrypted with nothing but the PIN. Whoever has a copy of your browser profile can guess a short PIN in minutes. Use at least six characters – better words, or letters with digits.",
+  "Inzwischen ist ein anderes Konto geöffnet. Es wurde nichts gespeichert.": "Another account is open now. Nothing was saved."
 }

@@ -141,7 +141,16 @@ function open(title: string, detail: string | null, actions: Action[], onClose: 
 export function showSavePrompt(prompt: SavePrompt) {
   const answer = async (choice: SaveAnswer) => {
     try {
-      await ask<unknown>({ type: 'content:prompt-answer', id: prompt.id, answer: choice });
+      const again = await ask<SavePrompt | null>({
+        type: 'content:prompt-answer',
+        id: prompt.id,
+        answer: choice,
+      });
+      // Another account was opened meanwhile: the question again, for that one.
+      if (again) {
+        showSavePrompt(again);
+        return;
+      }
       const done =
         choice === 'save' ? t('Gespeichert') : choice === 'update' ? t('Aktualisiert') : null;
       finish(bar, done);

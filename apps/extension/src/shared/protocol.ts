@@ -202,6 +202,10 @@ export type ContentRequest =
     }
   /** A page loaded: is a save prompt waiting for this tab? (top frame only) */
   | { type: 'content:pending-prompt' }
+  /**
+   * The bar's answer. The reply is null, or — when another account was opened since the bar
+   * asked — the question again, for the account open now (nothing was saved).
+   */
   | { type: 'content:prompt-answer'; id: string; answer: SaveAnswer }
   /** The page had no field for the one-time code: copy it instead, like Bitwarden does. */
   | { type: 'content:copy-totp'; itemId: string }
