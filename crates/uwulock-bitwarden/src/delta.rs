@@ -76,6 +76,33 @@ impl UwuState {
             .unwrap_or(false)
     }
 
+    /// What of it the person gets to see on a server with these switches:
+    /// the delta sync still carries what an account had before an admin
+    /// switched an extra off (nothing is deleted), and the apps hide it.
+    /// Only the copy in memory is cut; the offline copy keeps everything, so
+    /// switched on again, it is all back without a full sync.
+    pub fn honouring(mut self, info: &crate::uwu::Info) -> Self {
+        if !info.allows("own-icons") {
+            self.icons.clear();
+        }
+        if !info.allows("reminders") {
+            self.reminders.clear();
+        }
+        if !info.allows("travel-mode") {
+            self.travel = None;
+        }
+        if !info.allows("send-domains") {
+            self.send_domains.clear();
+        }
+        if !info.allows("masked-addresses") {
+            self.masked_links.clear();
+        }
+        if !info.allows("file-requests") {
+            self.unseen.file_request_submissions = 0;
+        }
+        self
+    }
+
     /// The reminder of one item, if it has one.
     pub fn reminder(&self, cipher_id: &str) -> Option<&Value> {
         self.reminders
@@ -383,6 +410,44 @@ mod tests {
         assert_eq!(synced.sync["ciphers"].as_array().unwrap().len(), 2);
         assert!(synced.uwu.extras_key.is_none());
         assert!(!synced.uwu.travelling());
+    }
+
+    #[test]
+    fn switched_off_extras_are_hidden_but_kept() {
+        let mut synced = Synced::default();
+        synced.apply(&full()).unwrap();
+        synced.uwu.unseen.file_request_submissions = 3;
+        let info = |switches: Value| -> crate::uwu::Info {
+            serde_json::from_value(json!({ "name": "UwULock Server", "switches": switches }))
+                .unwrap()
+        };
+
+        // An older server without switches: everything shows.
+        let older: crate::uwu::Info =
+            serde_json::from_value(json!({ "name": "UwULock Server" })).unwrap();
+        assert_eq!(synced.uwu.clone().honouring(&older), synced.uwu);
+
+        let off = info(json!({
+            "own-icons": false, "reminders": false, "travel-mode": false,
+            "send-domains": false, "masked-addresses": false, "file-requests": false,
+            "versions": true
+        }));
+        let shown = synced.uwu.clone().honouring(&off);
+        assert!(shown.icons.is_empty() && shown.reminders.is_empty());
+        assert!(shown.travel.is_none() && shown.send_domains.is_empty());
+        assert!(shown.masked_links.is_empty());
+        assert_eq!(shown.unseen.file_request_submissions, 0);
+        // What no switch covers stays.
+        assert_eq!(shown.unseen.security_notices, 2);
+        // The offline copy still has it all, for when it is on again.
+        assert_eq!(synced.uwu.reminders.len(), 1);
+        assert_eq!(synced.uwu.masked_links["a"].id, "x42");
+
+        let some = info(json!({ "reminders": false, "own-icons": true }));
+        let shown = synced.uwu.clone().honouring(&some);
+        assert!(shown.reminders.is_empty());
+        assert_eq!(shown.icons.len(), 1);
+        assert_eq!(shown.masked_links.len(), 1);
     }
 
     #[test]
