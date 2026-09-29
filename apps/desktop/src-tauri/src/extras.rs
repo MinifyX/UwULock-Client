@@ -1248,7 +1248,7 @@ pub struct FileRequestInput {
 /// The largest file a request takes: the person's own limit, else the one it
 /// had, else the server's. The server wants a number, never `null`.
 fn file_limit(mib: Option<u64>, had: Option<u64>, info: Option<&Info>) -> u64 {
-    mib.map(|m| m * 1024 * 1024)
+    mib.map(|m| m.saturating_mul(1024 * 1024))
         .or(had)
         .or_else(|| {
             info.and_then(|i| i.limits.as_ref())
@@ -2531,5 +2531,6 @@ mod tests {
         assert_eq!(file_limit(None, Some(7), Some(&info)), 7);
         assert_eq!(file_limit(None, None, Some(&info)), 1000);
         assert_eq!(file_limit(None, None, None), 500 * 1024 * 1024);
+        assert_eq!(file_limit(Some(u64::MAX), None, None), u64::MAX);
     }
 }
