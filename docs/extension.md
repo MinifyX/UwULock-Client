@@ -22,7 +22,8 @@ release checks the download (see the [install guide](install.md)).
   (authenticator app, email code, YubiKey OTP, a security key through your server's WebAuthn
   page) and Bitwarden's check of new devices. Several accounts, one open at a time.
 - **Unlock** with the master password, or a PIN you set up in this browser. It locks after the
-  time you chose, when the browser closes, or right when the popup closes.
+  time you chose, when the browser closes, when the computer's screen locks (a setting, on by
+  default), or right when the popup closes.
 - **The vault in the popup**: the logins of the page in the tab first, then everything —
   search, favourites, kinds, folders, the trash. Copy username, password and the one-time code
   (live, with its countdown), reveal, open the site. Create, edit and delete logins, notes,
@@ -112,7 +113,7 @@ the permission is there now.
   extension shortcut settings can change it).
 - **Context menu**: right-click in a page → UwULock → fill a login, card or address, copy a
   password, or generate one.
-- **Settings** in the popup: lock timeout, PIN, clipboard clearing, the inline button, the save
+- **Settings** in the popup: lock timeout, locking with the computer, PIN, clipboard clearing, the inline button, the save
   prompt, copying the one-time code, passkeys, the default match detection, language and theme,
   and your accounts.
 

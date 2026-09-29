@@ -487,6 +487,8 @@ export type Settings = {
   theme: 'system' | 'light' | 'dark';
   /** Minutes without use. 0: as soon as the popup closes; -1: only when the browser restarts. */
   lockTimeout: LockTimeout;
+  /** Lock when the browser says the computer's screen was locked (`idle` state `locked`). */
+  lockWithSystem: boolean;
   /** Seconds; 0 never. */
   clipboardClear: number;
   inlineMenu: boolean;

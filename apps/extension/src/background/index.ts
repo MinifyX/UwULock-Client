@@ -19,6 +19,7 @@ import * as extras from './extras';
 import * as generator from './generator';
 import { failure, request } from './http';
 import * as icons from './icons';
+import { watchIdle } from './idle';
 import * as live from './live';
 import * as menus from './menus';
 import * as passkeys from './passkeys';
@@ -298,6 +299,8 @@ ext.runtime.onConnect.addListener((port) => {
     })();
   });
 });
+
+watchIdle(lock);
 
 ext.alarms.onAlarm.addListener((alarm) => {
   void (async () => {

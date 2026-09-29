@@ -67,6 +67,8 @@ export function manifest(browser, version) {
       'contextMenus',
       'alarms',
       'clipboardWrite',
+      // Locking with the computer's screen (idle state `locked`).
+      'idle',
       ...(firefox ? [] : ['offscreen']),
     ],
     // Asked for per server when somebody logs in: bitwarden.com, bitwarden.eu, or their own.

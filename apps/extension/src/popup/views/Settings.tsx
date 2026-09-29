@@ -173,6 +173,16 @@ export function SettingsView({
           </select>
         </Row>
         <Row
+          label={t('Mit dem Computer sperren')}
+          description={t('Sperrt UwULock, sobald der Bildschirm gesperrt wird.')}
+        >
+          <Toggle
+            checked={settings.lockWithSystem}
+            label={t('Mit dem Computer sperren')}
+            onChange={(v) => void change({ lockWithSystem: v })}
+          />
+        </Row>
+        <Row
           label={t('Mit PIN entsperren')}
           description={
             status.pinSet
