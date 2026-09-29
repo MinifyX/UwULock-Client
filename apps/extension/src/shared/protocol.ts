@@ -438,6 +438,8 @@ export type ItemSummary = {
   deleted: boolean;
   archived: boolean;
   reprompt: boolean;
+  /** False when the organisation hides this item's passwords from this member. */
+  viewPassword: boolean;
   hasTotp: boolean;
   hasPassword: boolean;
   hasUsername: boolean;
