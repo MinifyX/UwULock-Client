@@ -67,8 +67,11 @@ release checks the download (see the [install guide](install.md)).
   user key sits on disk under the PIN alone, and a copy of the browser profile lets somebody guess
   it offline, so that option wants six characters or more and says so. Five wrong PINs in a row
   remove the PIN; they are counted on disk, one try at a time, so a restart gives no new tries.
-- Web pages get nothing unless you pick an item. Then only the frame that asked gets that
-  item's values, and only if the item's address matches **that frame's own address** — a login
+- Web pages get nothing unless you pick an item. The list of the inline menu is a page of the
+  extension in a frame under the field: the web page never sees the names in it (only how many
+  there are, for the button), and can't make up a pick, which goes from that frame straight to
+  UwULock. A pick becomes a one-time token for the field's frame alone. Then only that frame gets
+  the item's values, and only if the item's address matches **that frame's own address** — a login
   never reaches an iframe of another site. Picking an item in the popup for a page it doesn't
   match fills the page itself, never its frames. Cards and addresses reach only the page itself
   and frames of its own origin. Plain `http://` pages ask before filling.
@@ -83,11 +86,15 @@ release checks the download (see the [install guide](install.md)).
   says which of its groups you switched off. Your own equivalent domains come from the server
   unencrypted, so a login that matches a page only through one of them is listed there but not
   filled by the shortcut.
-- The button, the menu and the save bar sit in closed shadow roots and ignore clicks the page
-  fakes. Against a page that lays a decoy over them (clickjacking), they take a click only when
-  the pointer went down on them after they had been shown, unchanged and uncovered, for half a
-  second — on Chromium checked by the browser itself. In an embedded frame of another site,
-  Firefox can't tell, so there the menu only opens UwULock's window.
+- The button and the save bar sit in closed shadow roots and ignore clicks the page fakes.
+  Against a page that lays a decoy over them or over the menu's frame (clickjacking), they take a
+  click only when the pointer went down on them after they had been shown, unchanged and
+  uncovered, for half a second — on Chromium checked by the browser itself. The menu's frame
+  checks the same inside, and a pick in it counts only when the page's side saw the frame
+  uncovered too. In an embedded frame of another site, Firefox can't tell, so there the menu only
+  opens UwULock's window. Chromium gives the frame a new address each session
+  (`use_dynamic_url`), so pages can't tell the extension is installed; Firefox's address is fixed
+  per profile but random.
 - Passkeys are only offered for the site that asks: its relying party is checked against the
   page's own address by WebAuthn's rules, on `https://` pages (and `http://localhost`).
 - The clipboard is cleared after 30 seconds (adjustable). No remote code, a strict content

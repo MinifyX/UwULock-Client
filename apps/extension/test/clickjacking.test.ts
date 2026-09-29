@@ -9,7 +9,7 @@
 
 // @ts-expect-error jsdom's internals have no types.
 import { implSymbol } from 'jsdom/lib/jsdom/living/generated/utils.js';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createGuard,
   createHost,
@@ -215,5 +215,46 @@ describe('page filters', () => {
     ]) {
       expect(hidingFilter(filter), filter).toBe(false);
     }
+  });
+});
+
+describe("the inline menu's frame, as the page shows it (CL-L8)", () => {
+  let frame: HTMLIFrameElement;
+  beforeEach(() => {
+    frame = document.createElement('iframe');
+    frame.getBoundingClientRect = () => new DOMRect(10, 100, 200, 120);
+    ui.root.append(frame);
+  });
+
+  it('counts as seen once it was shown, unchanged and uncovered for a moment', () => {
+    expect(guard.frameSeen(frame)).toBe(false);
+    clock += MIN_SHOW_MS;
+    expect(guard.frameSeen(frame)).toBe(true);
+    cover = document.body;
+    expect(guard.frameSeen(frame)).toBe(false);
+  });
+
+  it('a decoy that was over it a moment ago still counts, though gone at the check', () => {
+    vi.useFakeTimers();
+    try {
+      guard.watchFrame(frame);
+      clock += MIN_SHOW_MS;
+      cover = document.body;
+      vi.advanceTimersByTime(100);
+      // Taken away just before the pick is checked.
+      cover = null;
+      expect(guard.frameSeen(frame)).toBe(false);
+      clock += MIN_SHOW_MS;
+      vi.advanceTimersByTime(100);
+      expect(guard.frameSeen(frame)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('not once it is gone', () => {
+    clock += MIN_SHOW_MS;
+    frame.remove();
+    expect(guard.frameSeen(frame)).toBe(false);
   });
 });

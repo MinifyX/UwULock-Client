@@ -1,31 +1,36 @@
 /**
  * The inline menu: a small UwULock button at the right edge of a focused login, card or
- * address field, and under it a list of the items that fit. Picking one (a real click, or
- * Enter in the list) asks the background for its values, which go straight into the fields.
+ * address field, and under it the list of the items that fit.
  *
- * ↓ in the field opens the list, arrows move, Enter picks, Esc closes. The menu goes away when
- * the field loses focus to anything but the menu, or disappears.
+ * The list is not drawn here. It is an extension page (menu.html) in a frame under the field:
+ * the names come to it from the background, and a pick in it goes straight back there, so the
+ * page — not even its compromised renderer — can neither read the list nor make up a pick
+ * (security review 0.3, CL-L8). The background then offers the item's values to this frame
+ * with a one-time token, and they go into the field. This script only asks for the menu's
+ * session, places the frame, answers the background whether the frame was seen uncovered (the
+ * guard of ui.ts), and closes it.
  *
- * A page can focus a field by script and trick somebody into clicking the button and an item
- * (clickjacking): every click and key goes through the guard of ui.ts, which wants the menu
- * seen whole, unchanged and in place for a moment first. In a frame from another origin, where
- * that can't be checked, the menu only leads to UwULock's own window.
+ * ↓ in the field opens the list and selects its first entry, arrows move, Enter picks, Esc
+ * closes. The menu goes away when the field loses focus to anything but the menu, or
+ * disappears.
+ *
+ * A page can focus a field by script and trick somebody into clicking the button (clickjacking):
+ * every click on it goes through the guard of ui.ts, which wants it seen whole, unchanged and in
+ * place for a moment first. In a frame from another origin, where that can't be checked, the
+ * menu only leads to UwULock's own window.
  */
 
+import { ext } from '../shared/browser';
 import { t } from '../shared/i18n';
-import { ask, RequestFailed } from '../shared/messages';
-import type { FillAnswer, FillValues, PageInfo, PageItem } from '../shared/protocol';
-import { uwuErrorText } from '../shared/uwu-errors';
+import { ask } from '../shared/messages';
+import type { BackgroundMessage, MenuKind, PageInfo } from '../shared/protocol';
 import { isVisible } from './forms';
 import { createGuard, createHost, h, lockGlyph, type Guard, type Host } from './ui';
 
-/** `signup`: a sign-up form's username or email field, where only a masked address is offered. */
-export type MenuKind = 'login' | 'card' | 'identity' | 'signup';
+export type { MenuKind } from '../shared/protocol';
 
 export type InlineMenuDeps = {
   info: () => PageInfo | null;
-  /** Writes an item's values into the form of `field`. */
-  fill: (values: FillValues, itemId: string, field: HTMLElement) => void;
   /** Writes one value into `field`, as typing would. */
   fillText: (field: HTMLInputElement, value: string) => void;
 };
@@ -37,12 +42,19 @@ export type InlineMenu = {
    */
   attach: (field: HTMLInputElement, kind: MenuKind, maskable?: boolean) => void;
   detach: () => void;
-  /** The page's info changed: redraw an open list. */
+  /** The page's info changed. */
   refresh: () => void;
   /** The page changed: is the field still there? */
   check: () => void;
   /** The field the menu is attached to. */
   field: () => HTMLInputElement | null;
+  /** The open list's session with the background, if any. */
+  session: () => string | null;
+  /**
+   * A message of the background about the list (`bg:menu-*`, `bg:fill-text`): handled, and
+   * what to answer; `undefined` when it isn't about this menu.
+   */
+  onMessage: (message: BackgroundMessage) => { answer: unknown } | undefined;
 };
 
 const CSS = `
@@ -57,47 +69,30 @@ const CSS = `
   line-height: 0;
 }
 .button:hover svg { filter: brightness(1.08); }
+.frame {
+  position: fixed;
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--uwu-surface);
+  box-shadow: var(--uwu-shadow);
+  color-scheme: normal;
+}
 .menu {
   position: fixed;
-  max-height: 300px;
-  overflow: auto;
-  padding: 6px;
-}
-[role='listbox'] { display: grid; gap: 2px; }
-.option {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  cursor: pointer;
-  min-width: 0;
-}
-.option:hover, .option[aria-selected='true'] { background: var(--uwu-pink-tint); }
-.option:focus-visible { outline: 2px solid var(--uwu-pink); outline-offset: -2px; }
-.tile {
-  flex: none;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
   display: grid;
-  place-items: center;
-  background: var(--uwu-pink-tint);
-  color: var(--uwu-pink-ink);
-  font-weight: 800;
-  font-size: 13px;
+  gap: 10px;
+  padding: 12px;
 }
-.text { display: grid; min-width: 0; }
-.name, .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.name { font-weight: 700; }
-.sub { font-size: 12px; color: var(--uwu-muted); }
-.note { padding: 8px 10px 4px; }
-.message { display: grid; gap: 10px; padding: 8px 10px; }
 `;
 
 const BUTTON_MAX = 24;
-
-type Entry = { label: string; sub?: string | null; letter?: string; run: () => void };
+/** The frame's height until it says how tall its list is. */
+const FIRST_HEIGHT = 52;
+const MAX_HEIGHT = 320;
 
 export function createInlineMenu(deps: InlineMenuDeps): InlineMenu {
   let field: HTMLInputElement | null = null;
@@ -106,32 +101,14 @@ export function createInlineMenu(deps: InlineMenuDeps): InlineMenu {
   let ui: Host | null = null;
   let guard: Guard | null = null;
   let button: HTMLElement | null = null;
+  /** The list: the extension's frame, or where that can't be checked, a note in the page. */
   let menu: HTMLElement | null = null;
+  let frameEl: HTMLIFrameElement | null = null;
+  let session: string | null = null;
+  let height = FIRST_HEIGHT;
   /** Where the button and the list were drawn last: moving them starts the guard's clock again. */
   let placed = '';
   let frame = 0;
-  let busy = false;
-
-  const items = (): PageItem[] => {
-    const info = deps.info();
-    if (!info) return [];
-    if (kind === 'signup') return [];
-    return kind === 'login' ? info.logins : kind === 'card' ? info.cards : info.identities;
-  };
-
-  /** "New masked address", where the field and the server allow it. */
-  const maskedEntries = (): Entry[] => {
-    const info = deps.info();
-    if (!maskable || !info?.uwuFeatures.includes('masked-addresses')) return [];
-    return [
-      {
-        label: t('Neue maskierte Adresse'),
-        sub: t('Von UwUMail, nur für diese Seite'),
-        letter: '@',
-        run: () => void createMasked(),
-      },
-    ];
-  };
 
   const openPopup = () => {
     void ask<unknown>({ type: 'content:open-popup' }).catch(() => undefined);
@@ -161,11 +138,12 @@ export function createInlineMenu(deps: InlineMenuDeps): InlineMenu {
       const left = Math.max(8, Math.min(rect.left, viewportWidth - width - 8));
       menu.style.width = `${width}px`;
       menu.style.left = `${left}px`;
-      const height = menu.offsetHeight;
+      if (frameEl) frameEl.style.height = `${height}px`;
+      const tall = menu.offsetHeight;
       const below = window.innerHeight - rect.bottom;
       menu.style.top =
-        height && below < height + 8 && rect.top > below
-          ? `${rect.top - height - 4}px`
+        tall && below < tall + 8 && rect.top > below
+          ? `${rect.top - tall - 4}px`
           : `${rect.bottom + 4}px`;
     }
     const where = `${button?.style.cssText}|${menu?.style.cssText}`;
@@ -181,268 +159,91 @@ export function createInlineMenu(deps: InlineMenuDeps): InlineMenu {
 
   // ── The list ────────────────────────────────────────────
 
-  const options = (): HTMLElement[] =>
-    menu ? Array.from(menu.querySelectorAll<HTMLElement>('[role="option"]')) : [];
-
-  const select = (option: HTMLElement | undefined) => {
-    if (!option) return;
-    for (const other of options()) other.setAttribute('aria-selected', String(other === option));
-    option.focus();
-  };
-
-  const entry = (item: Entry, index: number): HTMLElement => {
-    const option = h(
+  /** Where picks can't be checked (a frame of another origin on Firefox): only UwULock's window. */
+  const openNote = () => {
+    if (!ui) return;
+    const openButton = h('button', { class: 'primary', type: 'button' }, t('UwULock öffnen'));
+    openButton.addEventListener('click', (event) => {
+      if (guard?.accepts(event, openButton)) openPopup();
+    });
+    menu = h(
       'div',
-      {
-        class: 'option',
-        role: 'option',
-        tabindex: '-1',
-        id: `uwulock-option-${index}`,
-        'aria-selected': 'false',
-      },
-      item.letter
-        ? h('span', { class: 'tile', 'aria-hidden': 'true' }, item.letter)
-        : lockGlyph(28),
-      h(
-        'span',
-        { class: 'text' },
-        h('span', { class: 'name' }, item.label),
-        item.sub ? h('span', { class: 'sub' }, item.sub) : null,
-      ),
-    );
-    option.addEventListener('click', (event) => {
-      if (guard?.accepts(event, option)) item.run();
-    });
-    option.addEventListener('keydown', (event) => {
-      if (!event.isTrusted || (event.key !== 'Enter' && event.key !== ' ')) return;
-      event.preventDefault();
-      if (guard?.accepts(event, option)) item.run();
-    });
-    return option;
-  };
-
-  const entries = (): { note: string | null; list: Entry[] } => {
-    const state = deps.info()?.state ?? 'locked';
-    if (state === 'logged-out') {
-      return { note: null, list: [{ label: t('Bei UwULock anmelden'), run: openPopup }] };
-    }
-    if (state === 'locked') {
-      return { note: null, list: [{ label: t('UwULock entsperren'), run: openPopup }] };
-    }
-    if (guard && !guard.verifiable) {
-      return {
-        note: t('In diesem eingebetteten Bereich füllst du über das UwULock-Fenster aus.'),
-        list: [{ label: t('UwULock öffnen'), run: openPopup }],
-      };
-    }
-    const found = items();
-    const masked = maskedEntries();
-    if (kind === 'signup') return { note: null, list: masked };
-    if (!found.length) {
-      return {
-        note: t('Keine passenden Einträge'),
-        list: [{ label: t('UwULock öffnen'), run: openPopup }, ...masked],
-      };
-    }
-    return {
-      note: null,
-      list: [
-        ...found.map((item) => ({
-          label: item.name,
-          sub: item.subtitle,
-          letter: (item.name.trim()[0] ?? '?').toUpperCase(),
-          run: () => void pick(item, false),
-        })),
-        ...masked,
-      ],
-    };
-  };
-
-  const render = (focusFirst: boolean) => {
-    if (!menu) return;
-    const { note, list } = entries();
-    const listbox = h(
-      'div',
-      { role: 'listbox', 'aria-label': t('UwULock – passende Einträge') },
-      ...list.map(entry),
-    );
-    listbox.addEventListener('keydown', onListKey);
-    menu.replaceChildren(note ? h('div', { class: 'note muted' }, note) : '', listbox);
-    // Other items under the pointer than a moment ago: they have to be seen first, too.
-    guard?.shown();
-    if (focusFirst) select(options()[0]);
-  };
-
-  const message = (
-    text: string,
-    actions: { label: string; primary?: boolean; run: () => void }[],
-  ) => {
-    if (!menu) return;
-    const buttons = actions.map((action) => {
-      const el = h(
-        'button',
-        { class: action.primary ? 'primary' : 'secondary', type: 'button' },
-        action.label,
-      );
-      el.addEventListener('click', (event) => {
-        if (guard?.accepts(event, el)) action.run();
-      });
-      return el;
-    });
-    const hadFocus = !!ui && ui.root.activeElement !== null;
-    menu.replaceChildren(
+      { class: 'menu panel', role: 'dialog', 'aria-label': t('UwULock – passende Einträge') },
       h(
         'div',
-        { class: 'message', role: 'alert' },
-        h('div', {}, text),
-        h('div', { class: 'actions' }, ...buttons),
+        { class: 'muted' },
+        t('In diesem eingebetteten Bereich füllst du über das UwULock-Fenster aus.'),
       ),
+      h('div', { class: 'actions' }, openButton),
     );
-    guard?.shown();
-    if (hadFocus) buttons[0]?.focus();
-    schedule();
+    menu.addEventListener('mousedown', (event) => event.preventDefault());
+    ui.root.append(menu);
+    guard?.watch(menu);
   };
 
-  const pick = async (item: PageItem, confirmedInsecure: boolean) => {
-    if (busy || !field) return;
-    busy = true;
-    const target = field;
-    let answer: FillAnswer;
+  const openFrame = async (focusFirst: boolean) => {
+    if (!ui) return;
+    const own = ui;
+    const iframe = document.createElement('iframe');
+    iframe.className = 'frame';
+    iframe.setAttribute('title', t('UwULock – passende Einträge'));
+    iframe.setAttribute('scrolling', 'no');
+    // Nothing of the page's may go along: no referrer, no permissions.
+    iframe.setAttribute('referrerpolicy', 'no-referrer');
+    iframe.setAttribute('allow', '');
+    height = FIRST_HEIGHT;
+    menu = iframe;
+    frameEl = iframe;
+    own.root.append(iframe);
+    guard?.watch(iframe);
+    guard?.watchFrame(iframe);
+    place();
+    let opened: { session: string };
     try {
-      answer = await ask<FillAnswer>({
-        type: 'content:fill',
-        itemId: item.id,
-        ...(confirmedInsecure ? { confirmedInsecure: true } : {}),
+      opened = await ask<{ session: string }>({
+        type: 'content:menu-open',
+        kind,
+        maskable,
       });
-    } catch (error) {
-      busy = false;
-      message(
-        error instanceof RequestFailed && error.message
-          ? error.message
-          : t('Ausfüllen hat nicht geklappt.'),
-        [],
+    } catch {
+      if (frameEl === iframe) closeList(false);
+      return;
+    }
+    if (frameEl !== iframe) {
+      void ask<unknown>({ type: 'content:menu-close', session: opened.session }).catch(
+        () => undefined,
       );
       return;
     }
-    busy = false;
-    if (answer.filled) {
-      detach();
-      deps.fill(answer.values, item.id, target);
-      return;
-    }
-    if (field !== target) return;
-    switch (answer.reason) {
-      case 'insecure':
-        message(t('Diese Seite ist nicht verschlüsselt (http). Trotzdem ausfüllen?'), [
-          { label: t('Trotzdem ausfüllen'), primary: true, run: () => void pick(item, true) },
-          { label: t('Abbrechen'), run: () => render(true) },
-        ]);
-        break;
-      case 'reprompt':
-        message(t('Dieser Eintrag verlangt dein Master-Passwort – öffne UwULock.'), [
-          { label: t('UwULock öffnen'), primary: true, run: openPopup },
-        ]);
-        break;
-      case 'locked':
-        message(t('UwULock ist gesperrt.'), [
-          { label: t('UwULock entsperren'), primary: true, run: openPopup },
-        ]);
-        break;
-      default:
-        message(t('Ausfüllen hat nicht geklappt.'), []);
-    }
+    session = opened.session;
+    iframe.src = `${ext.runtime.getURL('menu.html')}#${opened.session}`;
+    if (focusFirst) focusList();
   };
 
-  /** A new masked address from the account's UwUMail, for this tab's site, into the field. */
-  const createMasked = async () => {
-    if (busy || !field) return;
-    busy = true;
-    const target = field;
-    message(t('Maskierte Adresse wird angelegt …'), []);
-    let email: string;
-    try {
-      ({ email } = await ask<{ email: string }>({ type: 'content:masked-create' }));
-    } catch (error) {
-      busy = false;
-      if (field !== target) return;
-      const failed = error instanceof RequestFailed ? error : null;
-      const text =
-        (failed && uwuErrorText(failed.kind, failed.message)) ??
-        (failed?.kind === 'locked'
-          ? t('UwULock ist gesperrt.')
-          : t('Die maskierte Adresse ließ sich nicht anlegen.'));
-      const connect = failed?.kind === 'uwu:not_connected' || failed?.kind === 'uwu:revoked';
-      message(
-        text,
-        connect
-          ? [
-              {
-                label: t('Web-Tresor öffnen'),
-                primary: true,
-                run: () => {
-                  void ask<unknown>({ type: 'content:open-masked-settings' }).catch(
-                    () => undefined,
-                  );
-                  closeList(false);
-                },
-              },
-            ]
-          : [],
-      );
-      return;
-    }
-    busy = false;
-    detach();
-    deps.fillText(target, email);
+  /** The field's ↓: into the list, its first entry selected. */
+  const focusList = () => {
+    if (!frameEl || !session) return;
+    frameEl.focus();
+    void ask<unknown>({ type: 'content:menu-focus', session }).catch(() => undefined);
   };
-
-  function onListKey(event: KeyboardEvent) {
-    if (!event.isTrusted) return;
-    const all = options();
-    const index = all.indexOf(ui?.root.activeElement as HTMLElement);
-    switch (event.key) {
-      case 'ArrowDown':
-        select(all[(index + 1) % all.length]);
-        break;
-      case 'ArrowUp':
-        select(all[(index - 1 + all.length) % all.length]);
-        break;
-      case 'Home':
-        select(all[0]);
-        break;
-      case 'End':
-        select(all[all.length - 1]);
-        break;
-      case 'Escape':
-        closeList(true);
-        break;
-      case 'Tab':
-        closeList(false);
-        return;
-      default:
-        return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-  }
 
   const openList = (focusFirst: boolean) => {
-    if (!ui) return;
-    if (!menu) {
-      menu = h('div', { class: 'menu panel' });
-      menu.addEventListener('mousedown', (event) => event.preventDefault());
-      ui.root.append(menu);
-      guard?.watch(menu);
-    }
+    if (!ui || menu) return;
     button?.setAttribute('aria-expanded', 'true');
-    render(focusFirst);
+    if (guard && !guard.verifiable) openNote();
+    else void openFrame(focusFirst);
     guard?.shown();
     place();
   };
 
   function closeList(refocus: boolean) {
+    if (session) {
+      void ask<unknown>({ type: 'content:menu-close', session }).catch(() => undefined);
+    }
+    session = null;
     menu?.remove();
     menu = null;
+    frameEl = null;
     button?.setAttribute('aria-expanded', 'false');
     if (refocus) field?.focus({ preventScroll: true });
   }
@@ -453,7 +254,7 @@ export function createInlineMenu(deps: InlineMenuDeps): InlineMenu {
     if (!event.isTrusted) return;
     if (event.key === 'ArrowDown' && !event.altKey && !event.ctrlKey && !event.metaKey) {
       event.preventDefault();
-      if (menu) select(options()[0]);
+      if (menu) focusList();
       else openList(true);
     } else if (event.key === 'Escape' && menu) {
       closeList(false);
@@ -468,6 +269,8 @@ export function createInlineMenu(deps: InlineMenuDeps): InlineMenu {
   const onRootBlur = (event: Event) => {
     const next = (event as FocusEvent).relatedTarget as Node | null;
     if (next && (next === field || ui?.root.contains(next))) return;
+    // Into our own frame (its document isn't a node of ours): still the menu.
+    if (frameEl && ui?.root.activeElement === frameEl) return;
     detach();
   };
 
@@ -480,15 +283,14 @@ export function createInlineMenu(deps: InlineMenuDeps): InlineMenu {
     }
     window.removeEventListener('scroll', schedule, true);
     window.removeEventListener('resize', schedule);
+    if (menu) closeList(false);
     guard?.dispose();
     guard = null;
     placed = '';
     ui?.host.remove();
     ui = null;
     button = null;
-    menu = null;
     field = null;
-    busy = false;
   }
 
   const attach = (next: HTMLInputElement, nextKind: MenuKind, nextMaskable = false) => {
@@ -526,15 +328,49 @@ export function createInlineMenu(deps: InlineMenuDeps): InlineMenu {
     place();
   };
 
+  const onMessage = (message: BackgroundMessage): { answer: unknown } | undefined => {
+    switch (message.type) {
+      case 'bg:menu-guard':
+        return {
+          answer:
+            !!session &&
+            message.session === session &&
+            !!frameEl &&
+            !!guard &&
+            guard.frameSeen(frameEl),
+        };
+      case 'bg:menu-size':
+        if (message.session !== session || !frameEl) return undefined;
+        height = Math.max(24, Math.min(MAX_HEIGHT, message.height));
+        place();
+        return { answer: null };
+      case 'bg:menu-close':
+        if (message.session !== session) return undefined;
+        closeList(message.refocus);
+        return { answer: null };
+      case 'bg:fill-text': {
+        if (message.session !== session || !field) return undefined;
+        const target = field;
+        detach();
+        deps.fillText(target, message.value);
+        return { answer: null };
+      }
+      default:
+        return undefined;
+    }
+  };
+
   return {
     attach,
     detach,
     refresh: () => {
-      if (menu) render(false);
+      // The frame hears from the background itself; a note stays a note.
     },
     check: () => {
       if (field) schedule();
     },
     field: () => field,
+    session: () => session,
+    onMessage,
   };
 }

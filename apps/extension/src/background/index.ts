@@ -21,12 +21,12 @@ import { failure, request } from './http';
 import * as icons from './icons';
 import { watchIdle } from './idle';
 import * as live from './live';
+import * as menu from './menu';
 import * as menus from './menus';
 import * as passkeys from './passkeys';
 import * as session from './session';
 import { settings, updateSettings } from './settings';
 import { activeAccount, closeSessionToContentScripts } from './store';
-import { hasFeature } from './uwu';
 import * as vault from './vault';
 
 type Sender = chrome.runtime.MessageSender;
@@ -37,12 +37,16 @@ function ownPrefix(): string {
   return ext.runtime.getURL('/');
 }
 
-/** The popup, the prompt window, the offscreen document: pages of this extension. */
+/**
+ * The popup, the prompt window, the offscreen document: pages of this extension. Not the inline
+ * menu's frame (menu.html), which sits in web pages and has only its port (menu.ts).
+ */
 function isOwnPage(sender: Sender): boolean {
   return (
     sender.id === ext.runtime.id &&
     typeof sender.url === 'string' &&
-    sender.url.startsWith(ownPrefix())
+    sender.url.startsWith(ownPrefix()) &&
+    !menu.isMenuFrame(sender)
   );
 }
 
@@ -210,6 +214,12 @@ async function handleContent(message: ContentRequest, sender: Sender): Promise<u
         message.token,
         message.confirmedInsecure === true,
       );
+    case 'content:menu-open':
+      return menu.open(sender, message.kind, message.maskable);
+    case 'content:menu-close':
+      return menu.closeFromContent(sender, message.session);
+    case 'content:menu-focus':
+      return menu.focusFromContent(sender, message.session);
     case 'content:submitted':
       return autofill.submitted(sender, message.username, message.password, message.newPassword);
     case 'content:pending-prompt':
@@ -228,19 +238,6 @@ async function handleContent(message: ContentRequest, sender: Sender): Promise<u
       return passkeys.get(sender, message.requestId, message.options);
     case 'content:passkey-abort':
       return passkeys.abort(message.requestId);
-    case 'content:masked-create': {
-      // Only the page's own site, and only the address goes back to the page.
-      const url = autofill.senderTabUrl(sender);
-      if (!url) throw { kind: 'invalid', message: 'Not a web page.' };
-      const created = await extras.createMasked(await session.requireUnlocked(), url, null);
-      return { email: created.email };
-    }
-    case 'content:open-masked-settings': {
-      const found = await currentAccount();
-      if (!hasFeature(found, 'masked-addresses')) return null;
-      await ext.tabs.create({ url: extras.maskedSettingsUrl(found) });
-      return null;
-    }
   }
   throw { kind: 'invalid', message: 'Unknown request.' };
 }
@@ -292,7 +289,12 @@ async function lock() {
 }
 
 // The popup keeps a port open while it is shown: "lock when the popup closes" hears it close.
+// The inline menu's frame talks over its own port (menu.ts).
 ext.runtime.onConnect.addListener((port) => {
+  if (port.name === 'menu' && menu.isMenuFrame(port.sender)) {
+    menu.connect(port, session.restored);
+    return;
+  }
   if (port.name !== 'popup' || !port.sender || !isOwnPage(port.sender)) return;
   port.onDisconnect.addListener(() => {
     void (async () => {
@@ -358,6 +360,7 @@ ext.commands.onCommand.addListener((command, tab) => {
 ext.tabs.onActivated.addListener(({ tabId }) => menus.onTabActivated(tabId));
 autofill.onTopFrameChange(() => menus.refreshMenus());
 onChanged(() => menus.refreshMenus());
+onChanged(() => menu.refresh());
 
 // ── Start ─────────────────────────────────────────────────
 

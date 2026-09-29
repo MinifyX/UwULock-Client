@@ -1,8 +1,10 @@
 /**
  * Filling pages, and saving what was typed into them.
  *
- * A content script learns names, never values, until somebody picked an item: in the page's
- * inline menu, in the popup, with the shortcut or the context menu. Which page asks is taken
+ * A content script learns how many items fit, never their names or values, until somebody
+ * picked an item: in the inline menu's frame (an extension page, menu.ts), in the popup, with
+ * the shortcut or the context menu. Every pick becomes an offer with a one-time token, and
+ * nothing is filled without one — a page's renderer can't make up a pick. Which page asks is taken
  * from the sender — the frame's own address — and an item is only handed to a frame whose
  * address matches one of its addresses (Bitwarden's match detection, see shared/uri.ts). So a
  * login for `bank.example` never reaches an iframe from `ads.example` on the bank's page. Only
@@ -23,6 +25,7 @@ import type {
   FillValues,
   ItemKind,
   ItemSummary,
+  MenuKind,
   PageInfo,
   PageItem,
   PendingSave,
@@ -140,7 +143,24 @@ export function sameOriginAsTop(sender: Sender): boolean {
   }
 }
 
-/** What a content script may know about its frame. */
+/**
+ * The items a frame's menu may list, for a field of `kind`: the logins matching the frame's own
+ * address, or — only in the page itself and frames of its origin — cards and addresses.
+ */
+export async function frameItems(sender: Sender, kind: MenuKind): Promise<PageItem[]> {
+  if (!session.unlockedAccountId()) return [];
+  if (kind === 'login') {
+    return (await matchingLogins(sender.url ?? '', { topFrame: sender.frameId === 0 })).map(
+      pageItem,
+    );
+  }
+  if ((kind === 'card' || kind === 'identity') && sameOriginAsTop(sender)) {
+    return ofKind(kind).map(pageItem);
+  }
+  return [];
+}
+
+/** What a content script may know about its frame: how many items fit, not which. */
 export async function pageInfo(sender: Sender): Promise<PageInfo> {
   const url = sender.url ?? '';
   const tabId = sender.tab?.id;
@@ -150,14 +170,13 @@ export async function pageInfo(sender: Sender): Promise<PageInfo> {
   }
   const config = await settings();
   const unlocked = Boolean(session.unlockedAccountId());
-  const own = unlocked && sameOriginAsTop(sender);
   return {
     state: await state(),
-    logins: unlocked
-      ? (await matchingLogins(url, { topFrame: sender.frameId === 0 })).map(pageItem)
-      : [],
-    cards: own ? ofKind('card').map(pageItem) : [],
-    identities: own ? ofKind('identity').map(pageItem) : [],
+    counts: {
+      logins: (await frameItems(sender, 'login')).length,
+      cards: (await frameItems(sender, 'card')).length,
+      identities: (await frameItems(sender, 'identity')).length,
+    },
     insecure: isInsecureUrl(url),
     inlineMenu: config.inlineMenu && isFillableUrl(url),
     savePrompt: config.savePrompt && isFillableUrl(url),
@@ -191,7 +210,11 @@ type Offer = {
    * The master password was asked for this very fill (an item with the re-prompt): good for one
    * fill, as in Bitwarden, which asks every time.
    */
-  reprompted: boolean;
+  reprompted: boolean; /**
+   * Picked in a frame's inline menu: only that frame may claim it, once. (Offers from the popup
+   * go to every frame of the tab, each judged on its own address.)
+   */
+  frameId?: number;
 };
 
 const OFFER_LIFETIME = 15_000;
@@ -211,21 +234,39 @@ export async function offer(
   explicit: boolean,
   insecureOk = false,
   reprompted = false,
+  menu?: { frameId: number; session: string },
 ) {
   const entry = vault.autofillIndex().find((e) => e.id === itemId);
   if (!entry) throw { kind: 'not-found', message: "This item isn't in the vault any more." };
   for (const [key, old] of offers)
     if (Date.now() - old.created > OFFER_LIFETIME) offers.delete(key);
   const id = token();
-  offers.set(id, { tabId, itemId, created: Date.now(), explicit, insecureOk, reprompted });
-  const message: BackgroundMessage = { type: 'bg:fill-offer', token: id, itemId, kind: entry.kind };
-  await ext.tabs.sendMessage(tabId, message).catch(() => undefined);
+  offers.set(id, {
+    tabId,
+    itemId,
+    created: Date.now(),
+    explicit,
+    insecureOk,
+    reprompted,
+    ...(menu ? { frameId: menu.frameId } : {}),
+  });
+  const message: BackgroundMessage = {
+    type: 'bg:fill-offer',
+    token: id,
+    itemId,
+    kind: entry.kind,
+    ...(menu ? { session: menu.session } : {}),
+  };
+  const options = menu ? { frameId: menu.frameId } : undefined;
+  await (
+    options ? ext.tabs.sendMessage(tabId, message, options) : ext.tabs.sendMessage(tabId, message)
+  ).catch(() => undefined);
 }
 
 export async function fill(
   sender: Sender,
   itemId: string,
-  offerToken: string | undefined,
+  offerToken: unknown,
   confirmedInsecure: boolean,
 ): Promise<FillAnswer> {
   const refuse = (reason: Extract<FillAnswer, { filled: false }>['reason']): FillAnswer => ({
@@ -239,29 +280,30 @@ export async function fill(
   const entry = vault.autofillIndex().find((e) => e.id === itemId);
   if (!entry) return refuse('not-found');
 
-  let fromOffer: Offer | null = null;
-  if (offerToken !== undefined) {
-    const found = offers.get(offerToken);
-    if (!found || Date.now() - found.created > OFFER_LIFETIME) return refuse('expired');
-    if (found.tabId !== tabId || found.itemId !== itemId) return refuse('expired');
-    fromOffer = found;
+  // Nothing without an offer: a pick the background saw, never one the page's side reports.
+  if (typeof offerToken !== 'string') return refuse('expired');
+  const fromOffer = offers.get(offerToken);
+  if (!fromOffer || Date.now() - fromOffer.created > OFFER_LIFETIME) return refuse('expired');
+  if (fromOffer.tabId !== tabId || fromOffer.itemId !== itemId) return refuse('expired');
+  if (fromOffer.frameId !== undefined && fromOffer.frameId !== sender.frameId) {
+    return refuse('expired');
   }
 
   if (entry.kind === 'login') {
     const matches = await loginMatches(entry, url, { topFrame: sender.frameId === 0 });
     // An item picked for a page it doesn't match goes to that page itself, not into its frames.
-    if (!matches && !(fromOffer?.explicit && sender.frameId === 0)) return refuse('no-match');
+    if (!matches && !(fromOffer.explicit && sender.frameId === 0)) return refuse('no-match');
   } else if (!sameOriginAsTop(sender)) {
     // Cards and addresses have no address to match: only into the page itself, or a frame of
-    // its own origin — with an offer from the popup or without, from the page's own menu.
+    // its own origin — from the popup or from the page's own menu.
     return refuse('no-match');
   }
 
-  if (isInsecureUrl(url) && !confirmedInsecure && !fromOffer?.insecureOk) return refuse('insecure');
+  if (isInsecureUrl(url) && !confirmedInsecure && !fromOffer.insecureOk) return refuse('insecure');
 
   // An item with the re-prompt is filled only right after the master password was asked for
   // this fill — never on the strength of an earlier answer (CL-I3).
-  if (entry.reprompt && !fromOffer?.reprompted) return refuse('reprompt');
+  if (entry.reprompt && !fromOffer.reprompted) return refuse('reprompt');
 
   let values: FillValues;
   try {
@@ -270,7 +312,8 @@ export async function fill(
     const kind = (error as { kind?: string }).kind;
     return refuse(kind === 'reprompt' ? 'reprompt' : 'not-found');
   }
-  if (fromOffer?.reprompted && offerToken !== undefined) offers.delete(offerToken);
+  // A menu's pick and an answered re-prompt are good for one fill.
+  if (fromOffer.reprompted || fromOffer.frameId !== undefined) offers.delete(offerToken);
   lastUsed.set(itemId, Date.now());
   lastFill.set(tabId, { itemId, at: Date.now() });
   await session.touch();

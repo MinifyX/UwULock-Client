@@ -10,7 +10,8 @@
  * person saw what they clicked; see there.
  */
 
-const CSS = `
+/** The design's tokens and controls: in the page's shadow roots and in the menu's frame. */
+export const BASE_CSS = `
 /* Custom properties are the one thing 'all: initial' doesn't reset. Without '!important' a
    page's rule for our host would win over ':host' and could make the menu see-through. */
 :host {
@@ -97,7 +98,7 @@ function addStyles(root: ShadowRoot, extra: string) {
   if (sheet === undefined) {
     try {
       sheet = new CSSStyleSheet();
-      sheet.replaceSync(CSS);
+      sheet.replaceSync(BASE_CSS);
     } catch {
       sheet = null;
     }
@@ -113,7 +114,7 @@ function addStyles(root: ShadowRoot, extra: string) {
     }
   }
   const style = document.createElement('style');
-  style.textContent = CSS + extra;
+  style.textContent = BASE_CSS + extra;
   root.append(style);
 }
 
@@ -293,6 +294,17 @@ export type Guard = {
   accepts: (event: Event, el: HTMLElement) => boolean;
   /** Whether picks can be checked at all here (not in a frame from another origin that could hide it, unless the browser tracks visibility). */
   verifiable: boolean;
+  /**
+   * The inline menu's frame (an extension page) took a click or a key: was the frame, as this
+   * page shows it, in place, unchanged and uncovered long enough — and is it now? The frame
+   * sees its own pointer; this is the page's side of it.
+   */
+  frameSeen: (frame: HTMLElement) => boolean;
+  /**
+   * Checks `frame` every 100 ms while it is shown: whatever covers it for a moment starts the
+   * clock again, so a decoy taken away just before the check doesn't count as not there.
+   */
+  watchFrame: (frame: HTMLElement) => void;
   dispose: () => void;
 };
 
@@ -312,6 +324,8 @@ export function createGuard(ui: Host, now: () => number = () => performance.now(
 
   const seen = (el: HTMLElement, at: number): boolean =>
     at - shownAt >= MIN_SHOW_MS && visibleEnough(el, at) && uncovered(ui, el);
+
+  let frameTimer: ReturnType<typeof setInterval> | null = null;
 
   const intersections = tracksVisibility
     ? new IntersectionObserver(
@@ -401,6 +415,21 @@ export function createGuard(ui: Host, now: () => number = () => performance.now(
       intersections.observe(el);
     },
     verifiable: tracksVisibility || !inForeignFrame(),
+    frameSeen: (frame) => {
+      if (!tracksVisibility && inForeignFrame()) return false;
+      return frame.isConnected && seen(frame, now());
+    },
+    watchFrame: (frame) => {
+      if (frameTimer) clearInterval(frameTimer);
+      frameTimer = setInterval(() => {
+        if (!frame.isConnected) {
+          if (frameTimer) clearInterval(frameTimer);
+          frameTimer = null;
+          return;
+        }
+        if (!uncovered(ui, frame)) shownAt = now();
+      }, 100);
+    },
     accepts: (event, el) => {
       if (!event.isTrusted) return false;
       if (!tracksVisibility && inForeignFrame()) return false;
@@ -417,6 +446,7 @@ export function createGuard(ui: Host, now: () => number = () => performance.now(
       return !!focused && el.contains(focused) && seen(el, at);
     },
     dispose: () => {
+      if (frameTimer) clearInterval(frameTimer);
       intersections?.disconnect();
       mutations.disconnect();
       ui.root.removeEventListener('pointerdown', onPointerDown, true);

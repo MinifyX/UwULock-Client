@@ -162,7 +162,11 @@ function apply(values: FillValues, itemId: string, near: Element | null) {
   }
 }
 
-async function claim(offer: { token: string; itemId: string }, confirmedInsecure: boolean) {
+async function claim(
+  offer: { token: string; itemId: string },
+  confirmedInsecure: boolean,
+  near: Element | null = null,
+) {
   let answer: FillAnswer;
   try {
     answer = await ask<FillAnswer>({
@@ -175,14 +179,22 @@ async function claim(offer: { token: string; itemId: string }, confirmedInsecure
     return;
   }
   if (answer.filled) {
-    apply(answer.values, offer.itemId, deepActive());
+    apply(answer.values, offer.itemId, near ?? deepActive());
   } else if (answer.reason === 'insecure' && !confirmedInsecure) {
     await loadInfo();
-    showInsecureConfirm(() => claim(offer, true));
+    showInsecureConfirm(() => claim(offer, true, near));
   }
 }
 
-function onFillOffer(offer: { token: string; itemId: string; kind: ItemKind }) {
+function onFillOffer(offer: { token: string; itemId: string; kind: ItemKind; session?: string }) {
+  // Picked in this frame's inline menu: into the menu's field, and the menu closes.
+  if (offer.session !== undefined) {
+    const field = menu.field();
+    if (!field || offer.session !== menu.session()) return;
+    menu.detach();
+    void claim(offer, false, field);
+    return;
+  }
   if (!canFill(fields(true), offer.kind)) return;
   void claim(offer, false);
 }
@@ -198,7 +210,7 @@ function fillText(field: HTMLInputElement, value: string) {
   }
 }
 
-const menu = createInlineMenu({ info: () => info, fill: apply, fillText });
+const menu = createInlineMenu({ info: () => info, fillText });
 
 function loadInfo(force = false): Promise<PageInfo | null> {
   if (infoAsked) return infoAsked;
@@ -250,7 +262,7 @@ function onFocus(el: HTMLInputElement) {
   if (
     kind !== 'login' &&
     !maskable &&
-    (info.state !== 'unlocked' || !(kind === 'card' ? info.cards : info.identities).length)
+    (info.state !== 'unlocked' || !(kind === 'card' ? info.counts.cards : info.counts.identities))
   )
     return;
   menu.attach(el, kind, maskable);
@@ -310,9 +322,20 @@ const observer = new MutationObserver((records) => {
 
 // ── Messages from the background ──────────────────────────
 
-function onMessage(message: unknown, sender: chrome.runtime.MessageSender): undefined {
+function onMessage(
+  message: unknown,
+  sender: chrome.runtime.MessageSender,
+  respond: (answer: unknown) => void,
+): undefined {
   if (sender.id !== ext.runtime.id || !message || typeof message !== 'object') return;
+  // From the background only, never from another extension page (the menu's frame has a port).
+  if (sender.tab !== undefined) return;
   const msg = message as BackgroundMessage;
+  const handled = menu.onMessage(msg);
+  if (handled) {
+    respond(handled.answer);
+    return;
+  }
   switch (msg.type) {
     case 'bg:fill-offer':
       onFillOffer(msg);

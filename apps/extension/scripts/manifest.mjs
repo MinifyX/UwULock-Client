@@ -24,7 +24,10 @@ const CSP = [
   "script-src 'self' 'wasm-unsafe-eval'",
   "object-src 'none'",
   "base-uri 'none'",
-  "frame-ancestors 'none'",
+  // The inline menu's list (menu.html) is shown in a frame in web pages. Which pages may load
+  // an extension page at all is the manifest's web_accessible_resources: menu.html only — the
+  // popup and the other pages stay unreachable from the web, whatever this line allows.
+  "frame-ancestors 'self' https: http:",
   "img-src 'self' data:",
   "style-src 'self'",
   "font-src 'self'",
@@ -99,6 +102,15 @@ export function manifest(browser, version) {
         description: '__MSG_commandAutofill__',
       },
     },
+    // The inline menu's list, in a frame under a field: the one page web pages may show.
+    // Chromium gives it a new address each session, so a page can't use it to see UwULock.
+    web_accessible_resources: [
+      {
+        resources: ['menu.html'],
+        matches: ['https://*/*', 'http://*/*'],
+        ...(firefox ? {} : { use_dynamic_url: true }),
+      },
+    ],
     content_security_policy: { extension_pages: CSP },
     ...(firefox
       ? {
