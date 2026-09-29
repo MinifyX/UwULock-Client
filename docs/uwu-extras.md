@@ -23,7 +23,9 @@ it keeps encrypted, and the app decrypts it on your computer.
 - **Devices on your network** (a NAS at `nas.local`, a router at
   `192.168.1.1`, a name without dots): _Get the icon from the device_ fetches
   it from the device itself — its start page's icon or `/favicon.ico` — and
-  stores it as an own icon. The server never contacts your local network.
+  stores it as an own icon. The server never contacts your local network, and
+  neither does this fetch leave it: icons the start page names elsewhere are
+  skipped, and a name is only used when it resolves to a local address.
   Self-signed certificates are accepted for this one request, since the result
   is only ever read as a picture.
 
@@ -58,7 +60,10 @@ for your account's key; only you can open it.
   link.
 - What arrived shows under the request. The sender's name and address are what
   they typed in — nobody checked them. Files are saved decrypted into your
-  _Downloads_ folder after you confirm.
+  _Downloads_ folder after you confirm, marked as downloaded from the internet
+  (on Windows and macOS), so the system checks them as it checks a browser
+  download. A program, script, installer or document with macros gets a clear
+  warning first.
 - _Take over as item_ makes a secure note with the message and the sender and
   moves the files into it as attachments.
 
@@ -84,6 +89,11 @@ one-time code key — as a Send: by default deleted after one day and opened at
 most once, optionally with a password. On a UwULock Server with mail, _Only for
 these addresses_ lets only the addresses you list open it, with a code by
 e-mail; with send domains you choose which address the link uses.
+
+An item in an organisation that hides its passwords from you (the collection's
+_Hide passwords_) can't share its password, one-time code key, hidden fields,
+card number and code or SSH private key: official Bitwarden apps don't let them
+leave the device either.
 
 ## Travel mode
 
