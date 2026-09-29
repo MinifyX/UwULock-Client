@@ -10,7 +10,7 @@ import {
   type ItemSummary,
   type Overview,
 } from '../lib/api';
-import { errorText } from '../lib/errors';
+import { errorText, toastError } from '../lib/errors';
 import { t, useLanguage } from '../lib/i18n';
 import {
   CARD_BRANDS,
@@ -246,7 +246,7 @@ function SecretField({
     try {
       onChange({ mode: 'value', value: await revealField(itemId, field) });
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     }
   };
 
@@ -380,8 +380,7 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
     setError(null);
     try {
       const saved = await saveItem(id, draftOf(form, kind));
-      if (newMasked && !id)
-        await linkMaskedAddress(newMasked, saved).catch((e) => toast(errorText(e), 'error'));
+      if (newMasked && !id) await linkMaskedAddress(newMasked, saved).catch((e) => toastError(e));
       setInitial(JSON.stringify(form));
       toast(id ? t('Gespeichert ✧') : t('Angelegt ✧'));
       onSaved(saved);
@@ -407,7 +406,7 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
       set({ username: address.email });
       toast(t('Maskierte Adresse erstellt ✧'));
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     } finally {
       setMasking(false);
     }

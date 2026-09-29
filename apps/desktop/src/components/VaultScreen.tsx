@@ -11,7 +11,7 @@ import {
   type Overview,
   type Status,
 } from '../lib/api';
-import { errorText } from '../lib/errors';
+import { toastError } from '../lib/errors';
 import { copiedText } from '../lib/format';
 import { N_, t, useLanguage } from '../lib/i18n';
 import { KIND_LABEL } from '../lib/items';
@@ -110,6 +110,21 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
       ),
     [uwu.reminders],
   );
+  // An admin switched an extra off while its list or window was open: back
+  // to all items, the window closes.
+  const remindersOn = has(uwu, 'reminders');
+  useEffect(() => {
+    if (!remindersOn && filter.kind === 'due') setFilter({ kind: 'all' });
+  }, [remindersOn, filter.kind]);
+  const extrasAllowed =
+    extrasDialog === 'file-requests'
+      ? has(uwu, 'file-requests')
+      : extrasDialog === 'masked'
+        ? has(uwu, 'masked-addresses')
+        : true;
+  useEffect(() => {
+    if (!extrasAllowed) setExtrasDialog(null);
+  }, [extrasAllowed]);
 
   const reload = useCallback(async () => {
     try {
@@ -117,7 +132,7 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
       setItems(list);
       setOverview(info);
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     } finally {
       setLoaded(true);
     }
@@ -210,7 +225,7 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
       event.preventDefault();
       void copyField(current.id, field)
         .then(() => toast(copiedText(field, settings.clipboardClear)))
-        .catch((e) => toast(errorText(e), 'error'));
+        .catch((e) => toastError(e));
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -353,9 +368,7 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
                 title={t('Im Web-Tresor verwalten')}
                 aria-label={t('{name} im Web-Tresor verwalten', { name: org.name })}
                 onClick={() =>
-                  void openWebVaultAt('organization', org.id).catch((e) =>
-                    toast(errorText(e), 'error'),
-                  )
+                  void openWebVaultAt('organization', org.id).catch((e) => toastError(e))
                 }
               >
                 <Icon name="external" size={13} />
@@ -618,7 +631,7 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
                       if (filter.kind === 'folder' && filter.id === id) setFilter({ kind: 'all' });
                       toast(t('Ordner gelöscht.'));
                     })
-                    .catch((e) => toast(errorText(e), 'error'));
+                    .catch((e) => toastError(e));
                 }}
               >
                 {t('Löschen')}
@@ -637,7 +650,7 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
         </Modal>
       )}
 
-      {extrasDialog === 'file-requests' && (
+      {extrasAllowed && extrasDialog === 'file-requests' && (
         <FileRequestsDialog
           onClose={() => setExtrasDialog(null)}
           onTakenOver={(id) => {
@@ -648,7 +661,7 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
           }}
         />
       )}
-      {extrasDialog === 'masked' && (
+      {extrasAllowed && extrasDialog === 'masked' && (
         <MaskedDialog
           items={items}
           onClose={() => setExtrasDialog(null)}
@@ -697,7 +710,7 @@ function FolderDialog({
       await saveFolder(folder.id, name.trim());
       onSaved();
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
       setBusy(false);
     }
   };

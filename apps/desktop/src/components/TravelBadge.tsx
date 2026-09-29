@@ -5,9 +5,8 @@
  */
 
 import { useEffect, useState } from 'react';
-import { errorText } from '../lib/errors';
+import { toastError } from '../lib/errors';
 import { t, useLanguage } from '../lib/i18n';
-import { toast } from '../lib/toast';
 import { openWebVaultAt, useUwu, uwuTravel } from '../lib/uwu';
 import { Icon } from './Icon';
 import { Modal } from './Modal';
@@ -51,9 +50,7 @@ export function TravelBadge() {
               <span className="spacer" />
               <button
                 className="primary"
-                onClick={() =>
-                  void openWebVaultAt('travel').catch((e) => toast(errorText(e), 'error'))
-                }
+                onClick={() => void openWebVaultAt('travel').catch((e) => toastError(e))}
               >
                 {t('Im Web-Tresor ausschalten')}
                 <Icon name="external" size={13} />

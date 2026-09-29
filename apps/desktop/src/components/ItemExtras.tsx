@@ -6,7 +6,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { copyGenerated, type ItemDetail as Detail, type ItemSummary } from '../lib/api';
-import { errorText } from '../lib/errors';
+import { errorText, toastError } from '../lib/errors';
 import { when } from '../lib/format';
 import { ICON_ACCEPT, iconFromFile } from '../lib/iconImage';
 import { N_, locale, t, useLanguage } from '../lib/i18n';
@@ -203,7 +203,7 @@ export function ReminderCard({ summary }: { summary: ItemSummary }) {
       toast(done);
       setEditing(false);
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     } finally {
       setBusy(false);
     }
@@ -348,7 +348,7 @@ function Hidden({ load }: { load: () => Promise<string> }) {
             ? setValue(null)
             : void load()
                 .then(setValue)
-                .catch((e) => toast(errorText(e), 'error'))
+                .catch((e) => toastError(e))
         }
       >
         <Icon name={value === null ? 'eye' : 'eyeOff'} size={14} />
@@ -407,7 +407,7 @@ export function VersionsCard({ summary }: { summary: ItemSummary }) {
       .then(setVersions)
       .catch((e) => {
         setVersions([]);
-        toast(errorText(e), 'error');
+        toastError(e);
       });
 
   // Again when the item changed (a restore makes a new version too).
@@ -425,7 +425,7 @@ export function VersionsCard({ summary }: { summary: ItemSummary }) {
       toast(done);
       await load();
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     } finally {
       setBusy(false);
       setAsking(null);
@@ -696,7 +696,7 @@ export function ShareSendDialog({
             : t('Link kopiert ✧'),
         ),
       )
-      .catch((e) => toast(errorText(e), 'error'));
+      .catch((e) => toastError(e));
 
   return (
     <Modal

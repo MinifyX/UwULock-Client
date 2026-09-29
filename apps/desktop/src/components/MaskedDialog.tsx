@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { copyGenerated, type ItemSummary } from '../lib/api';
-import { errorText } from '../lib/errors';
+import { errorText, toastError } from '../lib/errors';
 import { when } from '../lib/format';
 import { t, useLanguage } from '../lib/i18n';
 import { getSettings } from '../lib/settings';
@@ -34,7 +34,7 @@ export async function copyAddress(email: string) {
         : t('Adresse kopiert ✧'),
     );
   } catch (e) {
-    toast(errorText(e), 'error');
+    toastError(e);
   }
 }
 
@@ -54,7 +54,7 @@ export function MaskedNotConnected({ connection }: { connection: MaskedConnectio
       <p>
         <button
           className="link-button"
-          onClick={() => void openWebVaultAt('masked').catch((e) => toast(errorText(e), 'error'))}
+          onClick={() => void openWebVaultAt('masked').catch((e) => toastError(e))}
         >
           {t('Im Web-Tresor verbinden')}
           <Icon name="external" size={12} />
@@ -106,7 +106,7 @@ export function MaskedDialog({
       if (done) toast(done);
       await load();
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     } finally {
       setBusy(false);
     }

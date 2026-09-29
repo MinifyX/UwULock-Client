@@ -6,9 +6,8 @@
  * so the person hears about it once, instead of finding things missing.
  */
 
-import { errorText } from '../lib/errors';
+import { toastError } from '../lib/errors';
 import { t, useLanguage } from '../lib/i18n';
-import { toast } from '../lib/toast';
 import { extrasKeySeen, openWebVaultAt, useUwu } from '../lib/uwu';
 import { Icon } from './Icon';
 import { Modal } from './Modal';
@@ -17,7 +16,7 @@ export function ExtrasKeyNotice() {
   useLanguage();
   const uwu = useUwu();
   if (!uwu.extrasKeyChanged) return null;
-  const seen = () => void extrasKeySeen().catch((e) => toast(errorText(e), 'error'));
+  const seen = () => void extrasKeySeen().catch((e) => toastError(e));
   return (
     <Modal
       title={t('Neuer Schlüssel für die Extras')}
@@ -27,7 +26,7 @@ export function ExtrasKeyNotice() {
         <>
           <button
             className="quiet"
-            onClick={() => void openWebVaultAt('keys').catch((e) => toast(errorText(e), 'error'))}
+            onClick={() => void openWebVaultAt('keys').catch((e) => toastError(e))}
           >
             {t('Im Web-Tresor öffnen')}
             <Icon name="external" size={13} />

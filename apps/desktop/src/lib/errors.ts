@@ -3,8 +3,35 @@
  * user's language, by kind. Security errors stay plain: no kaomoji, no Nyu.
  */
 
-import { failure, type Failure } from './api';
+import { failure, syncNow, type Failure } from './api';
 import { t } from './i18n';
+import { toast } from './toast';
+
+const RECHECK_MS = 10_000;
+let lastRecheck = 0;
+
+/**
+ * The server answered that an extra is switched off, though the app still
+ * showed it: an admin switched it off meanwhile. A sync asks `/uwu/v1/info`
+ * again, and whatever belongs to the extra goes away. At most every ten
+ * seconds, so a list of failing calls doesn't become a loop.
+ */
+function recheckFeatures() {
+  const now = Date.now();
+  if (now - lastRecheck < RECHECK_MS) return;
+  lastRecheck = now;
+  void syncNow().catch(() => undefined);
+}
+
+/**
+ * A failure as a toast. An extra that the server switched off meanwhile is no
+ * error the person made or can fix: it gets a calm note, and the app catches
+ * up with the server.
+ */
+export function toastError(error: unknown) {
+  const off = failure(error).kind === 'feature-off';
+  toast(errorText(error), off ? 'info' : 'error');
+}
 
 export function errorText(error: unknown): string {
   const f: Failure = failure(error);
@@ -67,6 +94,7 @@ export function errorText(error: unknown): string {
         'Die Organisation verbirgt die Passwörter dieses Eintrags vor dir. Sie können nicht in ein Send.',
       );
     case 'feature-off':
+      recheckFeatures();
       return t('Das bietet dieser Server nicht (mehr) an.');
     case 'not-connected':
       return t('Dein Konto ist noch nicht mit UwUMail verbunden. Das geht im Web-Tresor.');
