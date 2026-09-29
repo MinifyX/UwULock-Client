@@ -124,7 +124,7 @@ jobs:
         run: pnpm --filter @uwulock/extension exec playwright-core install --with-deps chromium
       - name: UwULock Server's release, and the test
         run: |
-          docker pull -q ghcr.io/minifyx/uwulock-server:0.4.0-beta.2
+          docker pull -q ghcr.io/minifyx/uwulock-server:0.6.0-beta.1
           pnpm --filter @uwulock/extension e2e
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: failure()

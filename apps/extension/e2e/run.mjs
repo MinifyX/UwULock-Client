@@ -42,7 +42,7 @@ import { startPages } from './pages.mjs';
 
 const app = join(dirname(fileURLToPath(import.meta.url)), '..');
 const shots = join(app, 'e2e/shots');
-const IMAGE = `ghcr.io/minifyx/uwulock-server:${process.env.UWULOCK_SERVER_VERSION ?? '0.4.0-beta.2'}`;
+const IMAGE = `ghcr.io/minifyx/uwulock-server:${process.env.UWULOCK_SERVER_VERSION ?? '0.6.0-beta.1'}`;
 const EMAIL = 'nyu@example.com';
 const PASSWORD = 'correct horse battery staple';
 const SITE_USER = 'nyu';
