@@ -26,12 +26,15 @@ import {
   activeAccount,
   cachedSync,
   deviceId,
+  forgetKdfFloor,
+  kdfFloor,
   local,
   removeAccount,
   removeSession,
   saveAccount,
   session,
   setLocal,
+  setKdfFloor,
   setSession,
   updateAccount,
 } from './store';
@@ -217,6 +220,49 @@ async function prelogin(server: ServerChoice, email: string): Promise<string> {
   });
 }
 
+/** The account this browser has for the address on this server, if any. */
+async function knownAccount(server: ServerChoice, email: string): Promise<Account | undefined> {
+  const identity = endpoints(server).identity;
+  return (await accounts()).find(
+    (a) => a.email === email && endpoints(a.server).identity === identity,
+  );
+}
+
+/**
+ * Logging in again to an account this browser knows: the server doesn't get to ask for a
+ * cheaper key derivation than the last login accepted, or the hash sent next would be that
+ * much easier to guess the master password from (the desktop app's rule). What was accepted
+ * stays when the server ends the session, so a hostile server can't clear it by logging this
+ * browser out first. Whoever lowered it on purpose logs out here, or forgets it in the popup.
+ */
+async function refuseWeakerKdf(server: ServerChoice, email: string, kdf: string): Promise<void> {
+  const floors = [
+    await kdfFloor(endpoints(server).identity, email),
+    (await knownAccount(server, email))?.kdf ?? null,
+  ];
+  for (const floor of floors) {
+    if (floor && (await call((core) => core.kdfIsWeakerThan(kdf, floor)))) {
+      throw {
+        kind: 'weaker-kdf',
+        message: "The server asks for a weaker key derivation than this account's last login used.",
+      };
+    }
+  }
+}
+
+/** The popup's way out after a refused weaker KDF that the user lowered on purpose. */
+export async function forgetKdf(server: ServerChoice, email: string): Promise<void> {
+  const choice: ServerChoice =
+    server.kind === 'self-hosted'
+      ? { kind: 'self-hosted', url: normalizeServerUrl(server.url ?? '') }
+      : { kind: server.kind };
+  const address = email.trim().toLowerCase();
+  if (await knownAccount(choice, address)) {
+    throw { kind: 'invalid', message: 'Log this account out first.' };
+  }
+  await forgetKdfFloor(endpoints(choice).identity, address);
+}
+
 /** Whether the popup got the host permission for this server (it asks when the button is clicked). */
 async function permitted(server: ServerChoice): Promise<boolean> {
   return ext.permissions.contains({ origins: endpoints(server).origins }).catch(() => false);
@@ -244,6 +290,7 @@ export async function login(
   const address = email.trim().toLowerCase();
   if (!address.includes('@')) throw { kind: 'invalid', message: 'This is not an email address.' };
   const kdf = await prelogin(choice, address);
+  await refuseWeakerKdf(choice, address, kdf);
   const hash = await call((core) => core.deriveLogin(address, password, kdf));
   const pending: PendingLogin = {
     email: address,
@@ -262,11 +309,7 @@ export async function login(
 
 async function token(pending: PendingLogin, extra: Record<string, string>): Promise<LoginStep> {
   const device = deviceType();
-  const known = (await accounts()).find(
-    (a) =>
-      a.email === pending.email &&
-      endpoints(a.server).identity === endpoints(pending.server).identity,
-  );
+  const known = await knownAccount(pending.server, pending.email);
   const form = new URLSearchParams({
     grant_type: 'password',
     username: pending.email,
@@ -367,6 +410,7 @@ async function loggedIn(pending: PendingLogin, body: Record<string, unknown>): P
   // Another account may be open: it is locked, this one takes over.
   if (unlockedId && unlockedId !== id) await lock();
   await saveAccount(next);
+  await setKdfFloor(endpoints(next.server).identity, next.email, next.kdf);
   await setLocal('activeAccount', id);
   await removeSession('pendingLogin');
   next.uwu = (await uwuInfo(next)) ?? null;
@@ -567,6 +611,8 @@ export async function logout(id?: string): Promise<Status> {
     }).catch(() => undefined);
   }
   await removeAccount(found.id);
+  // Logging out on purpose is the way to accept a lowered KDF at the next login.
+  await forgetKdfFloor(endpoints(found.server).identity, found.email);
   if ((await local('activeAccount')) === found.id) {
     await setLocal('activeAccount', (await accounts())[0]?.id ?? null);
   }
@@ -586,7 +632,8 @@ export async function switchAccount(id: string): Promise<Status> {
 }
 
 // The server ended the session: logged out elsewhere, a new master password, the device
-// removed. Whatever was open closes, and the account goes; the login screen says why.
+// removed. Whatever was open closes, and the account goes; the login screen says why. The KDF
+// its login accepted stays (see `refuseWeakerKdf`).
 whenSessionEnds((ended) => {
   void (async () => {
     if (ended.id === unlockedId) await lock();

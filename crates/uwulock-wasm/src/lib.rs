@@ -149,6 +149,19 @@ pub fn kdf_from(text: &str) -> Result<Kdf> {
     Ok(kdf)
 }
 
+/// Whether the KDF a prelogin asks for is cheaper to guess than `stored`,
+/// the one this browser accepted at the account's last login: fewer rounds,
+/// less memory, or PBKDF2 where it was Argon2id (`Kdf::is_weaker_than`, the
+/// rule the desktop app follows). Both in [`kdf_from`]'s shape.
+pub fn kdf_weaker(kdf: &str, stored: &str) -> Result<bool> {
+    Ok(kdf_from(kdf)?.is_weaker_than(&kdf_from(stored)?))
+}
+
+#[wasm_bindgen(js_name = kdfIsWeakerThan)]
+pub fn kdf_is_weaker_than(kdf: &str, stored: &str) -> Result<bool, JsValue> {
+    js(kdf_weaker(kdf, stored))
+}
+
 // ── Logging in and unlocking ──────────────────────────────
 //
 // Every password and PIN comes in as a `String`, not a `&str`: wasm-bindgen

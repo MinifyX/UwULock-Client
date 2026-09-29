@@ -47,6 +47,12 @@ type Local = {
   activeAccount: string | null;
   deviceId: string;
   settings: Settings;
+  /**
+   * The KDF each account's last login accepted, by identity endpoint and address: a prelogin
+   * asking for less is refused (session.ts). Kept when the server ends a session, which a
+   * hostile server can do at will; only logging out here, or forgetting it in the popup, drops it.
+   */
+  kdfFloors: Record<string, string>;
 };
 
 type Session = {
@@ -138,6 +144,26 @@ export async function removeAccount(id: string): Promise<void> {
     (await accounts()).filter((a) => a.id !== id),
   );
   await forgetSync(id);
+}
+
+// ── The KDF each account's login accepted ─────────────────
+
+function floorKey(identity: string, email: string): string {
+  return `${identity} ${email}`;
+}
+
+export async function kdfFloor(identity: string, email: string): Promise<string | null> {
+  return (await local('kdfFloors'))?.[floorKey(identity, email)] ?? null;
+}
+
+export async function setKdfFloor(identity: string, email: string, kdf: string): Promise<void> {
+  await setLocal('kdfFloors', { ...(await local('kdfFloors')), [floorKey(identity, email)]: kdf });
+}
+
+export async function forgetKdfFloor(identity: string, email: string): Promise<void> {
+  const floors = { ...(await local('kdfFloors')) };
+  delete floors[floorKey(identity, email)];
+  await setLocal('kdfFloors', floors);
 }
 
 /** This browser, as a device of the account: made once. */

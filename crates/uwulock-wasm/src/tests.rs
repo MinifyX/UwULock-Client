@@ -155,6 +155,28 @@ fn cheap_or_unknown_kdfs_are_refused() {
 }
 
 #[test]
+fn a_weaker_kdf_than_the_stored_one_is_told_apart() {
+    let pbkdf2 = |n: u32| format!(r#"{{"kdf": 0, "kdfIterations": {n}}}"#);
+    let argon2 = |i: u32, m: u32, p: u32| {
+        format!(r#"{{"kdf": 1, "kdfIterations": {i}, "kdfMemory": {m}, "kdfParallelism": {p}}}"#)
+    };
+    let weaker = |kdf: &str, stored: &str| crate::kdf_weaker(kdf, stored).unwrap();
+    assert!(weaker(&pbkdf2(5_000), &pbkdf2(600_000)));
+    assert!(!weaker(&pbkdf2(600_000), &pbkdf2(600_000)));
+    assert!(!weaker(&pbkdf2(700_000), &pbkdf2(600_000)));
+    assert!(weaker(&pbkdf2(2_000_000), &argon2(3, 64, 4)));
+    assert!(weaker(&argon2(3, 32, 4), &argon2(3, 64, 4)));
+    assert!(!weaker(&argon2(3, 64, 1), &argon2(3, 64, 4)));
+    assert!(!weaker(&argon2(3, 64, 4), &pbkdf2(600_000)));
+    // Prelogin fields that are missing mean Bitwarden's defaults, as for the derivation.
+    assert!(!weaker(r#"{"kdf": 0}"#, &pbkdf2(600_000)));
+    assert_eq!(
+        kind(crate::kdf_weaker(&pbkdf2(100), &pbkdf2(600_000))),
+        "unsupported"
+    );
+}
+
+#[test]
 fn a_pin_unlocks_and_a_wrong_one_doesnt() {
     let account = account();
     assert_eq!(kind(session::pin_protect("1234")), "locked");

@@ -103,6 +103,10 @@ export function errorText(error: unknown): string {
       if (/wrong|incorrect|invalid_grant/i.test(m))
         return t('E-Mail-Adresse oder Master-Passwort stimmt nicht.');
       return t('Der Server hat die Anmeldung abgelehnt: {reason}', { reason: m });
+    case 'weaker-kdf':
+      return t(
+        'Der Server verlangt für dieses Konto eine schwächere Schlüsselableitung als bei der letzten Anmeldung, deshalb hat UwULock nichts gesendet. Wenn du sie selbst gesenkt hast, melde das Konto hier ab (oder vergiss die gespeicherte Einstellung unten) und melde dich neu an.',
+      );
     case 'wrong-password':
       return t('Das Master-Passwort ist falsch.');
     case 'pin-cleared':
@@ -136,6 +140,7 @@ export function errorText(error: unknown): string {
     case 'invalid':
       if (m.includes('not an email')) return t('Das sieht nicht nach einer E-Mail-Adresse aus.');
       if (m.includes('PIN')) return t('Die PIN braucht mindestens vier Zeichen.');
+      if (m.includes('out first')) return t('Melde dieses Konto zuerst ab.');
       return m;
     default:
       return m;
