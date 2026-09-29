@@ -77,6 +77,8 @@ async function handlePage(message: PageRequest): Promise<unknown> {
       return session.loginSendEmail();
     case 'login-cancel':
       return session.loginCancel();
+    case 'forget-kdf':
+      return session.forgetKdf(message.server, message.email);
     case 'unlock':
       return session.unlock(message.password);
     case 'unlock-pin':

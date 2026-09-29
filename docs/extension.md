@@ -48,7 +48,10 @@ release checks the download (see the [install guide](install.md)).
 
 - The crypto is **uwulock-core**, the same Rust code as the desktop app and UwULock Server's
   web vault, compiled to WebAssembly. Your master password never leaves the browser; the
-  server gets only its hash.
+  server gets only its hash. A server that asks for a weaker key derivation than your last
+  login here used is refused before anything is sent, even after it logged the extension out;
+  if you lowered it yourself, log the account out here (or forget the setting on the login
+  screen) and log in again.
 - Keys live only in the extension's background. While the vault is unlocked, the user key is
   also kept in the browser's session storage — in memory, never on disk, closed to web pages —
   so the background can open the vault again when the browser ends and restarts it. On disk
@@ -56,9 +59,13 @@ release checks the download (see the [install guide](install.md)).
 - Web pages get nothing unless you pick an item. Then only the frame that asked gets that
   item's values, and only if the item's address matches **that frame's own address** — a login
   never reaches an iframe of another site. Picking an item in the popup for a page it doesn't
-  match fills the page itself, never its frames. Plain `http://` pages ask before filling.
-- The button, the menu and the save bar sit in closed shadow roots, ignore clicks the page
-  fakes and refuse to work while the page covers or hides them.
+  match fills the page itself, never its frames. Cards and addresses reach only the page itself
+  and frames of its own origin. Plain `http://` pages ask before filling.
+- The button, the menu and the save bar sit in closed shadow roots and ignore clicks the page
+  fakes. Against a page that lays a decoy over them (clickjacking), they take a click only when
+  the pointer went down on them after they had been shown, unchanged and uncovered, for half a
+  second — on Chromium checked by the browser itself. In an embedded frame of another site,
+  Firefox can't tell, so there the menu only opens UwULock's window.
 - Passkeys are only offered for the site that asks: its relying party is checked against the
   page's own address by WebAuthn's rules, on `https://` pages (and `http://localhost`).
 - The clipboard is cleared after 30 seconds (adjustable). No remote code, a strict content

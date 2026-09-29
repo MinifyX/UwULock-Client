@@ -12,6 +12,7 @@ import type {
   TwoFactorMethod,
 } from '../../shared/protocol';
 import {
+  forgetKdf,
   login,
   loginCancel,
   loginNewDevice,
@@ -20,6 +21,7 @@ import {
   loginWebAuthn,
   requestServerPermission,
 } from '../api';
+import { RequestFailed } from '../../shared/messages';
 import { errorText, PasswordInput, serverUrlError } from '../lib';
 
 const METHOD_LABEL: Record<TwoFactorMethod['kind'], string> = {
@@ -74,6 +76,8 @@ export function LoginView({
       ? t('Der Server hat dieses Gerät abgemeldet. Bitte melde dich neu an.')
       : null,
   );
+  /** The server asked for a weaker KDF than the last login: where to forget what was stored. */
+  const [weaker, setWeaker] = useState<{ server: ServerChoice; email: string } | null>(null);
   const pending: PendingLoginInfo | null = status.login;
 
   const finish = (next: LoginStep) => {
@@ -89,6 +93,7 @@ export function LoginView({
   const submit = (event: FormEvent) => {
     event.preventDefault();
     setError(null);
+    setWeaker(null);
     let choice: ServerChoice;
     try {
       choice = kind === 'self-hosted' ? { kind, url: normalizeServerUrl(url) } : { kind };
@@ -112,10 +117,24 @@ export function LoginView({
         finish(await login(choice, email.trim(), password));
       } catch (e) {
         setError(errorText(e));
+        if (e instanceof RequestFailed && e.kind === 'weaker-kdf') {
+          setWeaker({ server: choice, email: email.trim() });
+        }
       } finally {
         setBusy(null);
       }
     })();
+  };
+
+  // Only after a refusal, and only by hand: whoever lowered the KDF on purpose accepts it here.
+  const forget = () => {
+    if (!weaker) return;
+    void forgetKdf(weaker.server, weaker.email)
+      .then(() => {
+        setWeaker(null);
+        setError(t('Vergessen. Die nächste Anmeldung übernimmt die Einstellung des Servers.'));
+      })
+      .catch((e: unknown) => setError(errorText(e)));
   };
 
   const back = () => {
@@ -206,6 +225,11 @@ export function LoginView({
             <p className="form-error" role="alert">
               {error}
             </p>
+          )}
+          {weaker && (
+            <button type="button" className="quiet" onClick={forget} disabled={Boolean(busy)}>
+              {t('Ich habe sie selbst gesenkt: gespeicherte Einstellung vergessen')}
+            </button>
           )}
           <div className="form-actions">
             {onCancel && (

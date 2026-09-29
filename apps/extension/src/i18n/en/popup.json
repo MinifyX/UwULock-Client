@@ -303,5 +303,9 @@
   "Was geteilt wird": "What is shared",
   "Website": "Website",
   "Wer diesen Link hat, kann die Werte sehen. Er verschwindet am {date}.": "Whoever has this link can see the values. It disappears on {date}.",
-  "Wie oft er sich öffnen lässt": "How often it can be opened"
+  "Wie oft er sich öffnen lässt": "How often it can be opened",
+  "Der Server verlangt für dieses Konto eine schwächere Schlüsselableitung als bei der letzten Anmeldung, deshalb hat UwULock nichts gesendet. Wenn du sie selbst gesenkt hast, melde das Konto hier ab (oder vergiss die gespeicherte Einstellung unten) und melde dich neu an.": "The server asks for a weaker key derivation for this account than at the last login, so UwULock sent nothing. If you lowered it yourself, log the account out here (or forget the stored setting below) and log in again.",
+  "Vergessen. Die nächste Anmeldung übernimmt die Einstellung des Servers.": "Forgotten. The next login takes the server's setting.",
+  "Ich habe sie selbst gesenkt: gespeicherte Einstellung vergessen": "I lowered it myself: forget the stored setting",
+  "Melde dieses Konto zuerst ab.": "Log this account out first."
 }

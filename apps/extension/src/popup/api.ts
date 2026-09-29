@@ -59,6 +59,8 @@ export const loginWebAuthn = (remember: boolean) => ask<void>({ type: 'login-web
 export const loginNewDevice = (code: string) => ask<LoginStep>({ type: 'login-new-device', code });
 export const loginSendEmail = () => ask<void>({ type: 'login-send-email' });
 export const loginCancel = () => ask<void>({ type: 'login-cancel' });
+export const forgetKdf = (server: ServerChoice, email: string) =>
+  ask<void>({ type: 'forget-kdf', server, email });
 export const unlock = (password: string) => ask<Status>({ type: 'unlock', password });
 export const unlockWithPin = (pin: string) => ask<Status>({ type: 'unlock-pin', pin });
 export const setPin = (pin: string | null, afterRestart: boolean) =>

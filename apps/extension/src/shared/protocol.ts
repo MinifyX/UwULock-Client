@@ -570,6 +570,7 @@ export type PageRequest =
   | { type: 'login-new-device'; code: string }
   | { type: 'login-send-email' }
   | { type: 'login-cancel' }
+  | { type: 'forget-kdf'; server: ServerChoice; email: string }
   | { type: 'unlock'; password: string }
   | { type: 'unlock-pin'; pin: string }
   | { type: 'set-pin'; pin: string | null; afterRestart: boolean }

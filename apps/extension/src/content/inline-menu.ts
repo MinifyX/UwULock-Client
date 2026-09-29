@@ -5,6 +5,11 @@
  *
  * ↓ in the field opens the list, arrows move, Enter picks, Esc closes. The menu goes away when
  * the field loses focus to anything but the menu, or disappears.
+ *
+ * A page can focus a field by script and trick somebody into clicking the button and an item
+ * (clickjacking): every click and key goes through the guard of ui.ts, which wants the menu
+ * seen whole, unchanged and in place for a moment first. In a frame from another origin, where
+ * that can't be checked, the menu only leads to UwULock's own window.
  */
 
 import { t } from '../shared/i18n';
@@ -12,7 +17,7 @@ import { ask, RequestFailed } from '../shared/messages';
 import type { FillAnswer, FillValues, PageInfo, PageItem } from '../shared/protocol';
 import { uwuErrorText } from '../shared/uwu-errors';
 import { isVisible } from './forms';
-import { createHost, genuine, h, lockGlyph, type Host } from './ui';
+import { createGuard, createHost, h, lockGlyph, type Guard, type Host } from './ui';
 
 /** `signup`: a sign-up form's username or email field, where only a masked address is offered. */
 export type MenuKind = 'login' | 'card' | 'identity' | 'signup';
@@ -90,8 +95,6 @@ const CSS = `
 .message { display: grid; gap: 10px; padding: 8px 10px; }
 `;
 
-/** Clicks sooner than this after the list appeared were not aimed at it. */
-const MIN_SHOW_MS = 300;
 const BUTTON_MAX = 24;
 
 type Entry = { label: string; sub?: string | null; letter?: string; run: () => void };
@@ -101,9 +104,11 @@ export function createInlineMenu(deps: InlineMenuDeps): InlineMenu {
   let kind: MenuKind = 'login';
   let maskable = false;
   let ui: Host | null = null;
+  let guard: Guard | null = null;
   let button: HTMLElement | null = null;
   let menu: HTMLElement | null = null;
-  let shownAt = 0;
+  /** Where the button and the list were drawn last: moving them starts the guard's clock again. */
+  let placed = '';
   let frame = 0;
   let busy = false;
 
@@ -163,6 +168,11 @@ export function createInlineMenu(deps: InlineMenuDeps): InlineMenu {
           ? `${rect.top - height - 4}px`
           : `${rect.bottom + 4}px`;
     }
+    const where = `${button?.style.cssText}|${menu?.style.cssText}`;
+    if (where !== placed) {
+      placed = where;
+      guard?.shown();
+    }
   };
 
   const schedule = () => {
@@ -201,14 +211,12 @@ export function createInlineMenu(deps: InlineMenuDeps): InlineMenu {
       ),
     );
     option.addEventListener('click', (event) => {
-      if (!ui || !genuine(event, ui.host)) return;
-      if (performance.now() - shownAt < MIN_SHOW_MS) return;
-      item.run();
+      if (guard?.accepts(event, option)) item.run();
     });
     option.addEventListener('keydown', (event) => {
       if (!event.isTrusted || (event.key !== 'Enter' && event.key !== ' ')) return;
       event.preventDefault();
-      item.run();
+      if (guard?.accepts(event, option)) item.run();
     });
     return option;
   };
@@ -220,6 +228,12 @@ export function createInlineMenu(deps: InlineMenuDeps): InlineMenu {
     }
     if (state === 'locked') {
       return { note: null, list: [{ label: t('UwULock entsperren'), run: openPopup }] };
+    }
+    if (guard && !guard.verifiable) {
+      return {
+        note: t('In diesem eingebetteten Bereich füllst du über das UwULock-Fenster aus.'),
+        list: [{ label: t('UwULock öffnen'), run: openPopup }],
+      };
     }
     const found = items();
     const masked = maskedEntries();
@@ -254,6 +268,8 @@ export function createInlineMenu(deps: InlineMenuDeps): InlineMenu {
     );
     listbox.addEventListener('keydown', onListKey);
     menu.replaceChildren(note ? h('div', { class: 'note muted' }, note) : '', listbox);
+    // Other items under the pointer than a moment ago: they have to be seen first, too.
+    guard?.shown();
     if (focusFirst) select(options()[0]);
   };
 
@@ -269,7 +285,7 @@ export function createInlineMenu(deps: InlineMenuDeps): InlineMenu {
         action.label,
       );
       el.addEventListener('click', (event) => {
-        if (ui && genuine(event, ui.host)) action.run();
+        if (guard?.accepts(event, el)) action.run();
       });
       return el;
     });
@@ -282,7 +298,7 @@ export function createInlineMenu(deps: InlineMenuDeps): InlineMenu {
         h('div', { class: 'actions' }, ...buttons),
       ),
     );
-    shownAt = performance.now();
+    guard?.shown();
     if (hadFocus) buttons[0]?.focus();
     schedule();
   };
@@ -416,10 +432,11 @@ export function createInlineMenu(deps: InlineMenuDeps): InlineMenu {
       menu = h('div', { class: 'menu panel' });
       menu.addEventListener('mousedown', (event) => event.preventDefault());
       ui.root.append(menu);
+      guard?.watch(menu);
     }
     button?.setAttribute('aria-expanded', 'true');
     render(focusFirst);
-    shownAt = performance.now();
+    guard?.shown();
     place();
   };
 
@@ -463,6 +480,9 @@ export function createInlineMenu(deps: InlineMenuDeps): InlineMenu {
     }
     window.removeEventListener('scroll', schedule, true);
     window.removeEventListener('resize', schedule);
+    guard?.dispose();
+    guard = null;
+    placed = '';
     ui?.host.remove();
     ui = null;
     button = null;
@@ -479,8 +499,9 @@ export function createInlineMenu(deps: InlineMenuDeps): InlineMenu {
     maskable = nextMaskable;
     ui = createHost(CSS);
     ui.root.addEventListener('focusout', onRootBlur);
-    const host = ui.host;
-    button = h('button', {
+    const own = createGuard(ui);
+    guard = own;
+    const openButton = h('button', {
       class: 'button',
       type: 'button',
       title: 'UwULock',
@@ -488,14 +509,16 @@ export function createInlineMenu(deps: InlineMenuDeps): InlineMenu {
       'aria-haspopup': 'listbox',
       'aria-expanded': 'false',
     });
-    button.append(lockGlyph(BUTTON_MAX));
-    button.addEventListener('mousedown', (event) => event.preventDefault());
-    button.addEventListener('click', (event) => {
-      if (!genuine(event, host)) return;
+    button = openButton;
+    openButton.append(lockGlyph(BUTTON_MAX));
+    openButton.addEventListener('mousedown', (event) => event.preventDefault());
+    openButton.addEventListener('click', (event) => {
+      if (!own.accepts(event, openButton)) return;
       if (menu) closeList(false);
       else openList(event.detail === 0);
     });
-    ui.root.append(button);
+    ui.root.append(openButton);
+    own.watch(openButton);
     next.addEventListener('keydown', onFieldKey, true);
     next.addEventListener('focusout', onFieldBlur);
     window.addEventListener('scroll', schedule, { capture: true, passive: true });
