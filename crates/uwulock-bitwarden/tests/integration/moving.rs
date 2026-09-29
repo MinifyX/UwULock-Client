@@ -294,7 +294,7 @@ async fn a_vault_moves_over_and_opens_under_the_new_keys() {
         .attachment_url(&session.access_token, &vet.id, &attachment.id)
         .await
         .unwrap();
-    let bytes = client.download(&url).await.unwrap();
+    let bytes = client.download(&url, 1 << 20).await.unwrap();
     assert_eq!(
         decrypt_file(&bytes, &file_key).unwrap().as_slice(),
         ATTACHMENT

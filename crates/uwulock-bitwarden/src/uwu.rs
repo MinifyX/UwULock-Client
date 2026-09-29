@@ -220,8 +220,13 @@ impl Client {
             .await
     }
 
-    /// Raw bytes from `/uwu/v1` (a file request's file).
-    pub async fn uwu_download(&self, access_token: &str, path: &str) -> UwuResult<Vec<u8>> {
+    /// Raw bytes from `/uwu/v1` (a file request's file), at most `max` of them.
+    pub async fn uwu_download(
+        &self,
+        access_token: &str,
+        path: &str,
+        max: u64,
+    ) -> UwuResult<Vec<u8>> {
         let response = self
             .request(reqwest::Method::GET, self.uwu_url(path))
             .header("Accept", "application/octet-stream")
@@ -231,14 +236,12 @@ impl Client {
             .map_err(|e| UwuError::Core(crate::api::network_error(e)))?;
         let status = response.status().as_u16();
         if !(200..300).contains(&status) {
-            let body = response.text().await.unwrap_or_default();
+            let body = crate::api::error_text(response).await;
             return Err(refusal(status, &body));
         }
-        let bytes = response
-            .bytes()
+        crate::api::read_capped(response, usize::try_from(max).unwrap_or(usize::MAX))
             .await
-            .map_err(|e| UwuError::Core(crate::api::network_error(e)))?;
-        Ok(bytes.to_vec())
+            .map_err(UwuError::Core)
     }
 
     // ── The extras key (§3) ────────────────────────────────
@@ -341,6 +344,9 @@ pub struct OwnIcon {
 
 /// The most own icons one `POST /uwu/v1/icons/own/get` may ask for.
 pub const OWN_ICONS_PER_CALL: usize = 500;
+
+/// The most an automatic icon may weigh (the server makes them far smaller).
+pub const MAX_AUTOMATIC_ICON: usize = 256 * 1024;
 
 /// An entry version (§8.4). `cipher` has the shape of a cipher in `/api/sync`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -623,8 +629,13 @@ impl Client {
         if !response.status().is_success() {
             return Ok(None);
         }
-        let bytes = response.bytes().await.map_err(crate::api::network_error)?;
-        Ok(extras::png_size(&bytes).map(|_| bytes.to_vec()))
+        // An icon larger than this isn't one: nothing is kept of it.
+        let bytes = match crate::api::read_capped(response, MAX_AUTOMATIC_ICON).await {
+            Ok(bytes) => bytes,
+            Err(Error::Refused(_)) => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        Ok(extras::png_size(&bytes).map(|_| bytes))
     }
 
     // ── Entry versions (§8) ────────────────────────────────
@@ -772,19 +783,22 @@ impl Client {
     }
 
     /// A submitted file, still encrypted (an EncArrayBuffer under its key).
+    /// One file of a submission, encrypted; at most `max` bytes (the file
+    /// limit, plus what encryption adds).
     pub async fn submission_file(
         &self,
         access_token: &str,
         request_id: &str,
         submission_id: &str,
         file_id: &str,
+        max: u64,
     ) -> UwuResult<Vec<u8>> {
         let path = format!(
             "{}/files/{}",
             Self::submission_path(request_id, submission_id),
             uwu_path(file_id)
         );
-        self.uwu_download(access_token, &path).await
+        self.uwu_download(access_token, &path, max).await
     }
 
     pub async fn submission_seen(

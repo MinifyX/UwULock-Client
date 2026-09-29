@@ -1777,9 +1777,13 @@ pub(crate) async fn save_submission_file(
             "This type of file runs when it is opened; the page didn't warn.",
         ));
     }
+    // No file is larger than the server takes, whatever it sends: its limit
+    // (Bitwarden's 500 MiB when it names none), plus what encryption adds.
+    let info = with(&state, &ctx.account_id, |u| Ok(u.info.clone()))?;
+    let max = file_limit(None, None, info.as_ref()).saturating_add(1024);
     let encrypted = ctx
         .client
-        .submission_file(&ctx.token, &request_id, &submission_id, &file_id)
+        .submission_file(&ctx.token, &request_id, &submission_id, &file_id, max)
         .await
         .map_err(uwu_failure)?;
     let contents = file_key.decrypt(&encrypted)?;

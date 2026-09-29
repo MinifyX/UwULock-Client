@@ -976,7 +976,7 @@ async fn a_file_request_takes_an_upload_and_hands_it_over() {
     assert_eq!(name.as_str(), "scan.pdf");
     let bytes = nyu
         .client
-        .submission_file(nyu.token(), &request.id, &submission.id, &file.id)
+        .submission_file(nyu.token(), &request.id, &submission.id, &file.id, 1 << 20)
         .await
         .unwrap();
     assert_eq!(&**file_key.decrypt(&bytes).unwrap(), contents);
@@ -1017,7 +1017,7 @@ async fn a_file_request_takes_an_upload_and_hands_it_over() {
         .attachment_url(nyu.token(), &cipher_id, attachment_id)
         .await
         .unwrap();
-    let encrypted = nyu.client.download(&url).await.unwrap();
+    let encrypted = nyu.client.download(&url, 1 << 20).await.unwrap();
     let attachment_key = attachment["key"]
         .as_str()
         .unwrap()
@@ -1150,7 +1150,7 @@ async fn the_web_vaults_upload_page_speaks_uwulock_core() {
     assert_eq!(name.as_str(), "vorne.txt");
     let bytes = nyu
         .client
-        .submission_file(nyu.token(), &request.id, &submission.id, &file.id)
+        .submission_file(nyu.token(), &request.id, &submission.id, &file.id, 1 << 20)
         .await
         .unwrap();
     assert_eq!(bytes.len() as u64, file.size);
@@ -1373,7 +1373,7 @@ async fn a_vault_moves_over_from_vaultwarden() {
         )
         .await
         .unwrap();
-    let encrypted = target.client.download(&url).await.unwrap();
+    let encrypted = target.client.download(&url, 1 << 20).await.unwrap();
     let item_key = router
         .key
         .clone()
