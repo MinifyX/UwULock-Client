@@ -92,9 +92,11 @@ release checks the download (see the [install guide](install.md)).
   uncovered, for half a second — on Chromium checked by the browser itself. The menu's frame
   checks the same inside, and a pick in it counts only when the page's side saw the frame
   uncovered too. In an embedded frame of another site, Firefox can't tell, so there the menu only
-  opens UwULock's window. Chromium gives the frame a new address each session
-  (`use_dynamic_url`), so pages can't tell the extension is installed; Firefox's address is fixed
-  per profile but random.
+  opens UwULock's window. Since Firefox doesn't see for itself what lies over them, the guard
+  there also looks through the page's shadow roots, closed ones too, and refuses the click while
+  a popover or anything in full screen is open anywhere. Chromium gives the frame a new address
+  each session (`use_dynamic_url`), so pages can't tell the extension is installed; Firefox's
+  address is fixed per profile but random.
 - Passkeys are only offered for the site that asks: its relying party is checked against the
   page's own address by WebAuthn's rules, on `https://` pages (and `http://localhost`).
 - The clipboard is cleared after 30 seconds (adjustable). No remote code, a strict content

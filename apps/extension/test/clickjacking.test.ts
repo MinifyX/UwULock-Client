@@ -258,3 +258,73 @@ describe("the inline menu's frame, as the page shows it (CL-L8)", () => {
     expect(guard.frameSeen(frame)).toBe(false);
   });
 });
+
+describe('the top layer, where the browser tracks no visibility (CL-L13)', () => {
+  /** A page's element with a closed shadow root, seen the way Firefox shows it to extensions. */
+  function closedHost(): {
+    host: HTMLElement;
+    inner: HTMLElement;
+    open: (selector: string) => boolean;
+  } {
+    const host = document.createElement('div');
+    const root = host.attachShadow({ mode: 'closed' });
+    const inner = document.createElement('div');
+    root.append(inner);
+    Object.defineProperty(host, 'openOrClosedShadowRoot', { value: root });
+    let popover = false;
+    // jsdom knows no popovers: the root says what is open in it.
+    root.querySelectorAll = ((selector: string) =>
+      selector === ':popover-open' && popover
+        ? [inner]
+        : []) as unknown as typeof root.querySelectorAll;
+    document.body.append(host);
+    return {
+      host,
+      inner,
+      open: (selector) => (popover = selector === ':popover-open'),
+    };
+  }
+
+  afterEach(() => {
+    document.body.replaceChildren();
+    Object.defineProperty(document, 'fullscreenElement', { value: null, configurable: true });
+  });
+
+  it('refuses a click while a popover is open in a closed shadow root of the page', () => {
+    const page = closedHost();
+    clock += MIN_SHOW_MS;
+    page.open(':popover-open');
+    press();
+    expect(guard.accepts(click(), button)).toBe(false);
+    page.open('');
+    press();
+    expect(guard.accepts(click(), button)).toBe(true);
+  });
+
+  it('looks into shadow roots inside shadow roots', () => {
+    const outer = document.createElement('div');
+    const outerRoot = outer.attachShadow({ mode: 'closed' });
+    Object.defineProperty(outer, 'openOrClosedShadowRoot', { value: outerRoot });
+    document.body.append(outer);
+    const page = closedHost();
+    outerRoot.append(page.host);
+    page.open(':popover-open');
+    clock += MIN_SHOW_MS;
+    press();
+    expect(guard.accepts(click(), button)).toBe(false);
+  });
+
+  it('refuses a click while something of the page is in full screen', () => {
+    const page = closedHost();
+    Object.defineProperty(document, 'fullscreenElement', {
+      value: page.host,
+      configurable: true,
+    });
+    clock += MIN_SHOW_MS;
+    press();
+    expect(guard.accepts(click(), button)).toBe(false);
+    Object.defineProperty(document, 'fullscreenElement', { value: null, configurable: true });
+    press();
+    expect(guard.accepts(click(), button)).toBe(true);
+  });
+});
