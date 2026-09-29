@@ -119,6 +119,11 @@ pub struct Account {
     /// unlocking with Windows Hello is on.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hello_user_key: Option<String>,
+    /// Which extras key this device last took for the account
+    /// (`extras::key_id`, nothing secret). A different one means somebody
+    /// started over, or the server lost it: the app says so before taking it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extras_key_id: Option<String>,
 }
 
 impl Account {
@@ -394,6 +399,7 @@ mod tests {
             protected_remember_token: None,
             last_sync: None,
             hello_user_key: None,
+            extras_key_id: None,
         }
     }
 

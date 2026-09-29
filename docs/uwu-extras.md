@@ -104,3 +104,9 @@ The extras (own icons of personal items, file request names) are encrypted
 under a key of their own, kept for your account's key pair. If an official
 Bitwarden app replaced that key pair, the app says the key can't be opened any
 more; the web vault offers to start over.
+
+The server can't swap in a key of its own: both copies it keeps are made with
+keys only your account has. If the key is a different one than this device
+used before — because somebody started over, or the server lost the old one —
+the app tells you once. A file request whose link would encrypt uploads for a
+key that isn't yours shows no link; edit it with a new link or delete it.

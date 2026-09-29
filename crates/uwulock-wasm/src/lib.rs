@@ -381,7 +381,8 @@ pub fn file_request_labels(requests: &str) -> Result<String, JsValue> {
     js(extras::file_request_labels(requests))
 }
 
-/// A file request's link, on the main host or a send domain.
+/// A file request's link, on the main host or a send domain; refused when its
+/// details encrypt for a key that isn't the account's own.
 #[wasm_bindgen(js_name = fileRequestLink)]
 pub fn file_request_link(request: &str, base: &str, send_domain: bool) -> Result<String, JsValue> {
     js(extras::file_request_link(request, base, send_domain))

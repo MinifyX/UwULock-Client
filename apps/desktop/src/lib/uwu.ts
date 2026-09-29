@@ -31,6 +31,8 @@ export type UwuStatus = {
     fileRequestMaxFiles?: number | null;
     fileRequestMaxDays?: number | null;
   } | null;
+  /** The extras key isn't the one this device took before: warn until seen. */
+  extrasKeyChanged: boolean;
 };
 
 export const EMPTY_STATUS: UwuStatus = {
@@ -45,6 +47,7 @@ export const EMPTY_STATUS: UwuStatus = {
   ownIcons: {},
   automaticIcons: false,
   limits: null,
+  extrasKeyChanged: false,
 };
 
 export type Feature =
@@ -238,6 +241,9 @@ export const setReminder = (id: string, due: string | null, everyMonths: number 
   invoke<void>('set_reminder', { id, due, everyMonths });
 export const deleteReminder = (id: string) => invoke<void>('delete_reminder', { id });
 
+/** The person saw that the extras key changed: it is the one from now on. */
+export const extrasKeySeen = () => invoke<void>('uwu_extras_key_seen');
+
 // ── File requests ──────────────────────────────────────────
 
 export type FileRequest = {
@@ -259,6 +265,8 @@ export type FileRequest = {
   disabled: boolean;
   unseen: number;
   bytes: number;
+  /** Its details encrypt for a key that isn't the account's own: no link. */
+  foreignKey: boolean;
 };
 
 export type FileRequestInput = {

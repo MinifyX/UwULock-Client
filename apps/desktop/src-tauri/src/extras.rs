@@ -61,6 +61,9 @@ pub(crate) struct Cache {
     versions: HashMap<String, (String, Item)>,
     /// Travel mode's hidden count, when it was asked for since the last sync.
     travel_hidden: Option<u32>,
+    /// The extras key opened as a different one than this device took last
+    /// time: its id, until the person has seen the warning.
+    key_changed: Option<String>,
 }
 
 /// The server's refusal as the page gets it: the contract's code as the kind
@@ -123,7 +126,12 @@ fn need(state: &VaultState, feature: &str) -> Result<()> {
 /// The account's extras key: opened from the server, made there if there is
 /// none, wrapped again if an official client rotated the user key. Kept for
 /// the rest of the unlock.
-async fn extras_key(state: &VaultState, ctx: &Ctx) -> Result<SymmetricKey> {
+///
+/// The key's id is kept with the account: a key that isn't the one this
+/// device took before is still used (the server can't have chosen it — both
+/// its wraps are made with keys only the account has), but the page is told,
+/// since everything under the old one is gone.
+async fn extras_key(app: &AppHandle, state: &VaultState, ctx: &Ctx) -> Result<SymmetricKey> {
     let (user_key, private) = with(state, &ctx.account_id, |u| {
         Ok((
             u.extras
@@ -143,10 +151,21 @@ async fn extras_key(state: &VaultState, ctx: &Ctx) -> Result<SymmetricKey> {
         .await
     {
         Ok(Some(key)) => {
+            let id = uwulock_bitwarden::extras::key_id(&key);
+            let known = state.account(&ctx.account_id)?.extras_key_id;
+            let different = known.as_ref().is_some_and(|known| *known != id);
+            if known.is_none() {
+                state.update_account(&ctx.account_id, |a| a.extras_key_id = Some(id.clone()));
+            }
             with(state, &ctx.account_id, |u| {
                 u.extras = Some(key.clone());
+                u.extras_cache.key_changed = different.then_some(id);
                 Ok(())
             })?;
+            if different {
+                tracing::warn!("the extras key is a different one than this device took before");
+                changed(app);
+            }
             Ok(key)
         }
         Ok(None) => Err(Failure::new(
@@ -155,6 +174,18 @@ async fn extras_key(state: &VaultState, ctx: &Ctx) -> Result<SymmetricKey> {
         )),
         Err(error) => Err(uwu_failure(error)),
     }
+}
+
+/// The person saw that the extras key changed: it is the one from now on.
+#[tauri::command]
+pub(crate) fn uwu_extras_key_seen(app: AppHandle, state: State<'_, VaultState>) -> Result<()> {
+    let (id, _) = state.active_account()?;
+    let seen = with(&state, &id, |u| Ok(u.extras_cache.key_changed.take()))?;
+    if let Some(key_id) = seen {
+        state.update_account(&id, |a| a.extras_key_id = Some(key_id));
+    }
+    changed(&app);
+    Ok(())
 }
 
 fn changed(app: &AppHandle) {
@@ -224,6 +255,9 @@ pub struct UwuStatus {
     /// Automatic icons from the server.
     automatic_icons: bool,
     limits: Option<Limits>,
+    /// The extras key isn't the one this device took before (someone started
+    /// over): the page warns until [`uwu_extras_key_seen`].
+    extras_key_changed: bool,
 }
 
 fn status_of(state: &VaultState) -> UwuStatus {
@@ -291,6 +325,7 @@ fn status_of(state: &VaultState) -> UwuStatus {
         automatic_icons: info.has("icons")
             && info.icons.as_ref().is_some_and(|icons| icons.automatic),
         limits: info.limits.clone(),
+        extras_key_changed: u.extras_cache.key_changed.is_some(),
     }
 }
 
@@ -370,6 +405,7 @@ fn data_url(png: &[u8]) -> String {
 /// by the page, and kept for the rest of the unlock.
 #[tauri::command]
 pub(crate) async fn item_icons(
+    app: AppHandle,
     state: State<'_, VaultState>,
     ids: Vec<String>,
     automatic: Option<bool>,
@@ -437,7 +473,7 @@ pub(crate) async fn item_icons(
     if !plan.own_wanted.is_empty() || !plan.hosts.is_empty() {
         let ctx = ctx(&state).await?;
         if !plan.own_wanted.is_empty() {
-            fetch_own_icons(&state, &ctx, &plan.own_wanted, plan.personal_wanted).await;
+            fetch_own_icons(&app, &state, &ctx, &plan.own_wanted, plan.personal_wanted).await;
         }
         if let Some(url) = plan.icons_url.filter(|_| !plan.hosts.is_empty()) {
             fetch_automatic_icons(&state, &ctx, &url, plan.hosts.into_keys().collect()).await;
@@ -472,10 +508,16 @@ pub(crate) async fn item_icons(
     })
 }
 
-async fn fetch_own_icons(state: &VaultState, ctx: &Ctx, ids: &[String], personal: bool) {
+async fn fetch_own_icons(
+    app: &AppHandle,
+    state: &VaultState,
+    ctx: &Ctx,
+    ids: &[String],
+    personal: bool,
+) {
     // Without the extras key, organisation icons still open.
     let extras = if personal {
-        match extras_key(state, ctx).await {
+        match extras_key(app, state, ctx).await {
             Ok(key) => Some(key),
             Err(error) => {
                 tracing::warn!(kind = error.kind(), "own icons: no extras key");
@@ -564,7 +606,7 @@ async fn store_icon(app: &AppHandle, state: &VaultState, id: &str, png: Vec<u8>)
             })?,
             "organization",
         ),
-        None => (extras_key(state, &ctx).await?, "extras"),
+        None => (extras_key(app, state, &ctx).await?, "extras"),
     };
     let data = seal_icon(&png, &key)?;
     let stored = ctx
@@ -1063,6 +1105,8 @@ pub struct FileRequestView {
     disabled: bool,
     unseen: u32,
     bytes: u64,
+    /// The details encrypt for a key that isn't the account's own: no link.
+    foreign_key: bool,
 }
 
 /// Where links point: the main host, and the send domains.
@@ -1094,9 +1138,15 @@ fn request_link(
     }
 }
 
+/// A file request as the page shows it. Its details (`publicInfo`) have to
+/// name `own`, the account's public key: details naming another were made by
+/// someone else who knew the link secret, and the uploads to that link would
+/// be theirs to read. Such a request is `foreignKey` and has no link to hand
+/// out; saving it with a new link makes it the account's again.
 fn request_view(
     request: &FileRequest,
     extras: &SymmetricKey,
+    own: Option<&uwulock_bitwarden::crypto::PublicKey>,
     main: &str,
     domains: &[SendDomain],
 ) -> FileRequestView {
@@ -1112,6 +1162,10 @@ fn request_view(
     let info = secret
         .as_ref()
         .and_then(|secret| PublicInfo::open(request.public_info.as_deref()?, secret).ok());
+    let foreign_key = info
+        .as_ref()
+        .is_some_and(|info| !own.is_some_and(|own| info.is_for(own)));
+    let secret = secret.filter(|_| !foreign_key);
     FileRequestView {
         id: request.id.clone(),
         label,
@@ -1133,14 +1187,19 @@ fn request_view(
         disabled: request.disabled,
         unseen: request.unseen,
         bytes: request.bytes,
+        foreign_key,
     }
 }
 
 #[tauri::command]
-pub(crate) async fn file_requests(state: State<'_, VaultState>) -> Result<Vec<FileRequestView>> {
+pub(crate) async fn file_requests(
+    app: AppHandle,
+    state: State<'_, VaultState>,
+) -> Result<Vec<FileRequestView>> {
     need(&state, "file-requests")?;
     let ctx = ctx(&state).await?;
-    let extras = extras_key(&state, &ctx).await?;
+    let extras = extras_key(&app, &state, &ctx).await?;
+    let own = public_key(&state, &ctx.account_id).ok();
     let (main, domains) = link_bases(&state, &ctx.account_id)?;
     let requests = ctx
         .client
@@ -1149,7 +1208,7 @@ pub(crate) async fn file_requests(state: State<'_, VaultState>) -> Result<Vec<Fi
         .map_err(uwu_failure)?;
     Ok(requests
         .iter()
-        .map(|r| request_view(r, &extras, &main, &domains))
+        .map(|r| request_view(r, &extras, own.as_ref(), &main, &domains))
         .collect())
 }
 
@@ -1258,6 +1317,7 @@ fn public_key(
 
 #[tauri::command]
 pub(crate) async fn create_file_request(
+    app: AppHandle,
     state: State<'_, VaultState>,
     input: FileRequestInput,
 ) -> Result<FileRequestView> {
@@ -1266,7 +1326,7 @@ pub(crate) async fn create_file_request(
     let ctx = ctx(&state).await?;
     let info = with(&state, &ctx.account_id, |u| Ok(u.info.clone()))?;
     checked_input(&input, info.as_ref())?;
-    let extras = extras_key(&state, &ctx).await?;
+    let extras = extras_key(&app, &state, &ctx).await?;
     let public = public_key(&state, &ctx.account_id)?;
     let secret = LinkSecret::generate();
     let public_info = PublicInfo::new(
@@ -1301,7 +1361,7 @@ pub(crate) async fn create_file_request(
         .await
         .map_err(uwu_failure)?;
     let (main, domains) = link_bases(&state, &ctx.account_id)?;
-    Ok(request_view(&made, &extras, &main, &domains))
+    Ok(request_view(&made, &extras, Some(&public), &main, &domains))
 }
 
 /// Changes a request. `new_link` makes a new secret, so every link handed out
@@ -1309,6 +1369,7 @@ pub(crate) async fn create_file_request(
 /// uploader's page derives its hash from the secret.
 #[tauri::command]
 pub(crate) async fn update_file_request(
+    app: AppHandle,
     state: State<'_, VaultState>,
     id: String,
     input: FileRequestInput,
@@ -1320,7 +1381,7 @@ pub(crate) async fn update_file_request(
     let ctx = ctx(&state).await?;
     let info = with(&state, &ctx.account_id, |u| Ok(u.info.clone()))?;
     checked_input(&input, info.as_ref())?;
-    let extras = extras_key(&state, &ctx).await?;
+    let extras = extras_key(&app, &state, &ctx).await?;
     let requests = ctx
         .client
         .file_requests(&ctx.token)
@@ -1344,6 +1405,21 @@ pub(crate) async fn update_file_request(
                 )
             })?
     };
+    let public = public_key(&state, &ctx.account_id)?;
+    // Someone else who knew the secret made the details: keeping that secret
+    // would let them do it again.
+    let foreign = !new_link
+        && existing
+            .public_info
+            .as_deref()
+            .and_then(|info| PublicInfo::open(info, &secret).ok())
+            .is_some_and(|info| !info.is_for(&public));
+    if foreign {
+        return Err(Failure::new(
+            "new-link-needed",
+            "This request's link encrypts for a key that isn't yours; it needs a new link.",
+        ));
+    }
     let password = input.password.as_deref().filter(|p| !p.is_empty());
     if new_link && existing.password_set && password.is_none() && !remove_password {
         return Err(Failure::new(
@@ -1351,7 +1427,6 @@ pub(crate) async fn update_file_request(
             "A new link needs the password again.",
         ));
     }
-    let public = public_key(&state, &ctx.account_id)?;
     let public_info = PublicInfo::new(
         input.title.trim(),
         input.note.as_deref().map(str::trim),
@@ -1389,7 +1464,13 @@ pub(crate) async fn update_file_request(
         .await
         .map_err(uwu_failure)?;
     let (main, domains) = link_bases(&state, &ctx.account_id)?;
-    Ok(request_view(&changed_request, &extras, &main, &domains))
+    Ok(request_view(
+        &changed_request,
+        &extras,
+        Some(&public),
+        &main,
+        &domains,
+    ))
 }
 
 #[tauri::command]

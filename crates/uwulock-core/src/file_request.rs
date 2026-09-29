@@ -177,6 +177,14 @@ impl PublicInfo {
             .map_err(|_| Error::Crypto("the owner's public key isn't valid base64".into()))?;
         PublicKey::from_der(&der)
     }
+
+    /// Whether the uploads go to `owner` — the owner's own public key. The
+    /// owner checks this before showing or handing out a link: details that
+    /// name another key mean someone who knew the link secret made them, and
+    /// uploads to that link would be readable by them, not by the owner.
+    pub fn is_for(&self, owner: &PublicKey) -> bool {
+        self.public_key().is_ok_and(|key| key == *owner)
+    }
 }
 
 /// `accessId` from the request's id: URL-safe base64 of its 16 bytes, as for

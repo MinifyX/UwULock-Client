@@ -351,7 +351,7 @@ mod tests {
                 "deleted": { "folders": ["f1"], "collections": [], "ciphers": ["a"], "sends": [] }
             },
             "uwu": {
-                "extrasKey": { "userKeyWrapped": "2.k", "publicKeyWrapped": "4.k" },
+                "extrasKey": { "userKeyWrapped": "2.k", "privateKeyWrapped": "2.p" },
                 "icons": [], "iconsDeleted": [], "reminders": null,
                 "travel": { "object": "travelMode", "enabled": true },
                 "sendDomains": { "s1": "d1" }, "maskedLinks": null,

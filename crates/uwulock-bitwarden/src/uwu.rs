@@ -244,10 +244,12 @@ impl Client {
     // ── The extras key (§3) ────────────────────────────────
 
     /// The account's extras key, opened: made if there is none yet, wrapped
-    /// again for the user key after an official client rotated it. `None`
-    /// when it is lost (the key pair changed; the web vault offers to start
-    /// over). `private_key` is the account's own; without it, only a key
-    /// wrapped for the user key opens.
+    /// again for the user key after an official client rotated it, and for
+    /// the private key if it was made before that wrap existed. `None` when
+    /// it is lost (the key pair changed; the web vault offers to start over).
+    /// `private_key` is the account's own; without it, only a key wrapped for
+    /// the user key opens, and the two wraps aren't checked against each
+    /// other.
     pub async fn extras_key(
         &self,
         access_token: &str,
@@ -261,13 +263,25 @@ impl Client {
                 .map_err(|e| UwuError::Core(Error::Crypto(format!("/uwu/v1/keys: {e}"))))?;
             match extras::resolve(&keys, user_key, private_key)? {
                 Resolved::Lost => return Ok(None),
-                Resolved::Open { key, rewrap } => {
+                Resolved::Open {
+                    key,
+                    rewrap,
+                    private_wrap,
+                } => {
+                    // Best effort: whoever comes next does it again.
                     if let Some(body) = rewrap {
-                        // Best effort: whoever comes next does it again.
                         if let Err(error) =
                             self.uwu_put(access_token, "/keys/user-wrap", &body).await
                         {
                             tracing::warn!(%error, "couldn't wrap the extras key again");
+                        }
+                    }
+                    if let Some(body) = private_wrap {
+                        if let Err(error) = self
+                            .uwu_put(access_token, "/keys/private-wrap", &body)
+                            .await
+                        {
+                            tracing::warn!(%error, "couldn't add the extras key's private wrap");
                         }
                     }
                     return Ok(Some(key));

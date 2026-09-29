@@ -567,6 +567,9 @@ fn a_counting_passkey_counts_and_is_saved() {
 /// An RSA key pair for the account (PKCS#8), the one of uwulock-core's tests.
 const PRIVATE: &str = "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC2EmCSTyx6YUpNZSRI60oly0VN2cZ9Z4LFw3CuK6zIyVdFW4nGS3R4Ml5X5pdIc7lVn2FNmpi2j/1/TKFZymm/Kb4cgTmRiImF1Gc2OO9v5xlcFyJHDW0Jl8kL3fHNZvz+8ajCtXcVa29GuqCQIdoPgLEYTfCzqhSQc5T77X3QD1+DoO2nY3kXU7t+1GeXMgfUfcEJv0YPjGoofJZMP8GzMJijJTVTJc+M0WhRLPmm6XCr9E0m3OXZxNynYz6euGtPAmfm/ld5QQ+Gu+XYMnZvthAdmzwy9HyMv4cqtFVB8Q2IJOemKymg1ADNLQ453gZMXRDRSUG7kLsA2Ddsusp9AgMBAAECggEAOckbXVRDiZPXQTkYiwwiPFyHYm370VFI7/tXh+/UpuVADYM/9u97x6o0xzEoUpZn/ATZnQez8D1C92Qa0aSsaz+UVvesjcQH4bHIEC2B0MJICjJNbr+UG7dQ17NZSxektEV+ik2Nvf6bEpeo3hXgX4s4qb4S5vLUFASbBFob1CyDtjXZyL+vXiyKd8VxIF4tkG/3E/BUkJ5WANWa0psTxNbFfuOnV87lFo7Cycmx0ynZGIYdfzhz1Aq4f6cQiPdy3cDRuYWw0gKqwwrpFrMpAo2O+x8cVkS2oltZP0GkNoTZLIgcwVAhEE7K2qX1w46Hc0wjf/WlWGjoIvmBnQgDAQKBgQDhwEp56NCveTWfBSav6ZMy1YM44eJXtbUhTMRgSQnkloThnH2MXZmpX/OE8SBmmZgBCnVbwO/b90NkVDEYDawVGbEYfycfX74moakkm1zqB5P6qjacihFxwZXsudD8eDygbwvff/YKheeUGPPDwgJHqGGO3V+4b+bXiVCQnwFFZwKBgQDOd8xou+WXoCMf94N3aOcg1BRu5smHJs1bYRcubaxVPHFMa8LCOJ8XiS0iFqPdhxHgPdzNGT/n3DjZFV4P64jX6qNu+6N/fOojHSBj4FOVMq+nESblG3uyF1jrPu65xULOKgRwAjV8cPsOdWUzHTiOkZ/a0CgXseNiI57VAAS+ewKBgDWQaJtwcEOSYPSwRjOrGjAPlSkj/46MIMQb8ORfsCc6x6C4ftmVQ+Z6S8+ZXvS5MOXeU2ZH6yGoE6d0iomIhPIkvG5xjRjWoMmNxhJXgr5MugHZ7UdLQ0RYiHg4xquA4/G1J34KYJiymPX8zan/GIdkHnHFePbMJluxyxnlgGm1AoGBAJoEU79tKv/IvWsDQFa7Mm8SxYtVLdBb6aTY8Gn59iw/QmU3nbk0c7ki40Aik2qVb4hPnX6B72IOrXmCrwBBO3uV1QTdQkG/9QjsmVTn6nHJta5y5QjTT5qyP+p8r6h0tjkErvq/KxcBUMagXDWc/qubhhu8W6wRTwXOfJV3xhIxAoGAdB22F2D27iY55uz8VCQRzS4DehPx0eyipYy5KmT9MRv2FV9877tH/3wQ8amvHVBvJ/sQ4A7M1BcL/yUy1P6GD7DvM1KGXA1eybnCK+HINYr57A1rKA78kXPrXuogGYkUiy8LbMP3UvqV1q+BTlzJqfJqr20Fs6pjCEqoUu/uols=";
 
+/// Another account's key pair (RSA-1024, only to be another one).
+const OTHER_PRIVATE: &str = "MIICdgIBADANBgkqhkiG9w0BAQEFAASCAmAwggJcAgEAAoGBAK97Tqp336NvtZYtBTUPt8TYMq6+jMntikTj9+s2tnT+vVt8EX+6GDH8jkN6E1wLbrHp2Qy5qxEmMxiE8rX6NkRMpWLhTJc128QA+MC5k929V4cId/luNh2piCw5O4bL4pINj5MJbDCvNNLrirNA/NkryjUU4vOWRsNrc32x0RqNAgMBAAECgYBwBRsWnydYQbt9fofQc5QwSIMyIdnmHYkiqRReRrL6xJNEj1LsYnOHlV2LnaY2H+YuFMXF5dBaRjRf9p6ppGx25c0kz0eVG7o87LyG0xty313GL6dn0MQpYmmSbbONdQrdyYK/aue71nBOHe1qXSl84FgmTLkFL9fYneZARrQygQJBAORFaMQUHEjlZZiVS/jZgSv9anuKJTsosKLo3qc5cGE78JFL/sc+yH0Cmyv6xQVDc9kO7C25NovVS121yJQYwZkCQQDEzEtM2XwBvzgbuBk8wtfD8Objo73gMxUEWjNcRSJIuXXdrWKu9MztnK/wWMh/y1leDtTau64nXkCHvS4fSKEVAkACcQ+e0UxAJ1v/1tD6N3FfRBWofqDJUjUZeP4wsbeXAqofE74E6ZIBbE62mLcUyFTr5HH4RzvjIQPuW6xqkR05AkBkU0mn+c9wDI2MBARJp4LbjvoF3rmzjBcQyvMX/N6HeJSP2A5Q5td54sEGpBxCmeYLP0Bf6gHUbAY1rMnQhPQpAkEApSSl85X17/XhfTqOLcMekigcAqD0Iwlp5ykCAJKgWpNGryb/PC0RRQcdAlZYucJTkavFxup2THe8tKxhQpGknA==";
+
 fn private_key() -> crypto::PrivateKey {
     use base64::engine::general_purpose::STANDARD;
     crypto::PrivateKey::from_der(&STANDARD.decode(PRIVATE).unwrap()).unwrap()
@@ -594,15 +597,14 @@ fn sync_with_keys(account: &Account, org_key: &SymmetricKey, ciphers: Vec<Value>
 }
 
 /// `GET /uwu/v1/keys` with the extras key under the user key (or not) and
-/// for the public key.
+/// under the private key's wrap key.
 fn keys(account: &Account, extras: &SymmetricKey, under_user: bool) -> String {
-    let wrapped =
-        uwulock_core::extras::wrap(extras, &account.user_key, &private_key().public()).unwrap();
+    let wrapped = uwulock_core::extras::wrap(extras, &account.user_key, &private_key()).unwrap();
     json!({
         "object": "uwuKeys",
         "extrasKey": {
             "userKeyWrapped": under_user.then_some(wrapped.user_key_wrapped),
-            "publicKeyWrapped": wrapped.public_key_wrapped,
+            "privateKeyWrapped": wrapped.private_key_wrapped,
             "revisionDate": "2026-09-28T12:00:00.000000Z",
         },
         "lost": false,
@@ -672,6 +674,31 @@ fn the_extras_key_opens_under_the_user_key_or_the_private_key() {
         "crypto"
     );
 
+    // An RSA wrap anyone with the public key could make is never taken:
+    // 0.3's beta field is not read, and the new one has to be type 2.
+    session::open(&sync_with_keys(&account, &org_key, vec![])).unwrap();
+    let rsa = crypto::wrap_for(&private_key().public(), &SymmetricKey::generate())
+        .unwrap()
+        .to_string();
+    let legacy = json!({ "extrasKey": { "userKeyWrapped": null, "publicKeyWrapped": rsa } });
+    assert_eq!(
+        state(extras::open_extras(&legacy.to_string()).unwrap()),
+        "lost"
+    );
+    let forged = json!({ "extrasKey": { "userKeyWrapped": null, "privateKeyWrapped": rsa } });
+    assert_eq!(kind(extras::open_extras(&forged.to_string())), "crypto");
+    // Two wraps of different keys: an error, and nothing is open.
+    let mut mixed = parse(&keys(&account, &extras_key, true));
+    mixed["extrasKey"]["privateKeyWrapped"] =
+        parse(&keys(&account, &SymmetricKey::generate(), true))["extrasKey"]["privateKeyWrapped"]
+            .clone();
+    assert_eq!(kind(extras::open_extras(&mixed.to_string())), "crypto");
+    crate::with_unlocked(|u| {
+        assert!(u.extras.is_none());
+        Ok(())
+    })
+    .unwrap();
+
     session::lock();
     assert_eq!(kind(extras::open_extras(none)), "locked");
 }
@@ -737,11 +764,18 @@ fn own_icons_open_with_the_extras_or_the_organisations_key() {
 
 #[test]
 fn file_requests_show_their_labels_and_links() {
-    use uwulock_core::file_request::{self, LinkSecret};
+    use uwulock_core::file_request::{self, LinkSecret, PublicInfo};
     let account = account();
     let extras_key = SymmetricKey::generate();
-    unlocked(&account, vec![]);
+    session::unlock_with_password(EMAIL, KDF, &account.protected, PASSWORD).unwrap();
+    session::open(&sync_with_keys(&account, &SymmetricKey::generate(), vec![])).unwrap();
     let secret = LinkSecret::generate();
+    let info = |key: &crypto::PublicKey| {
+        PublicInfo::new("Passport", None, None, key)
+            .unwrap()
+            .seal(&secret)
+            .unwrap()
+    };
     let id = "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0";
     let access_id = file_request::access_id(id).unwrap();
     let request = json!({
@@ -750,6 +784,7 @@ fn file_requests_show_their_labels_and_links() {
         "accessId": access_id,
         "name": file_request::seal_label("Passport for the bank", &extras_key),
         "linkSecret": secret.seal(&extras_key),
+        "publicInfo": info(&private_key().public()),
         "submissionCount": 1,
     });
     let unnamed = json!({ "id": "r2", "name": null, "linkSecret": null });
@@ -773,7 +808,7 @@ fn file_requests_show_their_labels_and_links() {
         format!("https://send.example.com/r/{access_id}#{part}")
     );
     // Without `accessId` it comes from the id.
-    let bare = json!({ "id": id, "linkSecret": secret.seal(&extras_key) }).to_string();
+    let bare = json!({ "id": id, "linkSecret": secret.seal(&extras_key), "publicInfo": request["publicInfo"] }).to_string();
     assert!(
         extras::file_request_link(&bare, "https://lock.example.com", false)
             .unwrap()
@@ -782,6 +817,34 @@ fn file_requests_show_their_labels_and_links() {
     assert_eq!(
         kind(extras::file_request_link(
             &unnamed.to_string(),
+            "https://lock.example.com",
+            false
+        )),
+        "invalid"
+    );
+    // Details that encrypt for another key (the server knew the secret and
+    // made its own): no link to hand out.
+    let other = crypto::PrivateKey::from_der(
+        &base64::engine::general_purpose::STANDARD
+            .decode(OTHER_PRIVATE)
+            .unwrap(),
+    )
+    .unwrap();
+    let mut foreign = request.clone();
+    foreign["publicInfo"] = info(&other.public()).into();
+    assert_eq!(
+        kind(extras::file_request_link(
+            &foreign.to_string(),
+            "https://lock.example.com",
+            false
+        )),
+        "crypto"
+    );
+    let mut without = request.clone();
+    without["publicInfo"] = Value::Null;
+    assert_eq!(
+        kind(extras::file_request_link(
+            &without.to_string(),
             "https://lock.example.com",
             false
         )),

@@ -228,7 +228,7 @@ impl VaultState {
     }
 
     /// Changes an account and writes it back to disk.
-    fn update_account(&self, id: &str, change: impl FnOnce(&mut Account)) {
+    pub(crate) fn update_account(&self, id: &str, change: impl FnOnce(&mut Account)) {
         let mut accounts = self.accounts.lock();
         let Some(stored) = accounts.iter_mut().find(|stored| stored.id == id) else {
             return;
@@ -653,6 +653,10 @@ async fn finish_login(
     let previous_hello = previous
         .as_ref()
         .and_then(|account| account.hello_user_key.clone());
+    // Which extras key it took stays too, so a change is still noticed.
+    let previous_extras = previous
+        .as_ref()
+        .and_then(|account| account.extras_key_id.clone());
 
     let mut account = Account {
         version: 1,
@@ -669,6 +673,7 @@ async fn finish_login(
         protected_remember_token: remember.as_ref().map(|t| Account::seal(t, &user_key)),
         last_sync: None,
         hello_user_key: previous_hello,
+        extras_key_id: previous_extras,
     };
 
     // The first sync right away, so the vault isn't empty on arrival.
@@ -2433,6 +2438,7 @@ mod tests {
             protected_remember_token: None,
             last_sync: None,
             hello_user_key: None,
+            extras_key_id: None,
         };
         let id = storage.id_for(&account.server, &account.email);
         storage.save_account(&id, &account).unwrap();
@@ -2474,6 +2480,7 @@ mod tests {
             protected_remember_token: None,
             last_sync: None,
             hello_user_key: None,
+            extras_key_id: None,
         };
         let id = storage.id_for(&account.server, &account.email);
         storage.save_account(&id, &account).unwrap();

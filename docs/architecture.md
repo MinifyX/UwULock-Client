@@ -235,11 +235,17 @@ for all of it is UwULock-Server's `docs/uwu-api.md`.
   five-minute check rests. A session the server ends locks the account.
 - **The extras key** (`uwulock-core::extras`): what UwULock encrypts beyond
   Bitwarden's objects (suite spaces, own icons, file-request labels) is under
-  one key per account, wrapped for the user key and for the account's RSA
-  public key. After an official client rotated the user key only the second
-  wrap is left; the next UwULock client opens it with the private key and
-  wraps it for the new user key (`extras::resolve`,
-  `Client::extras_key`).
+  one key per account, wrapped for the user key and under a key derived
+  (HKDF) from the account's RSA private key — both secrets the server never
+  has, so it can't hand out a key of its own. After an official client
+  rotated the user key only the second wrap is left; the next UwULock client
+  opens it with the private key and wraps it for the new user key
+  (`extras::resolve`, `Client::extras_key`). Where both are there, they must
+  hold the same key; an RSA wrap for the public key (0.3's betas) is never
+  taken. The desktop app remembers the key's id and warns when it changes.
+- **File requests** are checked on the owner's side too: details
+  (`publicInfo`) that name another public key than the account's own get no
+  link.
 - **File requests** (`uwulock-core::file_request`): the link's secret and
   its HKDF key, the public details the uploader's page encrypts for, a key
   per submission wrapped RSA-OAEP-SHA1 for the owner, a key per file — so

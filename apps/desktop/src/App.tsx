@@ -1,5 +1,6 @@
 import { listen } from '@tauri-apps/api/event';
 import { useEffect, useRef, useState } from 'react';
+import { ExtrasKeyNotice } from './components/ExtrasKeyNotice';
 import { GeneratorDialog } from './components/GeneratorDialog';
 import { Icon } from './components/Icon';
 import { LockScreen } from './components/LockScreen';
@@ -129,6 +130,7 @@ export function App() {
       <div className="background" ref={backgroundRef}>
         <TitleBar onSettings={() => setSettingsOpen('appearance')}>
           {unlocked && <TravelBadge />}
+          {unlocked && <ExtrasKeyNotice />}
           <button
             className="titlebar-action"
             onClick={() => setGenerator(true)}

@@ -8,7 +8,9 @@
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine as _;
 use serde_json::json;
-use uwulock_core::crypto::{decrypt_file, EncString, PrivateKey, PublicKey, SymmetricKey};
+use uwulock_core::crypto::{
+    decrypt_file, wrap_for, EncString, PrivateKey, PublicKey, SymmetricKey,
+};
 use uwulock_core::extras::{
     self, open_icon, reencrypt_version, resolve, seal_icon, Keys, Resolved, SpaceKey,
     WrappedExtrasKey,
@@ -32,7 +34,16 @@ const USER_KEY: &str =
 const EXTRAS: &str =
     "wMHCw8TFxsfIycrLzM3Oz9DR0tPU1dbX2Nna29zd3t/g4eLj5OXm5+jp6uvs7e7v8PHy8/T19vf4+fr7/P3+/w==";
 const USER_KEY_WRAPPED: &str = "2.CAgICAgICAgICAgICAgICA==|7eAzZaWHOkB1EkYjLtJnVZvi0glzzrOusO+nOqbAqVTMxbsHbYsyqfjYOPmbOP75eqoJ5d+0GNdqPA+YQzg3jWopXD1cnY+OuO1WWwh68nw=|pCeT+FTycPlEBwOFEVAvND0T+kSbSzqFWbScJlljRLw=";
-const PUBLIC_KEY_WRAPPED: &str = "4.pSJhAcU90Zao3QialBtBC1BLtU9hHzCt9IcsmhFTIOOWW9YAYdimaYKxkUCwkXdkUYwpFmwceJEt3snZ/k4+52kx6xTcAhPZYUhnVCPgoe1K6Uo22k9fhz8SiO9s+n+TN1m1OjPkg+NgXvRB+Clk2DgjoZuWloU9uT+Ziso0fio5d3eHY0QSdmsvVT+W20pLZSMlAbGKc7su1LgvvMW2MLgvMdhJ66RvMVZBJYh5i95GljkTSINGfXbcQckicTah64J8SmFUNapMtJTXJ/Od9p1QsbpNqiA78DPjkk5WWkGVUuuO2ie2Z9f6MzetVqv1Q0LLFGC9/pFdwNnA/MKnYA==";
+/// HKDF-SHA256 over `PRIVATE`'s DER, salt `uwulock-extras-key-v1`, info
+/// `private-key-wrap`, 64 bytes.
+const PRIVATE_WRAP_KEY: &str =
+    "I7W4NROnLfRjnxHjjsrXBSMf0VT12buENfrNG5x9x8idYmLcdW+G10GKnzB4sbvQIDzJiWWvs6IF0viZwdCiOQ==";
+/// `EXTRAS` under `PRIVATE_WRAP_KEY`, IV 0x0b × 16.
+const PRIVATE_KEY_WRAPPED: &str = "2.CwsLCwsLCwsLCwsLCwsLCw==|dGJllzHWdkm1gtGx95al1qVqRbqeAPZ9OKyq/MxXLfGqJMxKQ+poatuIIrCcU2xZY0MErNR2ZjPdjzUEo8uyAVFKgF7JjotkYjc4qEaEOmA=|NgbzJL5yOpHAO3ean8EFV/2VTjKEUEL6aQx3oB423jo=";
+/// HMAC-SHA256 under `EXTRAS` over `uwulock-extras-key-id-v1`, 16 bytes.
+const KEY_ID: &str = "14714c070a5c5b6d374438ed28849f08";
+/// Another account's key pair (RSA-1024, only to be another one).
+const OTHER_PRIVATE: &str = "MIICdgIBADANBgkqhkiG9w0BAQEFAASCAmAwggJcAgEAAoGBAK97Tqp336NvtZYtBTUPt8TYMq6+jMntikTj9+s2tnT+vVt8EX+6GDH8jkN6E1wLbrHp2Qy5qxEmMxiE8rX6NkRMpWLhTJc128QA+MC5k929V4cId/luNh2piCw5O4bL4pINj5MJbDCvNNLrirNA/NkryjUU4vOWRsNrc32x0RqNAgMBAAECgYBwBRsWnydYQbt9fofQc5QwSIMyIdnmHYkiqRReRrL6xJNEj1LsYnOHlV2LnaY2H+YuFMXF5dBaRjRf9p6ppGx25c0kz0eVG7o87LyG0xty313GL6dn0MQpYmmSbbONdQrdyYK/aue71nBOHe1qXSl84FgmTLkFL9fYneZARrQygQJBAORFaMQUHEjlZZiVS/jZgSv9anuKJTsosKLo3qc5cGE78JFL/sc+yH0Cmyv6xQVDc9kO7C25NovVS121yJQYwZkCQQDEzEtM2XwBvzgbuBk8wtfD8Objo73gMxUEWjNcRSJIuXXdrWKu9MztnK/wWMh/y1leDtTau64nXkCHvS4fSKEVAkACcQ+e0UxAJ1v/1tD6N3FfRBWofqDJUjUZeP4wsbeXAqofE74E6ZIBbE62mLcUyFTr5HH4RzvjIQPuW6xqkR05AkBkU0mn+c9wDI2MBARJp4LbjvoF3rmzjBcQyvMX/N6HeJSP2A5Q5td54sEGpBxCmeYLP0Bf6gHUbAY1rMnQhPQpAkEApSSl85X17/XhfTqOLcMekigcAqD0Iwlp5ykCAJKgWpNGryb/PC0RRQcdAlZYucJTkavFxup2THe8tKxhQpGknA==";
 const SPACE_KEY: &str = "CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk=";
 const SPACE_KEY_WRAPPED: &str = "2.CgoKCgoKCgoKCgoKCgoKCg==|3x90kprUnecJIwTVZjj35QCgjH56EAkqnN2Y2xU1oxuJVNKmuQL3HpwyItmtEGI7|4v3NsUii/4UB3N2TnGubjpBhGY/JrPNuPJWe9IWyy3M=";
 
@@ -42,6 +53,10 @@ fn key(base64: &str) -> SymmetricKey {
 
 fn private() -> PrivateKey {
     PrivateKey::from_der(&B64.decode(PRIVATE).unwrap()).unwrap()
+}
+
+fn other_private() -> PrivateKey {
+    PrivateKey::from_der(&B64.decode(OTHER_PRIVATE).unwrap()).unwrap()
 }
 
 fn secret() -> LinkSecret {
@@ -61,6 +76,14 @@ fn opens_public_details_made_elsewhere() {
     assert_eq!(info.owner.as_deref(), Some("Lorin"));
     assert_eq!(info.public_key, PUBLIC);
     assert_eq!(info.public_key().unwrap(), private().public());
+    // The owner's check: the details name their own key, not another.
+    assert!(info.is_for(&private().public()));
+    assert!(!info.is_for(&other_private().public()));
+    let broken = PublicInfo {
+        public_key: "not a key".into(),
+        ..info
+    };
+    assert!(!broken.is_for(&private().public()));
     // Another link's secret doesn't open it.
     let other = LinkSecret::from_bytes(&[1; 16]).unwrap();
     assert!(PublicInfo::open(PUBLIC_INFO, &other).is_err());
@@ -148,25 +171,86 @@ fn a_whole_file_request_round_trip() {
 }
 
 #[test]
-fn opens_the_extras_key_under_the_user_key() {
-    let keys = Keys {
+fn the_private_wrap_key_is_hkdf_over_the_private_keys_der() {
+    // The DER the key is derived from is the one `to_der` writes; for a key
+    // made elsewhere it is the same bytes.
+    assert_eq!(B64.encode(private().to_der().unwrap()), PRIVATE);
+    assert_eq!(
+        B64.encode(extras::private_wrap_key(&private()).unwrap().to_bytes()),
+        PRIVATE_WRAP_KEY
+    );
+    assert_eq!(extras::key_id(&key(EXTRAS)), KEY_ID);
+}
+
+fn wrapped(user: Option<&str>, private: Option<&str>) -> Keys {
+    Keys {
         extras_key: Some(WrappedExtrasKey {
-            user_key_wrapped: Some(USER_KEY_WRAPPED.into()),
-            public_key_wrapped: Some(PUBLIC_KEY_WRAPPED.into()),
+            user_key_wrapped: user.map(str::to_string),
+            private_key_wrapped: private.map(str::to_string),
             revision_date: None,
         }),
         lost: false,
-    };
-    match resolve(&keys, &key(USER_KEY), None).unwrap() {
-        Resolved::Open {
-            key: opened,
-            rewrap,
-        } => {
-            assert_eq!(B64.encode(opened.to_bytes()), EXTRAS);
-            assert!(rewrap.is_none());
-        }
-        other => panic!("{other:?}"),
     }
+}
+
+#[test]
+fn opens_the_extras_key_under_the_user_key_and_checks_the_other_wrap() {
+    let keys = wrapped(Some(USER_KEY_WRAPPED), Some(PRIVATE_KEY_WRAPPED));
+    for private in [None, Some(private())] {
+        match resolve(&keys, &key(USER_KEY), private.as_ref()).unwrap() {
+            Resolved::Open {
+                key: opened,
+                rewrap,
+                private_wrap,
+            } => {
+                assert_eq!(B64.encode(opened.to_bytes()), EXTRAS);
+                assert!(rewrap.is_none() && private_wrap.is_none());
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+    // Wraps of two different keys: the server changed one.
+    let bound = extras::private_wrap_key(&private()).unwrap();
+    let other = EncString::encrypt(&SymmetricKey::generate().to_bytes(), &bound).to_string();
+    let keys = wrapped(Some(USER_KEY_WRAPPED), Some(&other));
+    assert!(resolve(&keys, &key(USER_KEY), Some(&private())).is_err());
+    // A private wrap made for another account's key doesn't check either.
+    let theirs = extras::private_wrap_key(&other_private()).unwrap();
+    let keys = wrapped(
+        Some(USER_KEY_WRAPPED),
+        Some(&EncString::encrypt(&key(EXTRAS).to_bytes(), &theirs).to_string()),
+    );
+    assert!(resolve(&keys, &key(USER_KEY), Some(&private())).is_err());
+}
+
+#[test]
+fn a_key_from_before_the_private_wrap_gets_one() {
+    let keys = wrapped(Some(USER_KEY_WRAPPED), None);
+    let Resolved::Open { private_wrap, .. } = resolve(&keys, &key(USER_KEY), None).unwrap() else {
+        panic!("not opened");
+    };
+    assert!(private_wrap.is_none(), "nothing to wrap it with");
+    let Resolved::Open {
+        key: opened,
+        rewrap,
+        private_wrap,
+    } = resolve(&keys, &key(USER_KEY), Some(&private())).unwrap()
+    else {
+        panic!("not opened");
+    };
+    assert!(rewrap.is_none());
+    let private_wrap = private_wrap.expect("a private wrap to add");
+    assert_eq!(
+        serde_json::to_value(&private_wrap).unwrap(),
+        json!({ "privateKeyWrapped": private_wrap.private_key_wrapped })
+    );
+    let again = private_wrap
+        .private_key_wrapped
+        .parse::<EncString>()
+        .unwrap()
+        .decrypt_key(&key(PRIVATE_WRAP_KEY))
+        .unwrap();
+    assert_eq!(again.to_bytes(), opened.to_bytes());
 }
 
 #[test]
@@ -174,7 +258,7 @@ fn after_an_official_rotation_the_private_key_opens_it_and_it_is_wrapped_again()
     let new_user_key = SymmetricKey::generate();
     let keys: Keys = serde_json::from_value(json!({
         "object": "uwuKeys",
-        "extrasKey": { "userKeyWrapped": null, "publicKeyWrapped": PUBLIC_KEY_WRAPPED, "revisionDate": "2026-09-28T12:00:00.000000Z" },
+        "extrasKey": { "userKeyWrapped": null, "privateKeyWrapped": PRIVATE_KEY_WRAPPED, "revisionDate": "2026-09-28T12:00:00.000000Z" },
         "lost": false
     }))
     .unwrap();
@@ -183,14 +267,18 @@ fn after_an_official_rotation_the_private_key_opens_it_and_it_is_wrapped_again()
         resolve(&keys, &new_user_key, None).unwrap(),
         Resolved::Lost
     ));
+    // Nor with another account's.
+    assert!(resolve(&keys, &new_user_key, Some(&other_private())).is_err());
     let Resolved::Open {
         key: opened,
         rewrap,
+        private_wrap,
     } = resolve(&keys, &new_user_key, Some(&private())).unwrap()
     else {
         panic!("not opened");
     };
     assert_eq!(B64.encode(opened.to_bytes()), EXTRAS);
+    assert!(private_wrap.is_none());
     let rewrap = rewrap.expect("a new user wrap");
     let again = rewrap
         .user_key_wrapped
@@ -206,6 +294,30 @@ fn after_an_official_rotation_the_private_key_opens_it_and_it_is_wrapped_again()
 }
 
 #[test]
+fn an_rsa_wrap_the_server_could_have_made_is_never_taken() {
+    // Anyone with the account's public key — the server — can make this.
+    let chosen = SymmetricKey::generate();
+    let rsa = wrap_for(&private().public(), &chosen).unwrap().to_string();
+    let user_key = SymmetricKey::generate();
+    // 0.3's beta field is not read at all: nothing left that opens.
+    let keys: Keys = serde_json::from_value(json!({
+        "extrasKey": { "userKeyWrapped": null, "publicKeyWrapped": rsa },
+        "lost": false
+    }))
+    .unwrap();
+    assert!(matches!(
+        resolve(&keys, &user_key, Some(&private())).unwrap(),
+        Resolved::Lost
+    ));
+    // Nor in the new field, beside a user wrap or without one.
+    for user in [None, Some(USER_KEY_WRAPPED)] {
+        let keys = wrapped(user, Some(&rsa));
+        let error = resolve(&keys, &key(USER_KEY), Some(&private())).unwrap_err();
+        assert!(error.to_string().contains("private key"), "{error}");
+    }
+}
+
+#[test]
 fn a_new_extras_key_opens_both_ways_and_lost_stays_lost() {
     let user_key = SymmetricKey::generate();
     let owner = private();
@@ -213,30 +325,34 @@ fn a_new_extras_key_opens_both_ways_and_lost_stays_lost() {
         panic!("nothing to create");
     };
     let body = serde_json::to_value(&made.request).unwrap();
+    assert_eq!(body.as_object().unwrap().len(), 2);
     assert!(body["userKeyWrapped"].as_str().unwrap().starts_with("2."));
-    assert!(body["publicKeyWrapped"].as_str().unwrap().starts_with("4."));
-    let by_rsa = made
+    assert!(body["privateKeyWrapped"]
+        .as_str()
+        .unwrap()
+        .starts_with("2."));
+    let by_private = made
         .request
-        .public_key_wrapped
+        .private_key_wrapped
         .parse::<EncString>()
         .unwrap()
-        .decrypt_key_rsa(&owner)
+        .decrypt_key(&key(PRIVATE_WRAP_KEY))
         .unwrap();
-    assert_eq!(by_rsa.to_bytes(), made.key.to_bytes());
+    assert_eq!(by_private.to_bytes(), made.key.to_bytes());
     // Wrapped again for a rotation of UwULock's own.
     let next = SymmetricKey::generate();
-    let rotated = extras::wrap(&made.key, &next, &owner.public()).unwrap();
-    let keys = Keys {
-        extras_key: Some(WrappedExtrasKey {
-            user_key_wrapped: Some(rotated.user_key_wrapped),
-            public_key_wrapped: Some(rotated.public_key_wrapped),
-            revision_date: None,
-        }),
-        lost: false,
-    };
+    let rotated = extras::wrap(&made.key, &next, &owner).unwrap();
+    let keys = wrapped(
+        Some(&rotated.user_key_wrapped),
+        Some(&rotated.private_key_wrapped),
+    );
     assert!(matches!(
-        resolve(&keys, &next, None).unwrap(),
-        Resolved::Open { .. }
+        resolve(&keys, &next, Some(&owner)).unwrap(),
+        Resolved::Open {
+            rewrap: None,
+            private_wrap: None,
+            ..
+        }
     ));
 
     let lost = Keys {
