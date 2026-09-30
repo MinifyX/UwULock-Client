@@ -3,7 +3,7 @@ import { Icon } from '@desktop/components/Icon';
 import { t } from '../../shared/i18n';
 import type { FileRequestEntry, FileRequests } from '../../shared/protocol';
 import { copyFileRequestLink, fileRequests } from '../api';
-import { errorText, toast, useSettings, when } from '../lib';
+import { errorText, toast, toastError, useSettings, when } from '../lib';
 import { BackBar } from './Detail';
 
 function state(request: FileRequestEntry): string {
@@ -39,7 +39,7 @@ export function FileRequestsView({ onBack }: { onBack: () => void }) {
           : `${t('Link kopiert')} ✧`,
       );
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     }
   };
 

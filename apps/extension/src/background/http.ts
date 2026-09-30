@@ -255,6 +255,13 @@ export async function request<T = unknown>(
   }
 }
 
+let onFeatureOff: (account: Account) => void = () => undefined;
+
+/** Who hears that the server switched off an extra this extension still offered. */
+export function whenFeatureOff(handler: (account: Account) => void) {
+  onFeatureOff = handler;
+}
+
 /**
  * A request to UwULock Server's own API, `<web>/uwu/v1<path>`, with the account's session.
  * Errors keep the contract's `code` (`ApiError.code`).
@@ -270,6 +277,7 @@ export async function uwu<T = unknown>(
     if (error instanceof ApiError && error.body && typeof error.body === 'object') {
       const code = (error.body as Record<string, unknown>).code;
       if (typeof code === 'string' && /^[a-z_]{1,64}$/.test(code)) error.code = code;
+      if (error.status === 404 && error.code === 'feature_off') onFeatureOff(account);
     }
     throw error;
   }

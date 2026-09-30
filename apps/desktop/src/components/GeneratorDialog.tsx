@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { copyGenerated, generatePassword, type GeneratorOptions } from '../lib/api';
-import { errorText } from '../lib/errors';
+import { toastError } from '../lib/errors';
 import { copiedText } from '../lib/format';
 import { t, useLanguage } from '../lib/i18n';
 import { getSettings } from '../lib/settings';
@@ -76,7 +76,7 @@ export function GeneratorDialog({
     try {
       setResult(await generatePassword(next));
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     }
   }, []);
 
@@ -102,7 +102,7 @@ export function GeneratorDialog({
       await copyGenerated(result.password);
       toast(copiedText('password', getSettings().clipboardClear));
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     }
   };
 
@@ -252,7 +252,7 @@ function MaskedGenerator() {
     void maskedConnection()
       .then(setConnection)
       .catch((e) => {
-        toast(errorText(e), 'error');
+        toastError(e);
         setConnection({
           connected: false,
           server: null,
@@ -275,7 +275,7 @@ function MaskedGenerator() {
       setMade(address);
       await copyAddress(address.email);
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     } finally {
       setBusy(false);
     }

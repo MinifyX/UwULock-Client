@@ -16,7 +16,7 @@ import {
   type Overview,
   type TotpCode,
 } from '../lib/api';
-import { errorText } from '../lib/errors';
+import { errorText, toastError } from '../lib/errors';
 import { charClasses, copiedText, spacedCode, when } from '../lib/format';
 import { t, useLanguage } from '../lib/i18n';
 import { IDENTITY_LABEL, KIND_LABEL } from '../lib/items';
@@ -34,7 +34,7 @@ async function copy(id: string, field: string) {
     await copyField(id, field);
     toast(copiedText(field, getSettings().clipboardClear));
   } catch (e) {
-    toast(errorText(e), 'error');
+    toastError(e);
   }
 }
 
@@ -119,7 +119,7 @@ function SecretRow({
     try {
       setValue(await revealField(id, field));
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     }
   };
   return (
@@ -383,7 +383,7 @@ export function ItemDetail({
       await what();
       toast(done);
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     } finally {
       setBusy(false);
       setAsking(null);
@@ -520,9 +520,7 @@ export function ItemDetail({
               async () => {
                 // UwUMail being away doesn't keep the item from going.
                 if (disableMasked && masked)
-                  await setMaskedState(masked.id, 'disabled').catch((e) =>
-                    toast(errorText(e), 'error'),
-                  );
+                  await setMaskedState(masked.id, 'disabled').catch((e) => toastError(e));
                 await deleteItem(id, asking === 'permanent');
               },
               asking === 'permanent' ? t('Gelöscht.') : t('Im Papierkorb.'),

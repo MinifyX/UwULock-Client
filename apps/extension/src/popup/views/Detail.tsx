@@ -23,6 +23,7 @@ import {
   PasswordInput,
   spacedCode,
   toast,
+  toastError,
   TotpRing,
   useSettings,
   when,
@@ -103,7 +104,7 @@ export function Detail({
       await setFavorite(id, !summary.favorite);
       await load();
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     }
   };
 
@@ -120,7 +121,7 @@ export function Detail({
       toast(permanent ? t('Endgültig gelöscht') : t('In den Papierkorb gelegt'));
       onBack();
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     }
   };
 
@@ -173,7 +174,7 @@ export function Detail({
                   toast(t('Wiederhergestellt ✧'));
                   return load();
                 })
-                .catch((e) => toast(errorText(e), 'error'))
+                .catch((e) => toastError(e))
             }
           >
             {t('Wiederherstellen')}
@@ -291,7 +292,7 @@ function Body({ item }: { item: ItemDetail }) {
                     ? setAsking(true)
                     : void fillTab(id)
                         .then(() => window.close())
-                        .catch((e) => toast(errorText(e), 'error'))
+                        .catch((e) => toastError(e))
                 }
               >
                 {t('Auf dieser Seite ausfüllen')}
@@ -490,7 +491,7 @@ function CopyButton({ id, field }: { id: string; field: string }) {
       onClick={() =>
         void copyField(id, field)
           .then(() => toast(copiedText(field, settings?.clipboardClear ?? 30)))
-          .catch((e) => toast(errorText(e), 'error'))
+          .catch((e) => toastError(e))
       }
       aria-label={t('Kopieren')}
       title={t('Kopieren')}
@@ -550,7 +551,7 @@ function SecretRow({
     try {
       setValue(await revealField(id, field));
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     }
   };
   return (

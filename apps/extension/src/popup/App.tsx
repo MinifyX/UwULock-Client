@@ -8,7 +8,7 @@ import { Icon } from '@desktop/components/Icon';
 import { t } from '../shared/i18n';
 import { lock, syncNow } from './api';
 import { setIconsEnabled } from './icons';
-import { errorText, ToastView, toast, useSettings, useStatus, uwuFeature } from './lib';
+import { toast, toastError, ToastView, useSettings, useStatus, uwuFeature } from './lib';
 import { Detail } from './views/Detail';
 import { Editor, type EditorTarget } from './views/Editor';
 import { FileRequestsView } from './views/FileRequests';
@@ -42,6 +42,12 @@ export function App() {
     if (status?.state !== 'unlocked') setLayer(null);
     if (status?.state === 'unlocked') setAdding(false);
   }, [status?.state]);
+
+  // An admin switched file requests off while their list was open: back to where it came from.
+  const fileRequestsOn = uwuFeature(status, 'file-requests');
+  useEffect(() => {
+    if (!fileRequestsOn && layer?.kind === 'file-requests') setLayer(null);
+  }, [fileRequestsOn, layer?.kind]);
 
   // Icons come from UwULock Server only: own ones, or its automatic ones.
   const icons = Boolean(
@@ -84,7 +90,7 @@ export function App() {
       await syncNow();
       toast(t('Synchronisiert ✧'));
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     }
   };
 

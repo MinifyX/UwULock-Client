@@ -6,7 +6,7 @@ import { ItemIcon } from '../icons';
 import type { ItemKind, ItemSummary, Overview, StatusMessage } from '../../shared/protocol';
 import { ext } from '../../shared/browser';
 import { vaultItems, vaultOverview } from '../api';
-import { errorText, toast } from '../lib';
+import { toastError } from '../lib';
 
 type Filter =
   | { kind: 'all' }
@@ -43,7 +43,7 @@ export function VaultView({ onOpen }: { onOpen: (id: string) => void }) {
         setOverview(await vaultOverview());
       } catch (e) {
         // Locked meanwhile: the lock screen takes over, nothing to say here.
-        if ((e as { kind?: string }).kind !== 'locked') toast(errorText(e), 'error');
+        if ((e as { kind?: string }).kind !== 'locked') toastError(e);
       }
     };
     void load();

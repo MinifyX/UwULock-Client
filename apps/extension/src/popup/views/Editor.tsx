@@ -10,7 +10,7 @@ import type {
   Status,
 } from '../../shared/protocol';
 import { createMasked, generate, revealField, saveItem, vaultItem, vaultOverview } from '../api';
-import { errorText, PasswordInput, toast, useSettings, uwuFeature } from '../lib';
+import { errorText, PasswordInput, toast, toastError, useSettings, uwuFeature } from '../lib';
 import { BackBar, IDENTITY_LABEL, KIND_LABEL } from './Detail';
 
 export type EditorTarget = { id: string | null; kind: ItemKind; name?: string; uri?: string };
@@ -135,7 +135,7 @@ export function Editor({
     try {
       setPassword(await revealField(target.id, 'password'));
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     }
   };
 
@@ -148,7 +148,7 @@ export function Editor({
       setUsername(address.email);
       toast(t('Maskierte Adresse angelegt ✧'));
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     } finally {
       setMasking(false);
     }
@@ -159,7 +159,7 @@ export function Editor({
       const result = await generate(settings!.generator);
       setPassword(result.password);
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     }
   };
 

@@ -3,7 +3,7 @@ import { Icon } from '@desktop/components/Icon';
 import { N_, t, locale } from '../../shared/i18n';
 import type { ItemDetail, ShareableField, SharedSend } from '../../shared/protocol';
 import { copyText, shareFields, shareItem, vaultItem } from '../api';
-import { errorText, PasswordInput, toast, useSettings } from '../lib';
+import { errorText, PasswordInput, toast, toastError, useSettings } from '../lib';
 import { BackBar, IDENTITY_LABEL } from './Detail';
 
 const LABELS: Record<string, string> = {
@@ -122,7 +122,7 @@ export function ShareView({ id, onBack }: { id: string; onBack: () => void }) {
           : `${t('Link kopiert')} ✧`,
       );
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     }
   };
 

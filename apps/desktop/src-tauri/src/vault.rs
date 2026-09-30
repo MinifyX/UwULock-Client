@@ -1234,7 +1234,11 @@ async fn sync_inner(state: &VaultState, id: &str) -> Result<()> {
     });
     if let Some(unlocked) = state.unlocked.write().get_mut(id) {
         unlocked.vault = vault;
-        unlocked.uwu = uwu;
+        // What an admin switched off stays in the offline copy, not on screen.
+        unlocked.uwu = match &info {
+            Some(info) => uwu.honouring(info),
+            None => uwu,
+        };
         if info.is_none() {
             unlocked.extras = None;
         }

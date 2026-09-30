@@ -12,12 +12,11 @@ import {
   type Status,
   type UpdateInfo,
 } from '../lib/api';
-import { errorText } from '../lib/errors';
+import { errorText, toastError } from '../lib/errors';
 import { ago } from '../lib/format';
 import { N_, t, useLanguage } from '../lib/i18n';
 import { systemName } from '../lib/platform';
 import { updateSettings, useSettings, type AutoLock, type ClipboardClear } from '../lib/settings';
-import { toast } from '../lib/toast';
 import { Modal } from './Modal';
 import { MoveSetting } from './MoveDialog';
 import { Nyu } from './nyu/Nyu';
@@ -243,9 +242,7 @@ function Security({ status, onClose }: { status: Status; onClose: () => void }) 
           <Toggle
             label={t('Mit Windows Hello entsperren')}
             checked={status.hello}
-            onChange={(enabled) =>
-              void setHello(enabled).catch((e) => toast(errorText(e), 'error'))
-            }
+            onChange={(enabled) => void setHello(enabled).catch((e) => toastError(e))}
           />
         </Row>
       )}

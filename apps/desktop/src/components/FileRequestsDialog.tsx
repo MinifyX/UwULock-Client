@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { copyGenerated } from '../lib/api';
-import { errorText } from '../lib/errors';
+import { errorText, toastError } from '../lib/errors';
 import { when } from '../lib/format';
 import { t, useLanguage } from '../lib/i18n';
 import { getSettings } from '../lib/settings';
@@ -52,7 +52,7 @@ async function copyLink(link: string) {
         : t('Link kopiert ✧'),
     );
   } catch (e) {
-    toast(errorText(e), 'error');
+    toastError(e);
   }
 }
 
@@ -250,7 +250,7 @@ function RequestView({
     try {
       setSubmissions(await fileRequestSubmissions(request.id));
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
       setSubmissions([]);
     }
   }, [request.id]);
@@ -265,7 +265,7 @@ function RequestView({
       await what();
       if (done) toast(done);
     } catch (e) {
-      toast(errorText(e), 'error');
+      toastError(e);
     } finally {
       setBusy(false);
       setAsking(null);

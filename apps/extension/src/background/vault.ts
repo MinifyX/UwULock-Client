@@ -11,10 +11,10 @@
 import type { Draft, ItemDetail, ItemSummary, Overview, TotpCode } from '../shared/protocol';
 import { equivalentDomains, type EquivalentDomains, NO_EQUIVALENTS } from '../shared/uri';
 import { changed } from './events';
-import { ApiError, failure, MAX_SYNC_BYTES, request } from './http';
+import { ApiError, failure, MAX_SYNC_BYTES, request, whenFeatureOff } from './http';
 import * as live from './live';
 import { uwuInfo } from './uwu';
-import { type Account, cacheSync, updateAccount } from './store';
+import { type Account, account as storedAccount, cacheSync, updateAccount } from './store';
 import { call, callJson } from './wasm';
 
 export type IndexPasskey = {
@@ -143,6 +143,37 @@ export async function sync(account: Account): Promise<void> {
     changed();
   }
 }
+
+/** How often the minute alarm asks `/uwu/v1/info` again, for an admin's feature switches. */
+export const INFO_EVERY_MS = 5 * 60_000;
+/** After a `feature_off`, at most this often: a list of failing calls is one question. */
+const INFO_AFTER_OFF_MS = 10_000;
+const infoAskedAt = new Map<string, number>();
+
+/**
+ * Asks the server again what it offers (`/uwu/v1/info`), unless that was asked less than
+ * `minAgeMs` ago, and tells the popup and the pages when it changed: an extra an admin switched
+ * off goes away, one switched on appears. Bitwarden's hub, which this extension listens to, says
+ * nothing about it; the minute alarm and `feature_off` answers bring it here.
+ */
+export async function refreshInfo(account: Account, minAgeMs = 0): Promise<void> {
+  if (account.server.kind !== 'self-hosted' || !account.uwu) return;
+  const now = Date.now();
+  if (now - (infoAskedAt.get(account.id) ?? -Infinity) < minAgeMs) return;
+  infoAskedAt.set(account.id, now);
+  const uwu = await uwuInfo(account);
+  if (uwu === undefined) return;
+  const stored = await storedAccount(account.id);
+  if (!stored || JSON.stringify(uwu) === JSON.stringify(stored.uwu ?? null)) return;
+  const next = await updateAccount(account.id, { uwu });
+  if (next && current?.id === next.id) current = next;
+  changed();
+}
+
+// The server switched off something this extension still offered: ask what it offers now.
+whenFeatureOff((account) => {
+  void refreshInfo(account, INFO_AFTER_OFF_MS).catch(() => undefined);
+});
 
 async function revisionDate(account: Account): Promise<number | null> {
   const revision = await request<unknown>(account, '/api/accounts/revision-date');

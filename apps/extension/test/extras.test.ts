@@ -78,6 +78,7 @@ const { ApiError, failure } = await import('../src/background/http');
 const extras = await import('../src/background/extras');
 const { icons, iconHost } = await import('../src/background/icons');
 const vault = await import('../src/background/vault');
+const { uwuInfo, hasFeature } = await import('../src/background/uwu');
 
 type Call = { method: string; url: string; body: unknown; auth: string | null };
 let calls: Call[] = [];
@@ -505,5 +506,108 @@ describe('icons', () => {
     expect(iconHost('printer')).toBeNull();
     expect(iconHost('shop.example')).toBeNull();
     expect(iconHost(null)).toBeNull();
+  });
+});
+
+// ── Feature switches ──────────────────────────────────────
+
+describe('feature switches', () => {
+  function info(switches: Record<string, boolean> | undefined) {
+    return json({
+      object: 'info',
+      name: 'UwULock Server',
+      version: '0.6.0',
+      features: ['vault', 'masked-addresses', 'own-icons', 'file-requests', 'send-domains'],
+      ...(switches ? { switches } : {}),
+      sendDomains: [{ id: 'd1', url: 'https://send.example.com' }],
+      icons: { automatic: true, url: `${WEB}/icons` },
+    });
+  }
+
+  it('hide what is off, and an older server without switches offers what it lists', async () => {
+    route('GET', `${WEB}/uwu/v1/info`, () =>
+      info({ 'masked-addresses': false, 'send-domains': false, 'own-icons': true }),
+    );
+    const found = await uwuInfo(account());
+    expect(found?.features).toEqual(['vault', 'own-icons', 'file-requests']);
+    expect(found?.sendDomains).toEqual([]);
+    expect(found?.switches).toMatchObject({ 'masked-addresses': false, 'own-icons': true });
+    expect(hasFeature(account({ uwu: found }), 'masked-addresses')).toBe(false);
+
+    routes = [];
+    route('GET', `${WEB}/uwu/v1/info`, () => info(undefined));
+    const older = await uwuInfo(account());
+    expect(older?.features).toContain('masked-addresses');
+    expect(older?.switches).toBeNull();
+  });
+
+  it('a feature_off answer asks the server again, once, and the extra goes away', async () => {
+    local.accounts = [account()];
+    route('GET', `${WEB}/uwu/v1/keys`, () =>
+      json({ object: 'uwuKeys', extrasKey: {}, lost: false }),
+    );
+    route('GET', `${WEB}/uwu/v1/info`, () => info({ 'file-requests': false }));
+    route('GET', /\/uwu\/v1\/file-requests/, () =>
+      json(
+        { message: 'This is switched off on this server.', object: 'error', code: 'feature_off' },
+        404,
+      ),
+    );
+    for (let i = 0; i < 3; i++) {
+      const error = await extras.fileRequests(account()).catch((e: unknown) => e);
+      expect(failure(error)).toMatchObject({ kind: 'uwu:feature_off' });
+    }
+    await vi.waitFor(async () => {
+      const stored = (local.accounts as Account[])[0]!;
+      expect(stored.uwu?.features).not.toContain('file-requests');
+    });
+    // Three refusals in a row, one question.
+    expect(calls.filter((c) => c.url.endsWith('/uwu/v1/info'))).toHaveLength(1);
+    // Now it is known: nothing is asked for any more.
+    calls = [];
+    const stored = (local.accounts as Account[])[0]!;
+    await expect(extras.fileRequests(stored)).rejects.toMatchObject({ kind: 'uwu:feature_off' });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('are asked again on the alarm only every few minutes, and a change is stored', async () => {
+    const mine = account({ id: 'u2' });
+    local.accounts = [mine];
+    route('GET', `${WEB}/uwu/v1/info`, () => info({ 'masked-addresses': false }));
+    await vault.refreshInfo(mine, vault.INFO_EVERY_MS);
+    await vault.refreshInfo(mine, vault.INFO_EVERY_MS);
+    expect(calls.filter((c) => c.url.endsWith('/uwu/v1/info'))).toHaveLength(1);
+    expect((local.accounts as Account[])[0]!.uwu?.features).not.toContain('masked-addresses');
+    // Bitwarden's clouds have nothing to ask.
+    calls = [];
+    await vault.refreshInfo(account({ id: 'u3', uwu: null }));
+    expect(calls).toHaveLength(0);
+  });
+
+  it('own icons fetched before stop showing once they are switched off', async () => {
+    items = [{ id: 'i0', host: 'shop.example.com', organizationId: null }];
+    route('GET', `${WEB}/uwu/v1/keys`, () =>
+      json({ object: 'uwuKeys', extrasKey: {}, lost: false }),
+    );
+    route('POST', `${WEB}/uwu/v1/icons/own/get`, () =>
+      json({
+        object: 'list',
+        data: [{ object: 'ownIcon', cipherId: 'i0', keyType: 'extras', data: '2.i0' }],
+      }),
+    );
+    route(
+      'GET',
+      /\/icons\/[^/]+\/icon\.png$/,
+      () => new Response(new Uint8Array([1]), { headers: { 'Content-Type': 'image/png' } }),
+    );
+    expect((await icons(account(), ['i0'])).i0).toBe('data:image/png;base64,png-of-2.i0');
+    const off = account();
+    off.uwu = { ...off.uwu!, features: off.uwu!.features.filter((f) => f !== 'own-icons') };
+    calls = [];
+    // The server's automatic icon instead (kept from before, or fetched now).
+    const shown = (await icons(off, ['i0'])).i0;
+    expect(shown).toMatch(/^data:image\/png;base64,/);
+    expect(shown).not.toBe('data:image/png;base64,png-of-2.i0');
+    expect(calls.some((c) => c.url.endsWith('/icons/own/get'))).toBe(false);
   });
 });

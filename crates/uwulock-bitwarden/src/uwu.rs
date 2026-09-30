@@ -9,6 +9,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 use crate::api::{escape, send, Client, Server};
 use crate::crypto::{PrivateKey, SymmetricKey};
@@ -80,6 +81,10 @@ pub struct Info {
     pub mail: bool,
     /// Present only when the server has the feature and it is switched on.
     pub features: Vec<String>,
+    /// The admin's feature switches (0.6.0-beta.2, UwULock-Server's
+    /// `docs/features.md`): `true` when the extra works. `None` from an older
+    /// server, where `features` tells everything.
+    pub switches: Option<BTreeMap<String, bool>>,
     pub send_domains: Vec<SendDomain>,
     pub icons: Option<IconsInfo>,
     pub branding: Option<Value>,
@@ -87,8 +92,29 @@ pub struct Info {
 }
 
 impl Info {
+    /// Whether the server offers `feature`: it lists it, and no switch says
+    /// it is off.
     pub fn has(&self, feature: &str) -> bool {
-        self.features.iter().any(|f| f == feature)
+        self.features.iter().any(|f| f == feature) && self.allows(feature)
+    }
+
+    /// Whether the admin left the extra `switch` on. An older server, or a
+    /// name it doesn't switch, allows it: that is how it was before switches.
+    pub fn allows(&self, switch: &str) -> bool {
+        self.switches
+            .as_ref()
+            .and_then(|switches| switches.get(switch))
+            .copied()
+            .unwrap_or(true)
+    }
+
+    /// The features without any a switch says is off.
+    pub fn offered(&self) -> Vec<String> {
+        self.features
+            .iter()
+            .filter(|f| self.allows(f))
+            .cloned()
+            .collect()
     }
 }
 
@@ -986,6 +1012,30 @@ mod tests {
         .unwrap();
         assert!(info.has("realtime") && !info.has("sso"));
         assert_eq!(info.send_domains[0].url, "https://send.example.com");
-        assert_eq!(info.icons.unwrap().own_pixels, Some(128));
+        assert_eq!(info.icons.as_ref().unwrap().own_pixels, Some(128));
+        // An older server has no switches: everything it lists is there.
+        assert_eq!(info.switches, None);
+        assert!(info.allows("masked-addresses") && info.allows("families"));
+    }
+
+    #[test]
+    fn a_switch_that_is_off_hides_its_feature() {
+        let info: Info = serde_json::from_str(
+            r#"{"object":"info","name":"UwULock Server","version":"0.6.0",
+                "features":["vault","delta-sync","reminders","versions","own-icons"],
+                "switches":{"reminders":true,"versions":false,"file-requests":false,
+                            "own-icons":true,"suite":false,"scim":false}}"#,
+        )
+        .unwrap();
+        assert!(info.has("reminders") && info.has("own-icons") && info.has("vault"));
+        // Listed by mistake, or by a server in between: the switch wins.
+        assert!(!info.has("versions"));
+        assert!(!info.allows("file-requests") && !info.allows("suite"));
+        // Names the server doesn't switch stay as listed.
+        assert!(info.allows("delta-sync") && info.allows("families"));
+        assert_eq!(
+            info.offered(),
+            ["vault", "delta-sync", "reminders", "own-icons"]
+        );
     }
 }

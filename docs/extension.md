@@ -155,6 +155,12 @@ Bitwarden the extension stays a plain Bitwarden client (sharing as a Send works 
 Everything goes through the extension's background: the popup and web pages never talk to the
 server and never see a key.
 
+An admin can switch extras off (UwULock Server 0.6.0-beta.2, `switches` in `/uwu/v1/info`). What
+is off disappears from the popup, the editor and the inline menu, and the background stops asking
+for it. Bitwarden's hub doesn't announce a switch, so the extension asks `/uwu/v1/info` again every
+five minutes, and at once when the server answers `feature_off` (at most every ten seconds);
+such an answer is a note, not an error. An older server without switches offers what it lists.
+
 - **Icons** in the vault list: an item's own icon (encrypted, opened in the extension — a
   personal item's with your account's extras key, an organisation's item's with its key), else
   the icon your server fetched for the site, else the letter tile. Only your own server is
@@ -220,7 +226,8 @@ Mit UwULock Server kommen die Extras dazu, sobald der Server sie anbietet: Icons
 Tresor sind; in den Einstellungen abschaltbar), maskierte Adressen von UwUMail im Generator, im
 Editor (**@**) und im Menü von Benutzername- und E-Mail-Feldern, Einträge als Send teilen (auch
 mit Vaultwarden und Bitwarden; nie mit dem Einmal-Code-Schlüssel) und deine Dateianfragen zum
-Nachsehen und Link-Kopieren.
+Nachsehen und Link-Kopieren. Was der Admin auf dem Server abschaltet, verschwindet nach spätestens
+fünf Minuten aus der Erweiterung, ohne Fehlermeldung.
 
 ## In Chrome, Edge, Brave, Vivaldi oder Opera installieren
 

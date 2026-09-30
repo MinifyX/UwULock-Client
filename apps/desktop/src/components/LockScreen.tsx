@@ -1,9 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { logout, switchAccount, unlock, unlockWithHello, type Status } from '../lib/api';
-import { errorText } from '../lib/errors';
+import { errorText, toastError } from '../lib/errors';
 import { ago } from '../lib/format';
 import { t, useLanguage } from '../lib/i18n';
-import { toast } from '../lib/toast';
 import { Icon } from './Icon';
 import { Modal } from './Modal';
 import { NyuScene } from './nyu/scenes';
@@ -107,9 +106,7 @@ export function LockScreen({ status, onUnlocked, onLoggedOut, onAddAccount }: Pr
               key={account.id}
               type="button"
               className="quiet lock-account-row"
-              onClick={() =>
-                void switchAccount(account.id).catch((e) => toast(errorText(e), 'error'))
-              }
+              onClick={() => void switchAccount(account.id).catch((e) => toastError(e))}
             >
               <Icon name={account.unlocked ? 'unlock' : 'lock'} size={14} />
               <span>{account.label}</span>

@@ -278,7 +278,7 @@ fn status_of(state: &VaultState) -> UwuStatus {
     let travel = &u.uwu.travel;
     UwuStatus {
         uwu: true,
-        features: info.features.clone(),
+        features: info.offered(),
         travel: Travel {
             enabled: u.uwu.travelling(),
             hidden_count: u.extras_cache.travel_hidden.or_else(|| {

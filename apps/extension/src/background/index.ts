@@ -324,6 +324,8 @@ ext.alarms.onAlarm.addListener((alarm) => {
     // The live connection brings changes at once; without it, ask every minute.
     live.reconnect();
     if (!live.connected()) await vault.syncIfChanged(found).catch(() => undefined);
+    // An admin's feature switches don't come through Bitwarden's hub.
+    await vault.refreshInfo(found, vault.INFO_EVERY_MS).catch(() => undefined);
   })();
 });
 

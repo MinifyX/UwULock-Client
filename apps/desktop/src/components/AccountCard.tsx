@@ -8,7 +8,7 @@ import {
   type AccountBrief,
   type Status,
 } from '../lib/api';
-import { errorText } from '../lib/errors';
+import { toastError } from '../lib/errors';
 import { ago } from '../lib/format';
 import { t, useLanguage } from '../lib/i18n';
 import { toast } from '../lib/toast';
@@ -56,7 +56,7 @@ export function AccountCard({
     ...others.map((account): MenuItem => ({
       label: account.unlocked ? account.label : t('{label} (gesperrt)', { label: account.label }),
       icon: account.unlocked ? 'unlock' : 'lock',
-      onSelect: () => void switchAccount(account.id).catch((e) => toast(errorText(e), 'error')),
+      onSelect: () => void switchAccount(account.id).catch((e) => toastError(e)),
     })),
     ...(others.length ? (['separator'] as MenuItem[]) : []),
     { label: t('Konto hinzufügen'), icon: 'plus', onSelect: onAddAccount },
@@ -115,7 +115,7 @@ export function AccountCard({
           onClick={() =>
             void syncNow()
               .then(() => toast(t('Synchronisiert ✧')))
-              .catch((e) => toast(errorText(e), 'error'))
+              .catch((e) => toastError(e))
           }
         >
           <Icon name="refresh" size={15} className={status.syncing ? 'spin' : undefined} />
@@ -150,7 +150,7 @@ export function AccountCard({
                   setLeaving(null);
                   void logout(id)
                     .then(() => toast(t('Abgemeldet.')))
-                    .catch((e) => toast(errorText(e), 'error'));
+                    .catch((e) => toastError(e));
                 }}
               >
                 {t('Abmelden')}
@@ -177,7 +177,7 @@ function RenameAccount({ account, onClose }: { account: AccountBrief; onClose: (
   useLanguage();
   const [label, setLabel] = useState(account.label);
   const save = () => {
-    void renameAccount(account.id, label.trim()).catch((e) => toast(errorText(e), 'error'));
+    void renameAccount(account.id, label.trim()).catch((e) => toastError(e));
     onClose();
   };
   return (
