@@ -26,7 +26,7 @@ My wish list, roughly in order, without dates.
 - [ ] Touch ID — needs an Apple Developer ID signature (keychain items that
       only open with a finger); not possible for an unsigned app
 
-## 0.3 · The suite (0.3.0-beta.1 released)
+## 0.3 · The suite (0.3.0-beta.2 released)
 
 - [x] A browser extension for Chromium and Firefox, from one code base:
       login and unlock (PIN too), the page's logins first, filling from the
@@ -44,7 +44,10 @@ My wish list, roughly in order, without dates.
 - [x] The suite vault's keys and transport for UwUSSH and UwURDP in
       `uwulock-bitwarden`
 - [x] Security review before the release
-      ([security-review-0.3.md](security-review-0.3.md))
+      ([security-review-0.3.md](security-review-0.3.md)); its Low and Info
+      findings fixed in 0.3.0-beta.2
+- [x] Follow UwULock Server's feature switches: what the admin switched off
+      disappears from the app and the extension (0.3.0-beta.2)
 
 Still to come:
 
