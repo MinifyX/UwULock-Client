@@ -7,6 +7,7 @@ import { applyAppearance } from './lib/settings';
 import './styles/app.css';
 import './styles/vault.css';
 import './styles/extras.css';
+import './styles/health.css';
 import './styles/tokens.css';
 import './styles/phone.css';
 

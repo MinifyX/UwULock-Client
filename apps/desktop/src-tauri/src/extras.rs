@@ -68,7 +68,7 @@ pub(crate) struct Cache {
 
 /// The server's refusal as the page gets it: the contract's code as the kind
 /// where the page says something of its own about it.
-fn uwu_failure(error: UwuError) -> Failure {
+pub(crate) fn uwu_failure(error: UwuError) -> Failure {
     let kind = match error.code() {
         Some("feature_off") => "feature-off",
         Some("not_connected") => "not-connected",
@@ -84,13 +84,13 @@ fn uwu_failure(error: UwuError) -> Failure {
 }
 
 /// The account on screen, a client for its server and a token that works.
-struct Ctx {
-    account_id: String,
-    client: Client,
-    token: Zeroizing<String>,
+pub(crate) struct Ctx {
+    pub(crate) account_id: String,
+    pub(crate) client: Client,
+    pub(crate) token: Zeroizing<String>,
 }
 
-async fn ctx(state: &VaultState) -> Result<Ctx> {
+pub(crate) async fn ctx(state: &VaultState) -> Result<Ctx> {
     let (account_id, account) = state.active_account()?;
     let client = state.client(account.server.clone())?;
     let token = access_token(state, &account_id).await?;
@@ -102,7 +102,11 @@ async fn ctx(state: &VaultState) -> Result<Ctx> {
 }
 
 /// Runs `f` on the account's open vault.
-fn with<T>(state: &VaultState, id: &str, f: impl FnOnce(&mut Unlocked) -> Result<T>) -> Result<T> {
+pub(crate) fn with<T>(
+    state: &VaultState,
+    id: &str,
+    f: impl FnOnce(&mut Unlocked) -> Result<T>,
+) -> Result<T> {
     let mut guard = state.unlocked.write();
     let unlocked = guard.get_mut(id).ok_or_else(Failure::locked)?;
     f(unlocked)
@@ -131,7 +135,11 @@ fn need(state: &VaultState, feature: &str) -> Result<()> {
 /// device took before is still used (the server can't have chosen it — both
 /// its wraps are made with keys only the account has), but the page is told,
 /// since everything under the old one is gone.
-async fn extras_key(app: &AppHandle, state: &VaultState, ctx: &Ctx) -> Result<SymmetricKey> {
+pub(crate) async fn extras_key(
+    app: &AppHandle,
+    state: &VaultState,
+    ctx: &Ctx,
+) -> Result<SymmetricKey> {
     let (user_key, private) = with(state, &ctx.account_id, |u| {
         Ok((
             u.extras

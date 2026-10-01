@@ -7,6 +7,7 @@
 //! - [`account`] — what is kept on disk, and where
 //! - [`extras`] — UwULock Server's extras: icons, versions, reminders, file
 //!   requests, masked addresses, travel mode; items shared as Sends
+//! - [`health`] — the password check and its review one login at a time
 //! - [`live`] — changes from other devices as they happen
 //! - [`session_lock`] — locking when the screen locks or the computer sleeps
 //! - [`hello`] — unlocking with Windows Hello, or a phone's fingerprint or face
@@ -22,6 +23,7 @@
 mod account;
 mod clipboard;
 mod extras;
+mod health;
 mod hello;
 mod live;
 mod moving;
@@ -149,6 +151,13 @@ pub fn run() {
             extras::delete_masked_address,
             extras::send_options,
             extras::share_as_send,
+            health::health_report,
+            health::health_ignore,
+            health::health_open_page,
+            health::health_save_password,
+            health::health_email_opt_in,
+            health::set_health_email_opt_in,
+            health::health_check_emails,
             moving::move_target,
             moving::move_login,
             moving::move_login_two_factor,

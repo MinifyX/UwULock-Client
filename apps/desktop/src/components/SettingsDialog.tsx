@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import pkg from '../../package.json';
 import {
   checkForUpdates,
@@ -15,6 +15,7 @@ import {
 } from '../lib/api';
 import { errorText, toastError } from '../lib/errors';
 import { ago } from '../lib/format';
+import { emailOptIn, setEmailOptIn, type EmailOptIn } from '../lib/health';
 import { N_, t, useLanguage } from '../lib/i18n';
 import { isMobile, systemName } from '../lib/platform';
 import { updateSettings, useSettings, type AutoLock, type ClipboardClear } from '../lib/settings';
@@ -292,6 +293,61 @@ function Security({ status, onClose }: { status: Status; onClose: () => void }) 
   );
 }
 
+/**
+ * The check of addresses at XposedOrNot (UwULock-Server's docs/uwu-api.md
+ * §15.4): only when the admin offers it, and only with this consent — the
+ * server sends the addresses there in plain text, and this says so.
+ */
+function EmailBreachSetting() {
+  useLanguage();
+  const [optIn, setOptIn] = useState<EmailOptIn | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let current = true;
+    emailOptIn().then(
+      (answer) => current && setOptIn(answer),
+      () => undefined,
+    );
+    return () => {
+      current = false;
+    };
+  }, []);
+  if (!optIn) return null;
+  const change = async (on: boolean) => {
+    setBusy(true);
+    setError(null);
+    try {
+      setOptIn(await setEmailOptIn(on));
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <Row
+        label={t('Adressen in Datenlecks prüfen')}
+        description={t(
+          'Die Passwortprüfung fragt dann auch, ob deine Kontoadresse und die Adressen, die in Logins als Benutzername stehen, in Datenlecks auftauchen. Dafür schickt dein Server jede dieser Adressen im Klartext an XposedOrNot (xposedornot.com) – deine Passwörter und deine anderen Daten nicht. Die Antworten merkt er sich eine Woche lang, nur unter einem Hash der Adresse.',
+        )}
+      >
+        <Toggle
+          label={t('Adressen in Datenlecks prüfen')}
+          checked={optIn.optedIn}
+          onChange={(on) => !busy && void change(on)}
+        />
+      </Row>
+      {error && (
+        <p className="setting-result" data-tone="error" role="alert">
+          {error}
+        </p>
+      )}
+    </>
+  );
+}
+
 function Account({ status, onClose }: { status: Status; onClose: () => void }) {
   useLanguage();
   const [busy, setBusy] = useState(false);
@@ -346,6 +402,7 @@ function Account({ status, onClose }: { status: Status; onClose: () => void }) {
       >
         <button onClick={() => void openWebVault().catch(() => undefined)}>{t('Öffnen')}</button>
       </Row>
+      {status.state === 'unlocked' && <EmailBreachSetting />}
       {status.state === 'unlocked' && <MoveSetting />}
       <Row
         label={t('Abmelden')}
