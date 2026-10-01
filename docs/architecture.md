@@ -250,6 +250,13 @@ for all of it is UwULock-Server's `docs/uwu-api.md`.
   its HKDF key, the public details the uploader's page encrypts for, a key
   per submission wrapped RSA-OAEP-SHA1 for the owner, a key per file — so
   taking a file into an item re-wraps only its key.
+- **The password check** (`uwulock-core::health`): the report the web vault
+  keeps (the same JSON), HIBP's SHA-1 and XposedOrNot's Keccak-512 prefixes,
+  breached sites and 2FA Directory matched by domain, the ignore list (§15.6,
+  unknown keys kept) and the review's cards, worst first.
+  `uwulock-bitwarden::health` asks the server (a few prefixes at a time);
+  `apps/desktop/src-tauri/src/health.rs` puts both together and keeps the
+  lists for the unlock. The page only gets findings, never a password.
 - **The suite vault** (`uwulock-bitwarden::suite`): UwUSSH and UwURDP log in
   as `App::suite("uwussh")` and get their space's key (under the extras key)
   and pull and push their sealed records. The records' crypto and merge stay

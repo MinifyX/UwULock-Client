@@ -120,6 +120,55 @@ every device, and the title bar says so, with how many are hidden. Switching it
 on and off happens in the web vault, with your master password and your second
 factor.
 
+## Password check
+
+_Sidebar → Password check_ looks at every login with a password (not in the
+trash, not archived) and lists what it finds, in groups:
+
+- **In breaches** — Have I Been Pwned or XposedOrNot saw the password. Only
+  the first five hex digits of its SHA-1 (HIBP) and the first ten of its
+  Keccak-512 (XposedOrNot) go to your UwULock Server, which asks the sources;
+  the password never leaves the device. _Check now_ / _Check again_ asks; the
+  answers are kept (encrypted under the extras key, as the web vault keeps
+  them) and count for every password that hasn't changed since.
+- **Breach after your last password change** — the site (or a domain above
+  it) is on the server's list of breached sites (HIBP and XposedOrNot's
+  public lists) with a breach in which passwords were taken on or after the
+  day the password was last changed. The list comes whole; matching happens
+  on the device.
+- **Reused**, **weak** (below 50 bits) and **without https** (an `http://`
+  address) — found on the device, on any server, Bitwarden and Vaultwarden
+  included.
+- **2FA possible, not set up** — the site offers codes from an authenticator
+  app ([2FA Directory](https://2fa.directory/), mirrored by the server), and
+  the item has none.
+
+_Review one by one_ shows one card per login, the worst first, with
+"3 of 12": swipe (or ← →) to the next or previous. Each card offers:
+
+- **Open the page & change the password** — the site's
+  `/.well-known/change-password` if your server found one (it checks; the app
+  never asks the site), else the login's address, in your browser;
+- **Generate & save a new password** — the generator; saving changes only
+  the password, and the old one goes into the item's password history (five
+  at most, as in Bitwarden);
+- **Later** — off the stack until UwULock is closed;
+- **Ignore** per problem — hidden on every device until undone, there or in
+  the report's _Ignored_ list. The list is kept on the server, encrypted under
+  the extras key, the same list as the web vault's.
+
+**Addresses in breaches.** If your admin allows it, _Settings → Account →
+Check addresses for breaches_ lets your server ask XposedOrNot about your
+account address and the addresses used as usernames. Your server sends each
+address **in plain text** to XposedOrNot for that — never passwords — and
+keeps the answers a week, under a hash of the address. Switching it off
+withdraws the consent for every UwULock app.
+
+Each source is the admin's to switch on or off (UwULock Server 0.7,
+`/uwu/v1/info` → `breaches`); what is off is left out. A server before 0.7
+offers Have I Been Pwned only and keeps no ignore list (there's no _Ignore_
+then); on Bitwarden and Vaultwarden the check finds what the device can.
+
 ## Families and organisations
 
 Collections of a family or organisation appear in the sidebar under its name,

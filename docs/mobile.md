@@ -5,8 +5,9 @@
 The phone app is the desktop app: the same Rust core, the same React UI from
 `apps/desktop`, built by Tauri 2 for Android and iOS. On a phone it shows one
 pane at a time — the list, an item, the editor — with the folders in a drawer
-and dialogs filling the screen. Vault, search, copying, one-time codes and the
-generator work as on the desktop.
+and dialogs filling the screen. Vault, search, copying, one-time codes, the
+generator and the password check work as on the desktop; its review goes card
+by card with a swipe ([uwu-extras.md](uwu-extras.md#password-check)).
 
 | Phone                       | File under **Assets**                  |
 | --------------------------- | -------------------------------------- |
@@ -185,7 +186,8 @@ Die Handy-App ist die Desktop-App: derselbe Rust-Kern, dieselbe Oberfläche aus
 `apps/desktop`, von Tauri 2 für Android und iOS gebaut. Auf dem Handy zeigt sie
 eine Ansicht auf einmal — Liste, Eintrag, Bearbeiten —, die Ordner in einer
 Seitenleiste zum Aufziehen, Dialoge über den ganzen Bildschirm. Tresor, Suche,
-Kopieren, Einmalcodes und der Generator funktionieren wie am Computer.
+Kopieren, Einmalcodes, der Generator und die Passwortprüfung funktionieren wie
+am Computer; ihr Durchgehen läuft Karte für Karte per Wischen.
 
 | Handy                         | Datei unter **Assets**                   |
 | ----------------------------- | ---------------------------------------- |
