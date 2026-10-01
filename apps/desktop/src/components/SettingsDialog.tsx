@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import pkg from '../../package.json';
 import {
   checkForUpdates,
+  failure,
   lock,
   logout,
   openProjectPage,
@@ -15,8 +16,9 @@ import {
 import { errorText, toastError } from '../lib/errors';
 import { ago } from '../lib/format';
 import { N_, t, useLanguage } from '../lib/i18n';
-import { systemName } from '../lib/platform';
+import { isMobile, systemName } from '../lib/platform';
 import { updateSettings, useSettings, type AutoLock, type ClipboardClear } from '../lib/settings';
+import { unlockDescription, unlockLabel, unlockPrompt } from '../lib/unlock';
 import { Modal } from './Modal';
 import { MoveSetting } from './MoveDialog';
 import { Nyu } from './nyu/Nyu';
@@ -234,31 +236,49 @@ function Security({ status, onClose }: { status: Status; onClose: () => void }) 
       </Row>
       {status.hello !== null && (
         <Row
-          label={t('Mit Windows Hello entsperren')}
+          label={unlockLabel(status.helloKind)}
+          description={unlockDescription(status.helloKind)}
+        >
+          <Toggle
+            label={unlockLabel(status.helloKind)}
+            checked={status.hello}
+            onChange={(enabled) =>
+              void setHello(enabled, unlockPrompt()).catch((e) => {
+                if (failure(e).kind !== 'biometric-cancelled') toastError(e);
+              })
+            }
+          />
+        </Row>
+      )}
+      {isMobile() ? (
+        <Row
+          label={t('Im Hintergrund sperren')}
+          description={t('Sperrt UwULock, wenn es eine Minute oder länger im Hintergrund war.')}
+        >
+          <Toggle
+            label={t('Im Hintergrund sperren')}
+            checked={settings.lockWithSystem}
+            onChange={(lockWithSystem) => updateSettings({ lockWithSystem })}
+          />
+        </Row>
+      ) : (
+        <Row
+          label={t('Mit dem Computer sperren')}
           description={t(
-            'Gesicht, Finger oder PIN statt des Master-Passworts. Nach einem Neustart von UwULock geht das auch.',
+            'Sperrt UwULock, sobald der Bildschirm gesperrt wird oder der Computer in den Ruhezustand geht.',
           )}
         >
           <Toggle
-            label={t('Mit Windows Hello entsperren')}
-            checked={status.hello}
-            onChange={(enabled) => void setHello(enabled).catch((e) => toastError(e))}
+            label={t('Mit dem Computer sperren')}
+            checked={settings.lockWithSystem}
+            onChange={(lockWithSystem) => updateSettings({ lockWithSystem })}
           />
         </Row>
       )}
       <Row
-        label={t('Mit dem Computer sperren')}
-        description={t(
-          'Sperrt UwULock, sobald der Bildschirm gesperrt wird oder der Computer in den Ruhezustand geht.',
-        )}
+        label={t('Jetzt sperren')}
+        description={isMobile() ? undefined : t('Auch mit Strg+L, von überall in UwULock.')}
       >
-        <Toggle
-          label={t('Mit dem Computer sperren')}
-          checked={settings.lockWithSystem}
-          onChange={(lockWithSystem) => updateSettings({ lockWithSystem })}
-        />
-      </Row>
-      <Row label={t('Jetzt sperren')} description={t('Auch mit Strg+L, von überall in UwULock.')}>
         <button
           onClick={() => {
             onClose();
@@ -384,6 +404,21 @@ function Updates({
   const settings = useSettings();
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<{ tone: 'info' | 'error'; text: string } | null>(null);
+
+  // A phone has no updater: a new APK or IPA comes from the release page.
+  if (isMobile())
+    return (
+      <Row
+        label={t('Neue Versionen')}
+        description={t(
+          'Auf dem Handy aktualisiert sich UwULock nicht selbst. Neue Versionen (APK für Android, IPA für iOS) gibt es auf der Release-Seite.',
+        )}
+      >
+        <button onClick={() => void openProjectPage('releases').catch(() => undefined)}>
+          {t('Versionen')}
+        </button>
+      </Row>
+    );
 
   return (
     <>

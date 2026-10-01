@@ -1664,6 +1664,7 @@ fn safe_file_name(name: &str) -> String {
 }
 
 /// `name`, or `name (2)`, … — whichever doesn't exist in `dir` yet.
+#[cfg_attr(target_os = "android", allow(dead_code))]
 fn free_path(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
     let first = dir.join(name);
     if !first.exists() {
@@ -1704,6 +1705,7 @@ fn runs_when_opened(name: &str) -> bool {
 /// `com.apple.quarantine` on macOS (Gatekeeper). Linux has no such mark.
 /// A failure (FAT32, a file system without streams or attributes) is logged:
 /// the file is saved anyway, and the page warned before.
+#[cfg(desktop)]
 fn mark_downloaded(path: &std::path::Path) {
     #[cfg(windows)]
     {
@@ -1787,17 +1789,71 @@ pub(crate) async fn save_submission_file(
         .await
         .map_err(uwu_failure)?;
     let contents = file_key.decrypt(&encrypted)?;
+    let saved = save_download(&app, &file_name, contents.as_slice()).await?;
+    tracing::info!("a file request's file saved");
+    Ok(saved)
+}
+
+/// Where a saved file goes, and what the page shows of it: the Downloads
+/// folder on a computer (marked as downloaded from the internet).
+#[cfg(desktop)]
+async fn save_download(app: &AppHandle, file_name: &str, contents: &[u8]) -> Result<String> {
     let dir = app
         .path()
         .download_dir()
         .or_else(|_| app.path().home_dir())
         .map_err(|e| Failure::new("io", format!("No Downloads folder: {e}")))?;
-    let path = free_path(&dir, &file_name);
-    std::fs::write(&path, contents.as_slice())
+    let path = free_path(&dir, file_name);
+    std::fs::write(&path, contents)
         .map_err(|e| Failure::new("io", format!("Couldn't save the file: {e}")))?;
     mark_downloaded(&path);
-    tracing::info!("a file request's file saved");
     Ok(path.display().to_string())
+}
+
+/// Android: through the app's cache into Downloads (the plugin, MediaStore).
+#[cfg(target_os = "android")]
+async fn save_download(app: &AppHandle, file_name: &str, contents: &[u8]) -> Result<String> {
+    let dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| Failure::new("io", format!("No cache folder: {e}")))?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| Failure::new("io", format!("Couldn't save the file: {e}")))?;
+    let path = dir.join(format!("download-{}", uuid::Uuid::new_v4()));
+    std::fs::write(&path, contents)
+        .map_err(|e| Failure::new("io", format!("Couldn't save the file: {e}")))?;
+    let name = file_name.to_string();
+    let saved = tauri::async_runtime::spawn_blocking(move || {
+        let plugin = crate::phone::plugin().ok_or("The phone isn't ready yet.".to_string());
+        let result = plugin.and_then(|plugin| {
+            plugin
+                .save_to_downloads(&path.display().to_string(), &name)
+                .map_err(|e| e.to_string())
+        });
+        // The plugin deletes the cached copy; this catches a failure before it got there.
+        let _ = std::fs::remove_file(&path);
+        result
+    })
+    .await
+    .map_err(|e| Failure::new("io", e.to_string()))?
+    .map_err(|e| Failure::new("io", e))?;
+    Ok(format!("Downloads/{saved}"))
+}
+
+/// iOS: UwULock's own folder, which the Files app shows ("On My iPhone").
+#[cfg(target_os = "ios")]
+async fn save_download(app: &AppHandle, file_name: &str, contents: &[u8]) -> Result<String> {
+    let dir = app
+        .path()
+        .document_dir()
+        .map_err(|e| Failure::new("io", format!("No documents folder: {e}")))?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| Failure::new("io", format!("Couldn't save the file: {e}")))?;
+    let path = free_path(&dir, file_name);
+    std::fs::write(&path, contents)
+        .map_err(|e| Failure::new("io", format!("Couldn't save the file: {e}")))?;
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned());
+    Ok(format!("UwULock/{}", name.unwrap_or_default()))
 }
 
 #[tauri::command]

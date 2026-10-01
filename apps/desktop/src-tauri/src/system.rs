@@ -1,31 +1,81 @@
 //! App-level commands: updates and links out of the app.
+//!
+//! The updater is the desktop's: a phone gets new versions as a new APK or
+//! IPA from the release page (docs/mobile.md). There the update commands
+//! answer that nothing is waiting, so the page needs no second code path.
 
+#[cfg(desktop)]
 use crate::updates::{self, Channel, UpdateInfo};
 use crate::vault::VaultState;
 use tauri::{AppHandle, State};
 use tauri_plugin_opener::OpenerExt;
 
+#[cfg(mobile)]
+type Channel = serde_json::Value;
+#[cfg(mobile)]
+type UpdateInfo = serde_json::Value;
+
 #[tauri::command]
 pub(crate) fn set_update_channel(app: AppHandle, channel: Channel) {
+    #[cfg(desktop)]
     updates::set_channel(&app, channel);
+    #[cfg(mobile)]
+    let _ = (app, channel);
 }
 
 /// A downloaded update waiting for a restart, if any.
 #[tauri::command]
 pub(crate) fn update_status(app: AppHandle) -> Option<UpdateInfo> {
-    updates::ready(&app)
+    #[cfg(desktop)]
+    return updates::ready(&app);
+    #[cfg(mobile)]
+    {
+        let _ = app;
+        None
+    }
 }
 
 #[tauri::command]
 pub(crate) async fn check_for_updates(app: AppHandle) -> Result<Option<UpdateInfo>, String> {
-    updates::check(&app).await
+    #[cfg(desktop)]
+    return updates::check(&app).await;
+    #[cfg(mobile)]
+    {
+        let _ = app;
+        Ok(None)
+    }
 }
 
 /// Async: a Linux package waits for the password prompt and the package
 /// manager, which must not hold up the main thread.
 #[tauri::command]
 pub(crate) async fn install_update(app: AppHandle) -> Result<(), String> {
-    updates::install_now(&app).await
+    #[cfg(desktop)]
+    return updates::install_now(&app).await;
+    #[cfg(mobile)]
+    {
+        let _ = app;
+        Err("A phone gets new versions from the release page.".into())
+    }
+}
+
+/// The page's theme, for what the system draws around it: on a phone the
+/// status and navigation bars. Nothing to do on a computer, whose title bar
+/// is the page's own.
+#[tauri::command]
+pub(crate) fn set_appearance(dark: bool) {
+    #[cfg(mobile)]
+    std::thread::spawn(move || {
+        // tokens.css: --uwu-canvas, dark and light.
+        let background = if dark { "#141016" } else { "#F8F4F6" };
+        if let Some(plugin) = crate::phone::plugin() {
+            if let Err(error) = plugin.set_appearance(dark, background) {
+                tracing::debug!(%error, "couldn't colour the system bars");
+            }
+        }
+    });
+    #[cfg(desktop)]
+    let _ = dark;
 }
 
 /// The project pages the app links to. The page names one; it never hands in

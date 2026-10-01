@@ -1,10 +1,10 @@
-// Publishes the UwULock version in tauri.conf.json, for Windows, macOS and
-// Linux, from the machine that holds the update signing key.
+// Publishes the UwULock version in tauri.conf.json, for Windows, macOS,
+// Linux, Android and iOS, from the machine that holds the update signing key.
 //
 //   pnpm release                  fetch what CI built for the tag (Windows x64
-//                                 and ARM, macOS, Linux, the browser extension),
-//                                 sign what the updater runs, check everything,
-//                                 publish it
+//                                 and ARM, macOS, Linux, the browser extension,
+//                                 the Android APK and the iPhone IPA), sign what
+//                                 the updater runs, check everything, publish it
 //   pnpm release --build-windows  the same, but build the Windows x64 setup here
 //                                 (on Windows) instead of taking CI's
 //   pnpm release --no-build       take the Windows x64 setup already in
@@ -22,6 +22,12 @@
 // builds everything unsigned when the tag is pushed, and this script
 // downloads it and signs the files the updater runs here. Only a Windows x64
 // setup built here (--build-windows, --windows-only) needs Windows.
+//
+// The phones come from their own workflows: android.yml signs the APK of a tag
+// with the Android release key (a GitHub secret; never on this machine), and
+// this script checks it carries UwULock's certificate. ios.yml builds the IPA
+// unsigned; a sideloading tool signs it with the user's own Apple ID. Neither
+// is in the update feed: phones update by installing the new file.
 //
 // The release's files carry no version in their names (UwULock-windows-x64-setup.exe,
 // UwULock-linux-arm64.deb, …), so a link to the newest one never changes.
@@ -42,6 +48,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   statSync,
@@ -51,6 +58,7 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { apkCertificates } from './apk-cert.mjs';
 import { aurFiles, writeAur } from './aur.mjs';
 import { FEED_BRANCH, REPOSITORY, releaseFeeds } from './release-feeds.mjs';
 
@@ -131,6 +139,29 @@ const PLATFORMS = [
   { artifact: 'extension', file: 'UwULock-extension-firefox.xpi' },
 ].filter((entry) => !windowsOnly || entry.file === windowsName);
 
+/**
+ * The phones: each from its own workflow's run for the tag, the file found by
+ * its versioned name and published under a plain one. The APK must carry the
+ * certificate of every released UwULock APK (as in android.yml).
+ */
+const APK_CERTIFICATE_SHA256 = 'fd6323aea832996ed56a55d11cfcd26a61ecb159b3f9b980f1429b5de6500a1c';
+const PHONES = windowsOnly
+  ? []
+  : [
+      {
+        workflow: 'android.yml',
+        artifact: (sha) => `UwULock-Android-${sha}`,
+        pattern: new RegExp(`^UwULock-${version.replaceAll('.', '\\.')}-\\d+\\.apk$`),
+        file: 'UwULock-android.apk',
+      },
+      {
+        workflow: 'ios.yml',
+        artifact: (sha) => `UwULock-iOS-${sha}`,
+        pattern: new RegExp(`^UwULock-${version.replaceAll('.', '\\.')}-unsigned\\.ipa$`),
+        file: 'UwULock-ios.ipa',
+      },
+    ];
+
 console.log(`\n▸ Checking UwULock ${version}`);
 if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/.test(version)) fail(`Unexpected version ${version}`);
 if (git(['status', '--porcelain', '--untracked-files=no'])) {
@@ -185,7 +216,7 @@ try {
       `\n▸ Fetching what CI built for this tag: ${localWindows ? '' : 'Windows x64, '}Windows ARM, macOS, Linux, the browser extension`,
     );
     const ci = join(work, 'ci');
-    const run = await ciRun(head);
+    const run = await ciRun(head, 'installers.yml');
     execFileSync('gh', ['run', 'download', String(run), '--repo', REPOSITORY, '--dir', ci], {
       stdio: 'inherit',
     });
@@ -196,6 +227,46 @@ try {
       mkdirSync(installers, { recursive: true });
       copyFileSync(from, to);
       files.set(entry.file, to);
+    }
+
+    console.log('\n▸ Fetching the Android APK and the iPhone IPA of this tag');
+    for (const phone of PHONES) {
+      const dir = join(work, phone.workflow);
+      // The tag's own run: a push to main of the same commit is signed with the CI key.
+      const id = await ciRun(head, phone.workflow, tag);
+      execFileSync(
+        'gh',
+        [
+          'run',
+          'download',
+          String(id),
+          '--repo',
+          REPOSITORY,
+          '--name',
+          phone.artifact(head),
+          '--dir',
+          dir,
+        ],
+        { stdio: 'inherit' },
+      );
+      const found = readdirSync(dir).filter((name) => phone.pattern.test(name));
+      if (found.length !== 1)
+        fail(
+          `Expected one ${phone.pattern} from ${phone.workflow}, found: ${readdirSync(dir).join(', ')}`,
+        );
+      const to = join(installers, phone.file);
+      mkdirSync(installers, { recursive: true });
+      copyFileSync(join(dir, found[0]), to);
+      if (phone.file.endsWith('.apk')) {
+        const certs = apkCertificates(readFileSync(to));
+        if (certs.length !== 1 || certs[0] !== APK_CERTIFICATE_SHA256) {
+          fail(
+            `The APK isn't signed with UwULock's release certificate (found: ${certs.join(', ') || 'none'}).`,
+          );
+        }
+        console.log('  ✓ the APK carries the release certificate');
+      }
+      files.set(phone.file, to);
     }
   }
 
@@ -336,7 +407,8 @@ try {
 /** The release page: what changed, then which file is for which system. */
 function releaseBody(aurLive) {
   const guide = `https://github.com/${REPOSITORY}/blob/main/docs/install.md`;
-  const has = (name) => PLATFORMS.some((p) => p.file === name);
+  const has = (name) =>
+    PLATFORMS.some((p) => p.file === name) || PHONES.some((p) => p.file === name);
   const code = (name) => `\`${name}\``;
   // [system (de), system (en), files] for each row whose files this release has.
   const rows = [
@@ -380,6 +452,12 @@ function releaseBody(aurLive) {
       'Browser extension: Firefox (unsigned)',
       code('UwULock-extension-firefox.xpi'),
     ],
+    ['Android (ab 10)', 'Android (10 and later)', code('UwULock-android.apk')],
+    [
+      'iPhone (ab iOS 17, unsigniert)',
+      'iPhone (iOS 17 and later, unsigned)',
+      code('UwULock-ios.ipa'),
+    ],
   ].filter(([, , files]) => {
     const named = [...files.matchAll(/`(UwULock-[^`]+)`/g)].map((m) => m[1]);
     return named.length === 0 ? !windowsOnly : named.every(has);
@@ -388,6 +466,8 @@ function releaseBody(aurLive) {
     ['| | |', '|---|---|', ...rows.map((row) => `| ${row[column]} | ${row[2]} |`)].join('\n');
   const mac = has('UwULock-macos-universal.dmg');
   const extension = has('UwULock-extension-chromium.zip');
+  const phones = has('UwULock-android.apk');
+  const mobileGuide = `https://github.com/${REPOSITORY}/blob/main/docs/mobile.md`;
   const extensionGuide = `https://github.com/${REPOSITORY}/blob/main/docs/extension.md`;
   const de = [
     table(0),
@@ -407,6 +487,11 @@ function releaseBody(aurLive) {
           `Browser-Erweiterung: die \`.zip\` entpacken und unter \`chrome://extensions\` im Entwicklermodus mit **Entpackte Erweiterung laden** hinzufügen. Die \`.xpi\` ist nicht von Mozilla signiert: dauerhaft nur in Firefox Developer Edition, Nightly oder LibreWolf, sonst vorübergehend über \`about:debugging\` ([Anleitung](${extensionGuide})).`,
         ]
       : []),
+    ...(phones
+      ? [
+          `Android: die \`.apk\` auf dem Handy öffnen und die Installation aus dieser Quelle erlauben; neue Versionen genauso darüber installieren. iPhone: die \`.ipa\` ist unsigniert und lässt sich nur mit einem Sideloading-Werkzeug wie AltStore oder Sideloadly und der eigenen Apple-ID installieren ([Anleitung](${mobileGuide})).`,
+        ]
+      : []),
   ];
   const en = [
     table(1),
@@ -424,6 +509,11 @@ function releaseBody(aurLive) {
     ...(extension
       ? [
           `Browser extension: unpack the \`.zip\` and add it at \`chrome://extensions\` in developer mode with **Load unpacked**. The \`.xpi\` isn't signed by Mozilla: it stays installed only in Firefox Developer Edition, Nightly or LibreWolf, elsewhere temporarily through \`about:debugging\` ([guide](${extensionGuide})).`,
+        ]
+      : []),
+    ...(phones
+      ? [
+          `Android: open the \`.apk\` on the phone and allow installing from that source; install new versions over it the same way. iPhone: the \`.ipa\` is unsigned and only installs through a sideloading tool such as AltStore or Sideloadly with your own Apple ID ([guide](${mobileGuide})).`,
         ]
       : []),
   ];
@@ -471,8 +561,8 @@ function aur(sums) {
   console.log('  ✓ pushed');
 }
 
-/** The Installers run for this commit, once it has finished green. */
-async function ciRun(sha) {
+/** The run of `workflow` for this commit (and ref, if given), once it has finished green. */
+async function ciRun(sha, workflow, ref) {
   const started = Date.now();
   let announced = false;
   for (;;) {
@@ -485,23 +575,23 @@ async function ciRun(sha) {
           '--repo',
           REPOSITORY,
           '--workflow',
-          'installers.yml',
+          workflow,
           '--commit',
           sha,
           '--json',
-          'databaseId,status,conclusion,event',
+          'databaseId,status,conclusion,event,headBranch',
           '--limit',
           '10',
         ],
         { encoding: 'utf8' },
       ),
-    );
+    ).filter((run) => !ref || run.headBranch === ref);
     const done = runs.find((run) => run.status === 'completed' && run.conclusion === 'success');
     if (done) return done.databaseId;
     const running = runs.find((run) => run.status !== 'completed');
     if (!running && runs.length > 0 && Date.now() - started > 60_000) {
       fail(
-        `The Installers run for ${sha.slice(0, 7)} failed. Fix it, or release Windows x64 alone with --windows-only (on Windows).`,
+        `The ${workflow} run for ${sha.slice(0, 7)} failed. Fix it, or release Windows x64 alone with --windows-only (on Windows).`,
       );
     }
     if (Date.now() - started > 90 * 60_000) fail('Gave up waiting for CI after 90 minutes.');

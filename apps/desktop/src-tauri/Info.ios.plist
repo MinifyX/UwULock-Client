@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into the Info.plist that `tauri ios init` generates (scripts/ios-build.sh). -->
+<plist version="1.0">
+<dict>
+	<!-- Shown by iOS the first time UwULock asks for Face ID, when unlocking with it is switched on. -->
+	<key>NSFaceIDUsageDescription</key>
+	<string>UwULock opens your vault with Face ID instead of the master password.</string>
+
+	<!-- Files saved from a file request land in UwULock's own folder in the Files app. -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+</dict>
+</plist>

@@ -1,4 +1,4 @@
-//! Unlocking with Windows Hello.
+//! Unlocking with Windows Hello, and on phones with a fingerprint or face.
 //!
 //! Windows Hello keeps a key pair per app and name in the TPM (or in
 //! software, where there is none) and signs with it only after the person
@@ -21,6 +21,15 @@
 //! need the app signed with an Apple Developer ID and a keychain entitlement.
 //! A Touch ID prompt alone, with the key kept elsewhere on disk, would be a
 //! door in front of an open window. Linux has no common equivalent.
+//!
+//! On Android and iOS the phone keeps the secret itself (`phone`, the
+//! `tauri-plugin-uwulock-mobile` plugin): 32 random bytes in the Android
+//! Keystore or the iOS Keychain, handed out only after a strong biometric,
+//! and gone for good when a finger or face is enrolled. They stretch into the
+//! key that seals the copy of the user key, the same way as Hello's
+//! signature; the copy is kept as `m1:<the user key under that key>`. No
+//! master password and no PIN instead of the biometric: that is what the
+//! master password is for.
 
 #[cfg(windows)]
 mod platform {
@@ -181,7 +190,7 @@ mod platform {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, mobile)))]
 mod platform {
     pub fn available() -> bool {
         false
@@ -202,29 +211,78 @@ mod platform {
     }
 }
 
-use base64::engine::general_purpose::STANDARD as B64;
-use base64::Engine as _;
+#[cfg(not(mobile))]
+use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
+use parking_lot::RwLock;
+#[cfg(not(mobile))]
 use rand::RngCore as _;
-use std::sync::OnceLock;
+use serde::Deserialize;
+use tauri::AppHandle;
 use uwulock_bitwarden::{EncString, Error, SymmetricKey};
+#[cfg(not(mobile))]
 use zeroize::Zeroizing;
 
-static AVAILABLE: OnceLock<bool> = OnceLock::new();
+use crate::vault::Failure;
 
-/// Whether this computer has Windows Hello set up. Asked once, in the back
-/// (the answer can take a moment); `false` until then.
-pub(crate) fn available() -> bool {
-    AVAILABLE.get().copied().unwrap_or(false)
+/// What this device unlocks with, once asked: `windowsHello`, or a phone's
+/// `fingerprint`, `face`, `iris`, `faceId`, `touchId`, `opticId` or
+/// `biometric`. `None` until asked, and where there is nothing.
+static KIND: RwLock<Option<String>> = RwLock::new(None);
+
+/// The words of a phone's biometric dialog, in the page's language. Windows
+/// Hello brings its own.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[cfg_attr(not(mobile), allow(dead_code))]
+#[serde(rename_all = "camelCase")]
+pub struct Prompt {
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub subtitle: String,
+    #[serde(default)]
+    pub cancel: String,
 }
 
-pub(crate) fn probe() {
-    if cfg!(windows) {
-        std::thread::spawn(|| {
-            let _ = AVAILABLE.set(platform::available());
-        });
-    } else {
-        let _ = AVAILABLE.set(false);
-    }
+/// Whether this device can unlock without the master password. `false`
+/// until [`probe`] has an answer (it can take a moment).
+pub(crate) fn available() -> bool {
+    KIND.read().is_some()
+}
+
+pub(crate) fn kind() -> Option<String> {
+    KIND.read().clone()
+}
+
+/// Asks the system, in the back, and tells the page when the answer changed.
+/// On a phone again whenever UwULock comes back to the screen: a finger may
+/// have been enrolled meanwhile.
+pub(crate) fn probe(app: &AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let kind = ask();
+        let changed = {
+            let mut current = KIND.write();
+            let changed = *current != kind;
+            *current = kind;
+            changed
+        };
+        if changed {
+            crate::vault::emit_status(&app);
+        }
+    });
+}
+
+#[cfg(mobile)]
+fn ask() -> Option<String> {
+    let status = crate::phone::plugin()?.unlock_status().ok()?;
+    status
+        .available
+        .then(|| status.kind.unwrap_or_else(|| "biometric".into()))
+}
+
+#[cfg(not(mobile))]
+fn ask() -> Option<String> {
+    platform::available().then(|| "windowsHello".to_string())
 }
 
 fn name(account_id: &str) -> String {
@@ -232,69 +290,176 @@ fn name(account_id: &str) -> String {
 }
 
 /// What Hello signs: the account and the enrolment's random bytes.
+#[cfg_attr(mobile, allow(dead_code))]
 fn challenge(account_id: &str, random: &[u8]) -> Vec<u8> {
     let mut out = format!("uwulock-hello-v2:{account_id}:").into_bytes();
     out.extend_from_slice(random);
     out
 }
 
-/// The key a Windows Hello signature stretches into.
+/// The key a Windows Hello signature, or a phone's secret, stretches into.
 fn key_from(secret: &[u8; 32]) -> SymmetricKey {
     SymmetricKey::stretch(secret)
 }
 
-/// How the copy is kept: `v2:<the random bytes under DPAPI, base64>:<the
-/// user key under the signature's key>`.
+/// How Windows Hello's copy is kept: `v2:<the random bytes under DPAPI,
+/// base64>:<the user key under the signature's key>`.
 const PREFIX: &str = "v2:";
+/// How a phone's copy is kept: `m1:<the user key under the phone's key>`.
+const PHONE: &str = "m1:";
 
 fn split(stored: &str) -> Option<(&str, &str)> {
     stored.strip_prefix(PREFIX)?.split_once(':')
 }
 
-/// A copy made before 0.3.0-beta.2, with a fixed challenge.
+/// A copy this build can't open: Windows Hello's from before 0.3.0-beta.2,
+/// with a fixed challenge — or one from another kind of device.
 pub(crate) fn is_outdated(stored: &str) -> bool {
-    split(stored).is_none()
+    if cfg!(mobile) {
+        !stored.starts_with(PHONE)
+    } else {
+        split(stored).is_none()
+    }
 }
 
-/// Switching it on: a new Hello key for the account, a new random challenge,
-/// and the user key sealed under what Hello signs. Blocks while Windows asks
-/// the person.
-pub(crate) fn seal(account_id: &str, user_key: &SymmetricKey) -> Result<String, String> {
+const AGAIN: &str = "Unlock with the master password and switch it on again.";
+
+fn opened(sealed: &str, secret: &[u8; 32]) -> Result<SymmetricKey, Failure> {
+    sealed
+        .parse::<EncString>()
+        .and_then(|e| e.decrypt_key(&key_from(secret)))
+        .map_err(|error| match error {
+            Error::WrongKey => {
+                Failure::new("hello", format!("The device's key has changed. {AGAIN}"))
+            }
+            other => Failure::new("hello", other.to_string()),
+        })
+}
+
+/// Switching it on: a new key on the device, and the user key sealed under
+/// what it gives. Blocks while the system asks the person.
+#[cfg(not(mobile))]
+pub(crate) fn seal(
+    account_id: &str,
+    user_key: &SymmetricKey,
+    _prompt: &Prompt,
+) -> Result<String, Failure> {
+    let refused = |message: String| Failure::new("hello", message);
     let mut random = Zeroizing::new([0u8; 32]);
     rand::rngs::OsRng.fill_bytes(random.as_mut());
-    let kept = platform::protect(random.as_ref())?;
+    let kept = platform::protect(random.as_ref()).map_err(refused)?;
     let secret = platform::secret(
         &name(account_id),
         &challenge(account_id, random.as_ref()),
         true,
-    )?;
+    )
+    .map_err(refused)?;
     let sealed = EncString::encrypt(&user_key.to_bytes(), &key_from(&secret));
     Ok(format!("{PREFIX}{}:{sealed}", B64.encode(kept)))
 }
 
-/// Unlocking: Windows asks the person, and the sealed copy opens.
-pub(crate) fn open(account_id: &str, stored: &str) -> Result<SymmetricKey, String> {
-    let again = "Unlock with the master password and switch Windows Hello on again.";
+/// Unlocking: the system asks the person, and the sealed copy opens.
+#[cfg(not(mobile))]
+pub(crate) fn open(
+    account_id: &str,
+    stored: &str,
+    _prompt: &Prompt,
+) -> Result<SymmetricKey, Failure> {
     let (kept, sealed) = split(stored).ok_or_else(|| {
-        format!("Windows Hello's copy is from an older UwULock and no longer used. {again}")
+        Failure::new(
+            "hello",
+            format!("Windows Hello's copy is from an older UwULock and no longer used. {AGAIN}"),
+        )
     })?;
     let random = B64
         .decode(kept)
         .map_err(|e| e.to_string())
         .and_then(|kept| platform::unprotect(&kept))
-        .map_err(|error| format!("Windows couldn't open Hello's challenge ({error}). {again}"))?;
-    let secret = platform::secret(&name(account_id), &challenge(account_id, &random), false)?;
-    sealed
-        .parse::<EncString>()
-        .and_then(|e| e.decrypt_key(&key_from(&secret)))
-        .map_err(|error| match error {
-            Error::WrongKey => format!("Windows Hello's key has changed. {again}"),
-            other => other.to_string(),
-        })
+        .map_err(|error| {
+            Failure::new(
+                "hello",
+                format!("Windows couldn't open Hello's challenge ({error}). {AGAIN}"),
+            )
+        })?;
+    let secret = platform::secret(&name(account_id), &challenge(account_id, &random), false)
+        .map_err(|message| Failure::new("hello", message))?;
+    opened(sealed, &secret)
 }
 
+#[cfg(not(mobile))]
 pub(crate) fn forget(account_id: &str) {
     platform::delete(&name(account_id));
+}
+
+#[cfg(mobile)]
+fn phone_failure(error: tauri_plugin_uwulock_mobile::Error) -> Failure {
+    let kind = match error.code.as_deref() {
+        Some("cancelled") => "biometric-cancelled",
+        Some("lockout") => "biometric-lockout",
+        Some("invalidated") | Some("missing") => "biometric-changed",
+        _ => "hello",
+    };
+    Failure::new(kind, error.message)
+}
+
+#[cfg(mobile)]
+fn phone() -> Result<tauri::State<'static, tauri_plugin_uwulock_mobile::Mobile<tauri::Wry>>, Failure>
+{
+    crate::phone::plugin().ok_or_else(|| Failure::new("hello", "The phone isn't ready yet."))
+}
+
+#[cfg(mobile)]
+fn phone_prompt(prompt: &Prompt) -> tauri_plugin_uwulock_mobile::Prompt {
+    let or = |text: &str, fallback: &str| {
+        if text.trim().is_empty() {
+            fallback.to_string()
+        } else {
+            text.to_string()
+        }
+    };
+    tauri_plugin_uwulock_mobile::Prompt {
+        title: or(&prompt.title, "UwULock"),
+        subtitle: prompt.subtitle.clone(),
+        cancel: or(&prompt.cancel, "Master password"),
+    }
+}
+
+#[cfg(mobile)]
+pub(crate) fn seal(
+    account_id: &str,
+    user_key: &SymmetricKey,
+    prompt: &Prompt,
+) -> Result<String, Failure> {
+    let secret = phone()?
+        .unlock_create(&name(account_id), &phone_prompt(prompt))
+        .map_err(phone_failure)?;
+    let sealed = EncString::encrypt(&user_key.to_bytes(), &key_from(&secret));
+    Ok(format!("{PHONE}{sealed}"))
+}
+
+#[cfg(mobile)]
+pub(crate) fn open(
+    account_id: &str,
+    stored: &str,
+    prompt: &Prompt,
+) -> Result<SymmetricKey, Failure> {
+    let sealed = stored.strip_prefix(PHONE).ok_or_else(|| {
+        Failure::new(
+            "biometric-changed",
+            format!("No copy for this phone. {AGAIN}"),
+        )
+    })?;
+    let secret = phone()?
+        .unlock_open(&name(account_id), &phone_prompt(prompt))
+        .map_err(phone_failure)?;
+    opened(sealed, &secret)
+}
+
+#[cfg(mobile)]
+pub(crate) fn forget(account_id: &str) {
+    if let Ok(plugin) = phone() {
+        let _ = plugin.unlock_delete(&name(account_id));
+    }
 }
 
 #[cfg(test)]
@@ -327,6 +492,9 @@ mod tests {
         let new = format!("v2:AAAA:{old}");
         assert!(!is_outdated(&new));
         assert_eq!(split(&new), Some(("AAAA", old.as_str())));
-        assert!(open("a", &old).unwrap_err().contains("older UwULock"));
+        assert!(open("a", &old, &Prompt::default())
+            .unwrap_err()
+            .message()
+            .contains("older UwULock"));
     }
 }

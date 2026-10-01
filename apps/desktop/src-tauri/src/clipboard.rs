@@ -5,6 +5,11 @@
 //! clipboard, on macOS out of clipboard managers that honour the concealed
 //! type. After the chosen time the clipboard is cleared — but only if it still
 //! holds what UwULock put there, so something copied since stays.
+//!
+//! On phones the plugin copies (`crate::phone`): Android marks the clip as
+//! sensitive, iOS keeps it on the device and lets it expire by itself at the
+//! chosen time. The plugin waits for the phone's main thread, so its calls go
+//! out on a thread of their own, never the one a command runs on.
 
 use parking_lot::Mutex;
 use sha2::{Digest, Sha256};
@@ -23,6 +28,57 @@ fn digest(text: &str) -> [u8; 32] {
     Sha256::digest(text.as_bytes()).into()
 }
 
+#[cfg(mobile)]
+impl Clipboard {
+    pub fn copy(self: &Arc<Self>, text: &str, clear_after: Option<Duration>) -> Result<(), String> {
+        let plugin = crate::phone::plugin().ok_or("No clipboard yet.")?;
+        let generation = {
+            let mut counter = self.counter.lock();
+            *counter += 1;
+            *counter
+        };
+        *self.last.lock() = Some((generation, digest(text)));
+        let text = zeroize::Zeroizing::new(text.to_string());
+        let this = self.clone();
+        std::thread::spawn(move || {
+            if let Err(error) = plugin.copy(&text, clear_after.map(|d| d.as_secs())) {
+                tracing::warn!(%error, "couldn't copy");
+                return;
+            }
+            if let Some(after) = clear_after {
+                std::thread::sleep(after);
+                this.clear_if_ours(generation);
+            }
+        });
+        Ok(())
+    }
+
+    fn clear_if_ours(&self, generation: u64) {
+        let mut last = self.last.lock();
+        if last.is_none_or(|(latest, _)| latest != generation) {
+            return;
+        }
+        *last = None;
+        drop(last);
+        // The plugin knows which copy is UwULock's and leaves anything newer alone.
+        if let Some(plugin) = crate::phone::plugin() {
+            if plugin.clear_clipboard().is_ok() {
+                tracing::debug!("clipboard cleared");
+            }
+        }
+    }
+
+    /// Locking clears a copied secret right away.
+    pub fn clear_now(self: &Arc<Self>) {
+        let generation = self.last.lock().map(|(g, _)| g);
+        if let Some(generation) = generation {
+            let this = self.clone();
+            std::thread::spawn(move || this.clear_if_ours(generation));
+        }
+    }
+}
+
+#[cfg(desktop)]
 impl Clipboard {
     pub fn copy(self: &Arc<Self>, text: &str, clear_after: Option<Duration>) -> Result<(), String> {
         let mut clipboard = arboard::Clipboard::new().map_err(|e| format!("No clipboard: {e}"))?;
@@ -83,7 +139,7 @@ impl Clipboard {
     }
 
     /// Locking clears a copied secret right away.
-    pub fn clear_now(&self) {
+    pub fn clear_now(self: &Arc<Self>) {
         let generation = self.last.lock().map(|(g, _)| g);
         if let Some(generation) = generation {
             self.clear_if_ours(generation);

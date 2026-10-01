@@ -339,9 +339,11 @@ pub struct Status {
     sync_error: Option<String>,
     /// The server no longer accepts this device's session: log in again.
     session_expired: bool,
-    /// Unlocking with Windows Hello: `null` where there is none, else
-    /// whether it is on for this account.
+    /// Unlocking with Windows Hello or a phone's fingerprint or face:
+    /// `null` where there is none, else whether it is on for this account.
     hello: Option<bool>,
+    /// What it unlocks with (`crate::hello::kind`), for the words on screen.
+    hello_kind: Option<String>,
     /// `realtime` or `hub` while changes from other devices arrive live;
     /// `null` while the app checks every few minutes instead.
     live: Option<&'static str>,
@@ -395,6 +397,7 @@ fn status_of(state: &VaultState) -> Status {
         live: state.live.channel().filter(|_| unlocked),
         hello: crate::hello::available()
             .then(|| account.as_ref().is_some_and(|a| a.hello_user_key.is_some())),
+        hello_kind: crate::hello::kind(),
         accounts: accounts
             .iter()
             .map(|stored| AccountBrief {
@@ -420,7 +423,15 @@ pub(crate) fn emit_status(app: &AppHandle) {
 }
 
 #[tauri::command]
-pub(crate) fn vault_status(state: State<'_, VaultState>) -> Status {
+pub(crate) fn vault_status(app: AppHandle, state: State<'_, VaultState>) -> Status {
+    // A phone's plugin answers only once the page is there: asked at its first look.
+    #[cfg(mobile)]
+    {
+        static ASKED: std::sync::Once = std::sync::Once::new();
+        ASKED.call_once(|| crate::hello::probe(&app));
+    }
+    #[cfg(desktop)]
+    let _ = app;
     status_of(&state)
 }
 
@@ -798,17 +809,21 @@ fn open_unlocked(app: &AppHandle, state: &VaultState, id: String, user_key: Symm
     spawn_sync(app.clone());
 }
 
-/// Unlocking with Windows Hello, for an account where it is on.
+/// Unlocking with Windows Hello or a phone's fingerprint or face, for an
+/// account where it is on. `prompt`: the phone's dialog, in the page's words.
 #[tauri::command]
 pub(crate) async fn unlock_with_hello(
     app: AppHandle,
     state: State<'_, VaultState>,
+    prompt: Option<crate::hello::Prompt>,
 ) -> Result<Status> {
     let (id, account) = state.active_account()?;
-    let sealed = account
-        .hello_user_key
-        .clone()
-        .ok_or_else(|| Failure::new("unsupported", "Windows Hello isn't on for this account."))?;
+    let sealed = account.hello_user_key.clone().ok_or_else(|| {
+        Failure::new(
+            "unsupported",
+            "Unlocking without the master password isn't on for this account.",
+        )
+    })?;
     // A copy with the old, fixed challenge: dropped, with its Hello key.
     if crate::hello::is_outdated(&sealed) {
         state.update_account(&id, |account| account.hello_user_key = None);
@@ -818,11 +833,23 @@ pub(crate) async fn unlock_with_hello(
         emit_status(&app);
     }
     let account_id = id.clone();
-    let user_key =
-        tauri::async_runtime::spawn_blocking(move || crate::hello::open(&account_id, &sealed))
-            .await
-            .map_err(|e| Failure::new("hello", e.to_string()))?
-            .map_err(|message| Failure::new("hello", message))?;
+    let prompt = prompt.unwrap_or_default();
+    let opened = tauri::async_runtime::spawn_blocking(move || {
+        crate::hello::open(&account_id, &sealed, &prompt)
+    })
+    .await
+    .map_err(|e| Failure::new("hello", e.to_string()))?;
+    let user_key = match opened {
+        Ok(key) => key,
+        Err(failure) => {
+            // A finger or face enrolled since: the phone threw its key away.
+            if failure.kind() == "biometric-changed" {
+                state.update_account(&id, |account| account.hello_user_key = None);
+                emit_status(&app);
+            }
+            return Err(failure);
+        }
+    };
     // The copy on this device must open with it; a key from before a
     // rotation elsewhere doesn't, and then the master password is needed.
     // The private key in it is under the user key, MAC and all.
@@ -841,7 +868,7 @@ pub(crate) async fn unlock_with_hello(
             return Err(Failure::new(
                 "hello",
                 "The account's key has changed. Unlock with the master password and switch \
-                 Windows Hello on again.",
+                 it on again.",
             ));
         }
     }
@@ -849,14 +876,15 @@ pub(crate) async fn unlock_with_hello(
     Ok(status_of(&state))
 }
 
-/// Switches unlocking with Windows Hello on or off for the account on
-/// screen. On needs the vault open (the user key is sealed for Hello) and
-/// asks Windows Hello once.
+/// Switches unlocking with Windows Hello (or a phone's fingerprint or face)
+/// on or off for the account on screen. On needs the vault open (the user
+/// key is sealed for it) and asks the system once.
 #[tauri::command]
 pub(crate) async fn set_hello(
     app: AppHandle,
     state: State<'_, VaultState>,
     enabled: bool,
+    prompt: Option<crate::hello::Prompt>,
 ) -> Result<Status> {
     let id = state.active_id()?;
     if !enabled {
@@ -870,16 +898,17 @@ pub(crate) async fn set_hello(
     if !crate::hello::available() {
         return Err(Failure::new(
             "unsupported",
-            "Windows Hello isn't set up on this computer.",
+            "Neither Windows Hello nor a fingerprint or face is set up on this device.",
         ));
     }
     let user_key = state.with_unlocked(|u| Ok(u.user_key.clone()))?;
     let account_id = id.clone();
-    let sealed =
-        tauri::async_runtime::spawn_blocking(move || crate::hello::seal(&account_id, &user_key))
-            .await
-            .map_err(|e| Failure::new("hello", e.to_string()))?
-            .map_err(|message| Failure::new("hello", message))?;
+    let prompt = prompt.unwrap_or_default();
+    let sealed = tauri::async_runtime::spawn_blocking(move || {
+        crate::hello::seal(&account_id, &user_key, &prompt)
+    })
+    .await
+    .map_err(|e| Failure::new("hello", e.to_string()))??;
     state.update_account(&id, |account| account.hello_user_key = Some(sealed));
     emit_status(&app);
     Ok(status_of(&state))

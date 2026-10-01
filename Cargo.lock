@@ -4808,6 +4808,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tauri-plugin-uwulock-mobile"
+version = "0.3.0-beta.2"
+dependencies = [
+ "base64 0.22.1",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
+ "zeroize",
+]
+
+[[package]]
 name = "tauri-runtime"
 version = "2.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5564,6 +5576,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-opener",
  "tauri-plugin-updater",
+ "tauri-plugin-uwulock-mobile",
  "tempfile",
  "tokio",
  "tracing",

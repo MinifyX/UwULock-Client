@@ -1,0 +1,23 @@
+[package]
+name = "tauri-plugin-uwulock-mobile"
+description = "UwULock's own Android and iOS code: unlocking with fingerprint or face through the Android Keystore and the iOS Keychain, and copying secrets"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+# Tauri finds the plugin's Android and iOS projects through this.
+links = "tauri-plugin-uwulock-mobile"
+
+[lib]
+doctest = false
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }
+
+[dependencies]
+base64.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tauri = { version = "2", features = [] }
+zeroize.workspace = true

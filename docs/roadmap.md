@@ -59,7 +59,7 @@ Still to come:
 - Import from Bitwarden JSON, KeePass, browser CSV; encrypted export
 - Attachments, sends and passkeys in the desktop app
 
-## 0.4 · Wi-Fi networks (0.4.0-beta.1, in progress)
+## 0.4 · Wi-Fi networks and phones (0.4.0-beta.1, in progress)
 
 - [x] Wi-Fi networks as an item type of their own, the same contract as UwULock
       Server's web vault ([wifi.md](wifi.md)): a secure note with a marker field,
@@ -68,6 +68,23 @@ Still to come:
       filled)
 - [ ] "Connect" on the phone (Android; iOS only if the entitlement works with
       a sideloaded IPA), in the details' slot for it
+- [x] UwULock for Android (APK, signed) and the iPhone (unsigned IPA for
+      sideloading) from the same app: vault, search, copy, one-time codes,
+      generator, in a phone layout with a drawer, full-screen dialogs and
+      Android's back button ([mobile.md](mobile.md))
+- [x] Unlock with fingerprint or face: Android Keystore, iOS Keychain
+- [x] Lock after a minute in the background; no screenshots on Android
+- [x] CI: Android build, signing and emulator smoke test; iOS simulator build,
+      unsigned IPA and simulator smoke test; both in `pnpm release`
+- [ ] The swipe check on the phone; "Connect" (above) goes in the same
+      plugin, `crates/tauri-plugin-uwulock-mobile` (see mobile.md)
+
+Later on phones:
+
+- Filling logins into other apps: an Android autofill service and an iOS
+  password provider (credential provider extension; needs a signed app with
+  the AutoFill entitlement)
+- Passkeys on the phone
 
 ## Later · A server of its own
 

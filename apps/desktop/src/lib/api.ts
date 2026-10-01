@@ -44,8 +44,16 @@ export type Status = {
   sessionExpired: boolean;
   /** Changes from other devices arrive as they happen, over this channel. */
   live: 'realtime' | 'hub' | null;
-  /** Unlocking with Windows Hello: null where there is none, else whether it is on. */
+  /**
+   * Unlocking with Windows Hello, or a phone's fingerprint or face: null where
+   * there is none, else whether it is on.
+   */
   hello: boolean | null;
+  /**
+   * What it unlocks with: `windowsHello`; `fingerprint`, `face`, `iris` or
+   * `biometric` (Android); `faceId`, `touchId` or `opticId` (iOS).
+   */
+  helloKind: string | null;
   accounts: AccountBrief[];
 };
 
@@ -200,8 +208,12 @@ export const loginNewDevice = (code: string) => invoke<LoginStep>('login_new_dev
 export const loginSendEmail = () => invoke<void>('login_send_email');
 export const loginCancel = () => invoke<void>('login_cancel');
 export const unlock = (password: string) => invoke<Status>('unlock', { password });
-export const unlockWithHello = () => invoke<Status>('unlock_with_hello');
-export const setHello = (enabled: boolean) => invoke<Status>('set_hello', { enabled });
+/** The words of a phone's biometric dialog; Windows Hello brings its own. */
+export type UnlockPrompt = { title: string; subtitle: string; cancel: string };
+export const unlockWithHello = (prompt: UnlockPrompt) =>
+  invoke<Status>('unlock_with_hello', { prompt });
+export const setHello = (enabled: boolean, prompt: UnlockPrompt) =>
+  invoke<Status>('set_hello', { enabled, prompt });
 export const lock = () => invoke<void>('lock');
 /** Without an id: the account on screen. The others stay. */
 export const logout = (id?: string) => invoke<Status>('logout', { id: id ?? null });
@@ -252,3 +264,6 @@ export const updateStatus = () => invoke<UpdateInfo | null>('update_status');
 export const checkForUpdates = () => invoke<UpdateInfo | null>('check_for_updates');
 export const installUpdate = () => invoke<void>('install_update');
 export const openProjectPage = (page: ProjectPage) => invoke<void>('open_project_page', { page });
+
+/** The page's theme, for the phone's status and navigation bars. */
+export const setAppearance = (dark: boolean) => invoke<void>('set_appearance', { dark });

@@ -1,8 +1,10 @@
-import { useState, type FormEvent } from 'react';
-import { logout, switchAccount, unlock, unlockWithHello, type Status } from '../lib/api';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { failure, logout, switchAccount, unlock, unlockWithHello, type Status } from '../lib/api';
 import { errorText, toastError } from '../lib/errors';
 import { ago } from '../lib/format';
 import { t, useLanguage } from '../lib/i18n';
+import { isMobile } from '../lib/platform';
+import { unlockLabel, unlockPrompt } from '../lib/unlock';
 import { Icon } from './Icon';
 import { Modal } from './Modal';
 import { NyuScene } from './nyu/scenes';
@@ -50,13 +52,24 @@ export function LockScreen({ status, onUnlocked, onLoggedOut, onAddAccount }: Pr
     setBusy(true);
     setError(null);
     try {
-      onUnlocked(await unlockWithHello());
+      onUnlocked(await unlockWithHello(unlockPrompt()));
     } catch (e) {
-      setError(errorText(e));
+      // Cancelled on purpose: the master password field is right there.
+      if (failure(e).kind !== 'biometric-cancelled') setError(errorText(e));
     } finally {
       setBusy(false);
     }
   };
+
+  // On a phone the fingerprint or face is asked for right away, once per
+  // account, the way phone apps do; the master password stays below it.
+  const asked = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isMobile() || !status.hello || asked.current === status.accountId) return;
+    asked.current = status.accountId;
+    void hello();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status.hello, status.accountId]);
 
   return (
     <div className="lock">
@@ -72,7 +85,12 @@ export function LockScreen({ status, onUnlocked, onLoggedOut, onAddAccount }: Pr
         </p>
         <label className="field">
           <span>{t('Master-Passwort')}</span>
-          <PasswordInput value={password} onChange={setPassword} autoFocus disabled={busy} />
+          <PasswordInput
+            value={password}
+            onChange={setPassword}
+            autoFocus={!(isMobile() && status.hello)}
+            disabled={busy}
+          />
         </label>
         {error && (
           <p className="form-error" role="alert">
@@ -89,7 +107,7 @@ export function LockScreen({ status, onUnlocked, onLoggedOut, onAddAccount }: Pr
             disabled={busy}
             onClick={() => void hello()}
           >
-            {t('Mit Windows Hello entsperren')}
+            {unlockLabel(status.helloKind)}
           </button>
         )}
         <p className="lock-meta">

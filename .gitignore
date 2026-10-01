@@ -6,6 +6,7 @@ dist/
 target/
 *.tsbuildinfo
 apps/*/src-tauri/gen/schemas/
+apps/*/src-tauri/gen/apple/
 # The extension's crypto, built by apps/extension/scripts/build-wasm.mjs
 apps/extension/src/wasm/pkg/
 

@@ -11,10 +11,12 @@ import {
   type Overview,
   type Status,
 } from '../lib/api';
+import { useBackLayer } from '../lib/backStack';
 import { toastError } from '../lib/errors';
 import { copiedText } from '../lib/format';
 import { N_, t, useLanguage } from '../lib/i18n';
 import { KIND_LABEL } from '../lib/items';
+import { usePhoneLayout } from '../lib/phone';
 import { useSettings } from '../lib/settings';
 import { toast } from '../lib/toast';
 import { has, loadIcons, openWebVaultAt, useUwu } from '../lib/uwu';
@@ -91,6 +93,11 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
   const [filter, setFilter] = useState<Filter>({ kind: 'all' });
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
+  // Phone layout (lib/phone.ts): one pane at a time. The list is the start;
+  // tapping an item opens it over the list, the folders are a drawer.
+  const phone = usePhoneLayout();
+  const [opened, setOpened] = useState(false);
+  const [drawer, setDrawer] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [newMenu, setNewMenu] = useState<{ x: number; y: number } | null>(null);
@@ -214,6 +221,13 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
   };
 
   const current = items.find((i) => i.id === selected) ?? null;
+  const showItem = (id: string) => {
+    setSelected(id);
+    setOpened(true);
+  };
+  const detailOpen = phone && opened && current !== null;
+  useBackLayer(phone && drawer, () => setDrawer(false));
+  useBackLayer(detailOpen, () => setOpened(false));
 
   // Ctrl+U, Ctrl+P, Ctrl+T copy username, password and code of the selected
   // item, as in Bitwarden's desktop app.
@@ -294,8 +308,22 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
   const noFolder = counts.folder(null);
 
   return (
-    <div className="vault">
-      <nav className="sidebar" aria-label={t('Tresor')}>
+    <div
+      className="vault"
+      data-pane={detailOpen ? 'detail' : 'list'}
+      data-drawer={phone && drawer ? 'open' : undefined}
+    >
+      {phone && drawer && (
+        <div className="drawer-backdrop" aria-hidden onClick={() => setDrawer(false)} />
+      )}
+      <nav
+        className="sidebar"
+        aria-label={t('Tresor')}
+        onClick={(event) => {
+          // On a phone, picking a list closes the drawer.
+          if (phone && (event.target as HTMLElement).closest('.nav-row')) setDrawer(false);
+        }}
+      >
         <ul className="nav-list">
           {nav({ kind: 'all' }, 'layers', t('Alle Einträge'), counts.all)}
           {nav({ kind: 'favorites' }, 'star', t('Favoriten'), counts.favorites)}
@@ -436,29 +464,41 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
 
       <section className="list-pane" aria-label={title}>
         <div className="list-head">
-          <label className="search-box">
-            <Icon name="search" size={15} />
-            <input
-              ref={searchRef}
-              className="search"
-              type="search"
-              value={query}
-              placeholder={t('Tresor durchsuchen (Strg+F)')}
-              aria-label={t('Tresor durchsuchen')}
-              spellCheck={false}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-                  e.preventDefault();
-                  move(e.key === 'ArrowDown' ? 1 : -1);
-                } else if (e.key === 'Escape' && query) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setQuery('');
-                }
-              }}
-            />
-          </label>
+          <div className="search-row">
+            {phone && (
+              <button
+                className="icon-button menu-button"
+                aria-label={t('Ordner und Typen')}
+                aria-expanded={drawer}
+                onClick={() => setDrawer(true)}
+              >
+                <Icon name="menu" size={18} />
+              </button>
+            )}
+            <label className="search-box">
+              <Icon name="search" size={15} />
+              <input
+                ref={searchRef}
+                className="search"
+                type="search"
+                value={query}
+                placeholder={phone ? t('Tresor durchsuchen') : t('Tresor durchsuchen (Strg+F)')}
+                aria-label={t('Tresor durchsuchen')}
+                spellCheck={false}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    move(e.key === 'ArrowDown' ? 1 : -1);
+                  } else if (e.key === 'Escape' && query) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setQuery('');
+                  }
+                }}
+              />
+            </label>
+          </div>
           <p className="list-title">
             <span>{title}</span>
             <span className="list-count">{visible.length}</span>
@@ -505,7 +545,7 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
                 role="option"
                 aria-selected={item.id === selected}
                 className="item-row"
-                onClick={() => setSelected(item.id)}
+                onClick={() => showItem(item.id)}
               >
                 <ItemTile item={item} />
                 <span className="item-text">
@@ -565,6 +605,14 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
       </section>
 
       <section className="detail-pane">
+        {detailOpen && (
+          <div className="detail-back">
+            <button className="quiet" onClick={() => setOpened(false)}>
+              <Icon name="back" size={16} />
+              {title}
+            </button>
+          </div>
+        )}
         {current ? (
           <ItemDetail
             key={current.id}
@@ -657,7 +705,7 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
           onTakenOver={(id) => {
             setExtrasDialog(null);
             pick({ kind: 'all' });
-            setSelected(id);
+            showItem(id);
             void reload();
           }}
         />
@@ -669,7 +717,7 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
           onOpenItem={(id) => {
             setExtrasDialog(null);
             pick({ kind: 'all' });
-            setSelected(id);
+            showItem(id);
           }}
         />
       )}
@@ -683,7 +731,7 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
           onClose={() => setEditing(null)}
           onSaved={(id) => {
             setEditing(null);
-            setSelected(id);
+            showItem(id);
             void reload();
           }}
         />

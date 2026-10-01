@@ -1,6 +1,7 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useEffect, useState, type ReactNode } from 'react';
 import { t, useLanguage } from '../lib/i18n';
+import { isMobile } from '../lib/platform';
 import { Nyu } from './nyu/Nyu';
 
 type Props = {
@@ -17,12 +18,17 @@ const ICONS = {
  * The window's own title bar: the window has no system frame (see
  * tauri.conf.json), so moving, minimizing, maximizing and closing all happen
  * here. Double-clicking the empty bar maximizes, as everywhere on Windows.
+ *
+ * On a phone it is the app bar under the status bar: the same actions, no
+ * window to move or close.
  */
 export function TitleBar({ onSettings, children }: Props) {
   useLanguage();
   const [maximized, setMaximized] = useState(false);
+  const phone = isMobile();
 
   useEffect(() => {
+    if (phone) return;
     const window = getCurrentWindow();
     let stopped = false;
     let unlisten: (() => void) | undefined;
@@ -43,7 +49,7 @@ export function TitleBar({ onSettings, children }: Props) {
       stopped = true;
       unlisten?.();
     };
-  }, []);
+  }, [phone]);
 
   const window = () => getCurrentWindow();
 
@@ -67,44 +73,46 @@ export function TitleBar({ onSettings, children }: Props) {
           <path d={ICONS.settings} />
         </svg>
       </button>
-      <div className="window-controls">
-        <button
-          className="window-control"
-          onClick={() => void window().minimize()}
-          title={t('Minimieren')}
-          aria-label={t('Minimieren')}
-        >
-          <svg viewBox="0 0 10 10" aria-hidden>
-            <path d="M0 5.5h10" />
-          </svg>
-        </button>
-        <button
-          className="window-control"
-          onClick={() => void window().toggleMaximize()}
-          title={maximized ? t('Verkleinern') : t('Maximieren')}
-          aria-label={maximized ? t('Verkleinern') : t('Maximieren')}
-        >
-          {maximized ? (
+      {!phone && (
+        <div className="window-controls">
+          <button
+            className="window-control"
+            onClick={() => void window().minimize()}
+            title={t('Minimieren')}
+            aria-label={t('Minimieren')}
+          >
             <svg viewBox="0 0 10 10" aria-hidden>
-              <path d="M2.5 2.5V.5h7v7h-2 M.5 2.5h7v7h-7z" />
+              <path d="M0 5.5h10" />
             </svg>
-          ) : (
+          </button>
+          <button
+            className="window-control"
+            onClick={() => void window().toggleMaximize()}
+            title={maximized ? t('Verkleinern') : t('Maximieren')}
+            aria-label={maximized ? t('Verkleinern') : t('Maximieren')}
+          >
+            {maximized ? (
+              <svg viewBox="0 0 10 10" aria-hidden>
+                <path d="M2.5 2.5V.5h7v7h-2 M.5 2.5h7v7h-7z" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 10 10" aria-hidden>
+                <path d="M.5.5h9v9h-9z" />
+              </svg>
+            )}
+          </button>
+          <button
+            className="window-control close"
+            onClick={() => void window().close()}
+            title={t('Schließen')}
+            aria-label={t('Schließen')}
+          >
             <svg viewBox="0 0 10 10" aria-hidden>
-              <path d="M.5.5h9v9h-9z" />
+              <path d="M.5.5l9 9 M9.5.5l-9 9" />
             </svg>
-          )}
-        </button>
-        <button
-          className="window-control close"
-          onClick={() => void window().close()}
-          title={t('Schließen')}
-          aria-label={t('Schließen')}
-        >
-          <svg viewBox="0 0 10 10" aria-hidden>
-            <path d="M.5.5l9 9 M9.5.5l-9 9" />
-          </svg>
-        </button>
-      </div>
+          </button>
+        </div>
+      )}
     </header>
   );
 }

@@ -108,6 +108,11 @@ Download the file for your system from the newest
 **Install** — no admin prompt. The [install guide](docs/install.md) has the
 details. [Auf Deutsch](docs/install.md#uwulock-installieren).
 
+Phones: Android 10 or newer (`UwULock-android.apk`) and the iPhone with iOS 17
+or newer (`UwULock-ios.ipa`, unsigned, for sideloading with your own Apple ID).
+Vault, search, copy, one-time codes and the generator, unlocking with a
+fingerprint or face. [UwULock on Android and iPhone](docs/mobile.md).
+
 ## Browser extension
 
 UwULock for Chrome, Edge, Brave, Vivaldi, Opera and Firefox, from one code base: log in (with
@@ -124,19 +129,20 @@ LibreWolf and loads temporarily elsewhere. [How to install it](docs/extension.md
 
 ## Project layout
 
-| Path                       | What lives there                                                             |
-| -------------------------- | ---------------------------------------------------------------------------- |
-| `apps/desktop`             | The Tauri 2 app (React UI + Rust shell)                                      |
-| `apps/desktop/e2e`         | End-to-end run of the real app against a toy Vaultwarden                     |
-| `apps/setup`               | The installer, updater and uninstaller, for all three systems                |
-| `apps/extension`           | The browser extension for Chromium and Firefox (Manifest V3, React)          |
-| `crates/uwulock-core`      | Bitwarden's crypto and data formats, no network; also builds to WebAssembly  |
-| `crates/uwulock-bitwarden` | Bitwarden's and UwULock Server's protocol: login, sync, live updates, saving |
-| `crates/uwulock-wasm`      | uwulock-core as WebAssembly, for the browser extension                       |
-| `brand/`                   | Nyu as a padlock: the UwULock icon, symbol, mono symbol                      |
-| `docs/`                    | Vision, architecture, design, roadmap, install guide                         |
-| `release-notes/`           | What's new, per version                                                      |
-| `scripts/`                 | Icons, building the setup, releasing                                         |
+| Path                                 | What lives there                                                             |
+| ------------------------------------ | ---------------------------------------------------------------------------- |
+| `apps/desktop`                       | The Tauri 2 app (React UI + Rust shell), for desktop, Android and iOS        |
+| `apps/desktop/e2e`                   | End-to-end run of the real app against a toy Vaultwarden                     |
+| `apps/setup`                         | The installer, updater and uninstaller, for all three systems                |
+| `apps/extension`                     | The browser extension for Chromium and Firefox (Manifest V3, React)          |
+| `crates/uwulock-core`                | Bitwarden's crypto and data formats, no network; also builds to WebAssembly  |
+| `crates/uwulock-bitwarden`           | Bitwarden's and UwULock Server's protocol: login, sync, live updates, saving |
+| `crates/uwulock-wasm`                | uwulock-core as WebAssembly, for the browser extension                       |
+| `crates/tauri-plugin-uwulock-mobile` | Android's and iOS's own APIs: biometric unlock, clipboard, system bars       |
+| `brand/`                             | Nyu as a padlock: the UwULock icon, symbol, mono symbol                      |
+| `docs/`                              | Vision, architecture, design, roadmap, install guide                         |
+| `release-notes/`                     | What's new, per version                                                      |
+| `scripts/`                           | Icons, building the setup, releasing                                         |
 
 ## Development
 
@@ -185,6 +191,9 @@ against the same vectors from Bitwarden's SDK
 ([architecture](docs/architecture.md)). The wasm check needs
 `rustup target add wasm32-unknown-unknown`.
 
+The phone apps: `pnpm mobile:prepare`, then `pnpm tauri android build --apk`
+or `pnpm tauri ios dev` — see [UwULock on Android and iPhone](docs/mobile.md#building).
+
 The installer, with the app packed inside: `pnpm build:setup`. Releasing is
 `pnpm release`; [release-notes/README.md](release-notes/README.md) has the steps.
 
@@ -192,6 +201,7 @@ The installer, with the app packed inside: `pnpm build:setup`. Releasing is
 
 - [Install guide](docs/install.md) — installing, updating, uninstalling, in English and German
 - [Browser extension](docs/extension.md) — what it does, installing it in Chromium and Firefox
+- [Android and iPhone](docs/mobile.md) — installing, what's different on a phone, building, the phone plugin
 - [UwULock Server's extras](docs/uwu-extras.md) — icons, versions, reminders, file requests, masked addresses, Sends, travel mode
 - [Moving from Bitwarden](docs/moving-from-bitwarden.md) — a whole vault into UwULock, attachments and Sends included
 - [Konzept](KONZEPT.md) — the concept, in German

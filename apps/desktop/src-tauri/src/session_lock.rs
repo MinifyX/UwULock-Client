@@ -69,6 +69,19 @@ fn poll(app: AppHandle) {
     }
 }
 
+/// On a phone (`crate::phone`): how long UwULock may be in the background
+/// before it locks — long enough to paste a password in another app and come
+/// back, short enough that a phone left on the table isn't open.
+#[cfg_attr(not(mobile), allow(dead_code))]
+pub(crate) const AWAY: Duration = Duration::from_secs(60);
+
+/// Whether UwULock was in the background for [`AWAY`] or longer, by either
+/// clock: the monotonic one may stand still while the phone sleeps.
+#[cfg_attr(not(mobile), allow(dead_code))]
+pub(crate) fn away_too_long(monotonic: Duration, wall: Duration) -> bool {
+    monotonic.max(wall) >= AWAY
+}
+
 /// Whether the wall clock ran on while the monotonic one stood still. A clock
 /// set back or forward by hand shows up too, but only as one more lock.
 fn slept(monotonic: Duration, wall: Duration) -> bool {
@@ -242,5 +255,14 @@ mod tests {
         assert!(!slept(s(15), s(15)));
         assert!(!slept(s(2), s(10)));
         assert!(slept(s(2), s(3600)));
+    }
+
+    #[test]
+    fn a_short_trip_to_another_app_keeps_the_vault_open() {
+        let s = Duration::from_secs;
+        assert!(!away_too_long(s(5), s(5)));
+        assert!(away_too_long(AWAY, AWAY));
+        // The phone slept: the monotonic clock stood still, the wall clock didn't.
+        assert!(away_too_long(s(1), s(3600)));
     }
 }

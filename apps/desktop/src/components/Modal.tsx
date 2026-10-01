@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { useBackLayer } from '../lib/backStack';
 
 type ModalProps = {
   title: string;
@@ -46,6 +47,8 @@ export function Modal({
   cancelRef.current = onCancel;
   // Dialogs stack (the host form opens the vault): each needs its own title id.
   const titleId = useId();
+  // On a phone, back cancels the dialog on top, like Escape.
+  useBackLayer(true, () => cancelRef.current());
 
   useEffect(() => {
     const dialog = dialogRef.current;
