@@ -158,6 +158,8 @@ location permission), as a `connectWifi` command in the plugin. iOS:
 unsigned IPA re-signed with a free Apple ID doesn't get — there the button stays
 hidden unless the entitlement turns out to work, and the password is copied
 instead.
+In the UI the button goes into the Wi-Fi details' slot, `ItemDetail`'s
+`wifiActions` ([wifi.md](wifi.md)), shown only when `isMobile()`.
 
 ---
 
