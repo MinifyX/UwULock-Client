@@ -1,0 +1,20 @@
+{
+  "Mit Fingerabdruck entsperren": "Unlock with fingerprint",
+  "Mit Gesichtserkennung entsperren": "Unlock with face unlock",
+  "Mit Face ID entsperren": "Unlock with Face ID",
+  "Mit Touch ID entsperren": "Unlock with Touch ID",
+  "Mit Optic ID entsperren": "Unlock with Optic ID",
+  "Mit Fingerabdruck oder Gesicht entsperren": "Unlock with fingerprint or face",
+  "Statt des Master-Passworts. Der Schlüssel dafür liegt geschützt auf diesem Gerät und gilt nicht mehr, sobald ein Finger oder Gesicht dazukommt.": "Instead of the master password. Its key is kept protected on this device and stops working as soon as a finger or face is added.",
+  "UwULock entsperren": "Unlock UwULock",
+  "Bestätige, dass du es bist.": "Confirm it's you.",
+  "Im Hintergrund sperren": "Lock in the background",
+  "Sperrt UwULock, wenn es eine Minute oder länger im Hintergrund war.": "Locks UwULock when it was in the background for a minute or longer.",
+  "Neue Versionen": "New versions",
+  "Auf dem Handy aktualisiert sich UwULock nicht selbst. Neue Versionen (APK für Android, IPA für iOS) gibt es auf der Release-Seite.": "On a phone UwULock doesn't update itself. New versions (APK for Android, IPA for iOS) are on the release page.",
+  "Der Schlüssel zum Entsperren hat sich geändert. Entsperre mit dem Master-Passwort und schalte das Entsperren mit Fingerabdruck oder Gesicht wieder ein.": "The key for unlocking has changed. Unlock with the master password and switch unlocking with fingerprint or face on again.",
+  "Abgebrochen.": "Cancelled.",
+  "Zu viele Versuche: Das Handy lässt Fingerabdruck und Gesicht gerade nicht zu. Entsperre mit dem Master-Passwort.": "Too many attempts: the phone doesn't accept fingerprint or face right now. Unlock with the master password.",
+  "Auf diesem Gerät ist ein Fingerabdruck oder Gesicht dazugekommen, deshalb gilt das Entsperren damit nicht mehr. Entsperre mit dem Master-Passwort und schalte es in den Einstellungen wieder ein.": "A fingerprint or face was added on this device, so unlocking with it no longer works. Unlock with the master password and switch it on again in the settings.",
+  "Ordner und Typen": "Folders and types"
+}

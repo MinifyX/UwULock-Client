@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The dark canvas and pink of apps/desktop/src/styles/tokens.css. -->
+    <color name="uwu_canvas">#141016</color>
+    <color name="uwu_pink">#FF7FAC</color>
+</resources>

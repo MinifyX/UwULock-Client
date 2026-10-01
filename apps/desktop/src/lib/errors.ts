@@ -5,6 +5,7 @@
 
 import { failure, syncNow, type Failure } from './api';
 import { t } from './i18n';
+import { isMobile } from './platform';
 import { toast } from './toast';
 
 const RECHECK_MS = 10_000;
@@ -72,10 +73,25 @@ export function errorText(error: unknown): string {
           'Windows Hello ist in dieser Version sicherer eingerichtet, die alte Einrichtung gilt nicht mehr. Entsperre einmal mit dem Master-Passwort und schalte Windows Hello in den Einstellungen wieder ein.',
         );
       if (m.includes('key has changed'))
-        return t(
-          'Der Schlüssel von Windows Hello hat sich geändert. Entsperre mit dem Master-Passwort und schalte Windows Hello wieder ein.',
-        );
+        return isMobile()
+          ? t(
+              'Der Schlüssel zum Entsperren hat sich geändert. Entsperre mit dem Master-Passwort und schalte das Entsperren mit Fingerabdruck oder Gesicht wieder ein.',
+            )
+          : t(
+              'Der Schlüssel von Windows Hello hat sich geändert. Entsperre mit dem Master-Passwort und schalte Windows Hello wieder ein.',
+            );
       return m;
+    // A phone's fingerprint or face (crate tauri-plugin-uwulock-mobile).
+    case 'biometric-cancelled':
+      return t('Abgebrochen.');
+    case 'biometric-lockout':
+      return t(
+        'Zu viele Versuche: Das Handy lässt Fingerabdruck und Gesicht gerade nicht zu. Entsperre mit dem Master-Passwort.',
+      );
+    case 'biometric-changed':
+      return t(
+        'Auf diesem Gerät ist ein Fingerabdruck oder Gesicht dazugekommen, deshalb gilt das Entsperren damit nicht mehr. Entsperre mit dem Master-Passwort und schalte es in den Einstellungen wieder ein.',
+      );
     case 'weaker-kdf':
       return t(
         'Der Server verlangt für dieses Konto eine schwächere Schlüsselableitung als bei der letzten Anmeldung, deshalb hat UwULock nichts gesendet. Wenn du sie selbst gesenkt hast, melde das Konto auf diesem Gerät ab und füge es neu hinzu.',

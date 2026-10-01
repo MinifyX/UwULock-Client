@@ -9,7 +9,9 @@
 
 import { useSyncExternalStore } from 'react';
 import pkg from '../../package.json';
+import { setAppearance } from './api';
 import { language } from './i18n';
+import { isMobile, platform } from './platform';
 
 export type ThemeSetting = 'system' | 'light' | 'dark';
 /** German or English; "system" follows the language the system prefers. */
@@ -136,10 +138,18 @@ export function motionAllowed(): boolean {
 
 /** Puts theme and motion on <html>, now and whenever the setting or the system changes. */
 export function applyAppearance() {
+  // Phones draw their status and navigation bars around the page: they take its colours.
+  const phone = isMobile();
+  document.documentElement.dataset.platform = phone ? platform() : 'desktop';
+  let bars: boolean | null = null;
   const apply = () => {
     const { theme } = current;
     const dark = theme === 'dark' || (theme === 'system' && darkQuery().matches);
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    if (phone && bars !== dark) {
+      bars = dark;
+      void setAppearance(dark).catch(() => undefined);
+    }
     document.documentElement.lang = language(current);
     if (motionAllowed()) delete document.documentElement.dataset.motion;
     else document.documentElement.dataset.motion = 'reduced';

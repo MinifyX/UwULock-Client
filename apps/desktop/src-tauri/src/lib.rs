@@ -9,10 +9,15 @@
 //!   requests, masked addresses, travel mode; items shared as Sends
 //! - [`live`] — changes from other devices as they happen
 //! - [`session_lock`] — locking when the screen locks or the computer sleeps
-//! - [`hello`] — unlocking with Windows Hello
+//! - [`hello`] — unlocking with Windows Hello, or a phone's fingerprint or face
 //! - [`moving`] — moving a vault in from Bitwarden or Vaultwarden
 //! - [`clipboard`] — copies that clear themselves
 //! - [`system`] — updates and links out of the app
+//! - [`phone`] — Android and iOS: the plugin, locking in the background
+//!
+//! The same app runs on Android and iOS (docs/mobile.md); what only a
+//! desktop has — the updater, Windows Hello, the screen lock — is left out
+//! there by `#[cfg(desktop)]`/`#[cfg(mobile)]`.
 
 mod account;
 mod clipboard;
@@ -20,13 +25,17 @@ mod extras;
 mod hello;
 mod live;
 mod moving;
+#[cfg(mobile)]
+mod phone;
 mod session_lock;
 mod system;
+#[cfg(desktop)]
 mod updates;
 mod vault;
 
 use tauri::Manager;
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     system::restrict_dll_search();
 
@@ -34,16 +43,25 @@ pub fn run() {
         .with_env_filter(std::env::var("UWULOCK_LOG").unwrap_or_else(|_| {
             "uwulock=debug,uwulock_bitwarden=debug,uwulock_core=debug,warn".to_string()
         }))
+        // Android's log and Xcode's console show no colours, only their codes.
+        .with_ansi(cfg!(desktop))
         .init();
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
+    let builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    #[cfg(mobile)]
+    let builder = builder.plugin(tauri_plugin_uwulock_mobile::init());
+
+    builder
         .setup(|app| {
+            #[cfg(desktop)]
             if updates::apply_pending_on_start(app.handle()) {
                 // The downloaded setup replaces this version and starts UwULock again.
                 std::process::exit(0);
             }
+            #[cfg(mobile)]
+            phone::init(app.handle());
 
             // %APPDATA%\app.uwulock.desktop on Windows. UWULOCK_DATA_DIR points
             // elsewhere, so trying things out never touches the real account.
@@ -60,7 +78,10 @@ pub fn run() {
             live::start(app.handle());
             extras::start(app.handle());
             session_lock::start(app.handle());
-            hello::probe();
+            // On a phone the plugin answers once the page is there (`vault_status`).
+            #[cfg(desktop)]
+            hello::probe(app.handle());
+            #[cfg(desktop)]
             updates::start(app.handle());
             Ok(())
         })
@@ -142,7 +163,20 @@ pub fn run() {
             system::open_project_page,
             system::open_item_uri,
             system::open_web_vault,
+            system::set_appearance,
         ])
-        .run(tauri::generate_context!())
-        .expect("failed to start UwULock");
+        .build(tauri::generate_context!())
+        .expect("failed to start UwULock")
+        .run(|app, event| {
+            #[cfg(mobile)]
+            if let tauri::RunEvent::WindowEvent { event, .. } = &event {
+                match event {
+                    tauri::WindowEvent::Suspended => phone::suspended(app),
+                    tauri::WindowEvent::Resumed => phone::resumed(app),
+                    _ => {}
+                }
+            }
+            #[cfg(desktop)]
+            let _ = (app, event);
+        });
 }

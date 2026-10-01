@@ -1,6 +1,6 @@
 [package]
 name = "uwulock-desktop"
-description = "UwULock desktop app"
+description = "UwULock app for desktop, Android and iOS"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,8 +9,9 @@ rust-version.workspace = true
 
 [lib]
 name = "uwulock_desktop_lib"
-# Desktop only: no mobile build wants the static or dynamic library, so only the one
-# main.rs links against — one library less to link for every build and test.
+# Only the one main.rs links against — one library less to link for every desktop build
+# and test. Android wants a cdylib and iOS a staticlib: scripts/mobile.mjs adds them in
+# the mobile builds (CI and `pnpm mobile:prepare` before a local one).
 crate-type = ["rlib"]
 
 [build-dependencies]
@@ -19,24 +20,32 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 uwulock-bitwarden.workspace = true
 
-arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
 base64.workspace = true
-minisign-verify = "0.2"
 parking_lot.workspace = true
 rand.workspace = true
-semver = "1"
 serde.workspace = true
 sha2.workspace = true
 url = "2"
 serde_json.workspace = true
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
-tauri-plugin-updater = "2"
 tokio = { workspace = true }
 tracing.workspace = true
 uuid.workspace = true
 zeroize.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# The desktop's clipboard and its own updater. Phones copy through the plugin below, and
+# get new versions from the release page (docs/mobile.md).
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
+minisign-verify = "0.2"
+semver = "1"
+tauri-plugin-updater = "2"
+
+# Unlocking with a fingerprint or face (Android Keystore, iOS Keychain), copying secrets.
+[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
+tauri-plugin-uwulock-mobile = { path = "../../../crates/tauri-plugin-uwulock-mobile" }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, features = [
