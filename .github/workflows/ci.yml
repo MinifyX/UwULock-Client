@@ -1,9 +1,10 @@
 name: CI
 
-# Every pull request and every push to main: formatting, the i18n check and the typecheck of
-# every page, then clippy and every Rust test on Linux, and uwulock-core for WebAssembly — three
-# jobs side by side. The browser extension has its own workflow (extension.yml); the setups are
-# built for tags (installers.yml), which start from this workflow's cache of main.
+# Every pull request and every push to main: formatting, the i18n check, the typecheck of
+# every page and the desktop app's page tests, then clippy and every Rust test on Linux, and
+# uwulock-core for WebAssembly — three jobs side by side. The browser extension has its own
+# workflow (extension.yml); the setups are built for tags (installers.yml), which start from
+# this workflow's cache of main.
 
 on:
   pull_request:
@@ -40,6 +41,8 @@ jobs:
       - run: pnpm lint
       # The extension's types need its WebAssembly (extension.yml); the apps' don't.
       - run: pnpm --filter @uwulock/desktop --filter @uwulock/setup typecheck
+      # The desktop app's own logic (the review's cards), straight in Node: no framework.
+      - run: pnpm --filter @uwulock/desktop test
 
   rust:
     name: Rust (Linux)

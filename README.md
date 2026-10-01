@@ -82,6 +82,8 @@ bitwarden.com or bitwarden.eu — with the same encryption the official apps use
 > - Search, keyboard shortcuts like Bitwarden's (Ctrl+U, Ctrl+P, Ctrl+T), a
 >   password generator, also right inside the password field.
 > - Auto-lock, clipboard clearing, sync on unlock and every five minutes.
+> - A password check: weak, reused and `http://` logins, and a review that
+>   goes through them one card at a time.
 > - Its own installer with Nyu, signed automatic updates, German and English.
 >
 > **With UwULock Server 0.6**: changes from your other devices
@@ -90,6 +92,10 @@ bitwarden.com or bitwarden.eu — with the same encryption the official apps use
 > item, reminders to renew a password, file requests, masked addresses from
 > UwUMail, sharing an item as a Send (also only for given addresses, or on a
 > send domain), families and travel mode — each where the server offers it.
+> With UwULock Server 0.7 the password check also finds breached passwords
+> (Have I Been Pwned, XposedOrNot), sites breached after your last change and
+> sites that offer two-step login, opens the change-password page and keeps
+> what you ignore in step with the web vault.
 > UwULock locks with the computer, unlocks with Windows Hello, and moves a
 > whole vault over from Bitwarden, attachments, Sends and organisations
 > included. [Extras](docs/uwu-extras.md) ·
@@ -110,8 +116,8 @@ details. [Auf Deutsch](docs/install.md#uwulock-installieren).
 
 Phones: Android 10 or newer (`UwULock-android.apk`) and the iPhone with iOS 17
 or newer (`UwULock-ios.ipa`, unsigned, for sideloading with your own Apple ID).
-Vault, search, copy, one-time codes and the generator, unlocking with a
-fingerprint or face. [UwULock on Android and iPhone](docs/mobile.md).
+Vault, search, copy, one-time codes and the generator, the password check with
+its swipe review, unlocking with a fingerprint or face. [UwULock on Android and iPhone](docs/mobile.md).
 
 ## Browser extension
 

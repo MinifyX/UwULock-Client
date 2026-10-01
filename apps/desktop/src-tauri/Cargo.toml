@@ -19,6 +19,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 uwulock-bitwarden.workspace = true
+uwulock-core.workspace = true
 
 base64.workspace = true
 parking_lot.workspace = true

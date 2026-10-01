@@ -24,6 +24,7 @@ import { has, loadIcons, openWebVaultAt, useUwu } from '../lib/uwu';
 import { AccountCard } from './AccountCard';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { FileRequestsDialog } from './FileRequestsDialog';
+import { HealthPane } from './HealthPane';
 import { Icon, type IconName } from './Icon';
 import { ItemDetail } from './ItemDetail';
 import { ItemEditor } from './ItemEditor';
@@ -109,6 +110,8 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
   );
   const [folderToDelete, setFolderToDelete] = useState<{ id: string; name: string } | null>(null);
   const [extrasDialog, setExtrasDialog] = useState<null | 'file-requests' | 'masked'>(null);
+  // The password check in place of the list and the item: its report, or the review.
+  const [health, setHealth] = useState<null | 'report' | 'review'>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const uwu = useUwu();
   const due = useMemo(
@@ -230,6 +233,9 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
   const detailOpen = phone && opened && current !== null;
   useBackLayer(phone && drawer, () => setDrawer(false));
   useBackLayer(detailOpen, () => setOpened(false));
+  useBackLayer(phone && health !== null, () =>
+    setHealth((now) => (now === 'review' ? 'report' : null)),
+  );
 
   // Ctrl+U, Ctrl+P, Ctrl+T copy username, password and code of the selected
   // item, as in Bitwarden's desktop app.
@@ -273,13 +279,14 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
   const pick = (next: Filter) => {
     setFilter(next);
     setQuery('');
+    setHealth(null);
   };
 
   const nav = (target: Filter, icon: IconName, label: string, count: number) => (
     <li key={JSON.stringify(target)}>
       <button
         className="nav-row"
-        aria-current={!query.trim() && same(filter, target) ? 'true' : undefined}
+        aria-current={!health && !query.trim() && same(filter, target) ? 'true' : undefined}
         onClick={() => pick(target)}
       >
         <Icon name={icon} size={16} />
@@ -312,7 +319,7 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
   return (
     <div
       className="vault"
-      data-pane={detailOpen ? 'detail' : 'list'}
+      data-pane={health ? 'report' : detailOpen ? 'detail' : 'list'}
       data-drawer={phone && drawer ? 'open' : undefined}
     >
       {phone && drawer && (
@@ -332,6 +339,17 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
           {has(uwu, 'reminders') &&
             (counts.due > 0 || filter.kind === 'due') &&
             nav({ kind: 'due' }, 'bell', t('Neues Passwort fällig'), counts.due)}
+          <li>
+            <button
+              className="nav-row"
+              aria-current={health ? 'true' : undefined}
+              data-testid="nav-health"
+              onClick={() => setHealth('report')}
+            >
+              <Icon name="shield" size={16} />
+              <span className="nav-label">{t('Passwortprüfung')}</span>
+            </button>
+          </li>
         </ul>
 
         <h2>{t('Typen')}</h2>
@@ -464,177 +482,193 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
         <AccountCard status={status} onAddAccount={onAddAccount} />
       </nav>
 
-      <section className="list-pane" aria-label={title}>
-        <div className="list-head">
-          <div className="search-row">
-            {phone && (
-              <button
-                className="icon-button menu-button"
-                aria-label={t('Ordner und Typen')}
-                aria-expanded={drawer}
-                onClick={() => setDrawer(true)}
-              >
-                <Icon name="menu" size={18} />
-              </button>
-            )}
-            <label className="search-box">
-              <Icon name="search" size={15} />
-              <input
-                ref={searchRef}
-                className="search"
-                type="search"
-                value={query}
-                placeholder={phone ? t('Tresor durchsuchen') : t('Tresor durchsuchen (Strg+F)')}
-                aria-label={t('Tresor durchsuchen')}
-                spellCheck={false}
-                onChange={(e) => setQuery(e.target.value)}
+      {health ? (
+        <HealthPane
+          mode={health}
+          onMode={setHealth}
+          items={items}
+          phone={phone}
+          onMenu={() => setDrawer(true)}
+          onOpen={(id) => {
+            pick({ kind: 'all' });
+            showItem(id);
+          }}
+        />
+      ) : (
+        <>
+          <section className="list-pane" aria-label={title}>
+            <div className="list-head">
+              <div className="search-row">
+                {phone && (
+                  <button
+                    className="icon-button menu-button"
+                    aria-label={t('Ordner und Typen')}
+                    aria-expanded={drawer}
+                    onClick={() => setDrawer(true)}
+                  >
+                    <Icon name="menu" size={18} />
+                  </button>
+                )}
+                <label className="search-box">
+                  <Icon name="search" size={15} />
+                  <input
+                    ref={searchRef}
+                    className="search"
+                    type="search"
+                    value={query}
+                    placeholder={phone ? t('Tresor durchsuchen') : t('Tresor durchsuchen (Strg+F)')}
+                    aria-label={t('Tresor durchsuchen')}
+                    spellCheck={false}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        move(e.key === 'ArrowDown' ? 1 : -1);
+                      } else if (e.key === 'Escape' && query) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setQuery('');
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+              <p className="list-title">
+                <span>{title}</span>
+                <span className="list-count">{visible.length}</span>
+                <span className="spacer" />
+                <button
+                  className="new-item"
+                  aria-haspopup="menu"
+                  aria-expanded={Boolean(newMenu)}
+                  title={t('Neuer Eintrag')}
+                  onClick={(event) => {
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    setNewMenu({ x: rect.right - 180, y: rect.bottom + 4 });
+                  }}
+                >
+                  <Icon name="plus" size={15} />
+                  {t('Neu')}
+                </button>
+              </p>
+            </div>
+
+            {visible.length > 0 ? (
+              <ul
+                ref={listRef}
+                className="item-list"
+                role="listbox"
+                aria-label={title}
+                tabIndex={0}
+                aria-activedescendant={selected ? `item-${selected}` : undefined}
                 onKeyDown={(e) => {
                   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                     e.preventDefault();
                     move(e.key === 'ArrowDown' ? 1 : -1);
-                  } else if (e.key === 'Escape' && query) {
+                  } else if (e.key === 'Home' || e.key === 'End') {
                     e.preventDefault();
-                    e.stopPropagation();
-                    setQuery('');
+                    move(e.key === 'Home' ? -visible.length : visible.length);
                   }
                 }}
-              />
-            </label>
-          </div>
-          <p className="list-title">
-            <span>{title}</span>
-            <span className="list-count">{visible.length}</span>
-            <span className="spacer" />
-            <button
-              className="new-item"
-              aria-haspopup="menu"
-              aria-expanded={Boolean(newMenu)}
-              title={t('Neuer Eintrag')}
-              onClick={(event) => {
-                const rect = event.currentTarget.getBoundingClientRect();
-                setNewMenu({ x: rect.right - 180, y: rect.bottom + 4 });
-              }}
-            >
-              <Icon name="plus" size={15} />
-              {t('Neu')}
-            </button>
-          </p>
-        </div>
-
-        {visible.length > 0 ? (
-          <ul
-            ref={listRef}
-            className="item-list"
-            role="listbox"
-            aria-label={title}
-            tabIndex={0}
-            aria-activedescendant={selected ? `item-${selected}` : undefined}
-            onKeyDown={(e) => {
-              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-                e.preventDefault();
-                move(e.key === 'ArrowDown' ? 1 : -1);
-              } else if (e.key === 'Home' || e.key === 'End') {
-                e.preventDefault();
-                move(e.key === 'Home' ? -visible.length : visible.length);
-              }
-            }}
-          >
-            {visible.map((item) => (
-              <li
-                key={item.id}
-                id={`item-${item.id}`}
-                data-id={item.id}
-                role="option"
-                aria-selected={item.id === selected}
-                className="item-row"
-                onClick={() => showItem(item.id)}
               >
-                <ItemTile item={item} />
-                <span className="item-text">
-                  <span className="item-name">{item.name || t('(ohne Namen)')}</span>
-                  {item.subtitle && <span className="item-sub">{item.subtitle}</span>}
-                </span>
-                <span className="item-badges">
-                  {item.broken && (
-                    <span title={t('Nicht alles ließ sich entschlüsseln')}>
-                      <Icon name="warning" size={13} className="badge-warning" />
+                {visible.map((item) => (
+                  <li
+                    key={item.id}
+                    id={`item-${item.id}`}
+                    data-id={item.id}
+                    role="option"
+                    aria-selected={item.id === selected}
+                    className="item-row"
+                    onClick={() => showItem(item.id)}
+                  >
+                    <ItemTile item={item} />
+                    <span className="item-text">
+                      <span className="item-name">{item.name || t('(ohne Namen)')}</span>
+                      {item.subtitle && <span className="item-sub">{item.subtitle}</span>}
                     </span>
-                  )}
-                  {item.reprompt && (
-                    <Icon name="lock" size={13} title={t('Fragt nach dem Master-Passwort')} />
-                  )}
-                  {due.has(item.id) && !item.deleted && (
-                    <Icon
-                      name="bell"
-                      size={13}
-                      className="badge-due"
-                      title={t('Neues Passwort fällig')}
+                    <span className="item-badges">
+                      {item.broken && (
+                        <span title={t('Nicht alles ließ sich entschlüsseln')}>
+                          <Icon name="warning" size={13} className="badge-warning" />
+                        </span>
+                      )}
+                      {item.reprompt && (
+                        <Icon name="lock" size={13} title={t('Fragt nach dem Master-Passwort')} />
+                      )}
+                      {due.has(item.id) && !item.deleted && (
+                        <Icon
+                          name="bell"
+                          size={13}
+                          className="badge-due"
+                          title={t('Neues Passwort fällig')}
+                        />
+                      )}
+                      {uwu.masked[item.id] && (
+                        <Icon name="mask" size={13} title={t('Mit maskierter Adresse')} />
+                      )}
+                      {item.hasTotp && <Icon name="clock" size={13} title={t('Mit Einmal-Code')} />}
+                      {item.organizationId && (
+                        <Icon name="building" size={13} title={t('Organisation')} />
+                      )}
+                      {item.favorite && (
+                        <Icon name="star" size={13} className="badge-star" title={t('Favorit')} />
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="list-empty">
+                {loaded && (
+                  <>
+                    <NyuScene
+                      name={query ? 'puzzled' : items.length ? 'sleepy' : 'pick'}
+                      className="empty-scene"
                     />
-                  )}
-                  {uwu.masked[item.id] && (
-                    <Icon name="mask" size={13} title={t('Mit maskierter Adresse')} />
-                  )}
-                  {item.hasTotp && <Icon name="clock" size={13} title={t('Mit Einmal-Code')} />}
-                  {item.organizationId && (
-                    <Icon name="building" size={13} title={t('Organisation')} />
-                  )}
-                  {item.favorite && (
-                    <Icon name="star" size={13} className="badge-star" title={t('Favorit')} />
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="list-empty">
-            {loaded && (
-              <>
-                <NyuScene
-                  name={query ? 'puzzled' : items.length ? 'sleepy' : 'pick'}
-                  className="empty-scene"
-                />
-                <p>
-                  {query
-                    ? t('Nichts gefunden für „{query}“.', { query: query.trim() })
-                    : items.length
-                      ? t('Hier ist nichts. (˘ω˘)')
-                      : t('Dein Tresor ist noch leer. Leg oben rechts den ersten Eintrag an.')}
-                </p>
-              </>
+                    <p>
+                      {query
+                        ? t('Nichts gefunden für „{query}“.', { query: query.trim() })
+                        : items.length
+                          ? t('Hier ist nichts. (˘ω˘)')
+                          : t('Dein Tresor ist noch leer. Leg oben rechts den ersten Eintrag an.')}
+                    </p>
+                  </>
+                )}
+              </div>
             )}
-          </div>
-        )}
-      </section>
+          </section>
 
-      <section className="detail-pane">
-        {detailOpen && (
-          <div className="detail-back">
-            <button className="quiet" onClick={() => setOpened(false)}>
-              <Icon name="back" size={16} />
-              {title}
-            </button>
-          </div>
-        )}
-        {current ? (
-          <ItemDetail
-            key={current.id}
-            summary={current}
-            overview={overview}
-            onEdit={() => setEditing({ summary: current, kind: current.kind })}
-            wifiActions={
-              // Only Android lets an app add a network; iOS needs an entitlement a
-              // sideloaded app never gets (docs/mobile.md).
-              platform() === 'android'
-                ? (wifi) => <WifiConnect id={current.id} wifi={wifi} />
-                : undefined
-            }
-          />
-        ) : (
-          <div className="detail-empty">
-            {loaded && <NyuScene name="vault" className="empty-scene" />}
-          </div>
-        )}
-      </section>
+          <section className="detail-pane">
+            {detailOpen && (
+              <div className="detail-back">
+                <button className="quiet" onClick={() => setOpened(false)}>
+                  <Icon name="back" size={16} />
+                  {title}
+                </button>
+              </div>
+            )}
+            {current ? (
+              <ItemDetail
+                key={current.id}
+                summary={current}
+                overview={overview}
+                onEdit={() => setEditing({ summary: current, kind: current.kind })}
+                wifiActions={
+                  // Only Android lets an app add a network; iOS needs an entitlement a
+                  // sideloaded app never gets (docs/mobile.md).
+                  platform() === 'android'
+                    ? (wifi) => <WifiConnect id={current.id} wifi={wifi} />
+                    : undefined
+                }
+              />
+            ) : (
+              <div className="detail-empty">
+                {loaded && <NyuScene name="vault" className="empty-scene" />}
+              </div>
+            )}
+          </section>
+        </>
+      )}
 
       {newMenu && (
         <ContextMenu

@@ -101,6 +101,8 @@ pub(crate) struct Unlocked {
     pub(crate) extras: Option<SymmetricKey>,
     /// What the extras opened in this unlock: icons, versions. Gone on lock.
     pub(crate) extras_cache: crate::extras::Cache,
+    /// What the password check fetched and worked out in this unlock.
+    pub(crate) health: crate::health::Cache,
 }
 
 impl Unlocked {
@@ -114,6 +116,7 @@ impl Unlocked {
             uwu: UwuState::default(),
             extras: None,
             extras_cache: Default::default(),
+            health: Default::default(),
         }
     }
 
@@ -2320,7 +2323,7 @@ pub(crate) async fn save_item(
 }
 
 /// Changes one thing about an item that is already there, and saves it.
-async fn change_item(
+pub(crate) async fn change_item(
     app: &AppHandle,
     state: &VaultState,
     id: &str,

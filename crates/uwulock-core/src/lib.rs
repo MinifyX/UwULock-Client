@@ -13,6 +13,8 @@
 //!   keys, own icons), entry versions in a key rotation
 //! - [`file_request`] — file requests: the link, its public details, the
 //!   envelope of what somebody uploads
+//! - [`health`] — the password check: weak, reused, breached, sites with a
+//!   breach or with two-step login; the cards of the review, the ignore list
 //!
 //! No HTTP, no disk, no clock that isn't passed in where it matters: the
 //! desktop app uses this through `uwulock-bitwarden`; the browser extension
@@ -26,6 +28,7 @@ pub mod crypto;
 pub mod extras;
 pub mod file_request;
 pub mod generator;
+pub mod health;
 pub mod passkey;
 pub mod send;
 pub mod totp;

@@ -1,0 +1,180 @@
+/*
+ * The password check (components/HealthPane.tsx): the report and the review
+ * one login at a time, in place of the list and the item. The same shapes as
+ * the web vault's (UwULock-Server web/src/styles/web.css, "review").
+ */
+
+.report-pane {
+  grid-column: 2 / -1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--uwu-canvas);
+}
+
+.report-pane .detail {
+  width: min(760px, 100%);
+}
+
+.report-pane .detail-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.report-pane .detail-tools button,
+.review-actions button,
+.review-nav button,
+.review-problem button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.report-lead {
+  margin: 0;
+  padding: 2px 16px 8px;
+}
+
+.report-source {
+  margin: -6px 4px 0;
+}
+
+.report .detail-card .detail-row:first-of-type {
+  border-top: 1px solid var(--uwu-hairline);
+}
+
+/* ── The review ─────────────────────────────────────────── */
+
+.review-hint {
+  margin: 0;
+}
+
+.review-stack {
+  position: relative;
+  /* Scrolling up and down stays the page's; sideways is the swipe. */
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.review-card {
+  position: relative;
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--uwu-border);
+  border-radius: var(--uwu-radius-card);
+  background: var(--uwu-surface);
+  box-shadow: 0 16px 40px -20px rgba(20, 16, 22, 0.45);
+  transition: transform 180ms ease;
+}
+
+.review-card-behind {
+  position: absolute;
+  inset: 8px 12px -8px;
+  box-shadow: none;
+  opacity: 0.6;
+}
+
+.review-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.review-card-head h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.review-card-head .detail-label {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.review-problems {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.review-problem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--uwu-radius-control);
+  background: var(--uwu-pink-tint);
+}
+
+.review-problem > svg {
+  flex: none;
+  color: var(--uwu-pink-ink);
+}
+
+.review-problem .detail-label {
+  font-weight: 500;
+}
+
+.review-problem[data-state='ignored'],
+.review-problem[data-state='solved'] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--uwu-border);
+}
+
+.review-problem[data-state='ignored'] .detail-value {
+  text-decoration: line-through;
+}
+
+.review-problem[data-state='solved'] > svg {
+  color: var(--uwu-online);
+}
+
+.review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.review-nav {
+  display: flex;
+  justify-content: space-between;
+}
+
+@media (max-width: 700px) {
+  .report-pane {
+    grid-area: 1 / 1;
+  }
+
+  /* The bar on top brings the way back; the header's own button would be twice. */
+  .report-pane .review-back {
+    display: none;
+  }
+
+  .review-card {
+    padding: 16px;
+  }
+
+  /* Each action a full-width row: easy to hit with a thumb. */
+  .review-actions > * {
+    flex: 1 1 100%;
+    justify-content: center;
+    min-height: 44px;
+  }
+
+  .review-nav button {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .review-card {
+    transition: none;
+  }
+}

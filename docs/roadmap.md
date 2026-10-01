@@ -78,8 +78,13 @@ Still to come:
 - [x] Lock after a minute in the background; no screenshots on Android
 - [x] CI: Android build, signing and emulator smoke test; iOS simulator build,
       unsigned IPA and simulator smoke test; both in `pnpm release`
-- [ ] The swipe check on the phone; "Connect" (above) goes in the same
-      plugin, `crates/tauri-plugin-uwulock-mobile` (see mobile.md)
+- [x] The password check in the app, on the computer and the phone: the
+      report (breached, site breach after the last change, reused, weak, no
+      https, 2FA possible) and the review one card at a time — swipe or ← →,
+      open the change-password page, generate and save a new password (the old
+      one into the history), later, ignore. The rules live in uwulock-core
+      (`health`); ignore list, report and consent are the web vault's
+      ([uwu-extras.md](uwu-extras.md#password-check))
 
 Later on phones:
 

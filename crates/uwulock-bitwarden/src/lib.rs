@@ -2,6 +2,7 @@
 //!
 //! - [`api`] — prelogin, login with two-step login, token refresh, sync, saving
 //! - [`delta`] — the offline copy, kept up to date by UwULock Server's delta sync
+//! - [`health`] — the password check's calls: breach sources, lists, the ignore list
 //! - [`icons`] — icons of devices on the local network, made into own icons
 //! - [`live`] — live updates: UwULock's realtime channel, Bitwarden's SignalR hub
 //! - [`moving`] — moving a vault from Bitwarden or Vaultwarden to a UwULock Server
@@ -23,6 +24,7 @@
 
 pub mod api;
 pub mod delta;
+pub mod health;
 pub mod icons;
 pub mod live;
 pub mod moving;

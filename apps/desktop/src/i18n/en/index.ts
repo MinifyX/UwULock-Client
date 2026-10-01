@@ -6,6 +6,7 @@
 import app from './app.json';
 import editing from './editing.json';
 import extras from './extras.json';
+import health from './health.json';
 import mobile from './mobile.json';
 import moving from './moving.json';
 import settings from './settings.json';
@@ -16,6 +17,7 @@ export const EN: Readonly<Record<string, string>> = {
   ...app,
   ...editing,
   ...extras,
+  ...health,
   ...mobile,
   ...moving,
   ...settings,
