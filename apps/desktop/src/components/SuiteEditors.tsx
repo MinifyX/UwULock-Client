@@ -256,16 +256,17 @@ function DrivesFields({
   const setDrive = (i: number, patch: Partial<Drive>) =>
     onChange({ ...drives, list: drives.list.map((d, j) => (j === i ? { ...d, ...patch } : d)) });
   return (
-    <fieldset className="editor-list">
-      <legend>{t('Laufwerke umleiten')}</legend>
-      <select
-        value={drives.mode}
-        onChange={(e) => onChange({ ...drives, mode: e.target.value as Drives['mode'] })}
-      >
-        {inherit && <option value="inherit">{t('Wie die Gruppe')}</option>}
-        <option value="off">{t('Aus')}</option>
-        <option value="on">{t('An')}</option>
-      </select>
+    <div className="suite-drives">
+      <Field label={t('Laufwerke umleiten')}>
+        <select
+          value={drives.mode}
+          onChange={(e) => onChange({ ...drives, mode: e.target.value as Drives['mode'] })}
+        >
+          {inherit && <option value="inherit">{t('Wie die Gruppe')}</option>}
+          <option value="off">{t('Aus')}</option>
+          <option value="on">{t('An')}</option>
+        </select>
+      </Field>
       {drives.mode === 'on' && (
         <>
           {drives.list.map((d, i) => (
@@ -308,7 +309,7 @@ function DrivesFields({
           </button>
         </>
       )}
-    </fieldset>
+    </div>
   );
 }
 
@@ -623,6 +624,8 @@ export function HostEditor({
                   </Field>
                 </>
               )}
+            </div>
+            <div className="editor-row">
               <Field label={t('Farbtiefe')}>
                 <select
                   value={form.colorDepth}

@@ -66,7 +66,7 @@ type Tab = 'host' | 'identity' | 'key' | 'snippet' | 'known_host';
 const TABS: { tab: Tab; label: string; icon: IconName }[] = [
   { tab: 'host', label: N_('Hosts'), icon: 'monitor' },
   { tab: 'identity', label: N_('Anmeldungen'), icon: 'user' },
-  { tab: 'key', label: N_('Schlüssel'), icon: 'key' },
+  { tab: 'key', label: N_('SSH-Schlüssel'), icon: 'key' },
   { tab: 'snippet', label: N_('Snippets'), icon: 'terminal' },
   { tab: 'known_host', label: N_('Bekannte Hosts'), icon: 'shield' },
 ];
@@ -1071,7 +1071,6 @@ function HostBody({
 
   const display = str(rdp, 'display') || 'fit';
   const audio = str(rdp, 'audio') || 'local';
-  const yes = (on: boolean) => (on ? t('An') : t('Aus'));
   const tunnels = tunnelsOf(ctx.records, host.id);
 
   return (
@@ -1126,11 +1125,7 @@ function HostBody({
             {command}
           </Row>
         )}
-        {str(d, 'comment') && (
-          <Row label={t('Notiz')}>
-            <span className="notes">{str(d, 'comment')}</span>
-          </Row>
-        )}
+        {str(d, 'comment') && <Row label={t('Notiz')}>{str(d, 'comment')}</Row>}
       </Card>
 
       {space === 'rdp' && (
@@ -1154,27 +1149,41 @@ function HostBody({
                   ? t('Hier abspielen')
                   : audio}
           </Row>
-          <Row label={t('Verkleinern statt scrollen')}>{yes(bool(rdp, 'smartSizing', true))}</Row>
-          <Row label={t('Zwischenablage teilen')}>{yes(bool(rdp, 'clipboard', true))}</Row>
-          <Row label={t('Konsolensitzung (/admin)')}>{yes(bool(rdp, 'admin', false))}</Row>
-          <Row label={t('Netzwerkebenen-Authentifizierung (NLA)')}>
-            {yes(bool(rdp, 'nla', true))}
+          <Row label={t('Optionen')}>
+            <span className="suite-options">
+              {(
+                [
+                  [t('Verkleinern statt scrollen'), bool(rdp, 'smartSizing', true)],
+                  [t('Zwischenablage teilen'), bool(rdp, 'clipboard', true)],
+                  [t('Konsolensitzung (/admin)'), bool(rdp, 'admin', false)],
+                  [t('Netzwerkebenen-Authentifizierung (NLA)'), bool(rdp, 'nla', true)],
+                  [t('Hintergrundbild zeigen'), bool(rdp, 'wallpaper', true)],
+                  [t('Grafik-Pipeline (RDPEGFX)'), bool(rdp, 'graphicsPipeline', true)],
+                ] as const
+              ).map(([label, on]) => (
+                <span
+                  key={label}
+                  className={on ? 'chip' : 'chip chip-muted'}
+                  title={on ? t('An') : t('Aus')}
+                >
+                  {on ? '✓' : '✗'} {label}
+                </span>
+              ))}
+            </span>
           </Row>
-          <Row label={t('Hintergrundbild zeigen')}>{yes(bool(rdp, 'wallpaper', true))}</Row>
-          <Row label={t('Grafik-Pipeline (RDPEGFX)')}>
-            {yes(bool(rdp, 'graphicsPipeline', true))}
-          </Row>
-          <Row label={t('Gateway')} mono>
-            {gateway ? hostPort(str(gateway, 'address'), num(gateway, 'port', 443)) : t('Keins')}
+          <Row label={t('Gateway')}>
+            <span className="mono">
+              {gateway ? hostPort(str(gateway, 'address'), num(gateway, 'port', 443)) : t('Keins')}
+            </span>
+            {gateway && bool(gateway, 'bypassLocal') && (
+              <small className="field-hint">{t('Für lokale Adressen umgehen')}</small>
+            )}
           </Row>
           {gateway && (
             <Row label={t('Anmeldung am Gateway')}>
               {bool(gateway, 'useHostLogin')
                 ? t('Wie der Host')
                 : link(ref(d, 'gateway_identity_id'))}
-              {bool(gateway, 'bypassLocal') && (
-                <small className="field-hint">{t('Für lokale Adressen umgehen')}</small>
-              )}
             </Row>
           )}
           <Row label={t('Laufwerke umleiten')}>{drivesText(obj(rdp, 'drives'), true)}</Row>
