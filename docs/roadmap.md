@@ -59,7 +59,7 @@ Still to come:
 - Import from Bitwarden JSON, KeePass, browser CSV; encrypted export
 - Attachments, sends and passkeys in the desktop app
 
-## 0.4 · Wi-Fi networks and phones (0.4.0-beta.1, in progress)
+## 0.4 · Wi-Fi networks and phones (0.4.0-beta.1 released)
 
 - [x] Wi-Fi networks as an item type of their own, the same contract as UwULock
       Server's web vault ([wifi.md](wifi.md)): a secure note with a marker field,
@@ -85,6 +85,8 @@ Still to come:
       one into the history), later, ignore. The rules live in uwulock-core
       (`health`); ignore list, report and consent are the web vault's
       ([uwu-extras.md](uwu-extras.md#password-check))
+- [x] Security review before the release
+      ([security-review-0.4.md](security-review-0.4.md))
 
 Later on phones:
 
