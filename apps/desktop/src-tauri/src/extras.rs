@@ -78,6 +78,7 @@ pub(crate) fn uwu_failure(error: UwuError) -> Failure {
         Some("rate_limited") => "rate-limited",
         Some("upstream") => "upstream",
         Some("travel_active") => "travel-active",
+        Some("space_changed") => "space-changed",
         _ => return Failure::from(uwulock_bitwarden::Error::from(error)),
     };
     Failure::new(kind, error.to_string())
@@ -1622,7 +1623,7 @@ async fn open_submission(
 
 /// A name an uploader chose, safe as a file name here: no folders, no
 /// control characters, nothing Windows reserves, not hidden, not too long.
-fn safe_file_name(name: &str) -> String {
+pub(crate) fn safe_file_name(name: &str) -> String {
     let last = name.rsplit(['/', '\\']).next().unwrap_or_default();
     let mut clean: String = last
         .chars()
@@ -1805,7 +1806,11 @@ pub(crate) async fn save_submission_file(
 /// Where a saved file goes, and what the page shows of it: the Downloads
 /// folder on a computer (marked as downloaded from the internet).
 #[cfg(desktop)]
-async fn save_download(app: &AppHandle, file_name: &str, contents: &[u8]) -> Result<String> {
+pub(crate) async fn save_download(
+    app: &AppHandle,
+    file_name: &str,
+    contents: &[u8],
+) -> Result<String> {
     let dir = app
         .path()
         .download_dir()
@@ -1820,7 +1825,11 @@ async fn save_download(app: &AppHandle, file_name: &str, contents: &[u8]) -> Res
 
 /// Android: through the app's cache into Downloads (the plugin, MediaStore).
 #[cfg(target_os = "android")]
-async fn save_download(app: &AppHandle, file_name: &str, contents: &[u8]) -> Result<String> {
+pub(crate) async fn save_download(
+    app: &AppHandle,
+    file_name: &str,
+    contents: &[u8],
+) -> Result<String> {
     let dir = app
         .path()
         .app_cache_dir()
@@ -1850,7 +1859,11 @@ async fn save_download(app: &AppHandle, file_name: &str, contents: &[u8]) -> Res
 
 /// iOS: UwULock's own folder, which the Files app shows ("On My iPhone").
 #[cfg(target_os = "ios")]
-async fn save_download(app: &AppHandle, file_name: &str, contents: &[u8]) -> Result<String> {
+pub(crate) async fn save_download(
+    app: &AppHandle,
+    file_name: &str,
+    contents: &[u8],
+) -> Result<String> {
     let dir = app
         .path()
         .document_dir()

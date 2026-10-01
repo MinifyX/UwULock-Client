@@ -33,6 +33,8 @@ import { WifiConnect } from './WifiConnect';
 import { MaskedDialog } from './MaskedDialog';
 import { Modal } from './Modal';
 import { NyuScene } from './nyu/scenes';
+import { SPACE_TITLE, SuitePane } from './SuitePane';
+import type { SuiteSpace } from '../lib/suiteModel';
 
 export type Filter =
   | { kind: 'all' }
@@ -112,6 +114,9 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
   const [extrasDialog, setExtrasDialog] = useState<null | 'file-requests' | 'masked'>(null);
   // The password check in place of the list and the item: its report, or the review.
   const [health, setHealth] = useState<null | 'report' | 'review'>(null);
+  // UwUSSH's or UwURDP's section in place of the list and the item.
+  const [suite, setSuite] = useState<SuiteSpace | null>(null);
+  const [suiteDetail, setSuiteDetail] = useState(false);
   const listRef = useRef<HTMLUListElement>(null);
   const uwu = useUwu();
   const due = useMemo(
@@ -129,6 +134,10 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
   useEffect(() => {
     if (!remindersOn && filter.kind === 'due') setFilter({ kind: 'all' });
   }, [remindersOn, filter.kind]);
+  const suiteOn = has(uwu, 'suite');
+  useEffect(() => {
+    if (!suiteOn) setSuite(null);
+  }, [suiteOn]);
   const extrasAllowed =
     extrasDialog === 'file-requests'
       ? has(uwu, 'file-requests')
@@ -233,6 +242,7 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
   const detailOpen = phone && opened && current !== null;
   useBackLayer(phone && drawer, () => setDrawer(false));
   useBackLayer(detailOpen, () => setOpened(false));
+  useBackLayer(phone && suite !== null && suiteDetail, () => setSuiteDetail(false));
   useBackLayer(phone && health !== null, () =>
     setHealth((now) => (now === 'review' ? 'report' : null)),
   );
@@ -280,13 +290,16 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
     setFilter(next);
     setQuery('');
     setHealth(null);
+    setSuite(null);
   };
 
   const nav = (target: Filter, icon: IconName, label: string, count: number) => (
     <li key={JSON.stringify(target)}>
       <button
         className="nav-row"
-        aria-current={!health && !query.trim() && same(filter, target) ? 'true' : undefined}
+        aria-current={
+          !health && !suite && !query.trim() && same(filter, target) ? 'true' : undefined
+        }
         onClick={() => pick(target)}
       >
         <Icon name={icon} size={16} />
@@ -319,7 +332,17 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
   return (
     <div
       className="vault"
-      data-pane={health ? 'report' : detailOpen ? 'detail' : 'list'}
+      data-pane={
+        health
+          ? 'report'
+          : suite
+            ? phone && suiteDetail
+              ? 'detail'
+              : 'list'
+            : detailOpen
+              ? 'detail'
+              : 'list'
+      }
       data-drawer={phone && drawer ? 'open' : undefined}
     >
       {phone && drawer && (
@@ -344,7 +367,10 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
               className="nav-row"
               aria-current={health ? 'true' : undefined}
               data-testid="nav-health"
-              onClick={() => setHealth('report')}
+              onClick={() => {
+                setSuite(null);
+                setHealth('report');
+              }}
             >
               <Icon name="shield" size={16} />
               <span className="nav-label">{t('Passwortprüfung')}</span>
@@ -440,6 +466,31 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
           </div>
         ))}
 
+        {suiteOn && (
+          <>
+            <h2>{t('UwU-Apps')}</h2>
+            <ul className="nav-list">
+              {(['ssh', 'rdp'] as const).map((space) => (
+                <li key={space}>
+                  <button
+                    className="nav-row"
+                    aria-current={suite === space && !health ? 'true' : undefined}
+                    data-testid={`nav-suite-${space}`}
+                    onClick={() => {
+                      setHealth(null);
+                      setSuiteDetail(false);
+                      setSuite(space);
+                    }}
+                  >
+                    <Icon name={space === 'ssh' ? 'terminal' : 'monitor'} size={16} />
+                    <span className="nav-label">{t(SPACE_TITLE[space])}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+
         {(has(uwu, 'file-requests') || has(uwu, 'masked-addresses')) && (
           <>
             <h2>{t('Extras')}</h2>
@@ -493,6 +544,16 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
             pick({ kind: 'all' });
             showItem(id);
           }}
+        />
+      ) : suite ? (
+        <SuitePane
+          key={`${suite}-${status.accountId}`}
+          space={suite}
+          phone={phone}
+          detailOpen={suiteDetail}
+          onDetail={setSuiteDetail}
+          onMenu={() => setDrawer(true)}
+          searchRef={searchRef}
         />
       ) : (
         <>

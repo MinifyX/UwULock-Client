@@ -1,0 +1,159 @@
+/*
+ * The sections "SSH (UwUSSH)" and "Remote Desktop (UwURDP)"
+ * (components/SuitePane.tsx). They sit in the vault's own list and detail
+ * columns, so the phone layout (phone.css) needs nothing of its own beyond
+ * the tabs scrolling sideways.
+ */
+
+.suite-tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 2px 0;
+}
+
+.suite-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.suite-tabs button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--uwu-border);
+  border-radius: var(--uwu-radius-pill);
+  background: transparent;
+  color: var(--uwu-muted);
+  font-size: 12.5px;
+}
+
+.suite-tabs button[aria-selected='true'] {
+  background: var(--uwu-pink-tint);
+  border-color: transparent;
+  color: var(--uwu-pink-ink);
+}
+
+.suite-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.suite-ws + .suite-ws {
+  margin-top: 10px;
+}
+
+.suite-ws-title {
+  margin: 8px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--uwu-muted);
+}
+
+.suite-group {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  margin: 2px 0 0;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--uwu-radius-control);
+  background: transparent;
+  color: var(--uwu-ink);
+  font-weight: 600;
+  font-size: 13px;
+  text-align: left;
+}
+
+button.suite-group:hover {
+  background: var(--uwu-elevated);
+}
+
+.suite-group[aria-current='true'] {
+  background: var(--uwu-pink-tint);
+  color: var(--uwu-pink-ink);
+}
+
+.suite-group[data-loose] {
+  color: var(--uwu-muted);
+  font-weight: 500;
+}
+
+.item-row[data-indent] {
+  margin-left: 14px;
+}
+
+.suite-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.suite-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.suite-card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.suite-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+.detail-tools .icon-button.turned svg {
+  rotate: 180deg;
+}
+
+.editor-heading {
+  margin: 8px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.check-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px 16px;
+}
+
+.editor input.narrow {
+  max-width: 110px;
+}
+
+.editor fieldset.editor-list legend {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0;
+  margin-bottom: 6px;
+}
+
+@media (max-width: 700px) {
+  .item-row[data-indent] {
+    margin-left: 8px;
+  }
+
+  .check-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .suite-actions button {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+}

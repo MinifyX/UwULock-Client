@@ -8,6 +8,7 @@
 //! - [`extras`] — UwULock Server's extras: icons, versions, reminders, file
 //!   requests, masked addresses, travel mode; items shared as Sends
 //! - [`health`] — the password check and its review one login at a time
+//! - [`suite`] — UwUSSH's and UwURDP's hosts, logins and keys
 //! - [`live`] — changes from other devices as they happen
 //! - [`session_lock`] — locking when the screen locks or the computer sleeps
 //! - [`hello`] — unlocking with Windows Hello, or a phone's fingerprint or face
@@ -30,6 +31,7 @@ mod moving;
 #[cfg(mobile)]
 mod phone;
 mod session_lock;
+mod suite;
 mod system;
 #[cfg(desktop)]
 mod updates;
@@ -166,6 +168,16 @@ pub fn run() {
             moving::move_start,
             moving::move_cancel,
             moving::move_close,
+            suite::suite_view,
+            suite::suite_create,
+            suite::suite_save,
+            suite::suite_reveal,
+            suite::suite_copy,
+            suite::suite_generate_key,
+            suite::suite_import_key,
+            suite::suite_save_key,
+            suite::suite_save_rdp,
+            suite::suite_open_in_app,
             system::set_update_channel,
             system::update_status,
             system::check_for_updates,
