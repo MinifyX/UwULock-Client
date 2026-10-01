@@ -1782,6 +1782,26 @@ fn value_of(unlocked: &Unlocked, id: &str, field: &str) -> Result<Zeroizing<Stri
     }
 }
 
+/// Runs `f` on one item of the open vault, once its re-prompt (if it has
+/// one) was answered — for what reads several of its secrets at once, like
+/// joining a Wi-Fi network (`wifi`).
+pub(crate) fn with_item<T>(
+    state: &VaultState,
+    id: &str,
+    f: impl FnOnce(&Item) -> Result<T>,
+) -> Result<T> {
+    state.with_unlocked(|u| {
+        let item = find(u, id)?;
+        if item.reprompt && !u.reprompt_ok.contains(id) {
+            return Err(Failure::new(
+                "reprompt",
+                "This item asks for the master password first.",
+            ));
+        }
+        f(item)
+    })
+}
+
 #[tauri::command]
 pub(crate) fn reveal_field(
     state: State<'_, VaultState>,

@@ -66,8 +66,10 @@ Still to come:
       so Bitwarden's apps keep showing a note. Editor, details, filter and a QR
       code in the desktop app; view, copy and QR code in the extension (never
       filled)
-- [ ] "Connect" on the phone (Android; iOS only if the entitlement works with
-      a sideloaded IPA), in the details' slot for it
+- [x] "Connect" on Android: the system's add-network sheet (11+) or a
+      suggestion (10), Enterprise with a domain and the system's CAs, an
+      explanation plus Wi-Fi settings with the password copied otherwise. Not
+      on iOS: the entitlement doesn't survive sideloading ([wifi.md](wifi.md))
 - [x] UwULock for Android (APK, signed) and the iPhone (unsigned IPA for
       sideloading) from the same app: vault, search, copy, one-time codes,
       generator, in a phone layout with a drawer, full-screen dialogs and

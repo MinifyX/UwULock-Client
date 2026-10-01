@@ -17,6 +17,7 @@ import { copiedText } from '../lib/format';
 import { N_, t, useLanguage } from '../lib/i18n';
 import { KIND_LABEL } from '../lib/items';
 import { usePhoneLayout } from '../lib/phone';
+import { platform } from '../lib/platform';
 import { useSettings } from '../lib/settings';
 import { toast } from '../lib/toast';
 import { has, loadIcons, openWebVaultAt, useUwu } from '../lib/uwu';
@@ -27,6 +28,7 @@ import { Icon, type IconName } from './Icon';
 import { ItemDetail } from './ItemDetail';
 import { ItemEditor } from './ItemEditor';
 import { ItemTile } from './ItemTile';
+import { WifiConnect } from './WifiConnect';
 import { MaskedDialog } from './MaskedDialog';
 import { Modal } from './Modal';
 import { NyuScene } from './nyu/scenes';
@@ -619,6 +621,13 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
             summary={current}
             overview={overview}
             onEdit={() => setEditing({ summary: current, kind: current.kind })}
+            wifiActions={
+              // Only Android lets an app add a network; iOS needs an entitlement a
+              // sideloaded app never gets (docs/mobile.md).
+              platform() === 'android'
+                ? (wifi) => <WifiConnect id={current.id} wifi={wifi} />
+                : undefined
+            }
           />
         ) : (
           <div className="detail-empty">

@@ -16,8 +16,13 @@
 //!   still UwULock's; iOS keeps it on this device (no Universal Clipboard) and
 //!   lets it expire by itself.
 //!
-//! Later phone features that need Android or iOS APIs (the Wi-Fi "connect"
-//! button) belong here too: a method on [`Mobile`], a `@Command` in
+//! - **Joining a Wi-Fi network** (`connect_wifi`, Android only): Android 11+
+//!   shows its own sheet to add the network (`ACTION_WIFI_ADD_NETWORKS`),
+//!   Android 10 gets it as a network suggestion. iOS has no such call for a
+//!   sideloaded app (docs/mobile.md).
+//!
+//! More phone features that need Android or iOS APIs belong here too: a
+//! method on [`Mobile`], a `@Command` in
 //! `android/src/main/java/UwuLockMobilePlugin.kt`, a `@objc` function in
 //! `ios/Sources/UwuLockMobilePlugin.swift` (docs/mobile.md).
 //!
@@ -227,6 +232,33 @@ mod mobile {
             self.0
                 .run_mobile_plugin::<Saved>("saveToDownloads", Save { path, name })
                 .map(|saved| saved.name)
+                .map_err(error)
+        }
+
+        /// Android: adds a Wi-Fi network the person confirms in the system's
+        /// sheet (Android 11+) or suggests it (Android 10). `network` is the
+        /// app's request (`ssid`, `security`, `password`, `hidden`, and for
+        /// Enterprise `eap`, `phase2`, `identity`, `anonymousIdentity`,
+        /// `domain`). Answers `saved`, `already-saved`, `suggested`,
+        /// `declined` or `disallowed` (Android 10, suggestions turned off);
+        /// fails with `unsupported` (not on this Android), `invalid` (Android
+        /// refused the values) or `failed`.
+        pub fn connect_wifi<T: Serialize>(&self, network: &T) -> Result<String, Error> {
+            #[derive(Deserialize)]
+            struct Added {
+                outcome: String,
+            }
+            self.0
+                .run_mobile_plugin::<Added>("connectWifi", network)
+                .map(|added| added.outcome)
+                .map_err(error)
+        }
+
+        /// Android: opens the system's Wi-Fi settings — where a network
+        /// `connect_wifi` can't take is added by hand.
+        pub fn open_wifi_settings(&self) -> Result<(), Error> {
+            self.0
+                .run_mobile_plugin("openWifiSettings", ())
                 .map_err(error)
         }
 

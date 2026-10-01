@@ -1308,6 +1308,21 @@ button.add-row {
   gap: 8px;
 }
 
+.wifi-connect-problem {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.wifi-connect-problem p {
+  margin: 0;
+  color: var(--uwu-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 /* White in both themes: cameras want dark on light. */
 .qr {
   width: 200px;
