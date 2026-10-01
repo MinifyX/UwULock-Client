@@ -25,7 +25,7 @@ use uwulock_bitwarden::api::{parse_sync, PasswordLogin, TwoFactorAnswer};
 use uwulock_bitwarden::crypto::{self, decrypt_user_key};
 use uwulock_bitwarden::delta::UwuState;
 use uwulock_bitwarden::uwu::Info;
-use uwulock_bitwarden::vault::{Field, FieldKind, Item, ItemKind, LoginUri, Secret};
+use uwulock_bitwarden::vault::{Field, FieldKind, Item, ItemKind, LoginUri, Secret, WIFI_SSID};
 use uwulock_bitwarden::wire;
 use uwulock_bitwarden::{
     generator, totp, Client, Device, EncString, Error, Kdf, LoginOutcome, Server, Session,
@@ -1410,6 +1410,12 @@ fn last_four(number: &str) -> String {
 }
 
 fn subtitle(item: &Item) -> Option<String> {
+    if item.is_wifi() {
+        return item
+            .field_value(WIFI_SSID)
+            .map(|ssid| ssid.trim().to_string())
+            .filter(|ssid| !ssid.is_empty());
+    }
     match item.kind {
         ItemKind::Login => item.login.as_ref().and_then(|l| {
             text(&l.username).or_else(|| l.uris.first().and_then(|u| host_of(&u.uri)))
@@ -1437,11 +1443,29 @@ fn subtitle(item: &Item) -> Option<String> {
     .filter(|s| !s.is_empty())
 }
 
+/// The kind the page shows: one of the vault's, or one of UwULock's own on
+/// top of a secure note (`wifi`, docs/wifi.md). Saved, it is a note again.
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(untagged)]
+pub enum ShownKind {
+    Vault(ItemKind),
+    Own(&'static str),
+}
+
+impl ShownKind {
+    pub fn of(item: &Item) -> ShownKind {
+        match item.own_type() {
+            Some(own) => ShownKind::Own(own),
+            None => ShownKind::Vault(item.kind),
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ItemSummary {
     id: String,
-    kind: ItemKind,
+    kind: ShownKind,
     name: String,
     subtitle: Option<String>,
     host: Option<String>,
@@ -1465,7 +1489,7 @@ fn summary(item: &Item) -> ItemSummary {
     let login = item.login.as_ref();
     ItemSummary {
         id: item.id.clone(),
-        kind: item.kind,
+        kind: ShownKind::of(item),
         name: item.name.to_string(),
         subtitle: subtitle(item),
         host: login.and_then(|l| l.uris.iter().find_map(|u| host_of(&u.uri))),
@@ -2417,6 +2441,30 @@ impl VaultState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_wifi_network_is_listed_as_one_with_its_ssid() {
+        let field = |name: &str, value: &str, kind: FieldKind| Field {
+            name: Some(Zeroizing::new(name.into())),
+            value: Some(Zeroizing::new(value.into())),
+            kind,
+            linked_id: None,
+        };
+        let mut item = Item::new(ItemKind::Note);
+        item.name = Zeroizing::new("Home".into());
+        item.fields = vec![
+            field("uwulock:type", "wifi", FieldKind::Text),
+            field("SSID", "uwu-net", FieldKind::Text),
+        ];
+        let listed = serde_json::to_value(summary(&item)).unwrap();
+        assert_eq!(listed["kind"], "wifi");
+        assert_eq!(listed["subtitle"], "uwu-net");
+
+        item.fields[0].value = Some(Zeroizing::new("something else".into()));
+        let listed = serde_json::to_value(summary(&item)).unwrap();
+        assert_eq!(listed["kind"], "note");
+        assert_eq!(listed["subtitle"], Value::Null);
+    }
 
     #[test]
     fn dates_look_like_bitwardens() {

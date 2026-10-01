@@ -5,7 +5,7 @@
 use serde::Serialize;
 use serde_json::{json, Value};
 use uwulock_core::totp::Totp;
-use uwulock_core::vault::{FieldKind, Item, ItemKind, Secret};
+use uwulock_core::vault::{FieldKind, Item, ItemKind, Secret, WIFI_SSID};
 use zeroize::Zeroizing;
 
 use crate::{json, with_unlocked, Failure, Result, Unlocked};
@@ -37,6 +37,12 @@ fn last_four(number: &str) -> String {
 }
 
 pub fn subtitle(item: &Item) -> Option<String> {
+    if item.is_wifi() {
+        return item
+            .field_value(WIFI_SSID)
+            .map(|ssid| ssid.trim().to_string())
+            .filter(|ssid| !ssid.is_empty());
+    }
     match item.kind {
         ItemKind::Login => item.login.as_ref().and_then(|l| {
             text(&l.username).or_else(|| l.uris.first().and_then(|u| host_of(&u.uri)))
@@ -64,11 +70,29 @@ pub fn subtitle(item: &Item) -> Option<String> {
     .filter(|s| !s.is_empty())
 }
 
+/// The kind the page shows: one of the vault's, or one of UwULock's own on
+/// top of a secure note (`wifi`, docs/wifi.md). Saved, it is a note again.
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(untagged)]
+pub enum ShownKind {
+    Vault(ItemKind),
+    Own(&'static str),
+}
+
+impl ShownKind {
+    pub fn of(item: &Item) -> ShownKind {
+        match item.own_type() {
+            Some(own) => ShownKind::Own(own),
+            None => ShownKind::Vault(item.kind),
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ItemSummary {
     id: String,
-    kind: ItemKind,
+    kind: ShownKind,
     name: String,
     subtitle: Option<String>,
     host: Option<String>,
@@ -92,7 +116,7 @@ pub fn summary(item: &Item) -> ItemSummary {
     let login = item.login.as_ref();
     ItemSummary {
         id: item.id.clone(),
-        kind: item.kind,
+        kind: ShownKind::of(item),
         name: item.name.to_string(),
         subtitle: subtitle(item),
         host: login.and_then(|l| l.uris.iter().find_map(|u| host_of(&u.uri))),
