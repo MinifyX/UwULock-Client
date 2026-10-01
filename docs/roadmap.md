@@ -59,6 +59,16 @@ Still to come:
 - Import from Bitwarden JSON, KeePass, browser CSV; encrypted export
 - Attachments, sends and passkeys in the desktop app
 
+## 0.4 · Wi-Fi networks (0.4.0-beta.1, in progress)
+
+- [x] Wi-Fi networks as an item type of their own, the same contract as UwULock
+      Server's web vault ([wifi.md](wifi.md)): a secure note with a marker field,
+      so Bitwarden's apps keep showing a note. Editor, details, filter and a QR
+      code in the desktop app; view, copy and QR code in the extension (never
+      filled)
+- [ ] "Connect" on the phone (Android; iOS only if the entitlement works with
+      a sideloaded IPA), in the details' slot for it
+
 ## Later · A server of its own
 
 - UwULock server: Bitwarden-compatible API, so the official apps keep
