@@ -1,0 +1,135 @@
+name: iOS
+
+# Builds UwULock for the iPhone and starts it in a simulator.
+#
+# The IPA is unsigned: UwULock has no Apple developer account, so nothing here carries a
+# certificate. A sideloading tool signs it with your own Apple ID on the way to the phone — see
+# docs/mobile.md. scripts/release.mjs takes the IPA of the tag's run into the release.
+#
+# The Xcode project isn't in the repository; `tauri ios init` writes a fresh one on the runner
+# every time, so nothing generated has to be kept in sync by hand. (Modelled on UwUMail.)
+
+on:
+  push:
+    branches: [main]
+    # Path filters don't apply to tags: every release tag gets its IPA.
+    tags: ['v*']
+    paths-ignore:
+      ['**/*.md', 'docs/**', 'brand/**', 'release-notes/**', 'LICENSE', 'apps/extension/**']
+  # Pull requests only when they touch what goes into the app; macOS runners are slow to get.
+  pull_request:
+    paths:
+      - 'apps/desktop/**'
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'pnpm-lock.yaml'
+      - 'scripts/mobile.mjs'
+      - 'scripts/ios-*.sh'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  app:
+    name: App (iPhone + simulator)
+    runs-on: macos-latest
+    steps:
+      # Every `uses:` is pinned to a commit, with the version in the comment.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          targets: aarch64-apple-ios, aarch64-apple-ios-sim
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: ios
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: pnpm install --frozen-lockfile
+
+      - name: Version
+        id: version
+        run: |
+          # iOS wants three numbers; the beta suffix lives on in the build number.
+          node -e '
+            const v = require("./apps/desktop/src-tauri/tauri.conf.json").version;
+            console.log(`version=${v}`);
+            console.log(`short=${v.split("-")[0]}`);
+            console.log(`build=${process.env.GITHUB_RUN_NUMBER}`);
+          ' >> "$GITHUB_OUTPUT"
+
+      - name: Xcode versions
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      # The web view's files have to exist before Xcode builds the app around them.
+      - run: pnpm --filter @uwulock/desktop exec vite build
+
+      - name: Xcode project
+        env:
+          SHORT: ${{ steps.version.outputs.short }}
+          BUILD: ${{ steps.version.outputs.build }}
+        run: |
+          node scripts/mobile.mjs prepare
+          config=$(jq -nc --arg v "$SHORT" --arg b "$BUILD" '{version: $v, bundle: {iOS: {bundleVersion: $b}}}')
+          pnpm tauri ios init --ci --skip-targets-install --config "$config"
+          find apps/desktop/src-tauri/gen/apple -maxdepth 2 -not -path '*/build/*' | sort
+
+      - name: Build
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: bash scripts/ios-build.sh "$VERSION" out
+
+      - name: Smoke test (simulator)
+        run: bash scripts/ios-smoke.sh out/simulator/*.app smoke
+
+      # The .app keeps its executable bit inside the tar; a plain artifact zip wouldn't.
+      - name: Pack the simulator app
+        if: always()
+        run: |
+          if [ -d out/simulator ]; then
+            tar -czf out/UwULock-simulator.tar.gz -C out simulator && rm -rf out/simulator
+          fi
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: UwULock-iOS-${{ github.sha }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: out/*
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: UwULock-iOS-smoke-${{ github.sha }}
+          retention-days: 7
+          path: smoke/
+
+      # What `tauri ios init` generated, to look at when a build goes sideways.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: UwULock-iOS-project-${{ github.sha }}
+          retention-days: 7
+          path: |
+            apps/desktop/src-tauri/gen/apple
+            !apps/desktop/src-tauri/gen/apple/build
+            !apps/desktop/src-tauri/gen/apple/Externals

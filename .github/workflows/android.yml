@@ -1,0 +1,205 @@
+name: Android
+
+# Builds the signed UwULock APK for phones (arm64) and starts it in an emulator.
+# Only the push of a release tag (v*) is signed with the release key; scripts/release.mjs
+# takes that APK into the release. Pull requests, pushes to main and runs started by hand
+# are signed with a CI key (the UWULOCK_ANDROID_CI_KEYSTORE_* secrets, or a throwaway key
+# when they aren't there, as in pull requests from forks), so no APK of an unreleased
+# commit carries the release certificate. A CI build doesn't install over a released
+# UwULock, nor the other way round.
+#
+# The key never reaches the runner that built the APK: thousands of third-party build
+# scripts run there, and one of them could leave something behind that waits for it. A
+# separate job on a fresh runner signs with Android's own tools. (Modelled on UwUMail.)
+
+on:
+  push:
+    branches: [main]
+    # Path filters don't apply to tags: every release tag gets its release-signed build.
+    tags: ['v*']
+    paths-ignore:
+      ['**/*.md', 'docs/**', 'brand/**', 'release-notes/**', 'LICENSE', 'apps/extension/**']
+  # Pull requests only when they touch what goes into the APK; the emulator takes a while.
+  pull_request:
+    paths:
+      - 'apps/desktop/**'
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'pnpm-lock.yaml'
+      - 'scripts/mobile.mjs'
+      - 'scripts/android-smoke.sh'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  apk:
+    name: APK (arm64)
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      code: ${{ steps.version.outputs.code }}
+    steps:
+      # Every `uses:` is pinned to a commit, with the version in the comment.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: android
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: pnpm install --frozen-lockfile
+
+      - name: Version code
+        id: version
+        run: |
+          # major·10⁹ + minor·10⁷ + patch·10⁵ + run number, so every build and every release counts up.
+          node -e '
+            const v = require("./apps/desktop/src-tauri/tauri.conf.json").version;
+            const [maj, min, pat] = v.split("-")[0].split(".").map(Number);
+            const code = maj * 1e9 + min * 1e7 + pat * 1e5 + (Number(process.env.GITHUB_RUN_NUMBER) % 1e5);
+            console.log(`version=${v}`);
+            console.log(`code=${code}`);
+          ' >> "$GITHUB_OUTPUT"
+
+      # The checked-in wrapper jar runs first in the build; it must be an official Gradle release.
+      - uses: gradle/actions/wrapper-validation@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+
+      # Built without the signing key: thousands of third-party build scripts run here.
+      - name: Build
+        env:
+          UWULOCK_ANDROID_VERSION_CODE: ${{ steps.version.outputs.code }}
+        run: |
+          node scripts/mobile.mjs prepare
+          export NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          pnpm tauri android build --apk --target aarch64 --ci
+
+      - name: Find the APK
+        run: |
+          apk=$(find apps/desktop/src-tauri/gen/android/app/build/outputs/apk -name '*release*.apk' | head -n 1)
+          test -n "$apk" || { echo "::error::No APK was built"; exit 1; }
+          mkdir -p unsigned
+          cp "$apk" unsigned/UwULock-unsigned.apk
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: UwULock-Android-unsigned-${{ github.sha }}
+          retention-days: 1
+          if-no-files-found: error
+          path: unsigned/UwULock-unsigned.apk
+
+  sign:
+    name: Sign the APK
+    needs: apk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: UwULock-Android-unsigned-${{ github.sha }}
+          path: unsigned
+      # Only Android's own build tools see the key, and it's gone again right after. The release key
+      # only for the push of a release tag; everything else gets the CI key.
+      - name: Sign
+        env:
+          RELEASE: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+          KEYSTORE: ${{ (github.event_name == 'push' && github.ref_type == 'tag') && secrets.UWULOCK_ANDROID_KEYSTORE_BASE64 || secrets.UWULOCK_ANDROID_CI_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ (github.event_name == 'push' && github.ref_type == 'tag') && secrets.UWULOCK_ANDROID_KEYSTORE_PASSWORD || secrets.UWULOCK_ANDROID_CI_KEYSTORE_PASSWORD }}
+          # The certificate of every released UwULock APK (also in scripts/release.mjs); a different
+          # key must never slip in, and no CI build may carry it.
+          CERTIFICATE_SHA256: fd6323aea832996ed56a55d11cfcd26a61ecb159b3f9b980f1429b5de6500a1c
+          VERSION: ${{ needs.apk.outputs.version }}
+          CODE: ${{ needs.apk.outputs.code }}
+        run: |
+          apk=unsigned/UwULock-unsigned.apk
+          tools="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)"
+          keystore="$RUNNER_TEMP/uwulock-android.p12"
+          trap 'rm -f "$keystore"' EXIT
+          if [ -n "$KEYSTORE" ]; then
+            printf '%s' "$KEYSTORE" | base64 -d > "$keystore"
+          elif [ "$RELEASE" = true ]; then
+            echo "::error::No release keystore (UWULOCK_ANDROID_KEYSTORE_BASE64)"
+            exit 1
+          else
+            echo "::notice::No UWULOCK_ANDROID_CI_KEYSTORE_BASE64 secret: signing with a throwaway key."
+            KEYSTORE_PASSWORD="$(openssl rand -hex 16)"
+            export KEYSTORE_PASSWORD
+            "${JAVA_HOME:+$JAVA_HOME/bin/}keytool" -genkeypair -keystore "$keystore" -storetype PKCS12 -alias uwulock -keyalg RSA -keysize 3072 \
+              -validity 3650 -dname "CN=UwULock CI build" -storepass "$KEYSTORE_PASSWORD" -keypass "$KEYSTORE_PASSWORD"
+          fi
+          mkdir -p out
+          "$tools/zipalign" -f -p 4 "$apk" "$RUNNER_TEMP/aligned.apk"
+          signed="out/UwULock-$VERSION-$CODE.apk"
+          "$tools/apksigner" sign --ks "$keystore" --ks-type PKCS12 --ks-key-alias uwulock \
+            --ks-pass env:KEYSTORE_PASSWORD --key-pass env:KEYSTORE_PASSWORD --out "$signed" "$RUNNER_TEMP/aligned.apk"
+          "$tools/apksigner" verify --print-certs "$signed" | tee "$RUNNER_TEMP/certs.txt" | grep -i "SHA-256"
+          if [ "$RELEASE" = true ]; then
+            grep -qi "certificate SHA-256 digest: $CERTIFICATE_SHA256" "$RUNNER_TEMP/certs.txt" \
+              || { echo "::error::The APK isn't signed with UwULock's certificate"; exit 1; }
+          elif grep -qi "certificate SHA-256 digest: $CERTIFICATE_SHA256" "$RUNNER_TEMP/certs.txt"; then
+            echo "::error::A CI build carries the release certificate; the CI keystore secret holds the release key"
+            exit 1
+          fi
+          ls -la out
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: UwULock-Android-${{ github.sha }}
+          retention-days: 14
+          if-no-files-found: error
+          path: out/*.apk
+
+  smoke:
+    name: Smoke test (emulator)
+    needs: sign
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: UwULock-Android-${{ github.sha }}
+          path: out
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      # An x86_64 image translates the arm64 APK, like Chromebooks do.
+      - uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash scripts/android-smoke.sh out/*.apk smoke
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: UwULock-Android-smoke-${{ github.sha }}
+          retention-days: 7
+          path: smoke/
