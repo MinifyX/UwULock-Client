@@ -57,7 +57,7 @@ bitwarden.com or bitwarden.eu — with the same encryption the official apps use
 - **Playful.** Nyu, the cat, is a padlock now. Security warnings are never
   playful.
 
-> **Status: beta.** 0.4.0-beta.1 reads and writes: log in (with two-step
+> **Status: beta.** 0.4.0-beta.2 reads and writes: log in (with two-step
 > login), browse, search, copy, one-time codes — and create, edit and delete,
 > with a private Vaultwarden and one at work side by side. It fits
 > [UwULock Server](https://github.com/MinifyX/UwULock-Server) 0.4: items with
@@ -88,6 +88,8 @@ bitwarden.com or bitwarden.eu — with the same encryption the official apps use
 >   Android joined with one tap.
 > - On the phone too: Android (APK) and iPhone (unsigned IPA for
 >   sideloading), with fingerprint or face unlock ([phones](docs/mobile.md)).
+> - With UwULock Server 0.7: UwUSSH's and UwURDP's hosts, logins, keys,
+>   snippets and port forwards in sections of their own, to view and edit.
 > - Its own installer with Nyu, signed automatic updates, German and English.
 >
 > **With UwULock Server 0.6**: changes from your other devices
