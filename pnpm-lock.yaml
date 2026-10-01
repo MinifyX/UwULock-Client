@@ -26,6 +26,9 @@ importers:
       react-dom:
         specifier: ^18.3.1
         version: 18.3.1(react@18.3.1)
+      uqr:
+        specifier: ^0.1.3
+        version: 0.1.3
     devDependencies:
       '@tauri-apps/cli':
         specifier: ^2.0.0
@@ -60,6 +63,9 @@ importers:
       tldts:
         specifier: ^7.0.0
         version: 7.4.16
+      uqr:
+        specifier: ^0.1.3
+        version: 0.1.3
     devDependencies:
       '@types/chrome':
         specifier: ^0.1.0
@@ -1295,6 +1301,9 @@ packages:
     peerDependencies:
       browserslist: '>= 4.21.0'
 
+  uqr@0.1.3:
+    resolution: {integrity: sha512-0rjE8iEJe4YmT9TOhwsZtqCMRLc5DXZUI2UEYUUg63ikBkqqE5EYWaI0etFe/5KUcmcYwLih2RND1kq+hrUJXA==}
+
   vite-node@2.1.9:
     resolution: {integrity: sha512-AM9aQ/IPrW/6ENLQg3AGY4K1N2TGZdR5e4gu/MmmR2xR3Ll1+dib+nook92g4TV3PXVyeyxdWwtaCAiUL0hMxA==}
     engines: {node: ^18.0.0 || >=20.0.0}
@@ -2392,6 +2401,8 @@ snapshots:
       browserslist: 4.28.9
       escalade: 3.2.0
       picocolors: 1.1.1
+
+  uqr@0.1.3: {}
 
   vite-node@2.1.9(@types/node@22.20.3)(lightningcss@1.32.0):
     dependencies:

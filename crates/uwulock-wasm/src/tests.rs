@@ -950,3 +950,96 @@ fn an_item_is_shared_as_a_send_without_its_authenticator_key() {
     session::verify_reprompt("g1", PASSWORD).unwrap();
     assert!(extras::seal_share("g1", &options.to_string()).is_ok());
 }
+
+/// A Wi-Fi network (docs/wifi.md): listed as `wifi` with its SSID, never offered
+/// for filling, and saved as the secure note it is, every other field kept.
+#[test]
+fn a_wifi_network_is_listed_as_one_and_saved_as_a_note() {
+    use uwulock_core::vault::{Field, FieldKind};
+    let field = |name: &str, value: &str, kind: FieldKind| Field {
+        name: Some(Zeroizing::new(name.into())),
+        value: Some(Zeroizing::new(value.into())),
+        kind,
+        linked_id: None,
+    };
+    let account = account();
+    let mut item = Item::new(ItemKind::Note);
+    item.name = Zeroizing::new("Home".into());
+    item.fields = vec![
+        field("uwulock:type", "wifi", FieldKind::Text),
+        field("SSID", " uwu-net ", FieldKind::Text),
+        field("Password", "correct; horse", FieldKind::Hidden),
+        field("Security", "WPA2", FieldKind::Text),
+        field("Hidden network", "false", FieldKind::Boolean),
+        field("Router admin", "http://192.0.2.1", FieldKind::Text),
+    ];
+    let mut note = Item::new(ItemKind::Note);
+    note.name = Zeroizing::new("Plain".into());
+    unlocked(
+        &account,
+        vec![
+            cipher(&item, "w1", &account.user_key),
+            cipher(&note, "n1", &account.user_key),
+        ],
+    );
+
+    let items = parse(&view::items().unwrap());
+    let wifi = items
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["id"] == "w1")
+        .unwrap();
+    assert_eq!(wifi["kind"], "wifi");
+    assert_eq!(wifi["subtitle"], "uwu-net");
+    let plain = items
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["id"] == "n1")
+        .unwrap();
+    assert_eq!(plain["kind"], "note");
+
+    // Autofill knows it only as the note it is, and offers notes nowhere.
+    let index = parse(&autofill::index().unwrap());
+    let entry = index
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["id"] == "w1")
+        .unwrap();
+    assert_eq!(entry["kind"], "note");
+
+    assert_eq!(view::reveal("w1", "field:2", 0).unwrap(), "correct; horse");
+
+    // The editor's draft: the SSID changed, the password left alone (`from`).
+    let draft = json!({
+        "kind": "note", "name": "Home", "notes": null, "favorite": false, "reprompt": false,
+        "folderId": null,
+        "fields": [
+            { "name": "uwulock:type", "kind": "text", "value": "wifi", "from": 0 },
+            { "name": "SSID", "kind": "text", "value": "uwu-net-5g", "from": 1 },
+            { "name": "Password", "kind": "hidden", "value": null, "from": 2 },
+            { "name": "Security", "kind": "text", "value": "WPA2", "from": 3 },
+            { "name": "Hidden network", "kind": "boolean", "value": "false", "from": 4 },
+            { "name": "Router admin", "kind": "text", "value": "http://192.0.2.1", "from": 5 },
+        ],
+    });
+    let mut sealed = parse(&draft::seal_draft("w1", &draft.to_string(), NOW).unwrap());
+    assert_eq!(
+        sealed["type"], 2,
+        "still a secure note for Bitwarden's apps"
+    );
+    sealed["id"] = "w1".into();
+    session::open(&sync(&account, vec![sealed])).unwrap();
+    let detail = parse(&view::item("w1").unwrap());
+    assert_eq!(detail["summary"]["kind"], "wifi");
+    assert_eq!(detail["summary"]["subtitle"], "uwu-net-5g");
+    assert_eq!(detail["fields"].as_array().unwrap().len(), 6);
+    assert_eq!(detail["fields"][5]["name"], "Router admin");
+    assert_eq!(view::reveal("w1", "field:2", 0).unwrap(), "correct; horse");
+
+    // `wifi` is no kind of the vault's: a draft has to say `note`.
+    let wrong = json!({ "kind": "wifi", "name": "Home", "fields": [] });
+    assert!(draft::seal_draft("", &wrong.to_string(), NOW).is_err());
+}

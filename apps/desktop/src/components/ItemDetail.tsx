@@ -19,15 +19,17 @@ import {
 import { errorText, toastError } from '../lib/errors';
 import { charClasses, copiedText, spacedCode, when } from '../lib/format';
 import { t, useLanguage } from '../lib/i18n';
-import { IDENTITY_LABEL, KIND_LABEL } from '../lib/items';
+import { IDENTITY_LABEL, KIND_LABEL, SECURITY_LABEL } from '../lib/items';
 import { getSettings } from '../lib/settings';
 import { toast } from '../lib/toast';
 import { setMaskedState, useUwu } from '../lib/uwu';
+import { ENTERPRISE_KEYS, isEnterprise, readWifi, type WifiView } from '../lib/wifi';
 import { Icon } from './Icon';
 import { IconMenu, ReminderCard, ShareSendDialog, VersionsCard } from './ItemExtras';
 import { ItemTile } from './ItemTile';
 import { Modal } from './Modal';
 import { PasswordInput } from './PasswordInput';
+import { WifiShare } from './WifiShare';
 
 async function copy(id: string, field: string) {
   try {
@@ -225,6 +227,86 @@ function Section({ title, children }: { title?: string; children: ReactNode }) {
   );
 }
 
+/**
+ * A Wi-Fi network's own values (docs/wifi.md), with copy buttons and the QR code. `actions`
+ * is a slot for what a platform adds next to the code (the phone apps' *Connect*).
+ */
+function WifiSection({
+  id,
+  wifi,
+  actions,
+  onShare,
+}: {
+  id: string;
+  wifi: WifiView;
+  actions?: ReactNode;
+  onShare: () => void;
+}) {
+  useLanguage();
+  const enterprise: [(typeof ENTERPRISE_KEYS)[number], string][] = [
+    ['eap', t('EAP-Methode')],
+    ['phase2', t('Phase 2')],
+    ['identity', t('Identität')],
+    ['anonymous', t('Anonyme Identität')],
+    ['ca', t('CA-Zertifikat')],
+  ];
+  return (
+    <Section>
+      <Row
+        label={t('Netzwerkname (SSID)')}
+        mono
+        actions={
+          wifi.ssid && wifi.from.ssid !== undefined ? (
+            <CopyButton id={id} field={`field:${wifi.from.ssid}`} label="SSID" />
+          ) : undefined
+        }
+      >
+        {wifi.ssid || <span className="muted">—</span>}
+      </Row>
+      {wifi.password?.hasValue && wifi.security !== 'None' && (
+        <SecretRow id={id} field={`field:${wifi.password.index}`} label={t('Passwort')} />
+      )}
+      <Row label={t('Sicherheit')}>
+        {wifi.security ? (
+          t(SECURITY_LABEL[wifi.security] ?? wifi.security)
+        ) : (
+          <span className="muted">—</span>
+        )}
+      </Row>
+      <Row label={t('Verstecktes Netzwerk')}>
+        <span className="bool" data-on={wifi.hidden || undefined}>
+          {wifi.hidden ? t('Ja') : t('Nein')}
+        </span>
+      </Row>
+      {isEnterprise(wifi.security) &&
+        enterprise.map(([key, label]) => {
+          const value = wifi[key];
+          const from = wifi.from[key];
+          return value ? (
+            <Row
+              key={key}
+              label={label}
+              actions={
+                from !== undefined ? (
+                  <CopyButton id={id} field={`field:${from}`} label={label} />
+                ) : undefined
+              }
+            >
+              {value === 'none' ? t('Keine') : value}
+            </Row>
+          ) : null;
+        })}
+      <div className="wifi-actions">
+        {actions}
+        <button className="quiet" onClick={onShare} aria-haspopup="dialog" data-wifi-share>
+          <Icon name="qr" size={15} />
+          {t('Als QR-Code teilen')}
+        </button>
+      </div>
+    </Section>
+  );
+}
+
 /** The master password again, before an item with re-prompt shows anything. */
 function Reprompt({ id, onPassed }: { id: string; onPassed: () => void }) {
   useLanguage();
@@ -346,10 +428,13 @@ export function ItemDetail({
   summary,
   overview,
   onEdit,
+  wifiActions,
 }: {
   summary: ItemSummary;
   overview: Overview | null;
   onEdit: () => void;
+  /** More buttons next to a Wi-Fi network's QR code, where the platform can do more. */
+  wifiActions?: (wifi: WifiView) => ReactNode;
 }) {
   useLanguage();
   const [detail, setDetail] = useState<Detail | null>(null);
@@ -357,6 +442,7 @@ export function ItemDetail({
   const [showHistory, setShowHistory] = useState(false);
   const [asking, setAsking] = useState<null | 'trash' | 'permanent'>(null);
   const [sharing, setSharing] = useState(false);
+  const [sharingWifi, setSharingWifi] = useState(false);
   const [busy, setBusy] = useState(false);
   const uwu = useUwu();
   const id = summary.id;
@@ -397,6 +483,8 @@ export function ItemDetail({
     .map((c) => c.name);
 
   const d = detail;
+  const wifi = d && !d.locked && summary.kind === 'wifi' ? readWifi(d.fields ?? []) : null;
+  const fields = wifi ? wifi.others : (d?.fields ?? []);
   return (
     <article className="detail" aria-label={summary.name}>
       <header className="detail-head">
@@ -531,6 +619,10 @@ export function ItemDetail({
 
       {sharing && d && !d.locked && (
         <ShareSendDialog summary={summary} detail={d} onClose={() => setSharing(false)} />
+      )}
+
+      {sharingWifi && wifi && (
+        <WifiShare itemId={id} wifi={wifi} onClose={() => setSharingWifi(false)} />
       )}
 
       {error && (
@@ -703,6 +795,15 @@ export function ItemDetail({
             </Section>
           )}
 
+          {wifi && (
+            <WifiSection
+              id={id}
+              wifi={wifi}
+              actions={wifiActions?.(wifi)}
+              onShare={() => setSharingWifi(true)}
+            />
+          )}
+
           {d.notes && (
             <Section title={t('Notizen')}>
               <div className="notes">
@@ -712,9 +813,9 @@ export function ItemDetail({
             </Section>
           )}
 
-          {d.fields && d.fields.length > 0 && (
+          {fields.length > 0 && (
             <Section title={t('Eigene Felder')}>
-              {d.fields.map((field) => {
+              {fields.map((field) => {
                 const label = field.name || t('Feld {n}', { n: field.index + 1 });
                 if (field.kind === 'hidden' && field.hasValue)
                   return (

@@ -21,6 +21,7 @@ const TYPES: { type: ItemKind; label: string }[] = [
   { type: 'identity', label: N_('Identitäten') },
   { type: 'note', label: N_('Notizen') },
   { type: 'ssh-key', label: N_('SSH-Schlüssel') },
+  { type: 'wifi', label: N_('WLAN') },
 ];
 
 function matches(item: ItemSummary, query: string): boolean {

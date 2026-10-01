@@ -1,0 +1,4 @@
+{
+  "de": "- WLAN-Netze als eigener Eintragstyp: Netzwerkname, Passwort, Sicherheit und bei Enterprise-Netzen EAP-Methode, Identität und Zertifikat, mit eigenem Symbol und Filter. In Bitwardens Apps bleibt ein WLAN eine sichere Notiz mit Feldern\n- WLAN als QR-Code teilen: Handys treten dem Netz mit der Kamera bei; der Code entsteht auf deinem Gerät\n- Browser-Erweiterung: WLAN-Netze ansehen, kopieren und als QR-Code zeigen – zum Ausfüllen werden sie nie angeboten",
+  "en": "- Wi-Fi networks as an item type of their own: network name, password, security and for Enterprise networks the EAP method, identity and certificate, with their own icon and filter. In Bitwarden's apps a network stays a secure note with fields\n- Share a Wi-Fi network as a QR code: phones join it with their camera; the code is made on your device\n- Browser extension: view and copy Wi-Fi networks and show their QR code – they are never offered for filling"
+}

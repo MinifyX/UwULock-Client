@@ -45,6 +45,7 @@ const TYPES: { type: ItemKind; label: string; icon: IconName }[] = [
   { type: 'identity', label: N_('Identitäten'), icon: 'id' },
   { type: 'note', label: N_('Notizen'), icon: 'note' },
   { type: 'ssh-key', label: N_('SSH-Schlüssel'), icon: 'key' },
+  { type: 'wifi', label: N_('WLAN'), icon: 'wifi' },
 ];
 
 function matches(filter: Filter, item: ItemSummary, due: Set<string>): boolean {

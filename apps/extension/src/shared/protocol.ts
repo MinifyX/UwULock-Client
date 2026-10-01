@@ -27,7 +27,11 @@ export type VaultState = 'logged-out' | 'locked' | 'unlocked';
 
 export type ServerKind = 'bitwarden-us' | 'bitwarden-eu' | 'self-hosted';
 
-export type ItemKind = 'login' | 'note' | 'card' | 'identity' | 'ssh-key';
+/**
+ * `wifi` is a secure note with UwULock's marker field (docs/wifi.md): the popup lists and shows
+ * it as a network; autofill only ever sees the note it is, and offers notes nowhere.
+ */
+export type ItemKind = 'login' | 'note' | 'card' | 'identity' | 'ssh-key' | 'wifi';
 
 /** An item as a web page may see it listed: never a secret. */
 export type PageItem = {

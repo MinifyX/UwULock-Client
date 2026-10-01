@@ -28,7 +28,8 @@ release checks the download (see the [install guide](install.md)).
   search, favourites, kinds, folders, the trash. Copy username, password and the one-time code
   (live, with its countdown), reveal, open the site. Create, edit and delete logins, notes,
   cards and identities; the password history of an item; a generator for passwords and
-  passphrases that keeps its settings.
+  passphrases that keeps its settings. Wi-Fi networks show with their own icon and filter,
+  to copy from and as a QR code for a phone; they are never filled ([wifi.md](wifi.md)).
 - **Filling**: a small UwULock button in login fields opens the matching logins; the popup, the
   context menu and **Ctrl+Shift+L** fill too. Addresses match the way Bitwarden matches them
   (domain, host, starts with, exact, regular expression, never) with Bitwarden's equivalent
@@ -215,7 +216,8 @@ aktualisiert sich nicht selbst: Die neuere Datei aus dem nächsten Release insta
 Sie meldet dich an (mit zweistufiger Anmeldung), entsperrt mit Master-Passwort oder PIN, zeigt
 zuerst die Logins der Seite im Tab und dann den ganzen Tresor, füllt Logins, Karten und Adressen
 aus (Knopf im Feld, Popup, Kontextmenü, **Strg+Umschalt+L**), bietet nach dem Anmelden an, den
-Login zu speichern oder das Passwort zu aktualisieren, und speichert Passkeys in deinem Tresor –
+Login zu speichern oder das Passwort zu aktualisieren, zeigt WLAN-Netze mit QR-Code zum Teilen
+(ausgefüllt werden sie nie), und speichert Passkeys in deinem Tresor –
 im Format von Bitwarden, sodass Passkeys aus Bitwardens Apps hier funktionieren und umgekehrt.
 Dein Master-Passwort verlässt den Browser nie, Schlüssel gibt es nur im Hintergrund der
 Erweiterung, und eine Webseite bekommt nur die Werte des Eintrags, den du ausgewählt hast – und

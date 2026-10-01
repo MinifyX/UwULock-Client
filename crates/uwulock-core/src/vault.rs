@@ -413,7 +413,50 @@ impl Item {
         }
         Ok(())
     }
+
+    /// The value of the first custom field named exactly `name`.
+    pub fn field_value(&self, name: &str) -> Option<&Secret> {
+        self.fields
+            .iter()
+            .find(|f| f.name.as_ref().is_some_and(|n| n.as_str() == name))
+            .and_then(|f| f.value.as_ref())
+    }
+
+    /// UwULock's own type of this item, on top of Bitwarden's: a secure note
+    /// with a text field [`TYPE_MARKER`]. Bitwarden's apps show such an item
+    /// as a note with fields; it stays a note on the wire (type 2), and a
+    /// login or card with the field stays what it is.
+    pub fn own_type(&self) -> Option<&'static str> {
+        if self.kind != ItemKind::Note {
+            return None;
+        }
+        let marked = |value: &str| {
+            self.fields.iter().any(|f| {
+                f.kind == FieldKind::Text
+                    && f.name.as_ref().is_some_and(|n| n.as_str() == TYPE_MARKER)
+                    && f.value
+                        .as_ref()
+                        .is_some_and(|v| v.trim().eq_ignore_ascii_case(value))
+            })
+        };
+        marked(WIFI_TYPE).then_some(WIFI_TYPE)
+    }
+
+    /// A Wi-Fi network (docs/wifi.md).
+    pub fn is_wifi(&self) -> bool {
+        self.own_type() == Some(WIFI_TYPE)
+    }
 }
+
+/// The name of the custom field that marks UwULock's own item types
+/// (docs/wifi.md). Stable and never translated: every UwULock app reads it.
+pub const TYPE_MARKER: &str = "uwulock:type";
+
+/// The marker's value for a Wi-Fi network.
+pub const WIFI_TYPE: &str = "wifi";
+
+/// The custom field with a Wi-Fi network's name (SSID).
+pub const WIFI_SSID: &str = "SSID";
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Folder {
