@@ -29,9 +29,11 @@ always gets the newest stable one.
 | Fedora / openSUSE          | `UwULock-linux-x64.rpm` · ARM: `UwULock-linux-arm64.rpm`             |
 | Linux, portable            | `UwULock-linux-x64-portable.tar.gz` · ARM: `…-arm64-portable.tar.gz` |
 | Arch Linux                 | `PKGBUILD` (`makepkg -si`); an AUR package `uwulock-bin` is planned  |
+| Android 10 or newer        | `UwULock-android.apk`                                                |
+| iPhone (iOS 17 or newer)   | `UwULock-ios.ipa` (unsigned, sideload)                               |
 
 The `UwULock-update-…` files next to them are for the in-app updater; you
-don't need them.
+don't need them. Phones: see [UwULock on Android and iPhone](mobile.md).
 
 **Checking the download (optional).** Each release has a `SHA256SUMS.txt`. On
 macOS and Linux: `shasum -a 256 -c SHA256SUMS.txt --ignore-missing` in the
@@ -211,9 +213,11 @@ holt also immer die neueste stabile.
 | Fedora / openSUSE          | `UwULock-linux-x64.rpm` · ARM: `UwULock-linux-arm64.rpm`             |
 | Linux, portabel            | `UwULock-linux-x64-portable.tar.gz` · ARM: `…-arm64-portable.tar.gz` |
 | Arch Linux                 | `PKGBUILD` (`makepkg -si`); ein AUR-Paket `uwulock-bin` ist geplant  |
+| Android 10 oder neuer      | `UwULock-android.apk`                                                |
+| iPhone (ab iOS 17)         | `UwULock-ios.ipa` (unsigniert, Sideload)                             |
 
 Die `UwULock-update-…`-Dateien daneben sind für den Updater in der App; du
-brauchst sie nicht.
+brauchst sie nicht. Handys: siehe [UwULock auf Android und iPhone](mobile.md#uwulock-auf-android-und-iphone).
 
 **Download prüfen (optional).** Jedes Release hat eine `SHA256SUMS.txt`. Unter
 macOS und Linux im Download-Ordner: `shasum -a 256 -c SHA256SUMS.txt

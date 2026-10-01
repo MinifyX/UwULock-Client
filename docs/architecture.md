@@ -275,6 +275,21 @@ is not offered: a keychain item that only opens with a finger needs an Apple
 Developer ID signature and an entitlement, and a prompt in front of a key
 kept elsewhere would protect nothing.
 
+## Phones
+
+The same app builds for Android and iOS (`cfg(mobile)` in
+`apps/desktop/src-tauri`); updater, tray and the computer's lock signals are
+desktop only. `phone.rs` locks after a minute in the background (Tauri's
+`Suspended`/`Resumed`). What needs the phone's own APIs goes through the local
+plugin `crates/tauri-plugin-uwulock-mobile` (Kotlin and Swift): biometric
+unlock, the clipboard, the system bars, saving into Downloads. Biometric unlock
+reuses Windows Hello's place in `account.json` with the prefix `m1:`: 32 random
+bytes behind the biometric check (an Android Keystore AES key that needs a
+strong biometric and dies with a new enrolment; an iOS Keychain item with
+`biometryCurrentSet`) are stretched into the key that seals the user key. Plugin
+calls block until the phone answers and so never run on the main thread.
+Details: [mobile.md](mobile.md).
+
 ## Suite parts
 
 Taken from UwURDP unchanged or nearly: the installer (`apps/setup`), the
