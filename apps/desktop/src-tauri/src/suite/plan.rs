@@ -958,7 +958,19 @@ fn host_port(address: &str, port: u64) -> String {
 /// redirection, as UwURDP's importer treats such files. Values can't break
 /// out of their line.
 pub(crate) fn rdp_file(host: &Value, identity: Option<&Value>) -> String {
-    let clean = |s: &str| s.replace(['\r', '\n'], " ");
+    // Control characters (also U+0085) and Unicode line breaks: a reader
+    // that splits on any of them must still see one line.
+    let clean = |s: &str| {
+        s.chars()
+            .map(|c| {
+                if c.is_control() || matches!(c, '\u{2028}' | '\u{2029}') {
+                    ' '
+                } else {
+                    c
+                }
+            })
+            .collect::<String>()
+    };
     let rdp = host.get("rdp").cloned().unwrap_or_else(|| json!({}));
     let mut lines: Vec<String> = Vec::new();
     let port = int_of(host, "port").unwrap_or(3389);
@@ -1849,6 +1861,10 @@ mod tests {
         assert!(text.contains("gatewayhostname:s:gw.example.com\r\n"));
         assert!(text.contains("gatewayusagemethod:i:2\r\n"));
         assert!(!text.to_lowercase().contains("password"));
+        // Unicode line breaks and other controls don't make lines either.
+        let host = json!({ "address": "a.example.com\u{2028}x\u{85}y\u{2029}z\u{0b}w" });
+        let text = rdp_file(&host, None);
+        assert!(text.contains("full address:s:a.example.com x y z w:3389\r\n"));
     }
 
     #[test]

@@ -106,6 +106,14 @@ export function hostPort(address: string, port: number): string {
     : `${address}:${port}`;
 }
 
+/**
+ * One line of text for the clipboard: control characters (also U+0085) and
+ * Unicode line breaks out, so a pasted command can't run a second one.
+ */
+export function oneLine(text: string): string {
+  return text.replace(/[\p{Cc}\u2028\u2029]/gu, '');
+}
+
 /** Words a shell takes as they are; anything else goes in single quotes. */
 export function shellQuote(word: string): string {
   if (word === '') return "''";
@@ -115,8 +123,8 @@ export function shellQuote(word: string): string {
 /** `ssh -p 2222 user@host`: what to type to reach a host. */
 export function sshCommand(host: Json | null, identity: Json | null): string {
   const port = num(host, 'port', 22);
-  const user = str(identity, 'username');
-  const target = (user ? `${user}@` : '') + str(host, 'address');
+  const user = oneLine(str(identity, 'username'));
+  const target = (user ? `${user}@` : '') + oneLine(str(host, 'address'));
   // A target starting with `-` would be one of ssh's options (`-oProxyCommand=…`).
   return [
     'ssh',
@@ -128,7 +136,7 @@ export function sshCommand(host: Json | null, identity: Json | null): string {
 
 /** `host:port` for a remote desktop client. */
 export function rdpAddress(host: Json | null): string {
-  return hostPort(str(host, 'address'), num(host, 'port', 3389));
+  return hostPort(oneLine(str(host, 'address')), num(host, 'port', 3389));
 }
 
 export function byId(records: SuiteRecord[]): Map<string, SuiteRecord> {

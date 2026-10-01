@@ -44,7 +44,7 @@ export const WORKSPACE_LABEL: Record<string, string> = {
 };
 
 export function workspaceLabel(workspace: string): string {
-  const known = WORKSPACE_LABEL[workspace];
+  const known = Object.hasOwn(WORKSPACE_LABEL, workspace) ? WORKSPACE_LABEL[workspace] : undefined;
   return known ? t(known) : workspace;
 }
 
@@ -57,7 +57,7 @@ export const AUTH_LABEL: Record<string, string> = {
 };
 
 export function authLabel(auth: string): string {
-  const known = AUTH_LABEL[auth];
+  const known = Object.hasOwn(AUTH_LABEL, auth) ? AUTH_LABEL[auth] : undefined;
   return known ? t(known) : auth;
 }
 

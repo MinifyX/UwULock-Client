@@ -180,10 +180,12 @@ under the extras key. `seq`, the cursor and which records it hands out are its o
   Downloads with the default mode (`0644` under the usual umask); an unencrypted key in a home
   folder that others can enter. _Fixed:_ on Linux and macOS the file is created `0600`
   (`save_download_private`, `create_new`), which is also what `ssh` insists on.
-- **CL-L21 Low, the copied ssh command could carry an option.** `shellQuote` stops the shell, not
-  ssh: an address like `-oProxyCommand=…` (with no username) became `ssh '-oProxyCommand=…'`,
-  which runs a command when pasted. _Fixed:_ a target starting with `-` gets `--` in front
-  (`apps/desktop/test/suite.test.ts`).
+- **CL-L21 Low, the copied ssh command could carry an option or a second line.** `shellQuote`
+  stops the shell, not ssh: an address like `-oProxyCommand=…` (with no username) became
+  `ssh '-oProxyCommand=…'`, which runs a command when pasted; a line break in the address or user
+  (also U+0085, U+2028, U+2029) split the pasted text. _Fixed:_ control characters and Unicode
+  line breaks are removed (`oneLine`, also for the copied RDP address), and a target starting
+  with `-` gets `--` in front (`apps/desktop/test/suite.test.ts`). Same as the web vault's WV-5.
 - **CL-L22 Low, a key's file name came from its label.** `safe_file_name` keeps the extension, so
   a key labelled `deploy.bat` was saved as `deploy.bat`. _Fixed:_ a name that
   `runs_when_opened` has its dots replaced (`deploy_bat`, `deploy_bat.pub`).
@@ -193,6 +195,16 @@ under the extras key. `seq`, the cursor and which records it hands out are its o
 - **CL-L24 Low, one record under two ids.** The AAD holds the id's 16 bytes, so the same record
   opened under `ABCD…`, `{abcd…}` or `urn:uuid:…` too, and the app's map (keyed by the text)
   listed it twice. _Fixed:_ an id that isn't in the usual lowercase hyphenated form is ignored.
+
+- **CL-L27 Low, `.rdp` values kept other line breaks.** Only CR and LF were replaced; a reader
+  that also splits on U+2028/U+2029 or U+0085 saw a line of the attacker's choosing. _Fixed:_
+  every control character and Unicode line break becomes a space (web vault: WV-8).
+- **CL-L28 Low, labels looked up by the record's own text.** `workspaceLabel`, `authLabel` and
+  the kind chip read a plain object by a value from the record, so `auth_type: "constructor"`
+  rendered a function. _Fixed:_ `Object.hasOwn` first. Secret rows (password, private key,
+  passphrase) appear only when the pointer leads to a record of kind `secret`; Rust checked the
+  kind already (web vault: WV-11). The cascade of a deleted identity or key takes only records of
+  kind `secret` along (WV-6: already so here).
 
 ### Open Lows and Info
 
