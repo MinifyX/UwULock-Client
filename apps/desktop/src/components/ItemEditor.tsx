@@ -19,9 +19,19 @@ import {
   IDENTITY_LABEL,
   KIND_LABEL,
   MATCH_LABEL,
+  SECURITY_LABEL,
 } from '../lib/items';
 import { toast } from '../lib/toast';
 import { createMaskedAddress, has, linkMaskedAddress, useUwu } from '../lib/uwu';
+import {
+  EAP_METHODS,
+  isEnterprise,
+  PHASE2_METHODS,
+  readWifi,
+  SECURITIES,
+  wifiFields,
+  type WifiView,
+} from '../lib/wifi';
 import { useCloseGuard } from './CloseGuard';
 import { GeneratorDialog } from './GeneratorDialog';
 import { Icon } from './Icon';
@@ -48,6 +58,20 @@ type FieldRow = {
   from: number | null;
 };
 
+/** A Wi-Fi network's own fields; the editor's other fields are the item's other ones. */
+type WifiForm = {
+  ssid: string;
+  password: Sec;
+  security: string;
+  hidden: boolean;
+  eap: string;
+  phase2: string;
+  identity: string;
+  anonymous: string;
+  ca: string;
+  from: WifiView['from'];
+};
+
 type Form = {
   name: string;
   folderId: string;
@@ -70,6 +94,7 @@ type Form = {
   publicKey: string;
   fingerprint: string;
   fields: FieldRow[];
+  wifi: WifiForm;
 };
 
 function emptyForm(kind: ItemKind): Form {
@@ -95,6 +120,29 @@ function emptyForm(kind: ItemKind): Form {
     publicKey: '',
     fingerprint: '',
     fields: [],
+    wifi: {
+      ssid: '',
+      password: keep(false),
+      security: 'WPA2',
+      hidden: false,
+      eap: 'PEAP',
+      phase2: 'MSCHAPV2',
+      identity: '',
+      anonymous: '',
+      ca: '',
+      from: {},
+    },
+  };
+}
+
+function fieldRow(field: NonNullable<Detail['fields']>[number]): FieldRow {
+  return {
+    key: field.index + 1,
+    name: field.name ?? '',
+    kind: field.kind,
+    value:
+      field.kind === 'hidden' ? keep(field.hasValue) : { mode: 'value', value: field.value ?? '' },
+    from: field.index,
   };
 }
 
@@ -134,20 +182,37 @@ function formOf(summary: ItemSummary, detail: Detail): Form {
     form.publicKey = detail.sshKey.publicKey ?? '';
     form.fingerprint = detail.sshKey.fingerprint ?? '';
   }
-  form.fields = (detail.fields ?? []).map((field) => ({
-    key: field.index + 1,
-    name: field.name ?? '',
-    kind: field.kind,
-    value:
-      field.kind === 'hidden' ? keep(field.hasValue) : { mode: 'value', value: field.value ?? '' },
-    from: field.index,
-  }));
+  if (summary.kind === 'wifi') {
+    const wifi = readWifi(detail.fields ?? []);
+    const password = wifi.password;
+    form.wifi = {
+      ssid: wifi.ssid,
+      password: !password
+        ? keep(false)
+        : password.kind === 'hidden'
+          ? keep(password.hasValue)
+          : { mode: 'value', value: password.value ?? '' },
+      security: wifi.security || 'WPA2',
+      hidden: wifi.hidden,
+      // An Enterprise network without a method gets the usual one shown, and saved.
+      eap: wifi.eap || (isEnterprise(wifi.security) ? '' : 'PEAP'),
+      phase2: wifi.phase2 || (isEnterprise(wifi.security) ? '' : 'MSCHAPV2'),
+      identity: wifi.identity,
+      anonymous: wifi.anonymous,
+      ca: wifi.ca,
+      from: wifi.from,
+    };
+    form.fields = wifi.others.map(fieldRow);
+    return form;
+  }
+  form.fields = (detail.fields ?? []).map(fieldRow);
   return form;
 }
 
 function draftOf(form: Form, kind: ItemKind): Draft {
   const draft: Draft = {
-    kind,
+    // A Wi-Fi network is a secure note to the vault.
+    kind: kind === 'wifi' ? 'note' : kind,
     name: form.name.trim(),
     notes: form.notes,
     favorite: form.favorite,
@@ -191,6 +256,24 @@ function draftOf(form: Form, kind: ItemKind): Draft {
       }
     }
     draft.identity = values;
+  }
+  if (kind === 'wifi') {
+    const wifi = form.wifi;
+    draft.fields = wifiFields(
+      {
+        ssid: wifi.ssid.trim(),
+        password: sent(wifi.password),
+        security: wifi.security,
+        hidden: wifi.hidden,
+        eap: wifi.eap,
+        phase2: wifi.phase2,
+        identity: wifi.identity,
+        anonymous: wifi.anonymous,
+        ca: wifi.ca,
+        from: wifi.from,
+      },
+      draft.fields,
+    );
   }
   if (kind === 'ssh-key') {
     draft.sshKey = {
@@ -337,7 +420,7 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
   const [loading, setLoading] = useState(Boolean(summary));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [generator, setGenerator] = useState<null | 'password'>(null);
+  const [generator, setGenerator] = useState<null | 'password' | 'wifi'>(null);
   const [nextKey, setNextKey] = useState(1000);
   /** A masked address made here for a new item, linked to it once it is saved. */
   const [newMasked, setNewMasked] = useState<string | null>(null);
@@ -367,6 +450,15 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
   }, [summary]);
 
   const set = (patch: Partial<Form>) => setForm((current) => ({ ...current, ...patch }));
+  const setWifi = (patch: Partial<WifiForm>) =>
+    setForm((current) => ({ ...current, wifi: { ...current.wifi, ...patch } }));
+  /** The SSID, and the name with it as long as the name was the SSID (or empty). */
+  const setSsid = (ssid: string) =>
+    setForm((current) => ({
+      ...current,
+      name: !current.name.trim() || current.name === current.wifi.ssid ? ssid : current.name,
+      wifi: { ...current.wifi, ssid },
+    }));
   const dirty = useMemo(() => JSON.stringify(form) !== initial, [form, initial]);
   const guard = useCloseGuard(dirty && !busy, onClose);
 
@@ -732,6 +824,142 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
               </>
             )}
 
+            {kind === 'wifi' && (
+              <>
+                <div className="editor-row">
+                  <Field label={t('Netzwerkname (SSID)')}>
+                    <input
+                      type="text"
+                      value={form.wifi.ssid}
+                      spellCheck={false}
+                      autoComplete="off"
+                      maxLength={64}
+                      onChange={(e) => setSsid(e.target.value)}
+                    />
+                  </Field>
+                  <Field label={t('Sicherheit')}>
+                    <select
+                      value={form.wifi.security}
+                      onChange={(e) => setWifi({ security: e.target.value })}
+                    >
+                      {SECURITIES.map((security) => (
+                        <option key={security} value={security}>
+                          {t(SECURITY_LABEL[security] ?? security)}
+                        </option>
+                      ))}
+                      {!(SECURITIES as readonly string[]).includes(form.wifi.security) && (
+                        <option value={form.wifi.security}>{form.wifi.security}</option>
+                      )}
+                    </select>
+                  </Field>
+                </div>
+                {form.wifi.security !== 'None' && (
+                  <SecretField
+                    label={t('WLAN-Passwort')}
+                    secret={form.wifi.password}
+                    onChange={(password) => setWifi({ password })}
+                    itemId={form.wifi.from.password === undefined ? null : id}
+                    field={
+                      form.wifi.from.password === undefined
+                        ? undefined
+                        : `field:${form.wifi.from.password}`
+                    }
+                  >
+                    <button
+                      type="button"
+                      className="icon-button"
+                      onClick={() => setGenerator('wifi')}
+                      title={t('Passwort-Generator')}
+                      aria-label={t('Passwort-Generator')}
+                    >
+                      <Icon name="dice" size={15} />
+                    </button>
+                  </SecretField>
+                )}
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={form.wifi.hidden}
+                    onChange={(e) => setWifi({ hidden: e.target.checked })}
+                  />
+                  <span>{t('Verstecktes Netzwerk (sendet seinen Namen nicht)')}</span>
+                </label>
+                {isEnterprise(form.wifi.security) && (
+                  <fieldset className="editor-list">
+                    <legend>{t('Enterprise (802.1X)')}</legend>
+                    <div className="editor-row">
+                      <Field label={t('EAP-Methode')}>
+                        <select
+                          value={form.wifi.eap}
+                          onChange={(e) => setWifi({ eap: e.target.value })}
+                        >
+                          <option value="">{t('Keine Angabe')}</option>
+                          {EAP_METHODS.map((method) => (
+                            <option key={method} value={method}>
+                              {method}
+                            </option>
+                          ))}
+                          {form.wifi.eap &&
+                            !(EAP_METHODS as readonly string[]).includes(form.wifi.eap) && (
+                              <option value={form.wifi.eap}>{form.wifi.eap}</option>
+                            )}
+                        </select>
+                      </Field>
+                      <Field label={t('Phase 2')}>
+                        <select
+                          value={form.wifi.phase2}
+                          onChange={(e) => setWifi({ phase2: e.target.value })}
+                        >
+                          <option value="">{t('Keine Angabe')}</option>
+                          {PHASE2_METHODS.map((method) => (
+                            <option key={method} value={method}>
+                              {method === 'none' ? t('Keine') : method}
+                            </option>
+                          ))}
+                          {form.wifi.phase2 &&
+                            !(PHASE2_METHODS as readonly string[]).includes(form.wifi.phase2) && (
+                              <option value={form.wifi.phase2}>{form.wifi.phase2}</option>
+                            )}
+                        </select>
+                      </Field>
+                    </div>
+                    <div className="editor-row">
+                      <Field label={t('Identität')}>
+                        <input
+                          type="text"
+                          value={form.wifi.identity}
+                          spellCheck={false}
+                          autoComplete="off"
+                          onChange={(e) => setWifi({ identity: e.target.value })}
+                        />
+                      </Field>
+                      <Field label={t('Anonyme Identität')}>
+                        <input
+                          type="text"
+                          value={form.wifi.anonymous}
+                          spellCheck={false}
+                          autoComplete="off"
+                          onChange={(e) => setWifi({ anonymous: e.target.value })}
+                        />
+                      </Field>
+                    </div>
+                    <Field
+                      label={t('CA-Zertifikat')}
+                      hint={t('Die Domain des Servers oder ein Hinweis, welches Zertifikat gilt.')}
+                    >
+                      <input
+                        type="text"
+                        value={form.wifi.ca}
+                        spellCheck={false}
+                        autoComplete="off"
+                        onChange={(e) => setWifi({ ca: e.target.value })}
+                      />
+                    </Field>
+                  </fieldset>
+                )}
+              </>
+            )}
+
             <Field label={t('Notizen')}>
               <textarea
                 rows={kind === 'note' ? 8 : 3}
@@ -881,7 +1109,8 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
         <GeneratorDialog
           onClose={() => setGenerator(null)}
           onUse={(password) => {
-            set({ password: { mode: 'value', value: password } });
+            if (generator === 'wifi') setWifi({ password: { mode: 'value', value: password } });
+            else set({ password: { mode: 'value', value: password } });
             setGenerator(null);
           }}
         />

@@ -9,6 +9,7 @@ import extras from './extras.json';
 import moving from './moving.json';
 import settings from './settings.json';
 import vault from './vault.json';
+import wifi from './wifi.json';
 
 export const EN: Readonly<Record<string, string>> = {
   ...app,
@@ -17,4 +18,5 @@ export const EN: Readonly<Record<string, string>> = {
   ...moving,
   ...settings,
   ...vault,
+  ...wifi,
 };

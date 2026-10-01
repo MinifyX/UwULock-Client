@@ -61,7 +61,8 @@ export type LoginStep =
   | { step: 'two-factor'; methods: TwoFactorMethod[]; message: string | null }
   | { step: 'new-device' };
 
-export type ItemKind = 'login' | 'note' | 'card' | 'identity' | 'ssh-key';
+/** `wifi` is a secure note with UwULock's marker field (lib/wifi.ts); saved as a `note`. */
+export type ItemKind = 'login' | 'note' | 'card' | 'identity' | 'ssh-key' | 'wifi';
 
 export type ItemSummary = {
   id: string;
@@ -138,7 +139,8 @@ export type TotpCode = { code: string; remaining: number; period: number };
  * value the item already has; `''` clears it.
  */
 export type Draft = {
-  kind: ItemKind;
+  /** A Wi-Fi network goes back as the secure note it is. */
+  kind: Exclude<ItemKind, 'wifi'>;
   name: string;
   notes?: string | null;
   favorite: boolean;
