@@ -1,14 +1,20 @@
 package app.uwulock.mobile
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
+import android.net.wifi.WifiEnterpriseConfig
+import android.net.wifi.WifiManager
+import android.net.wifi.WifiNetworkSuggestion
 import android.os.Build
 import android.provider.MediaStore
+import android.provider.Settings
 import android.view.View
 import android.webkit.MimeTypeMap
 import android.os.PersistableBundle
@@ -17,12 +23,14 @@ import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import android.util.Log
+import androidx.activity.result.ActivityResult
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.fragment.app.FragmentActivity
+import app.tauri.annotation.ActivityCallback
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
@@ -32,6 +40,7 @@ import app.tauri.plugin.Plugin
 import java.io.File
 import java.security.KeyStore
 import java.security.SecureRandom
+import java.security.cert.X509Certificate
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -68,6 +77,24 @@ class CopyArgs {
     var expiresInSeconds: Long? = null
 }
 
+/** A Wi-Fi network, as the app's `wifi.rs` hands it over (already checked there). */
+@InvokeArg
+class WifiArgs {
+    lateinit var ssid: String
+    /** `open`, `wpa2`, `wpa3`, `wpa2-enterprise` or `wpa3-enterprise`. */
+    lateinit var security: String
+    var password: String? = null
+    var hidden: Boolean = false
+    /** Enterprise: `PEAP`, `TTLS` or `PWD`. */
+    var eap: String? = null
+    /** Enterprise: `MSCHAPV2`, `PAP`, `GTC` or `NONE`. */
+    var phase2: String? = null
+    var identity: String? = null
+    var anonymousIdentity: String? = null
+    /** PEAP and TTLS: the RADIUS server's domain, checked against the system's CAs. */
+    var domain: String? = null
+}
+
 /**
  * UwULock's own Android code, called from Rust (tauri-plugin-uwulock-mobile).
  *
@@ -81,8 +108,13 @@ class CopyArgs {
  * Copying: the clip is marked sensitive, so Android 13+ shows no preview and
  * keyboards keep it out of their clipboard history.
  *
- * New phone features (the Wi-Fi "connect" button) get a @Command here and a
- * method in src/lib.rs — see docs/mobile.md.
+ * Joining a Wi-Fi network: Android 11+ shows its own sheet to add the network
+ * (Settings.ACTION_WIFI_ADD_NETWORKS) and the person confirms there; Android 10
+ * gets it as a network suggestion. Needs CHANGE_WIFI_STATE (a normal permission,
+ * granted at install) for the suggestion, nothing else — no location.
+ *
+ * New phone features get a @Command here and a method in src/lib.rs — see
+ * docs/mobile.md.
  */
 @TauriPlugin
 class UwuLockMobilePlugin(private val activity: Activity) : Plugin(activity) {
@@ -366,6 +398,159 @@ class UwuLockMobilePlugin(private val activity: Activity) : Plugin(activity) {
             }
             invoke.resolve()
         }
+    }
+
+    // ── Joining a Wi-Fi network ───────────────────────────────
+
+    @Command
+    fun connectWifi(invoke: Invoke) {
+        val args = invoke.parseArgs(WifiArgs::class.java)
+        if (Build.VERSION.SDK_INT < 29) {
+            invoke.reject("This Android can't take networks from apps.", "unsupported")
+            return
+        }
+        val suggestion = try {
+            suggestion(args)
+        } catch (error: IllegalArgumentException) {
+            // The builder checks the values itself (a password Android doesn't take, …).
+            invoke.reject("Android didn't take the network: ${error.message}", "invalid")
+            return
+        } catch (error: Exception) {
+            Log.w(TAG, "couldn't describe the network", error)
+            invoke.reject("Couldn't describe the network: ${error.message}", "failed")
+            return
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            val intent = Intent(Settings.ACTION_WIFI_ADD_NETWORKS)
+                .putParcelableArrayListExtra(Settings.EXTRA_WIFI_NETWORK_LIST, arrayListOf(suggestion))
+            activity.runOnUiThread {
+                try {
+                    startActivityForResult(invoke, intent, "wifiAdded")
+                } catch (error: ActivityNotFoundException) {
+                    // A phone without the sheet: suggest the network instead.
+                    suggest(invoke, suggestion)
+                } catch (error: Exception) {
+                    Log.w(TAG, "couldn't open the add-network sheet", error)
+                    invoke.reject("Couldn't open Android's Wi-Fi sheet: ${error.message}", "failed")
+                }
+            }
+        } else {
+            suggest(invoke, suggestion)
+        }
+    }
+
+    // Tauri finds the callback by its name; kept public like Tauri's own plugins do.
+    @ActivityCallback
+    fun wifiAdded(invoke: Invoke, result: ActivityResult) {
+        if (result.resultCode != Activity.RESULT_OK) {
+            invoke.resolve(outcome("declined"))
+            return
+        }
+        val codes = result.data?.getIntegerArrayListExtra(Settings.EXTRA_WIFI_NETWORK_RESULT_LIST)
+        when (codes?.firstOrNull()) {
+            Settings.ADD_WIFI_RESULT_ALREADY_EXISTS -> invoke.resolve(outcome("already-saved"))
+            Settings.ADD_WIFI_RESULT_ADD_OR_UPDATE_FAILED ->
+                invoke.reject("Android couldn't save the network.", "failed")
+            // Some phones answer OK without the list: the person confirmed.
+            else -> invoke.resolve(outcome("saved"))
+        }
+    }
+
+    /** Android 10: a suggestion the phone joins by itself once the person allowed UwULock's. */
+    private fun suggest(invoke: Invoke, suggestion: WifiNetworkSuggestion) {
+        val wifi = activity.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        var status = wifi.addNetworkSuggestions(listOf(suggestion))
+        if (status == WifiManager.STATUS_NETWORK_SUGGESTIONS_ERROR_ADD_DUPLICATE) {
+            // Suggested before, maybe with an old password: replace it.
+            wifi.removeNetworkSuggestions(listOf(suggestion))
+            status = wifi.addNetworkSuggestions(listOf(suggestion))
+        }
+        when (status) {
+            WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS -> invoke.resolve(outcome("suggested"))
+            // The person once said no to UwULock's suggestions (Settings → Apps → Special app access).
+            WifiManager.STATUS_NETWORK_SUGGESTIONS_ERROR_APP_DISALLOWED -> invoke.resolve(outcome("disallowed"))
+            else -> invoke.reject("Android didn't take the suggestion (status $status).", "failed")
+        }
+    }
+
+    /**
+     * Android's Wi-Fi settings, for a network UwULock can't hand over (WEP, EAP-TLS, a CA
+     * certificate that isn't a domain): the app copied the password before.
+     */
+    @Command
+    fun openWifiSettings(invoke: Invoke) {
+        activity.runOnUiThread {
+            try {
+                activity.startActivity(Intent(Settings.ACTION_WIFI_SETTINGS))
+                invoke.resolve()
+            } catch (error: Exception) {
+                invoke.reject("Couldn't open the Wi-Fi settings: ${error.message}", "failed")
+            }
+        }
+    }
+
+    private fun outcome(name: String) = JSObject().apply { put("outcome", name) }
+
+    private fun suggestion(args: WifiArgs): WifiNetworkSuggestion {
+        val builder = WifiNetworkSuggestion.Builder()
+            .setSsid(args.ssid)
+            .setIsHiddenSsid(args.hidden)
+        when (args.security) {
+            "open" -> {}
+            "wpa2" -> builder.setWpa2Passphrase(args.password ?: "")
+            "wpa3" -> builder.setWpa3Passphrase(args.password ?: "")
+            "wpa2-enterprise" -> builder.setWpa2EnterpriseConfig(enterprise(args))
+            "wpa3-enterprise" -> {
+                val config = enterprise(args)
+                if (Build.VERSION.SDK_INT >= 31) {
+                    builder.setWpa3EnterpriseStandardModeConfig(config)
+                } else {
+                    @Suppress("DEPRECATION")
+                    builder.setWpa3EnterpriseConfig(config)
+                }
+            }
+            else -> throw IllegalArgumentException("unknown security ${args.security}")
+        }
+        return builder.build()
+    }
+
+    private fun enterprise(args: WifiArgs): WifiEnterpriseConfig {
+        val config = WifiEnterpriseConfig()
+        config.setEapMethod(when (args.eap) {
+            "PEAP" -> WifiEnterpriseConfig.Eap.PEAP
+            "TTLS" -> WifiEnterpriseConfig.Eap.TTLS
+            "PWD" -> WifiEnterpriseConfig.Eap.PWD
+            else -> throw IllegalArgumentException("unknown EAP method ${args.eap}")
+        })
+        config.setPhase2Method(when (args.phase2) {
+            "MSCHAPV2" -> WifiEnterpriseConfig.Phase2.MSCHAPV2
+            "PAP" -> WifiEnterpriseConfig.Phase2.PAP
+            "GTC" -> WifiEnterpriseConfig.Phase2.GTC
+            else -> WifiEnterpriseConfig.Phase2.NONE
+        })
+        config.setIdentity(args.identity ?: "")
+        args.anonymousIdentity?.let { config.setAnonymousIdentity(it) }
+        config.setPassword(args.password ?: "")
+        val domain = args.domain
+        if (args.eap != "PWD") {
+            // Android insists on checking the RADIUS server: its name against the domain, its
+            // certificate against the CAs the phone ships with (what Settings calls "Use system
+            // certificates"; apps have no shortcut to that, so they go in one by one).
+            require(!domain.isNullOrEmpty()) { "PEAP and TTLS need the server's domain" }
+            config.setDomainSuffixMatch(domain)
+            config.setCaCertificates(systemCertificates())
+        }
+        return config
+    }
+
+    /** The phone's built-in CA certificates, without any the person added themselves. */
+    private fun systemCertificates(): Array<X509Certificate> {
+        val store = KeyStore.getInstance("AndroidCAStore").apply { load(null) }
+        val certificates = store.aliases().toList()
+            .filter { it.startsWith("system:") }
+            .mapNotNull { store.getCertificate(it) as? X509Certificate }
+        require(certificates.isNotEmpty()) { "no system certificates" }
+        return certificates.toTypedArray()
     }
 
     // ── Files ─────────────────────────────────────────────────

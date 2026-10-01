@@ -1,6 +1,6 @@
 [package]
 name = "tauri-plugin-uwulock-mobile"
-description = "UwULock's own Android and iOS code: unlocking with fingerprint or face through the Android Keystore and the iOS Keychain, and copying secrets"
+description = "UwULock's own Android and iOS code: unlocking with fingerprint or face through the Android Keystore and the iOS Keychain, copying secrets, and joining Wi-Fi networks on Android"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

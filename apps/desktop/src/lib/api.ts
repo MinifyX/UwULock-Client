@@ -235,6 +235,17 @@ export const verifyReprompt = (id: string, password: string) =>
 export const revealField = (id: string, field: string) =>
   invoke<string>('reveal_field', { id, field });
 export const copyField = (id: string, field: string) => invoke<void>('copy_field', { id, field });
+/** What the phone said to *Connect* (docs/wifi.md); `reason` with `unsupported`. */
+export type WifiJoined = {
+  outcome:
+    'saved' | 'already-saved' | 'suggested' | 'declined' | 'disallowed' | 'unsupported' | 'failed';
+  reason: string | null;
+  message: string | null;
+};
+/** Android: hands a Wi-Fi item to the system. The password stays in Rust. */
+export const wifiConnect = (id: string) => invoke<WifiJoined>('wifi_connect', { id });
+/** Android: the system's Wi-Fi settings; `false` where there are none to open. */
+export const wifiSettings = () => invoke<boolean>('wifi_settings');
 export const copyGenerated = (text: string) => invoke<void>('copy_generated', { text });
 export const totpCode = (id: string) => invoke<TotpCode>('totp_code', { id });
 export const generatePassword = (options: GeneratorOptions) =>

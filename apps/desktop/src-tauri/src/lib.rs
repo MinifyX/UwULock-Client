@@ -32,6 +32,7 @@ mod system;
 #[cfg(desktop)]
 mod updates;
 mod vault;
+mod wifi;
 
 use tauri::Manager;
 
@@ -164,6 +165,8 @@ pub fn run() {
             system::open_item_uri,
             system::open_web_vault,
             system::set_appearance,
+            wifi::wifi_connect,
+            wifi::wifi_settings,
         ])
         .build(tauri::generate_context!())
         .expect("failed to start UwULock")
