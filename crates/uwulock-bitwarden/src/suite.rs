@@ -1,8 +1,9 @@
 //! The suite vault on a UwULock Server (contract §6): UwUSSH's and UwURDP's
 //! records, kept beside the Bitwarden vault, each app in a space of its own.
 //!
-//! This is the transport and the keys; the records' contents, their sealing
-//! (XChaCha20-Poly1305 with the AAD of §6.2) and the merge stay the apps'.
+//! This is the transport and the keys; sealing and opening the records
+//! (XChaCha20-Poly1305 with the AAD of §6.2) is `uwulock_core::suite`, the
+//! merge stays the apps'.
 //! What an app does:
 //!
 //! 1. log in with [`crate::App::suite`] (`client_id=uwussh`, scope
@@ -12,7 +13,6 @@
 //! 3. [`Client::suite_space`] — the space's id and key, made on first use;
 //! 4. [`Client::suite_pull`] / [`Client::suite_push`] with its envelopes.
 
-use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::api::Client;
@@ -21,79 +21,11 @@ use crate::uwu::{uwu_path, UwuError, UwuResult};
 use crate::Error;
 use uwulock_core::extras::SpaceKey;
 
-/// `suiteSpace` (§6.2).
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct Space {
-    pub space: String,
-    pub id: String,
-    /// The space key under the extras key.
-    pub key: String,
-    pub records: u64,
-    pub bytes: u64,
-    pub creation_date: Option<String>,
-    pub revision_date: Option<String>,
-}
-
-/// A record's `updatedAt`: UwUSync's hybrid logical clock.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Clock {
-    pub wall_ms: u64,
-    pub counter: u32,
-    pub device: u32,
-}
-
-/// One record as it travels (§6.3): sealed by the app, never readable here.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Envelope {
-    pub id: String,
-    pub kind: String,
-    pub updated_at: Clock,
-    /// What the app last saw of this id, 0 for a new one.
-    pub base_seq: u64,
-    #[serde(default)]
-    pub deleted: bool,
-    /// Base64, 24 bytes.
-    pub nonce: String,
-    /// Base64.
-    pub blob: String,
-    /// Set by the server.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub seq: Option<u64>,
-}
-
-/// `suitePull`.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct Pull {
-    /// `since` was too old: pull again from 0 and merge as after a fresh
-    /// install.
-    pub reset: bool,
-    pub records: Vec<Envelope>,
-    pub cursor: u64,
-    pub has_more: bool,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct Accepted {
-    pub id: String,
-    pub seq: u64,
-}
-
-/// `suitePush`: what was taken, and the server's copies of what wasn't.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct Pushed {
-    pub accepted: Vec<Accepted>,
-    pub conflicts: Vec<Envelope>,
-    pub cursor: u64,
-}
-
-/// The most records one push or pull carries.
-pub const PAGE: usize = 500;
+// The wire types are uwulock-core's, which also seals and opens the records
+// (`uwulock_core::suite`); `Space` and `Clock` are their names here.
+pub use uwulock_core::suite::{
+    Accepted, Envelope, Hlc as Clock, Pull, PushRequest, Pushed, SuiteSpace as Space, PAGE,
+};
 
 fn parse<T: serde::de::DeserializeOwned>(value: Value, what: &str) -> UwuResult<T> {
     serde_json::from_value(value).map_err(|e| {
@@ -160,11 +92,14 @@ impl Client {
         parse(self.uwu_get(access_token, &path).await?, "a pull")
     }
 
-    /// Pushes at most [`PAGE`] records in one transaction.
+    /// Pushes at most [`PAGE`] records in one transaction. `space_id` is the
+    /// id they were sealed for: after a rekey the server refuses the push with
+    /// 409 `space_changed` instead of writing it.
     pub async fn suite_push(
         &self,
         access_token: &str,
         space: &str,
+        space_id: &str,
         records: &[Envelope],
     ) -> UwuResult<Pushed> {
         if records.len() > PAGE {
@@ -173,7 +108,7 @@ impl Client {
             ))));
         }
         let path = format!("/suite/spaces/{}/records", uwu_path(space));
-        let body = json!({ "schema": 2, "records": records });
+        let body = json!({ "schema": uwulock_core::suite::SCHEMA, "spaceId": space_id, "records": records });
         parse(self.uwu_post(access_token, &path, &body).await?, "a push")
     }
 }

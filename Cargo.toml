@@ -86,6 +86,13 @@ opt-level = 3
 [profile.dev.package.num-bigint-dig]
 opt-level = 3
 
+# A passphrase on a new SSH key: bcrypt-pbkdf's 16 rounds.
+[profile.dev.package.bcrypt-pbkdf]
+opt-level = 3
+
+[profile.dev.package.blowfish]
+opt-level = 3
+
 [profile.release]
 codegen-units = 1
 lto = true

@@ -13,6 +13,8 @@
 //!   keys, own icons), entry versions in a key rotation
 //! - [`file_request`] — file requests: the link, its public details, the
 //!   envelope of what somebody uploads
+//! - [`suite`] — the suite vault: UwUSSH's and UwURDP's records, sealed and
+//!   opened for an editor; new SSH keys
 //! - [`health`] — the password check: weak, reused, breached, sites with a
 //!   breach or with two-step login; the cards of the review, the ignore list
 //!
@@ -31,6 +33,7 @@ pub mod generator;
 pub mod health;
 pub mod passkey;
 pub mod send;
+pub mod suite;
 pub mod totp;
 pub mod vault;
 pub mod wire;
