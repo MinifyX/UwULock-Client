@@ -148,7 +148,9 @@ _Review one by one_ shows one card per login, the worst first, with
 
 - **Open the page & change the password** — the site's
   `/.well-known/change-password` if your server found one (it checks; the app
-  never asks the site), else the login's address, in your browser;
+  never asks the site, and builds the address from the login's own host —
+  only whether it exists comes from the server), else the login's address, in
+  your browser;
 - **Generate & save a new password** — the generator; saving changes only
   the password, and the old one goes into the item's password history (five
   at most, as in Bitwarden);

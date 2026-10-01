@@ -53,11 +53,14 @@ Management**.
   `biometryCurrentSet` and `WhenPasscodeSetThisDeviceOnly`. A new fingerprint or
   face makes the copy unusable: UwULock asks for the master password once and
   switching it on again makes a new key.
-- **Locking.** The lock timeout from the settings applies as everywhere; on top
-  of that, UwULock locks when it has been in the background for more than a
-  minute (both clocks, so a phone asleep in between counts).
-- **No screenshots, no recent-apps preview** on Android (`FLAG_SECURE`), and
-  Android's backup leaves UwULock's data out.
+- **Locking.** The lock timeout from the settings applies as everywhere, by
+  both clocks (time asleep counts) and checked the moment UwULock comes back;
+  on top of that, UwULock locks when it has been in the background for more
+  than a minute (both clocks, so a phone asleep in between counts).
+- **No screenshots, no recent-apps preview** on Android (`FLAG_SECURE`); on the
+  iPhone the app switcher shows an empty screen instead of the vault. Neither
+  Android's backup nor iCloud or computer backups of the iPhone take UwULock's
+  data folder.
 - **Clipboard.** Copied passwords are marked as sensitive (Android 13 hides
   them in the clipboard preview; iOS keeps them on the device, not in the
   universal clipboard) and are cleared after the set time if they're still
@@ -160,7 +163,11 @@ the phone's answer, so it must never run on the main thread — spawn a thread
 `openWifiSettings` in the plugin; what the person sees is in
 [wifi.md](wifi.md#connecting-on-the-phone)). Android 11+ gets the network
 through `Settings.ACTION_WIFI_ADD_NETWORKS`, the system's own sheet the person
-confirms in; Android 10 gets a `WifiNetworkSuggestion`. Both are built in
+confirms in — addressed to that sheet's component, found among system apps
+only (`MATCH_SYSTEM_ONLY`, a `<queries>` entry in the plugin's manifest), so no
+other app that registers for the action can receive the password; without
+such a sheet the network is suggested instead. Android 10 gets a
+`WifiNetworkSuggestion`. Both are built in
 Kotlin from what `wifi::network` made of the item — the password goes from
 Rust to Kotlin and never through the page. The only permission is
 `CHANGE_WIFI_STATE` (a normal one, granted at install, needed for the
