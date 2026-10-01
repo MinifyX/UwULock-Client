@@ -5,7 +5,7 @@
 use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
-use uwulock_bitwarden::health::{is_conflict, BreachSwitches};
+use uwulock_bitwarden::health::{change_password_url, is_conflict, BreachSwitches};
 use uwulock_bitwarden::uwu::Info;
 use uwulock_bitwarden::{Client, Device, Item, ItemKind, Server};
 use uwulock_core::health;
@@ -149,6 +149,11 @@ async fn lists_pages_and_addresses() {
                 200,
                 json!({ "object": "changePassword", "host": "shop.example.com", "url": "https://shop.example.com/.well-known/change-password" }),
             ),
+            // A hostile server points somewhere else entirely.
+            ("GET", "/uwu/v1/change-password/bank.example.com") => Answer::json(
+                200,
+                json!({ "object": "changePassword", "host": "bank.example.com", "url": "https://phish.example.net/bank/change" }),
+            ),
             ("GET", path) if path.starts_with("/uwu/v1/change-password/") => {
                 Answer::json(200, json!({ "object": "changePassword", "url": null }))
             }
@@ -200,6 +205,29 @@ async fn lists_pages_and_addresses() {
             .unwrap(),
         None
     );
+    // Only whether the page exists comes from the server; the address is the login's own host.
+    assert_eq!(
+        client
+            .change_password_page(TOKEN, "bank.example.com")
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("https://bank.example.com/.well-known/change-password")
+    );
+    // Nothing but a host name goes in front of the path, and such a host isn't even asked about.
+    for host in [
+        "evil.example/x",
+        "user@example.com",
+        "example.com:8443",
+        "[2001:db8::1]",
+        "",
+    ] {
+        assert_eq!(change_password_url(host), None, "{host}");
+        assert_eq!(
+            client.change_password_page(TOKEN, host).await.unwrap(),
+            None
+        );
+    }
     assert!(!client.email_opt_in(TOKEN).await.unwrap().opted_in);
     assert!(client.set_email_opt_in(TOKEN, true).await.unwrap().opted_in);
     let many: Vec<String> = (0..60).map(|n| format!("n{n}@example.com")).collect();
