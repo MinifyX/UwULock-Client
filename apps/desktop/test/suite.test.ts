@@ -126,6 +126,14 @@ test('the copied command is what a shell takes', () => {
     sshCommand({ address: 'h.example.com', port: 22 }, { username: "o'brien; rm" }),
     `ssh 'o'\\''brien; rm@h.example.com'`,
   );
+  assert.equal(
+    sshCommand({ address: '-oProxyCommand=touch x', port: 22 }, null),
+    "ssh -- '-oProxyCommand=touch x'",
+  );
+  assert.equal(
+    sshCommand({ address: 'h.example.com\u2028touch x\u0085', port: 22 }, { username: 'u\n' }),
+    "ssh 'u@h.example.comtouch x'",
+  );
   assert.equal(shellQuote('a b'), "'a b'");
   assert.equal(rdpAddress({ address: '2001:db8::7', port: 3389 }), '[2001:db8::7]:3389');
   assert.equal(rdpAddress({ address: 'desk.example.com', port: 3390 }), 'desk.example.com:3390');

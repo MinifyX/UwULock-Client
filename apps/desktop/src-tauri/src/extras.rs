@@ -1693,7 +1693,7 @@ fn free_path(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
 /// scripts, installers, shortcuts, disk images and documents with macros.
 /// Anyone can upload to a file request, so the page warns before saving one.
 /// The list: Windows, then macOS, then Linux and scripts anywhere.
-fn runs_when_opened(name: &str) -> bool {
+pub(crate) fn runs_when_opened(name: &str) -> bool {
     const RISKY: &str = "\
         exe com scr pif bat cmd msi msix msixbundle msp mst appx appxbundle appinstaller \
         application ps1 psm1 psd1 ps1xml vbs vbe js jse wsf wsh wsc hta cpl lnk url scf reg \
@@ -1821,6 +1821,44 @@ pub(crate) async fn save_download(
         .map_err(|e| Failure::new("io", format!("Couldn't save the file: {e}")))?;
     mark_downloaded(&path);
     Ok(path.display().to_string())
+}
+
+/// [`save_download`] for a private key: on Linux and macOS readable by this
+/// user only (`0600`, which `ssh` also insists on), from the moment it exists.
+#[cfg(all(desktop, unix))]
+pub(crate) async fn save_download_private(
+    app: &AppHandle,
+    file_name: &str,
+    contents: &[u8],
+) -> Result<String> {
+    use std::io::Write as _;
+    use std::os::unix::fs::OpenOptionsExt as _;
+    let dir = app
+        .path()
+        .download_dir()
+        .or_else(|_| app.path().home_dir())
+        .map_err(|e| Failure::new("io", format!("No Downloads folder: {e}")))?;
+    let path = free_path(&dir, file_name);
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&path)
+        .and_then(|mut file| file.write_all(contents))
+        .map_err(|e| Failure::new("io", format!("Couldn't save the file: {e}")))?;
+    mark_downloaded(&path);
+    Ok(path.display().to_string())
+}
+
+/// Windows (the Downloads folder is the user's own) and the phones: as any
+/// other download.
+#[cfg(not(all(desktop, unix)))]
+pub(crate) async fn save_download_private(
+    app: &AppHandle,
+    file_name: &str,
+    contents: &[u8],
+) -> Result<String> {
+    save_download(app, file_name, contents).await
 }
 
 /// Android: through the app's cache into Downloads (the plugin, MediaStore).

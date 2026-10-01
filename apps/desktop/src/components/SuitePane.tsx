@@ -845,7 +845,9 @@ function RecordDetail({
             {record.broken ? t('(lässt sich nicht öffnen)') : titleOf(record) || t('(ohne Namen)')}
           </h2>
           <p className="chips">
-            <span className="chip">{kindLabel[record.kind] ?? record.kind}</span>
+            <span className="chip">
+              {(Object.hasOwn(kindLabel, record.kind) && kindLabel[record.kind]) || record.kind}
+            </span>
             {(record.kind === 'host' || record.kind === 'group') && (
               <span className="chip">{workspaceLabel(str(d, 'workspace') || 'private')}</span>
             )}
@@ -937,7 +939,7 @@ function RecordDetail({
           {space === 'rdp' && str(d, 'domain') && <Row label={t('Domäne')}>{str(d, 'domain')}</Row>}
           <Row label={t('Anmelden mit')}>{authLabel(str(d, 'auth_type'))}</Row>
           {ref(d, 'key_id') && <Row label={t('Schlüssel')}>{link(ref(d, 'key_id'))}</Row>}
-          {ref(d, 'password_secret_id') && index.get(ref(d, 'password_secret_id')!) && (
+          {index.get(ref(d, 'password_secret_id') ?? '')?.kind === 'secret' && (
             <SecretRow space={space} id={ref(d, 'password_secret_id')!} label={t('Passwort')} />
           )}
           <UsedBy users={users} onShow={onShow} />
@@ -1292,7 +1294,7 @@ function KeyBody({
           <span className="uri">{str(d, 'public_key')}</span>
         </Row>
       )}
-      {privateId && index.get(privateId) && (
+      {privateId && index.get(privateId)?.kind === 'secret' && (
         <SecretRow
           space={space}
           id={privateId}
@@ -1301,7 +1303,7 @@ function KeyBody({
           extra={download('private', t('Privater Schlüssel'))}
         />
       )}
-      {phraseId && index.get(phraseId) && (
+      {phraseId && index.get(phraseId)?.kind === 'secret' && (
         <SecretRow space={space} id={phraseId} label={t('Passphrase')} />
       )}
       <UsedBy users={users} onShow={onShow} />
