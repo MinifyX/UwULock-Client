@@ -8,6 +8,7 @@ import './styles/app.css';
 import './styles/vault.css';
 import './styles/extras.css';
 import './styles/health.css';
+import './styles/suite.css';
 import './styles/tokens.css';
 import './styles/phone.css';
 

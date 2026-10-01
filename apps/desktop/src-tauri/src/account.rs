@@ -124,6 +124,10 @@ pub struct Account {
     /// started over, or the server lost it: the app says so before taking it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extras_key_id: Option<String>,
+    /// This device's id in the clocks of UwUSSH's and UwURDP's records that
+    /// UwULock edits (random, never 0; nothing secret).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suite_device: Option<u32>,
 }
 
 impl Account {
@@ -400,6 +404,7 @@ mod tests {
             last_sync: None,
             hello_user_key: None,
             extras_key_id: None,
+            suite_device: None,
         }
     }
 

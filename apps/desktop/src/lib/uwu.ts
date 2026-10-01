@@ -59,7 +59,8 @@ export type Feature =
   | 'file-requests'
   | 'masked-addresses'
   | 'send-domains'
-  | 'send-emails';
+  | 'send-emails'
+  | 'suite';
 
 export const has = (status: UwuStatus, feature: Feature) => status.features.includes(feature);
 

@@ -229,7 +229,16 @@ fn handle(
 ) -> Option<Closed> {
     let mut sync_soon = || *sync_at = Some(tokio::time::Instant::now() + SETTLE);
     match event {
-        Event::Changed { .. } | Event::Info => sync_soon(),
+        // UwUSSH's and UwURDP's records: the open section pulls them itself.
+        Event::Changed { areas } => {
+            if areas.iter().any(|a| a == "suite") {
+                let _ = app.emit("suite-changed", ());
+            }
+            if areas.is_empty() || areas.iter().any(|a| a != "suite") {
+                sync_soon();
+            }
+        }
+        Event::Info => sync_soon(),
         Event::Notice { kind, id } => {
             let _ = app.emit("uwu-notice", serde_json::json!({ "kind": kind, "id": id }));
             // The badges' counts come with the sync.

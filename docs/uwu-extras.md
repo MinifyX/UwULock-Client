@@ -120,6 +120,37 @@ every device, and the title bar says so, with how many are hidden. Switching it
 on and off happens in the web vault, with your master password and your second
 factor.
 
+## SSH and Remote Desktop (UwUSSH, UwURDP)
+
+_Sidebar → UwU apps_ has a section each for what UwUSSH and UwURDP sync
+through UwULock Server (its suite vault, `docs/uwu-api.md` §6 of
+UwULock-Server; feature `suite`, switch `suite.enabled`): hosts by workspace
+and group, logins, keys, snippets, port forwards and known hosts. Everything
+can be viewed, edited, created and deleted, on the computer and the phone.
+
+- The records are opened and sealed in Rust (`src-tauri/src/suite.rs`, over
+  `uwulock_core::suite`), kept for the rest of the unlock and pulled again from
+  the last cursor when the realtime channel says `suite` changed. A secret (a
+  password, a private key, a passphrase) reaches the window only when the eye
+  is clicked; copying goes from Rust.
+- An edit is the record's JSON with the changed fields laid over it, so fields
+  of a newer UwUSSH or UwURDP survive; Rust checks that the app can still read
+  it and that every new pointer leads to a record of the right kind. Its clock
+  carries this device's id, made once per account on this device.
+- `baseSeq` is the version the window showed. When the server has a newer one,
+  nothing is overwritten: the newer one is taken over and the window says so.
+  After a rekey (409 `space_changed`) the space is fetched again.
+- Deleting works as in the apps: a host takes its port forwards along, its
+  login and key stay; a group leaves its hosts without one; a login or key is
+  deleted only once nothing points at it, with its secrets.
+- `manifest` records, the command assistant's kinds and kinds this build
+  doesn't know are neither shown nor written.
+- If no app made the space yet, _Create the space_ makes it (a fresh key under
+  the extras key); if an app was quicker, its space is taken.
+- On a host: copy the command, an `.rdp` file (no password, drives off), and on
+  a computer _Open in UwUSSH/UwURDP_ (`uwussh://connect/<id>`,
+  `uwurdp://connect/<id>`; only the record's id travels).
+
 ## Password check
 
 _Sidebar → Password check_ looks at every login with a password (not in the

@@ -103,6 +103,8 @@ pub(crate) struct Unlocked {
     pub(crate) extras_cache: crate::extras::Cache,
     /// What the password check fetched and worked out in this unlock.
     pub(crate) health: crate::health::Cache,
+    /// UwUSSH's and UwURDP's spaces, opened in this unlock.
+    pub(crate) suite: crate::suite::Cache,
 }
 
 impl Unlocked {
@@ -117,6 +119,7 @@ impl Unlocked {
             extras: None,
             extras_cache: Default::default(),
             health: Default::default(),
+            suite: Default::default(),
         }
     }
 
@@ -137,9 +140,9 @@ struct PendingLogin {
 }
 
 #[derive(Clone, Copy, Default)]
-struct Security {
+pub(crate) struct Security {
     auto_lock: Option<Duration>,
-    clipboard: Option<Duration>,
+    pub(crate) clipboard: Option<Duration>,
     /// Lock when the screen locks or the computer goes to sleep.
     with_system: bool,
 }
@@ -164,11 +167,11 @@ pub(crate) struct VaultState {
     pending: Mutex<Option<PendingLogin>>,
     syncing: Mutex<HashSet<String>>,
     troubles: Mutex<HashMap<String, Trouble>>,
-    security: Mutex<Security>,
+    pub(crate) security: Mutex<Security>,
     /// The last thing the user did, by both clocks: the monotonic one stands
     /// still while a phone (or a laptop) sleeps, the wall clock doesn't.
     last_activity: Mutex<(Instant, SystemTime)>,
-    clipboard: Arc<Clipboard>,
+    pub(crate) clipboard: Arc<Clipboard>,
     live: Live,
     /// Moving a vault in (`moving`): dropped whenever the vault locks.
     pub(crate) moves: Arc<crate::moving::MoveState>,
@@ -700,6 +703,7 @@ async fn finish_login(
     let previous_extras = previous
         .as_ref()
         .and_then(|account| account.extras_key_id.clone());
+    let previous_suite_device = previous.as_ref().and_then(|account| account.suite_device);
 
     let mut account = Account {
         version: 1,
@@ -717,6 +721,7 @@ async fn finish_login(
         last_sync: None,
         hello_user_key: previous_hello,
         extras_key_id: previous_extras,
+        suite_device: previous_suite_device,
     };
 
     // The first sync right away, so the vault isn't empty on arrival.
@@ -2601,6 +2606,7 @@ mod tests {
             last_sync: None,
             hello_user_key: None,
             extras_key_id: None,
+            suite_device: None,
         };
         let id = storage.id_for(&account.server, &account.email);
         storage.save_account(&id, &account).unwrap();
@@ -2643,6 +2649,7 @@ mod tests {
             last_sync: None,
             hello_user_key: None,
             extras_key_id: None,
+            suite_device: None,
         };
         let id = storage.id_for(&account.server, &account.email);
         storage.save_account(&id, &account).unwrap();

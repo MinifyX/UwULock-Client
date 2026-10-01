@@ -87,6 +87,11 @@ Still to come:
       ([uwu-extras.md](uwu-extras.md#password-check))
 - [x] Security review before the release
       ([security-review-0.4.md](security-review-0.4.md))
+- [x] UwUSSH's and UwURDP's records in sections of their own, on the computer
+      and the phone: hosts, groups, logins, keys (import, generate Ed25519),
+      snippets, port forwards, known hosts; copy command, `.rdp` file, open in
+      the app ([uwu-extras.md](uwu-extras.md#ssh-and-remote-desktop-uwussh-uwurdp))
+      (0.4.0-beta.2)
 
 Later on phones:
 

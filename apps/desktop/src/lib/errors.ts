@@ -142,6 +142,26 @@ export function errorText(error: unknown): string {
       return t(
         'Der Eintrag wurde inzwischen woanders geändert. UwULock hat neu synchronisiert – sieh ihn dir an und stelle die Version dann noch einmal her.',
       );
+    // UwUSSH's and UwURDP's records.
+    case 'suite-conflict':
+    case 'space-changed':
+      return t(
+        'Das wurde inzwischen woanders geändert. UwULock hat neu geladen und nichts überschrieben – ändere es bitte noch einmal.',
+      );
+    case 'in-use':
+      return t('Wird noch verwendet von: {names}', {
+        names: m.replace(/^still used by: /, ''),
+      });
+    case 'key-format':
+      return t(
+        'Das ist kein privater Schlüssel, den UwULock lesen kann (OpenSSH, PEM oder PuTTY).',
+      );
+    case 'key-passphrase':
+      return m.includes('needs')
+        ? t('Dieser Schlüssel ist mit einer Passphrase geschützt. Gib sie mit ein.')
+        : t('Die Passphrase passt nicht zu diesem Schlüssel.');
+    case 'no-app':
+      return t('Die App ließ sich nicht öffnen. Ist sie auf diesem Gerät installiert?');
     case 'not-local':
       return t('Dieser Eintrag hat keine Adresse im lokalen Netz.');
     case 'device-icon':
