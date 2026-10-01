@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Icon } from '@desktop/components/Icon';
+import { QrCode } from '@desktop/components/QrCode';
+import { ENTERPRISE_KEYS, isEnterprise, readWifi, wifiQr, type WifiView } from '@desktop/lib/wifi';
 import { N_, t } from '../../shared/i18n';
 import { ItemIcon } from '../icons';
 import { FillReprompt } from './FillReprompt';
@@ -35,6 +37,7 @@ const KIND_LABEL: Record<ItemKind, string> = {
   identity: N_('Identität'),
   note: N_('Sichere Notiz'),
   'ssh-key': N_('SSH-Schlüssel'),
+  wifi: N_('WLAN'),
 };
 
 const IDENTITY_LABEL: Record<string, string> = {
@@ -56,6 +59,14 @@ const IDENTITY_LABEL: Record<string, string> = {
   ssn: N_('Sozialversicherungsnummer'),
   passportNumber: N_('Reisepassnummer'),
   licenseNumber: N_('Führerscheinnummer'),
+};
+
+/** A Wi-Fi network's securities, as the app names them (`@desktop/lib/items`). */
+const SECURITY_LABEL: Record<string, string> = {
+  'WPA2/WPA3': N_('WPA2/WPA3 (gemischt)'),
+  WPA: N_('WPA (veraltet)'),
+  WEP: N_('WEP (unsicher)'),
+  None: N_('Keine (offenes Netz)'),
 };
 
 export { IDENTITY_LABEL, KIND_LABEL };
@@ -151,7 +162,8 @@ export function Detail({
                 <Icon name="export" size={16} />
               </button>
             )}
-            {!summary.broken && summary.kind !== 'ssh-key' && (
+            {/* SSH keys and Wi-Fi networks are edited in the app or the web vault. */}
+            {!summary.broken && summary.kind !== 'ssh-key' && summary.kind !== 'wifi' && (
               <button
                 type="button"
                 className="icon-button"
@@ -268,6 +280,8 @@ function Body({ item }: { item: ItemDetail }) {
   const card = item.card;
   // An item with the re-prompt asks for the master password again for every fill.
   const [asking, setAsking] = useState(false);
+  const wifi = item.summary.kind === 'wifi' ? readWifi(item.fields ?? []) : null;
+  const fields = wifi ? wifi.others : (item.fields ?? []);
   return (
     <div className="detail-cards">
       {asking && (
@@ -419,6 +433,8 @@ function Body({ item }: { item: ItemDetail }) {
         </section>
       )}
 
+      {wifi && <WifiCard id={id} wifi={wifi} />}
+
       {item.notes && (
         <section className="detail-card">
           <h3 className="detail-card-title">{t('Notizen')}</h3>
@@ -431,10 +447,10 @@ function Body({ item }: { item: ItemDetail }) {
         </section>
       )}
 
-      {item.fields && item.fields.length > 0 && (
+      {fields.length > 0 && (
         <section className="detail-card">
           <h3 className="detail-card-title">{t('Eigene Felder')}</h3>
-          {item.fields.map((field) =>
+          {fields.map((field) =>
             field.kind === 'hidden' ? (
               <SecretRow
                 key={field.index}
@@ -479,6 +495,102 @@ function Body({ item }: { item: ItemDetail }) {
           ` · ${t('Passwort geändert: {date}', { date: when(item.login.passwordRevisionDate) ?? '' })}`}
       </p>
     </div>
+  );
+}
+
+/**
+ * A Wi-Fi network (docs/wifi.md): its values to copy and the QR code to join it with. Never
+ * offered for filling. The code is drawn here; the password comes from the vault for it and is
+ * dropped when the code is hidden.
+ */
+function WifiCard({ id, wifi }: { id: string; wifi: WifiView }) {
+  const [code, setCode] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const open = wifi.security === 'None';
+  const labels: Record<(typeof ENTERPRISE_KEYS)[number], string> = {
+    eap: t('EAP-Methode'),
+    phase2: t('Phase 2'),
+    identity: t('Identität'),
+    anonymous: t('Anonyme Identität'),
+    ca: t('CA-Zertifikat'),
+  };
+  const toggle = async () => {
+    if (code !== null) {
+      setCode(null);
+      return;
+    }
+    setBusy(true);
+    try {
+      const password =
+        !open && wifi.password?.hasValue
+          ? await revealField(id, `field:${wifi.password.index}`)
+          : '';
+      setCode(wifiQr({ ...wifi, password }));
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="detail-card" data-wifi>
+      <Row
+        id={id}
+        label={t('Netzwerkname (SSID)')}
+        value={wifi.ssid || '—'}
+        field={wifi.ssid && wifi.from.ssid !== undefined ? `field:${wifi.from.ssid}` : undefined}
+        mono
+      />
+      {wifi.password?.hasValue && !open && (
+        <SecretRow id={id} label={t('Passwort')} field={`field:${wifi.password.index}`} colored />
+      )}
+      <Row
+        id={id}
+        label={t('Sicherheit')}
+        value={wifi.security ? t(SECURITY_LABEL[wifi.security] ?? wifi.security) : '—'}
+      />
+      <Row id={id} label={t('Verstecktes Netzwerk')} value={wifi.hidden ? t('Ja') : t('Nein')} />
+      {isEnterprise(wifi.security) &&
+        ENTERPRISE_KEYS.map((key) =>
+          wifi[key] ? (
+            <Row
+              key={key}
+              id={id}
+              label={labels[key]}
+              value={wifi[key] === 'none' ? t('Keine') : wifi[key]}
+              field={wifi.from[key] !== undefined ? `field:${wifi.from[key]}` : undefined}
+            />
+          ) : null,
+        )}
+      {wifi.ssid.trim() ? (
+        <div className="detail-row wifi-qr-row">
+          <button
+            type="button"
+            className="quiet wide"
+            onClick={() => void toggle()}
+            aria-expanded={code !== null}
+            disabled={busy}
+            data-wifi-share
+          >
+            <Icon name="qr" size={15} />
+            {code === null ? t('QR-Code zeigen') : t('QR-Code verbergen')}
+          </button>
+          {code !== null && (
+            <>
+              <QrCode text={code} label={t('QR-Code für das WLAN {ssid}', { ssid: wifi.ssid })} />
+              <p className="muted wifi-qr-hint">
+                {open
+                  ? t('Mit der Kamera scannen, um „{ssid}“ beizutreten.', { ssid: wifi.ssid })
+                  : t(
+                      'Mit der Kamera scannen, um „{ssid}“ beizutreten. Wer den Code sieht, kennt das Passwort.',
+                      { ssid: wifi.ssid },
+                    )}
+              </p>
+            </>
+          )}
+        </div>
+      ) : null}
+    </section>
   );
 }
 

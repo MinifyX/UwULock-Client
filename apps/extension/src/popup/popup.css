@@ -273,6 +273,23 @@ button.wide {
   width: 100%;
 }
 
+/* A Wi-Fi network's QR code, under its button. */
+.detail-view .wifi-qr-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.wifi-qr-row button {
+  gap: 8px;
+}
+
+.wifi-qr-hint {
+  margin: 0;
+  font-size: 12px;
+  text-align: center;
+}
+
 .notes-text {
   flex: 1;
   margin: 0;
