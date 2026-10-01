@@ -72,6 +72,10 @@ Management**.
   pinning, as UwULock Server offers).
 - **File requests** save into Downloads on Android and into UwULock's folder in
   the Files app on the iPhone.
+- **Wi-Fi networks** have a **Connect** button on Android: Android 11+ asks in
+  its own sheet whether to add the network, Android 10 suggests it. Not on the
+  iPhone (see [The phone plugin](#the-phone-plugin)); there the QR code and
+  copying remain.
 
 ## Building
 
@@ -130,7 +134,7 @@ plugin, `crates/tauri-plugin-uwulock-mobile`:
 
 Commands today: `unlockStatus`, `unlockCreate`, `unlockOpen`, `unlockDelete`
 (biometric unlock), `copySecret`, `clearClipboard`, `setAppearance` (system bar
-colours), `saveToDownloads` (Android). The app reaches the plugin through
+colours), `saveToDownloads`, `connectWifi`, `openWifiSettings` (Android). The app reaches the plugin through
 `phone::plugin()` in `apps/desktop/src-tauri/src/phone.rs`. Every call waits for
 the phone's answer, so it must never run on the main thread — spawn a thread
 (`std::thread::spawn`) or use `tauri::async_runtime::spawn_blocking`, as
@@ -151,15 +155,27 @@ the phone's answer, so it must never run on the main thread — spawn a thread
    calls it everywhere), and in the UI behind `isMobile()` from
    `apps/desktop/src/lib/platform.ts`.
 
-**WiFi "Connect".** Android: `WifiNetworkSuggestion` or
-`Settings.ACTION_WIFI_ADD_NETWORKS` (Android 11+, the user confirms; needs no
-location permission), as a `connectWifi` command in the plugin. iOS:
-`NEHotspotConfiguration` needs the _Hotspot Configuration_ entitlement, which an
-unsigned IPA re-signed with a free Apple ID doesn't get — there the button stays
-hidden unless the entitlement turns out to work, and the password is copied
-instead.
+**Wi-Fi "Connect"** (`wifi.rs` in the app, `connectWifi` and
+`openWifiSettings` in the plugin; what the person sees is in
+[wifi.md](wifi.md#connecting-on-the-phone)). Android 11+ gets the network
+through `Settings.ACTION_WIFI_ADD_NETWORKS`, the system's own sheet the person
+confirms in; Android 10 gets a `WifiNetworkSuggestion`. Both are built in
+Kotlin from what `wifi::network` made of the item — the password goes from
+Rust to Kotlin and never through the page. The only permission is
+`CHANGE_WIFI_STATE` (a normal one, granted at install, needed for the
+suggestion); no location, no `ACCESS_WIFI_STATE`, so UwULock can't see which
+network the phone is on and doesn't claim to have connected.
+
+iOS has no _Connect_ button. Its API, `NEHotspotConfiguration`, works only with
+the _Hotspot Configuration_ entitlement in the app's provisioning profile. The
+IPA is built unsigned and gets its signature from whoever sideloads it — with
+a free Apple ID (AltStore, Sideloadly) the profile can't carry that
+entitlement, and without it iOS rejects every call. A paid developer account
+could re-sign with it, but UwULock can't rely on that, so the button stays
+hidden on iOS; the QR code and copying the password remain (iOS joins a
+network from the camera's QR scan).
 In the UI the button goes into the Wi-Fi details' slot, `ItemDetail`'s
-`wifiActions` ([wifi.md](wifi.md)), shown only when `isMobile()`.
+`wifiActions`, which `VaultScreen` fills only when `platform()` is `android`.
 
 ---
 
@@ -209,3 +225,10 @@ einer kostenlosen Apple-ID muss die App alle 7 Tage neu signiert werden
 - **Updates** kommen als neue Datei von der Release-Seite.
 - **Zertifikate:** UwULock vertraut auf dem Handy den üblichen öffentlichen
   Zertifizierungsstellen, nicht selbst hinzugefügten.
+- **WLAN verbinden** (nur Android): _Verbinden_ in einem WLAN-Eintrag übergibt das
+  Netz an Android – ab Android 11 bestätigst du es im Fenster des Systems,
+  Android 10 schlägt es vor. Dafür braucht UwULock nur die Berechtigung
+  `CHANGE_WIFI_STATE`, keinen Standort. Auf dem iPhone gibt es den Knopf nicht:
+  iOS erlaubt das nur Apps mit einer Berechtigung (_Hotspot Configuration_), die
+  eine selbst signierte App mit kostenloser Apple-ID nicht bekommt. QR-Code und
+  Kopieren gehen überall.

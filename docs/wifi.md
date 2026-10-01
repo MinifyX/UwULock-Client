@@ -72,7 +72,42 @@ Rules for every app that reads or writes networks:
   (hidden until the eye is clicked). The password comes from Rust for the code and is forgotten
   when the dialog closes.
 - There is no _Connect_ button on the computer. The details have a slot for it
-  (`ItemDetail`'s `wifiActions`), which the phone apps fill where the system lets them.
+  (`ItemDetail`'s `wifiActions`), which the Android app fills (below).
+
+## Connecting on the phone
+
+On Android a network's details have **Connect**. `apps/desktop/src-tauri/src/wifi.rs` reads the
+item in Rust and turns it into what Android takes (`wifi::network`, tested there); the plugin
+builds a `WifiNetworkSuggestion` from it ([mobile.md](mobile.md#the-phone-plugin)).
+
+| Security                   | Android gets                                   |
+| -------------------------- | ---------------------------------------------- |
+| `WPA3`                     | WPA3 (SAE) passphrase                          |
+| `WPA2/WPA3`, `WPA2`, `WPA` | WPA2 passphrase (a mixed network takes it)     |
+| `None`                     | open network, no password                      |
+| `WEP`                      | — Android lets no app add WEP networks         |
+| `WPA2-Enterprise`          | WPA2-Enterprise with the EAP settings below    |
+| `WPA3-Enterprise`          | WPA3-Enterprise (standard mode on Android 12+) |
+| missing or unknown         | WPA2 with a password, open without             |
+
+- `Hidden network` = `true` makes it a hidden SSID. WPA passwords must be 8–63 ASCII characters.
+- Enterprise: `EAP method` PEAP, TTLS or PWD (TLS needs a client certificate UwULock doesn't
+  have), `Phase 2` (MSCHAPV2, PAP, GTC, anything else = none), `Identity` (required),
+  `Anonymous identity`, `Password`.
+- `CA certificate`: Android requires PEAP and TTLS networks to check the RADIUS server. If the
+  field looks like a domain (`radius.example.org`, `*.example.org`), UwULock uses it as the
+  server's domain and the phone's **system** CA certificates — what Android's settings call
+  _Use system certificates_. Anything else in the field (a note, a certificate's name) can't be
+  checked, so UwULock explains that instead of adding a network that would never connect. PWD
+  needs no certificate.
+- **Android 11+** shows its own sheet; the person confirms or declines. **Android 10** gets a
+  suggestion: the system asks once in a notification whether UwULock may suggest networks.
+- The answer appears as a short message: saved, already saved, suggested, declined. Where
+  Android can't take the network (WEP, EAP-TLS, no domain, a password Android refuses), the
+  details say why and offer **Copy password & open Wi-Fi settings** to add it by hand.
+- **iPhone**: no Connect button. iOS's `NEHotspotConfiguration` needs an entitlement a
+  sideloaded app signed with a free Apple ID doesn't get ([mobile.md](mobile.md#the-phone-plugin));
+  the QR code (the camera joins the network) and copying remain.
 
 ## In the browser extension
 
@@ -128,5 +163,12 @@ UwULock-App zeigt ein WLAN.
   werden WLAN-Netze nie angeboten; bearbeitet werden sie in der App oder im Web-Tresor.
 - **QR-Code**: im Standardformat `WIFI:…`, auf dem Gerät gezeichnet (uqr, MIT) – nichts über
   das Netz verlässt dafür App oder Erweiterung.
-- **Verbinden** gibt es nur in den Handy-Apps, wo das System es erlaubt; am Computer nicht.
+- **Verbinden** gibt es in der Android-App: ab Android 11 bestätigst du das Netz im Fenster des
+  Systems, Android 10 schlägt es vor. WPA2/WPA3, offene und versteckte Netze gehen; WEP lässt
+  Android nicht zu. Enterprise-Netze mit PEAP, TTLS oder PWD gehen, wenn im Feld
+  _CA-Zertifikat_ eine Domain steht (z. B. `radius.example.org`) – dann prüft das Handy den
+  Server mit den Zertifikaten des Systems. Geht es nicht, sagt UwULock warum und bietet
+  _Passwort kopieren & WLAN-Einstellungen öffnen_ an. Am Computer gibt es den Knopf nicht, auf
+  dem iPhone auch nicht: iOS erlaubt das nur mit einer Berechtigung, die eine selbst signierte
+  App nicht bekommt.
 - Felder anderer Apps im selben Eintrag bleiben unverändert, mit Namen, Typ und Reihenfolge.
