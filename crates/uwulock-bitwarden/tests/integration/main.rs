@@ -1,6 +1,7 @@
 //! The integration tests, one binary for the crate: linked once instead of once per file.
 //!
 //! - [`flow`] — the whole way against the toy server: prelogin, two-step login, sync
+//! - [`health`] — the password check's calls against a fake of §15
 //! - [`live`] — live updates against fakes of the realtime channel and the hub
 //! - [`saving`] — creating, changing and deleting items, conflicts
 //! - [`moving`] — moving a vault from a Bitwarden to a UwULock Server
@@ -10,6 +11,7 @@
 //! - [`support`] — the toy server, the one moves go between, and a small fake HTTP server
 
 mod flow;
+mod health;
 mod live;
 mod moving;
 mod saving;

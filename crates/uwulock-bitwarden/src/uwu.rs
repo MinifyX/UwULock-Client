@@ -89,6 +89,8 @@ pub struct Info {
     pub icons: Option<IconsInfo>,
     pub branding: Option<Value>,
     pub limits: Option<Limits>,
+    /// Which breach sources are on (0.7, §15.1); `None` from an older server.
+    pub breaches: Option<crate::health::BreachSwitches>,
 }
 
 impl Info {
@@ -355,6 +357,9 @@ pub struct UwuAccount {
     pub travel: Option<Value>,
     pub masked_connected: bool,
     pub security_notices_unseen: u32,
+    /// The account's consent to the check of its addresses (0.7, §15.4);
+    /// `None` while the admin has the check switched off.
+    pub email_breach_check: Option<crate::health::EmailOptIn>,
 }
 
 /// An own icon (§7.3). `data` only when it was asked for.
