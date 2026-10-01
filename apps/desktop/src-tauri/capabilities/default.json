@@ -1,14 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "What the main window is allowed to do. App commands are plain #[tauri::command]s and need no extra permission; plugins (opener, updater) are only used from Rust, so the page gets none of their permissions. Anything beyond core:default and the title bar's own window controls has to be added here deliberately.",
+  "description": "What the main window is allowed to do, on every platform. App commands are plain #[tauri::command]s and need no extra permission; plugins (opener, updater, the phone plugin) are only used from Rust, so the page gets none of their permissions. Anything beyond core:default has to be added here deliberately; the title bar's window controls are in desktop.json, for computers only.",
   "windows": ["main"],
-  "permissions": [
-    "core:default",
-    "core:window:allow-start-dragging",
-    "core:window:allow-minimize",
-    "core:window:allow-toggle-maximize",
-    "core:window:allow-close",
-    "core:window:allow-destroy"
-  ]
+  "permissions": ["core:default"]
 }

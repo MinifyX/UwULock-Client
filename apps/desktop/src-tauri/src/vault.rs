@@ -165,7 +165,9 @@ pub(crate) struct VaultState {
     syncing: Mutex<HashSet<String>>,
     troubles: Mutex<HashMap<String, Trouble>>,
     security: Mutex<Security>,
-    last_activity: Mutex<Instant>,
+    /// The last thing the user did, by both clocks: the monotonic one stands
+    /// still while a phone (or a laptop) sleeps, the wall clock doesn't.
+    last_activity: Mutex<(Instant, SystemTime)>,
     clipboard: Arc<Clipboard>,
     live: Live,
     /// Moving a vault in (`moving`): dropped whenever the vault locks.
@@ -191,7 +193,7 @@ impl VaultState {
                 clipboard: Some(Duration::from_secs(30)),
                 with_system: true,
             }),
-            last_activity: Mutex::new(Instant::now()),
+            last_activity: Mutex::new((Instant::now(), SystemTime::now())),
             clipboard: Arc::new(Clipboard::default()),
             live: Live::default(),
             moves: Arc::default(),
@@ -199,7 +201,30 @@ impl VaultState {
     }
 
     pub(crate) fn touch(&self) {
-        *self.last_activity.lock() = Instant::now();
+        *self.last_activity.lock() = (Instant::now(), SystemTime::now());
+    }
+
+    /// How long nothing was done, by whichever clock ran on longer.
+    fn idle(&self) -> Duration {
+        let (instant, wall) = *self.last_activity.lock();
+        idle_for(instant.elapsed(), wall.elapsed().unwrap_or_default())
+    }
+
+    /// Locks when the auto-lock time has passed. Also asked the moment a
+    /// phone app comes back to the screen (`phone`), not only every few
+    /// seconds.
+    pub(crate) fn lock_if_idle(&self) -> bool {
+        if self.unlocked.read().is_empty() {
+            return false;
+        }
+        let after = self.security.lock().auto_lock;
+        let idle = self.idle();
+        if !after.is_some_and(|after| idle >= after) {
+            return false;
+        }
+        self.lock_now();
+        tracing::info!("locked after {} idle minutes", idle.as_secs() / 60);
+        true
     }
 
     fn device(&self) -> Device {
@@ -1327,11 +1352,7 @@ pub(crate) fn start(app: &AppHandle) {
             if state.unlocked.read().is_empty() {
                 continue;
             }
-            let security = *state.security.lock();
-            let idle = state.last_activity.lock().elapsed();
-            if security.auto_lock.is_some_and(|after| idle >= after) {
-                state.lock_now();
-                tracing::info!("locked after {} idle minutes", idle.as_secs() / 60);
+            if state.lock_if_idle() {
                 emit_status(&app);
                 continue;
             }
@@ -2490,9 +2511,26 @@ impl VaultState {
     }
 }
 
+/// Idle time from the monotonic clock and the wall clock: a phone asleep in
+/// a pocket stops the first, so the longer of the two counts. A wall clock set
+/// back by hand reads as zero and leaves the monotonic one.
+fn idle_for(monotonic: Duration, wall: Duration) -> Duration {
+    monotonic.max(wall)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sleeping_counts_towards_the_auto_lock() {
+        let s = Duration::from_secs;
+        assert_eq!(idle_for(s(30), s(30)), s(30));
+        // Two hours asleep: the monotonic clock saw a few seconds of it.
+        assert_eq!(idle_for(s(5), s(7200)), s(7200));
+        // The wall clock set back: the monotonic one still counts.
+        assert_eq!(idle_for(s(600), Duration::ZERO), s(600));
+    }
 
     #[test]
     fn a_wifi_network_is_listed_as_one_with_its_ssid() {
