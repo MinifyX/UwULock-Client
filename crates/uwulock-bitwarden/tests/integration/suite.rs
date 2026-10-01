@@ -128,6 +128,7 @@ fn route(fake: &mut Fake, method: &str, path: &str, body: Value) -> (u16, Value)
         }
         ("POST", "/uwu/v1/suite/spaces/ssh/records") => {
             assert_eq!(body["schema"], 2);
+            assert_eq!(body["spaceId"], fake.spaces[0]["id"]);
             let (mut accepted, mut conflicts) = (vec![], vec![]);
             for record in body["records"].as_array().unwrap() {
                 let id = record["id"].as_str().unwrap().to_string();
@@ -275,13 +276,13 @@ async fn a_suite_app_gets_its_keys_and_syncs_its_space() {
     );
 
     let pushed = client
-        .suite_push(token, "ssh", &[record("a", 0), record("b", 0)])
+        .suite_push(token, "ssh", &id, &[record("a", 0), record("b", 0)])
         .await
         .unwrap();
     assert_eq!(pushed.accepted.len(), 2);
     // Another device changed "a" meanwhile: a push from an old base conflicts.
     let second = client
-        .suite_push(token, "ssh", &[record("a", 0)])
+        .suite_push(token, "ssh", &id, &[record("a", 0)])
         .await
         .unwrap();
     assert!(second.accepted.is_empty());

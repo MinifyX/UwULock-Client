@@ -34,6 +34,18 @@ thiserror.workspace = true
 tracing.workspace = true
 zeroize.workspace = true
 url = "2"
+# The suite vault (UwUSSH's and UwURDP's records): XChaCha20-Poly1305, record
+# ids, and new Ed25519 keys as OpenSSH text. No uuid `v4` (its getrandom would
+# need its own wasm setup); ids come from rand.
+chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc"] }
+uuid = { version = "1", default-features = false, features = ["std", "serde"] }
+ssh-key = { version = "0.6", default-features = false, features = [
+  "alloc",
+  "std",
+  "ecdsa",
+  "ed25519",
+  "encryption",
+] }
 
 # In a browser, randomness comes from crypto.getRandomValues (rand 0.8 reaches
 # it through getrandom 0.2).
