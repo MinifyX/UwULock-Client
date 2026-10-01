@@ -4,4 +4,11 @@
     <!-- Wi-Fi "Connect" on Android 10: network suggestions. A normal permission, granted at
          install; Android 11+ adds networks through the system's own sheet without it. -->
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <!-- Android 11+ hides other apps from UwULock: this lets it find the system's add-network
+         sheet, so the password goes to that and nothing else (UwuLockMobilePlugin.connectWifi). -->
+    <queries>
+        <intent>
+            <action android:name="android.settings.WIFI_ADD_NETWORKS" />
+        </intent>
+    </queries>
 </manifest>

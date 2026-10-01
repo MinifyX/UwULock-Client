@@ -46,6 +46,11 @@ pub(crate) fn suspended(app: &AppHandle) {
 pub(crate) fn resumed(app: &AppHandle) {
     check(app);
     *LEFT.lock() = None;
+    // The auto-lock time may have passed while the phone slept: lock before
+    // the vault shows, not at the next round of the timer.
+    if app.state::<VaultState>().lock_if_idle() {
+        vault::emit_status(app);
+    }
     // A finger or face enrolled or removed in the meantime.
     crate::hello::probe(app);
 }

@@ -470,11 +470,8 @@ pub(crate) async fn health_save_password(
         return Err(Failure::new("invalid", "The new password is empty."));
     }
     let (id, _) = state.active_account()?;
-    let is_login = with(&state, &id, |u| {
-        Ok(u.vault
-            .item(&item_id)
-            .is_some_and(|item| item.login.is_some()))
-    })?;
+    // An item with the re-prompt is changed only after the master password, as everywhere else.
+    let is_login = crate::vault::with_item(&state, &item_id, |item| Ok(item.login.is_some()))?;
     if !is_login {
         return Err(Failure::new("invalid", "This item isn't a login."));
     }
@@ -559,6 +556,29 @@ pub(crate) async fn health_check_emails(
 ) -> Result<EmailsView> {
     state.touch();
     let (id, account) = state.active_account()?;
+    // The usernames below come out of the encrypted vault: they only go to the server when it
+    // offers the check and this account agreed to it — checked here, not only by the page.
+    let on = info_of(&state, &id)?
+        .as_ref()
+        .is_some_and(|info| BreachSwitches::of(info).email_check);
+    if !on {
+        return Err(Failure::new(
+            "feature-off",
+            "The server doesn't offer the check of addresses.",
+        ));
+    }
+    let ctx = ctx(&state).await?;
+    let consent = ctx
+        .client
+        .email_opt_in(&ctx.token)
+        .await
+        .map_err(uwu_failure)?;
+    if !consent.opted_in {
+        return Err(Failure::new(
+            "consent",
+            "Switch the check of addresses on in the settings first.",
+        ));
+    }
     let mut addresses: Vec<String> = vec![account.email.clone()];
     addresses.extend(with(&state, &id, |u| {
         Ok(u.vault
@@ -576,7 +596,6 @@ pub(crate) async fn health_check_emails(
             unique.push(address);
         }
     }
-    let ctx = ctx(&state).await?;
     let mut results: BTreeMap<String, uwulock_bitwarden::health::EmailResult> = BTreeMap::new();
     let mut retry_after = None;
     'batches: for chunk in unique.chunks(EMAILS_PER_CALL) {

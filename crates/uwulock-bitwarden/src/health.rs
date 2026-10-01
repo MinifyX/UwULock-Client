@@ -83,6 +83,21 @@ pub struct Stored {
     pub revision_date: Option<String>,
 }
 
+/// `https://{host}/.well-known/change-password` for a plain host name (as
+/// `uwulock_core::health::host_of` gives it); `None` for anything else, so
+/// nothing but a host ends up in front of the path.
+pub fn change_password_url(host: &str) -> Option<String> {
+    let label_ok = |label: &str| {
+        !label.is_empty()
+            && label.len() <= 63
+            && label
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    };
+    (host.len() <= 253 && host.split('.').all(label_ok))
+        .then(|| format!("https://{host}/.well-known/change-password"))
+}
+
 /// How many prefixes are asked for at the same time.
 const AT_ONCE: usize = 4;
 
@@ -197,22 +212,31 @@ impl Client {
     }
 
     /// The site's `/.well-known/change-password`, if the server found one.
+    ///
+    /// The server only says *whether* the page exists; the address is made
+    /// here from the login's own host. Whatever `url` the server sends is
+    /// never opened, so a hostile server can't send the person to a page of
+    /// its choosing to "change" (type) their password.
     pub async fn change_password_page(
         &self,
         access_token: &str,
         host: &str,
     ) -> UwuResult<Option<String>> {
+        let host = host.to_ascii_lowercase();
+        let Some(page) = change_password_url(&host) else {
+            return Ok(None);
+        };
         let answer = self
             .uwu_get(
                 access_token,
-                &format!("/change-password/{}", uwu_path(&host.to_ascii_lowercase())),
+                &format!("/change-password/{}", uwu_path(&host)),
             )
             .await?;
-        Ok(answer
+        let exists = answer
             .get("url")
             .and_then(Value::as_str)
-            .filter(|url| url.starts_with("https://"))
-            .map(str::to_string))
+            .is_some_and(|url| !url.is_empty());
+        Ok(exists.then_some(page))
     }
 
     pub async fn email_opt_in(&self, access_token: &str) -> UwuResult<EmailOptIn> {

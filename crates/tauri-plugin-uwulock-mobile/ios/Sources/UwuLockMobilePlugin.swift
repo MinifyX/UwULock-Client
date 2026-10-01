@@ -46,6 +46,77 @@ class UwuLockMobilePlugin: Plugin {
   private let service = "app.uwulock.unlock"
   /// The pasteboard's change count right after UwULock's last copy.
   private var lastCopy: Int?
+  /// What covers the vault while UwULock isn't in front (the app switcher's picture).
+  private var covers: [UIView] = []
+  /// The page's theme, for the cover's colour.
+  private var dark: Bool?
+
+  @objc public override func load(webview: WKWebView) {
+    super.load(webview: webview)
+    let center = NotificationCenter.default
+    center.addObserver(
+      self, selector: #selector(coverScreen), name: UIApplication.willResignActiveNotification,
+      object: nil)
+    center.addObserver(
+      self, selector: #selector(uncoverScreen), name: UIApplication.didBecomeActiveNotification,
+      object: nil)
+    excludeDataFromBackup()
+  }
+
+  // MARK: Privacy
+
+  /// iOS keeps a picture of the last screen for the app switcher (and shows it while the app
+  /// starts again): an empty screen instead of the open vault. Android's FLAG_SECURE does the
+  /// same there (MainActivity).
+  @objc private func coverScreen() {
+    DispatchQueue.main.async {
+      guard self.covers.isEmpty else { return }
+      for scene in UIApplication.shared.connectedScenes {
+        for window in (scene as? UIWindowScene)?.windows ?? [] {
+          let cover = UIView(frame: window.bounds)
+          cover.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+          if let dark = self.dark {
+            cover.backgroundColor =
+              dark
+              ? UIColor(red: 0x14 / 255, green: 0x10 / 255, blue: 0x16 / 255, alpha: 1)
+              : UIColor(red: 0xF8 / 255, green: 0xF4 / 255, blue: 0xF6 / 255, alpha: 1)
+          } else {
+            cover.backgroundColor = .systemBackground
+          }
+          window.addSubview(cover)
+          self.covers.append(cover)
+        }
+      }
+    }
+  }
+
+  @objc private func uncoverScreen() {
+    DispatchQueue.main.async {
+      for cover in self.covers { cover.removeFromSuperview() }
+      self.covers.removeAll()
+    }
+  }
+
+  /// UwULock's data folder (Library/Application Support/<bundle id>, Tauri's app data dir) stays
+  /// out of iCloud and computer backups, like Android's (allowBackup="false"): the vault comes
+  /// back from the server, and the copy of the user key for Face ID only opens with a Keychain
+  /// item that never leaves this iPhone anyway.
+  private func excludeDataFromBackup() {
+    let files = FileManager.default
+    guard
+      let support = files.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+    else { return }
+    var folder = support.appendingPathComponent(
+      Bundle.main.bundleIdentifier ?? "app.uwulock", isDirectory: true)
+    do {
+      try files.createDirectory(at: folder, withIntermediateDirectories: true)
+      var values = URLResourceValues()
+      values.isExcludedFromBackup = true
+      try folder.setResourceValues(values)
+    } catch {
+      NSLog("UwULock: couldn't keep the data folder out of backups: \(error)")
+    }
+  }
 
   // MARK: Unlocking with a biometric
 
@@ -199,6 +270,7 @@ extension UwuLockMobilePlugin {
   @objc public func setAppearance(_ invoke: Invoke) throws {
     let args = try invoke.parseArgs(AppearanceArgs.self)
     DispatchQueue.main.async {
+      self.dark = args.dark
       let style: UIUserInterfaceStyle = args.dark ? .dark : .light
       for scene in UIApplication.shared.connectedScenes {
         for window in (scene as? UIWindowScene)?.windows ?? [] {

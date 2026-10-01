@@ -5,9 +5,12 @@ import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipDescription
 import android.content.ClipboardManager
+import android.content.ComponentName
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.wifi.WifiEnterpriseConfig
 import android.net.wifi.WifiManager
@@ -421,7 +424,15 @@ class UwuLockMobilePlugin(private val activity: Activity) : Plugin(activity) {
             return
         }
         if (Build.VERSION.SDK_INT >= 30) {
+            // The intent carries the password: only the system's own sheet may get it, never an
+            // app that registered for the same action (which would show up in a chooser).
+            val sheet = systemActivity(Intent(Settings.ACTION_WIFI_ADD_NETWORKS))
+            if (sheet == null) {
+                suggest(invoke, suggestion)
+                return
+            }
             val intent = Intent(Settings.ACTION_WIFI_ADD_NETWORKS)
+                .setComponent(sheet)
                 .putParcelableArrayListExtra(Settings.EXTRA_WIFI_NETWORK_LIST, arrayListOf(suggestion))
             activity.runOnUiThread {
                 try {
@@ -454,6 +465,22 @@ class UwuLockMobilePlugin(private val activity: Activity) : Plugin(activity) {
             // Some phones answer OK without the list: the person confirmed.
             else -> invoke.resolve(outcome("saved"))
         }
+    }
+
+    /** The activity of a system app (preinstalled, not updatable by others) that handles `intent`. */
+    private fun systemActivity(intent: Intent): ComponentName? {
+        val pm = activity.packageManager
+        val found = if (Build.VERSION.SDK_INT >= 33) {
+            pm.queryIntentActivities(intent, PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_SYSTEM_ONLY.toLong()))
+        } else {
+            @Suppress("DEPRECATION")
+            pm.queryIntentActivities(intent, PackageManager.MATCH_SYSTEM_ONLY)
+        }
+        val info = found
+            .mapNotNull { it.activityInfo }
+            .firstOrNull { (it.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0 }
+            ?: return null
+        return ComponentName(info.packageName, info.name)
     }
 
     /** Android 10: a suggestion the phone joins by itself once the person allowed UwULock's. */
