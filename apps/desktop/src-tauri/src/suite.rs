@@ -26,7 +26,10 @@ use uuid::Uuid;
 use uwulock_core::suite::openssh;
 use uwulock_core::suite::{new_device_id, Space, SpaceVault, PAGE};
 
-use crate::extras::{ctx, extras_key, safe_file_name, save_download, uwu_failure, with, Ctx};
+use crate::extras::{
+    ctx, extras_key, runs_when_opened, safe_file_name, save_download, save_download_private,
+    uwu_failure, with, Ctx,
+};
 use crate::vault::{Failure, Result, VaultState};
 pub(crate) use plan::Op;
 use plan::{identity_of, rdp_file, Refusal, SpaceState};
@@ -173,8 +176,9 @@ async fn pull(app: &AppHandle, state: &VaultState, ctx: &Ctx, space: Space) -> R
                 reset = true;
                 break;
             }
+            // A server that doesn't move its cursor on would be asked forever.
+            let more = page.has_more && !page.records.is_empty() && page.cursor > since;
             since = page.cursor;
-            let more = page.has_more && !page.records.is_empty();
             with_space(state, ctx, space, |s| {
                 for env in page.records {
                     s.apply(env);
@@ -573,6 +577,9 @@ pub(crate) async fn suite_save_key(
         let name = safe_file_name(&label);
         if name.is_empty() || name == "_" {
             "id_ed25519".to_owned()
+        } else if runs_when_opened(&name) {
+            // A label like `deploy.bat` mustn't make a file Windows runs.
+            name.replace('.', "_")
         } else {
             name
         }
@@ -591,7 +598,7 @@ pub(crate) async fn suite_save_key(
         }
         "private" => {
             let text = secret_of(&state, &ctx, space, &private_id)?;
-            save_download(&app, &base, text.as_bytes()).await?
+            save_download_private(&app, &base, text.as_bytes()).await?
         }
         _ => return Err(Failure::new("invalid", "public or private")),
     };

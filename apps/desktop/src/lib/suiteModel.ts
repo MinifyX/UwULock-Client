@@ -117,7 +117,13 @@ export function sshCommand(host: Json | null, identity: Json | null): string {
   const port = num(host, 'port', 22);
   const user = str(identity, 'username');
   const target = (user ? `${user}@` : '') + str(host, 'address');
-  return ['ssh', ...(port !== 22 ? ['-p', String(port)] : []), shellQuote(target)].join(' ');
+  // A target starting with `-` would be one of ssh's options (`-oProxyCommand=…`).
+  return [
+    'ssh',
+    ...(port !== 22 ? ['-p', String(port)] : []),
+    ...(target.startsWith('-') ? ['--'] : []),
+    shellQuote(target),
+  ].join(' ');
 }
 
 /** `host:port` for a remote desktop client. */

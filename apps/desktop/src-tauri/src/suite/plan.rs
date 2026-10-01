@@ -468,7 +468,19 @@ impl SpaceState {
 
     /// Takes a record from the server, unless one with a higher `seq` is
     /// already here.
+    ///
+    /// Every record of a kind this build knows is authenticated here, also a
+    /// secret and a tombstone: one that doesn't open (the server changed its
+    /// clock, its kind, its `deleted`, or it was sealed for something else)
+    /// is `broken`, and nothing is ever sealed on top of a broken one, so a
+    /// server can't push this device into writing a clock of its choosing.
+    /// An id that isn't a UUID in its usual form is dropped: the AAD holds
+    /// its bytes, so the same record could otherwise come twice.
     pub(crate) fn apply(&mut self, env: Envelope) {
+        if parse_id(&env.id).ok().as_deref() != Some(env.id.as_str()) {
+            tracing::warn!("a suite record with an id in an unusual form: ignored");
+            return;
+        }
         let seq = env.seq.unwrap_or(0);
         if let Some(old) = self.records.get(&env.id) {
             if old.seq() > seq {
@@ -486,6 +498,15 @@ impl SpaceState {
                     ..
                 }) if value.is_object() => (Some(value), false),
                 Ok(_) => (None, true),
+                Err(error) => {
+                    tracing::warn!(%error, "a suite record didn't open");
+                    (None, true)
+                }
+            }
+        } else if self.vault.space.kind_discriminant(&env.kind).is_some() {
+            // Opened only to authenticate it; the plaintext goes right away.
+            match self.vault.open(&env) {
+                Ok(_) => (None, false),
                 Err(error) => {
                     tracing::warn!(%error, "a suite record didn't open");
                     (None, true)
@@ -679,6 +700,9 @@ impl SpaceState {
                         if !stored.live() || stored.env.kind != KIND_SECRET {
                             return Err(refuse("invalid", "not a secret"));
                         }
+                        if stored.broken {
+                            return Err(refuse("crypto", "this record didn't open"));
+                        }
                         check_seq(stored, seq)?;
                     }
                     next.insert(
@@ -703,6 +727,9 @@ impl SpaceState {
                             "invalid",
                             format!("{kind} records aren't deleted here"),
                         ));
+                    }
+                    if stored.broken {
+                        return Err(refuse("crypto", "this record didn't open"));
                     }
                     check_seq(stored, seq)?;
                     let json = current(self, &next, &id);
@@ -750,7 +777,10 @@ impl SpaceState {
                                 if let Some(secret) =
                                     json.as_ref().and_then(|v| reference(v, field))
                                 {
-                                    if self.live(secret).is_some_and(|s| s.env.kind == KIND_SECRET)
+                                    // One that doesn't open stays: nothing is sealed on it.
+                                    if self
+                                        .live(secret)
+                                        .is_some_and(|s| s.env.kind == KIND_SECRET && !s.broken)
                                     {
                                         next.insert(
                                             secret.to_owned(),
@@ -772,6 +802,10 @@ impl SpaceState {
         let mut planned: Vec<(usize, Envelope)> = Vec::with_capacity(next.len());
         for (id, (kind, change)) in next {
             let head = match self.records.get(&id) {
+                // Its clock and kind are only trusted when it opened.
+                Some(stored) if stored.broken => {
+                    return Err(refuse("crypto", "this record didn't open"));
+                }
                 Some(stored) => stored
                     .env
                     .head()
@@ -1668,6 +1702,87 @@ mod tests {
             ..stale
         });
         assert_eq!(s.view().iter().find(|r| r.id == id(1)).unwrap().seq, 7);
+    }
+
+    #[test]
+    fn nothing_is_sealed_on_a_record_the_server_changed() {
+        let mut s = state(Space::Ssh);
+        put(&mut s, &id(6), KIND_SECRET, json!("hunter2"), 1);
+        put(
+            &mut s,
+            &id(2),
+            "identity",
+            json!({ "label": "me", "username": "me", "password_secret_id": id(6) }),
+            2,
+        );
+        put(&mut s, &id(7), KIND_SECRET, json!("other"), 3);
+        // The server moves both secrets' clocks to the far future: an edit on
+        // top would carry that clock to every device.
+        for (n, seq) in [(6, 4), (7, 5)] {
+            let mut forged = s.records[&id(n)].env.clone();
+            forged.updated_at = Hlc::new(u64::MAX - 1, u32::MAX, 1);
+            forged.seq = Some(seq);
+            s.apply(forged);
+        }
+        let refused = s
+            .plan(
+                vec![Op::Secret {
+                    id: id(6),
+                    text: "new".into(),
+                    seq: None,
+                }],
+                NOW,
+                DEVICE,
+            )
+            .unwrap_err();
+        assert_eq!(refused.kind, "crypto");
+        let refused = s
+            .plan(
+                vec![Op::Delete {
+                    id: id(7),
+                    seq: None,
+                }],
+                NOW,
+                DEVICE,
+            )
+            .unwrap_err();
+        assert_eq!(refused.kind, "crypto");
+        assert!(s.secret_text(&id(6)).is_err());
+        // Deleting the identity leaves its broken secret alone.
+        let planned = s
+            .plan(
+                vec![Op::Delete {
+                    id: id(2),
+                    seq: None,
+                }],
+                NOW,
+                DEVICE,
+            )
+            .unwrap();
+        assert_eq!(planned.len(), 1);
+        assert_eq!(planned[0].id, id(2));
+        assert!(planned[0].updated_at.wall_ms < u64::MAX / 2);
+
+        // A tombstone that doesn't open is no tombstone of ours either.
+        put(&mut s, &id(1), "host", ssh_host("one", None, None), 6);
+        let mut forged = s.records[&id(1)].env.clone();
+        forged.deleted = true;
+        forged.seq = Some(7);
+        s.apply(forged);
+        assert!(s.records[&id(1)].broken);
+    }
+
+    #[test]
+    fn an_id_in_an_unusual_form_is_dropped() {
+        let mut s = state(Space::Ssh);
+        put(&mut s, &id(0xab), "host", ssh_host("one", None, None), 1);
+        let mut copy = s.records[&id(0xab)].env.clone();
+        // The same bytes, so it would open: still not taken twice.
+        copy.id = id(0xab).to_uppercase();
+        copy.seq = Some(2);
+        s.apply(copy);
+        assert_eq!(s.view().len(), 1);
+        assert_eq!(s.view()[0].seq, 1);
     }
 
     #[test]

@@ -154,3 +154,77 @@ Info:
   password out of the command line and the log. Checkouts don't persist credentials, every action
   is pinned to a commit, the Gradle wrapper is validated. The IPA is unsigned by design; nothing in
   the iOS workflow holds a secret.
+
+## 0.4.0-beta.2: SSH/RDP entries
+
+The sections "SSH (UwUSSH)" and "Remote Desktop (UwURDP)" (`uwulock_core::suite`,
+`suite::openssh`, app `suite.rs` + `suite/plan.rs`, `SuitePane`/`SuiteEditors`). The server is
+untrusted as before: it holds the records sealed under each space's key (XChaCha20-Poly1305, AAD
+of `docs/uwu-api.md` §6.2: prefix, id, kind, space id, clock, `deleted`), and the space key
+under the extras key. `seq`, the cursor and which records it hands out are its own.
+
+### Fixed
+
+- **CL-M5 Medium, edits were sealed on top of records that weren't authenticated.** The app
+  opened only the JSON kinds it shows; secrets and tombstones were taken as the server sent them.
+  An edit or a delete starts from the record's clock (`Hlc::after`), so a server could hand out a
+  secret with `updatedAt` near `u64::MAX` — or a host that didn't open, which could still be
+  deleted — and the app sealed, with the real key, a record whose clock was the server's choice;
+  every device that merges it carries that clock on. The same went for the secrets a deleted
+  identity or key takes along. _Fixed:_ every record of a known kind is authenticated when it
+  arrives (secrets and tombstones are opened and the plaintext dropped); one that doesn't open is
+  `broken`, and nothing is sealed on a broken record — editing or deleting it is refused, a
+  delete's cascade leaves it alone, and the sealing step refuses once more as a safety net.
+  Tests: `nothing_is_sealed_on_a_record_the_server_changed`.
+- **CL-L20 Low, a saved private key was readable by other users.** _Save private key_ wrote to
+  Downloads with the default mode (`0644` under the usual umask); an unencrypted key in a home
+  folder that others can enter. _Fixed:_ on Linux and macOS the file is created `0600`
+  (`save_download_private`, `create_new`), which is also what `ssh` insists on.
+- **CL-L21 Low, the copied ssh command could carry an option.** `shellQuote` stops the shell, not
+  ssh: an address like `-oProxyCommand=…` (with no username) became `ssh '-oProxyCommand=…'`,
+  which runs a command when pasted. _Fixed:_ a target starting with `-` gets `--` in front
+  (`apps/desktop/test/suite.test.ts`).
+- **CL-L22 Low, a key's file name came from its label.** `safe_file_name` keeps the extension, so
+  a key labelled `deploy.bat` was saved as `deploy.bat`. _Fixed:_ a name that
+  `runs_when_opened` has its dots replaced (`deploy_bat`, `deploy_bat.pub`).
+- **CL-L23 Low, a pull without end.** The pull loop asked for the next page as long as the server
+  said `hasMore` with records, also when the cursor didn't move on. _Fixed:_ it stops when the
+  cursor doesn't grow.
+- **CL-L24 Low, one record under two ids.** The AAD holds the id's 16 bytes, so the same record
+  opened under `ABCD…`, `{abcd…}` or `urn:uuid:…` too, and the app's map (keyed by the text)
+  listed it twice. _Fixed:_ an id that isn't in the usual lowercase hyphenated form is ignored.
+
+### Open Lows and Info
+
+- **CL-L25 Low, bcrypt rounds of an imported key are the file's.** `openssh::passphrase_opens`
+  decrypts with the rounds the key text names (a `u32`); a crafted key with millions of rounds
+  keeps a core busy (in the web vault: the tab). Only for text the person pastes or picks
+  themselves; the app runs it off the main thread. A cap (OpenSSH itself has none) would refuse
+  real keys made with `-a` in the hundreds; left as it is.
+- **CL-L26 Low, the clock's very end.** `Hlc::after` on a record at `wallMs = u64::MAX` and
+  `counter = u32::MAX` saturates and is not strictly after it. Since CL-M5 only a device with the
+  space key can write such a clock; UwUSSH's `tick` behaves the same.
+- **Info, what the server can still do.** `seq` isn't in the AAD: a server can withhold records,
+  replay an older authentic version under a higher `seq`, or claim to have accepted a push. These
+  are limits of the protocol (§6), the same for the apps; what it can't do is change a record,
+  move it to another kind, space or id, forge a tombstone or choose a clock.
+- **Info, secrets and the page.** The page gets the JSON of the shown kinds; a `secret` appears
+  as "there is one" without its value. `suite_reveal` and `suite_copy` take any live secret's id
+  in the open space — the same trust as `reveal_field`/`copy_field` for Bitwarden items: the page
+  is the app's own code (CSP `script-src 'self'`), and copying goes through Rust with the usual
+  clearing. Plaintexts in Rust are `Zeroizing`; the spaces (`suite::Cache`, keys `ZeroizeOnDrop`)
+  live in `Unlocked` and go on lock. The JSON of hosts and identities (no secrets) isn't zeroised.
+  Logs carry kinds and ids, never values.
+- **Info, files.** `.rdp` files: no password, `redirectdrives:i:0`, CR/LF removed from every text
+  value, numbers typed. File names through `safe_file_name` into Downloads (Android: MediaStore
+  Downloads, where other apps with storage access can read an exported private key — the person
+  asked for the export; iOS: the app's own folder).
+- **Info, deep links.** `uwussh://connect/<id>` / `uwurdp://connect/<id>` are built from the id
+  parsed as a UUID and only for a live host; nothing else travels. Not offered on phones.
+- **Info, keys.** Ed25519 from `OsRng`; a passphrase encrypts the OpenSSH key the way `ssh-keygen`
+  does (bcrypt-pbkdf, 16 rounds, aes256-ctr) and goes into its own secret. Imported text is parsed
+  by `ssh-key` (no panics on bad input; an error message without key material); PEM and PuTTY keys
+  are stored as they are, after a first-line check.
+- **Info, what is never written.** `manifest`, the assistant's kinds and unknown kinds are
+  neither shown nor sealed; a Put keeps a record's kind; payloads are edited as JSON objects, so
+  fields of newer apps survive.
