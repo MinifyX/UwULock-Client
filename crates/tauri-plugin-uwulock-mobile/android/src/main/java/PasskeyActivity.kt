@@ -151,7 +151,7 @@ class PasskeyActivity : AppCompatActivity() {
     }
 
     private fun wantsVerification(requestJson: String, create: Boolean): Boolean {
-        val json = try { JSONObject(requestJson) } catch (_: Exception) { return true }
+        val json = try { JSONObject(requestJson) } catch (error: Exception) { return true }
         val preference = if (create) {
             json.optJSONObject("authenticatorSelection")?.optString("userVerification")
         } else {
@@ -163,7 +163,7 @@ class PasskeyActivity : AppCompatActivity() {
     private fun site(requestJson: String): String = try {
         val json = JSONObject(requestJson)
         json.optString("rpId").ifEmpty { json.optJSONObject("rp")?.optString("id") ?: "" }
-    } catch (_: Exception) {
+    } catch (error: Exception) {
         ""
     }
 

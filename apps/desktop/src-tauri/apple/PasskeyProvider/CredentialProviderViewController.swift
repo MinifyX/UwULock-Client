@@ -12,9 +12,9 @@ import CryptoKit
 import SwiftUI
 
 #if os(iOS)
-  typealias HostingController = UIHostingController
+  typealias HostingController<V: View> = UIHostingController<V>
 #else
-  typealias HostingController = NSHostingController
+  typealias HostingController<V: View> = NSHostingController<V>
 #endif
 
 /// German when the system prefers it, English otherwise.
@@ -163,7 +163,7 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
       signature: signature, clientDataHash: clientDataHash, authenticatorData: authData,
       credentialID: id)
     DispatchQueue.main.async {
-      self.extensionContext.completeAssertionRequest(using: credential)
+      self.extensionContext.completeAssertionRequest(using: credential, completionHandler: nil)
     }
   }
 
@@ -290,7 +290,7 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
         relyingParty: rpId, clientDataHash: request.clientDataHash, credentialID: made.id,
         attestationObject: PasskeyVault.attestationObject(authData))
       DispatchQueue.main.async {
-        self.extensionContext.completeRegistrationRequest(using: credential)
+        self.extensionContext.completeRegistrationRequest(using: credential, completionHandler: nil)
       }
     }
   }
