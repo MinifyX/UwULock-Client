@@ -1,0 +1,4 @@
+{
+  "de": "- Browser-Erweiterung für addons.mozilla.org vorbereitet: Firefox fragt bei der Installation, welche Daten an deinen Server gehen (Anmeldung, Tresor-Einträge wie Identitäten und Karten – Ende-zu-Ende-verschlüsselt)\n- Neue Datenschutzerklärung (PRIVACY.md): UwULock spricht nur mit dem Server, bei dem du dich anmeldest; keine Telemetrie, kein Tracking\n- Die Firefox-Erweiterung braucht jetzt Firefox 140 oder neuer",
+  "en": "- Browser extension ready for addons.mozilla.org: Firefox asks at install which data goes to your server (your login, vault items such as identities and cards – end-to-end encrypted)\n- New privacy policy (PRIVACY.md): UwULock talks only to the server you log in to; no telemetry, no tracking\n- The Firefox extension now needs Firefox 140 or newer"
+}

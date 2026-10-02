@@ -5075,7 +5075,7 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-uwulock-mobile"
-version = "0.4.0-beta.2"
+version = "0.4.0-beta.3"
 dependencies = [
  "base64 0.22.1",
  "serde",
@@ -5787,7 +5787,7 @@ dependencies = [
 
 [[package]]
 name = "uwulock-bitwarden"
-version = "0.4.0-beta.2"
+version = "0.4.0-beta.3"
 dependencies = [
  "base64 0.22.1",
  "futures-util",
@@ -5810,7 +5810,7 @@ dependencies = [
 
 [[package]]
 name = "uwulock-core"
-version = "0.4.0-beta.2"
+version = "0.4.0-beta.3"
 dependencies = [
  "aes",
  "argon2",
@@ -5840,7 +5840,7 @@ dependencies = [
 
 [[package]]
 name = "uwulock-desktop"
-version = "0.4.0-beta.2"
+version = "0.4.0-beta.3"
 dependencies = [
  "arboard",
  "base64 0.22.1",
@@ -5873,7 +5873,7 @@ dependencies = [
 
 [[package]]
 name = "uwulock-setup"
-version = "0.4.0-beta.2"
+version = "0.4.0-beta.3"
 dependencies = [
  "libc",
  "semver",
@@ -5891,7 +5891,7 @@ dependencies = [
 
 [[package]]
 name = "uwulock-wasm"
-version = "0.4.0-beta.2"
+version = "0.4.0-beta.3"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.2.17",

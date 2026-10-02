@@ -79,10 +79,10 @@ jobs:
         run: |
           pnpm --filter @uwulock/extension build
           ls -la target/extension
-      # Mozilla's own checks, as addons.mozilla.org runs them. Warnings (React writes
-      # innerHTML, for one) are shown; errors fail.
+      # Mozilla's own checks, as addons.mozilla.org runs them (not --self-hosted: the add-on
+      # goes there). Warnings (React writes innerHTML, for one) are shown; errors fail.
       - name: web-ext lint (Firefox)
-        run: npx --yes web-ext@8 lint --source-dir apps/extension/dist/firefox --self-hosted
+        run: npx --yes web-ext@8 lint --source-dir apps/extension/dist/firefox
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
