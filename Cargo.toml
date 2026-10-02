@@ -4,6 +4,7 @@ members = [
   "crates/uwulock-core",
   "crates/uwulock-bitwarden",
   "crates/uwulock-wasm",
+  "crates/uwulock-authenticator",
   "crates/tauri-plugin-uwulock-mobile",
   "apps/desktop/src-tauri",
   "apps/setup/src-tauri",
@@ -19,6 +20,7 @@ rust-version = "1.89"
 [workspace.dependencies]
 uwulock-core = { path = "crates/uwulock-core" }
 uwulock-bitwarden = { path = "crates/uwulock-bitwarden" }
+uwulock-authenticator = { path = "crates/uwulock-authenticator" }
 
 parking_lot = "0.12"
 serde = { version = "1", features = ["derive"] }

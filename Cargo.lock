@@ -5786,6 +5786,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "uwulock-authenticator"
+version = "0.4.0-beta.3"
+dependencies = [
+ "aes-gcm",
+ "base64 0.22.1",
+ "p256",
+ "rand 0.8.8",
+ "serde",
+ "serde_json",
+ "sha2",
+ "uwulock-core",
+ "zeroize",
+]
+
+[[package]]
 name = "uwulock-bitwarden"
 version = "0.4.0-beta.3"
 dependencies = [
