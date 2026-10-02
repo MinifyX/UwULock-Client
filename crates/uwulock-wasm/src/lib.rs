@@ -416,13 +416,15 @@ pub fn seal_share(id: &str, options: &str) -> Result<String, JsValue> {
     js(extras::seal_share(id, options))
 }
 
-/// The entry in a Send's text: `{entry, readable}` or `null` for a plain
-/// text. `entry` is `{name, username?, password?, websites[], notes?,
+/// The entry in a Send's text: `{entry, readable, openable}` or `null` for a
+/// plain text. `key` is the link's part after `#` (the marker is tagged
+/// with it). `entry` is `{name, username?, password?, websites[], notes?,
 /// fields[{name, value, hidden}], totp?}`; show `totp` only as live codes
-/// ([`totp_codes`]). Needs no unlocked vault.
+/// ([`totp_codes`]); link a website only where `openable[i]`. Needs no
+/// unlocked vault.
 #[wasm_bindgen(js_name = decodeEntrySend)]
-pub fn decode_entry_send(text: &str) -> Result<String, JsValue> {
-    js(extras::decode_entry_send(text))
+pub fn decode_entry_send(text: &str, key: &str) -> Result<String, JsValue> {
+    js(extras::decode_entry_send(text, key))
 }
 
 /// A Send's link from the `key` and `accessId` the server answered.
@@ -465,15 +467,17 @@ pub fn passkey_assert(request: &str) -> Result<String, JsValue> {
     js(passkeys::assert(request))
 }
 
-/// The passkeys of an item: `[{index, readable, credentialId, rpId, rpName,
-/// userName, userDisplayName, creationDate, discoverable}]`.
+/// The passkeys of an item: `[{index, readable, credentialId, fingerprint,
+/// rpId, rpName, userName, userDisplayName, creationDate, discoverable}]`.
 #[wasm_bindgen(js_name = itemPasskeys)]
 pub fn item_passkeys(id: &str) -> Result<String, JsValue> {
     js(passkeys::list(id))
 }
 
-/// Deletes an item's passkey at `index` (checked against `credentialId` when
-/// given): `{cipher}` for `PUT /api/ciphers/<id>`.
+/// Deletes an item's passkey at `index`, only if it still is the one
+/// `credentialId` names (its credential id, or the `fingerprint` of an
+/// unreadable one; without it nothing is deleted): `{cipher}` for
+/// `PUT /api/ciphers/<id>`.
 #[wasm_bindgen(js_name = deletePasskey)]
 pub fn delete_passkey(
     id: &str,

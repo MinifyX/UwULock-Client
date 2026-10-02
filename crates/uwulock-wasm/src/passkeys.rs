@@ -2,8 +2,9 @@
 //! `navigator.credentials.create()`, signing with one for
 //! `navigator.credentials.get()`.
 //!
-//! Passkeys are kept like Bitwarden keeps them, one per login, so the ones
-//! made here work in Bitwarden's apps and theirs work here. Asking the person
+//! Passkeys are kept like Bitwarden keeps them, in the login's
+//! `fido2Credentials`, so the ones made here work in Bitwarden's apps and
+//! theirs work here. A login can hold several (one per site and user). Asking the person
 //! and talking to the page is the extension's part; this is the
 //! authenticator.
 //!
@@ -65,8 +66,10 @@ struct CreateRequest {
     now: String,
 }
 
-/// A new passkey, in a login: the one `itemId` names, whose passkey it
-/// replaces (Bitwarden keeps one a login), or a new login for the site.
+/// A new passkey, in a login: the one `itemId` names, or a new login for the
+/// site. In an existing login it replaces only a passkey for the same RP id
+/// and the same user (when the site names its user handle); every other one
+/// stays, a passkey for another site above all (R4-3).
 pub fn create(request: &str) -> Result<String> {
     let request: CreateRequest = serde_json::from_str(request)?;
     let rp_id = request.rp_id.trim();
@@ -99,8 +102,16 @@ pub fn create(request: &str) -> Result<String> {
             .outer_key(item.organization_id.as_deref(), &unlocked.user_key)?
             .clone();
         let sealed = passkey.seal(item.key.as_ref().unwrap_or(&outer));
+        let same = passkeys_of(unlocked, &item)
+            .into_iter()
+            .find(|(_, old)| same_account(old, rp_id, user_handle.as_deref()))
+            .map(|(index, _)| index);
         if let Some(login) = item.login.as_mut() {
-            login.passkeys = Some(vec![sealed]);
+            let passkeys = login.passkeys.get_or_insert_with(Vec::new);
+            match same.and_then(|index| passkeys.get_mut(index)) {
+                Some(slot) => *slot = sealed,
+                None => passkeys.push(sealed),
+            }
         }
         item.can_save()?;
         let cipher = item.seal(&outer)?;
@@ -121,6 +132,23 @@ pub fn create(request: &str) -> Result<String> {
         }
         json(&answer)
     })
+}
+
+/// Whether a stored passkey is the one a new one for `rp_id` and
+/// `user_handle` takes the place of: the same RP id, and — when the site
+/// named its user — the same user handle.
+fn same_account(old: &Passkey, rp_id: &str, user_handle: Option<&[u8]>) -> bool {
+    if !old.rp_id.eq_ignore_ascii_case(rp_id) {
+        return false;
+    }
+    match user_handle {
+        None => true,
+        Some(wanted) => old
+            .user_handle_bytes()
+            .ok()
+            .flatten()
+            .is_some_and(|handle| handle.as_slice() == wanted),
+    }
 }
 
 fn existing_login(unlocked: &Unlocked, id: &str) -> Result<Item> {
