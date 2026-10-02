@@ -79,9 +79,19 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+/// iOS: whether the AutoFill extension's shared places can be reached — the
+/// App Group folder and the Keychain group, which only a signed build has.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PasskeyStatus {
+    pub ready: bool,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
 #[cfg(mobile)]
 mod mobile {
-    use super::{Error, Prompt, UnlockStatus};
+    use super::{Error, PasskeyStatus, Prompt, UnlockStatus};
     use serde::{Deserialize, Serialize};
     use tauri::plugin::mobile::PluginInvokeError;
     use tauri::plugin::PluginHandle;
@@ -260,6 +270,83 @@ mod mobile {
             self.0
                 .run_mobile_plugin("openWifiSettings", ())
                 .map_err(error)
+        }
+
+        /// iOS: whether the AutoFill extension's App Group and Keychain group
+        /// are there (only in a signed build).
+        pub fn passkeys_status(&self) -> Result<PasskeyStatus, Error> {
+            self.0
+                .run_mobile_plugin("passkeysStatus", ())
+                .map_err(error)
+        }
+
+        /// iOS: leaves the extension its sealed passkey list (base64), the
+        /// provider key (base64) when it is new — into the shared Keychain,
+        /// behind Face ID / Touch ID / the passcode — and the system's list
+        /// of passkeys (`identities`: rpId, userName, credentialId,
+        /// userHandle, recordIdentifier).
+        pub fn passkeys_store<T: Serialize>(
+            &self,
+            list: &str,
+            key: Option<&str>,
+            identities: T,
+        ) -> Result<(), Error> {
+            #[derive(Serialize)]
+            struct Store<'a, T> {
+                list: &'a str,
+                key: Option<&'a str>,
+                identities: T,
+            }
+            self.0
+                .run_mobile_plugin(
+                    "passkeysStore",
+                    Store {
+                        list,
+                        key,
+                        identities,
+                    },
+                )
+                .map_err(error)
+        }
+
+        /// iOS: the passkeys the extension made since, as file name and
+        /// sealed bytes (base64).
+        pub fn passkeys_outbox(&self) -> Result<Vec<(String, String)>, Error> {
+            #[derive(Deserialize)]
+            struct Entry {
+                name: String,
+                sealed: String,
+            }
+            #[derive(Deserialize)]
+            struct Outbox {
+                entries: Vec<Entry>,
+            }
+            self.0
+                .run_mobile_plugin::<Outbox>("passkeysOutbox", ())
+                .map(|outbox| {
+                    outbox
+                        .entries
+                        .into_iter()
+                        .map(|e| (e.name, e.sealed))
+                        .collect()
+                })
+                .map_err(error)
+        }
+
+        /// iOS: removes outbox files the app took into the vault.
+        pub fn passkeys_clear_outbox(&self, names: &[String]) -> Result<(), Error> {
+            #[derive(Serialize)]
+            struct Names<'a> {
+                names: &'a [String],
+            }
+            self.0
+                .run_mobile_plugin("passkeysClearOutbox", Names { names })
+                .map_err(error)
+        }
+
+        /// iOS: the list, the key and the system's entries go.
+        pub fn passkeys_clear(&self) -> Result<(), Error> {
+            self.0.run_mobile_plugin("passkeysClear", ()).map_err(error)
         }
 
         /// Empties the clipboard if it still holds UwULock's last copy.

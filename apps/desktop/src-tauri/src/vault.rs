@@ -2357,7 +2357,11 @@ pub(crate) fn prepare(state: &VaultState, account_id: &str, id: &str) -> Result<
     Ok(item.clone())
 }
 
-fn sealed(state: &VaultState, account_id: &str, item: &Item) -> Result<wire::CipherRequest> {
+pub(crate) fn sealed(
+    state: &VaultState,
+    account_id: &str,
+    item: &Item,
+) -> Result<wire::CipherRequest> {
     item.can_save()?;
     let guard = state.unlocked.read();
     let unlocked = guard.get(account_id).ok_or_else(Failure::locked)?;

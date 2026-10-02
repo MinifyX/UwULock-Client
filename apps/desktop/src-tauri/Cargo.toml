@@ -20,6 +20,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 uwulock-bitwarden.workspace = true
 uwulock-core.workspace = true
+uwulock-authenticator.workspace = true
 
 base64.workspace = true
 parking_lot.workspace = true
@@ -48,12 +49,20 @@ tauri-plugin-updater = "2"
 [target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
 tauri-plugin-uwulock-mobile = { path = "../../../crates/tauri-plugin-uwulock-mobile" }
 
+# Credential Manager's provider calls into the app over JNI (passkeys/android.rs), and a
+# site's Digital Asset Links are fetched for an app that asks. Both crates (and their
+# features) are already in the Android build through Tauri and uwulock-bitwarden.
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots"] }
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, features = [
   "Win32_Foundation",
   "Win32_Security_Cryptography",
   "Win32_System_Diagnostics_ToolHelp",
   "Win32_System_LibraryLoader",
+  "Win32_System_Registry",
   "Win32_System_StationsAndDesktops",
   "Win32_System_Threading",
 ] }
@@ -61,6 +70,7 @@ windows-sys = { workspace = true, features = [
 # Windows Hello (KeyCredentialManager): the same windows crate Tauri brings.
 windows = { version = "0.61", features = [
   "Foundation",
+  "Win32_System_Com",
   "Security_Credentials",
   "Security_Cryptography",
   "Storage_Streams",
@@ -75,6 +85,9 @@ tempfile = "3"
 # The same zbus (and features) tauri-plugin-opener already brings.
 zbus = { version = "5", default-features = false, features = ["async-io", "blocking-api"] }
 
-# Files saved from a file request get `com.apple.quarantine` (setxattr).
+# Files saved from a file request get `com.apple.quarantine` (setxattr). The provider key
+# for the AutoFill extension goes into the shared Keychain (passkeys/apple.rs); the same
+# security-framework rustls already brings.
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "0.2"
+security-framework = "3"

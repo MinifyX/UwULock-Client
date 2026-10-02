@@ -16,6 +16,9 @@
 //! - [`clipboard`] — copies that clear themselves
 //! - [`system`] — updates and links out of the app
 //! - [`phone`] — Android and iOS: the plugin, locking in the background
+//! - [`passkeys`] — the vault's passkeys for the system: a virtual security
+//!   key (Linux), a plugin passkey manager (Windows), Credential Manager
+//!   (Android), the AutoFill extension (iOS, macOS)
 //!
 //! The same app runs on Android and iOS (docs/mobile.md); what only a
 //! desktop has — the updater, Windows Hello, the screen lock — is left out
@@ -28,6 +31,7 @@ mod health;
 mod hello;
 mod live;
 mod moving;
+mod passkeys;
 #[cfg(mobile)]
 mod phone;
 mod session_lock;
@@ -76,6 +80,7 @@ pub fn run() {
             };
             let storage = account::Storage::new(dir)?;
             tracing::info!(path = %storage.dir().display(), "data folder");
+            app.manage(passkeys::Provider::new(storage.dir()));
             let vault = vault::VaultState::new(storage);
             app.manage(vault.moves.clone());
             app.manage(vault);
@@ -83,6 +88,7 @@ pub fn run() {
             live::start(app.handle());
             extras::start(app.handle());
             session_lock::start(app.handle());
+            passkeys::start(app.handle());
             // On a phone the plugin answers once the page is there (`vault_status`).
             #[cfg(desktop)]
             hello::probe(app.handle());
@@ -190,6 +196,10 @@ pub fn run() {
             system::set_appearance,
             wifi::wifi_connect,
             wifi::wifi_settings,
+            passkeys::passkey_request,
+            passkeys::passkey_answer,
+            passkeys::passkey_provider_status,
+            passkeys::set_passkey_provider,
         ])
         .build(tauri::generate_context!())
         .expect("failed to start UwULock")
