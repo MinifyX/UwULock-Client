@@ -1,4 +1,6 @@
+import '@fontsource-variable/dm-sans';
 import '@fontsource-variable/manrope';
+import '@fontsource-variable/rubik';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
@@ -10,6 +12,7 @@ import './styles/extras.css';
 import './styles/health.css';
 import './styles/suite.css';
 import './styles/tokens.css';
+import './styles/fonts.css';
 import './styles/phone.css';
 
 // Dark by default, like the other UwU apps; Settings → Appearance switches to

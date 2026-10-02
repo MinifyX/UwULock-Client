@@ -393,6 +393,11 @@ export type ShareOptions = {
   /** null: as often as anybody wants until it is deleted. */
   maxAccessCount: number | null;
   password: string | null;
+  /**
+   * An entry Send (uwulock-core `entry_send`): UwULock Server's Send page shows it as the entry.
+   * Only then may `fields` name `totp` — live codes there, never the key in the readable text.
+   */
+  entry?: boolean;
 };
 
 export type SharedSend = { id: string; link: string; deletionDate: string; onSendDomain: boolean };
@@ -502,7 +507,30 @@ export type ItemDetail = {
   creationDate?: string | null;
 };
 
-export type TotpCode = { code: string; remaining: number; period: number };
+/**
+ * `next` is the code of the following period, `showNext` true in its last 10 seconds
+ * ("Nächster: 123 456"); `copy` with the field `totp-next` copies it.
+ */
+export type TotpCode = {
+  code: string;
+  remaining: number;
+  period: number;
+  next: string;
+  showNext: boolean;
+};
+
+/** A passkey of a login, nothing secret. `readable: false`: it can only be deleted. */
+export type PasskeyInfo = {
+  index: number;
+  readable: boolean;
+  credentialId: string;
+  rpId: string;
+  rpName: string | null;
+  userName: string | null;
+  userDisplayName: string | null;
+  creationDate: string;
+  discoverable: boolean;
+};
 
 /** What the editor sends back; see the desktop app's `Draft`: `null` keeps a value, `''` clears it. */
 export type Draft = {
@@ -537,6 +565,11 @@ export type PasswordOptions = {
   digits: boolean;
   symbols: boolean;
   avoidAmbiguous: boolean;
+  /** At least this many of a set that is on (0 or 1: at least one); the length is raised to fit. */
+  minLowercase?: number;
+  minUppercase?: number;
+  minNumber?: number;
+  minSpecial?: number;
 };
 
 export type PassphraseOptions = {
@@ -560,6 +593,8 @@ export type LockTimeout = 0 | 1 | 5 | 15 | 30 | 60 | 240 | -1;
 export type Settings = {
   language: 'system' | 'de' | 'en';
   theme: 'system' | 'light' | 'dark';
+  /** The popup's font, in this browser (the desktop app's `lib/fonts.ts`). */
+  font: 'uwu' | 'manrope' | 'rubik' | 'dmsans' | 'system';
   /** Minutes without use. 0: as soon as the popup closes; -1: only when the browser restarts. */
   lockTimeout: LockTimeout;
   /** Lock when the browser says the computer's screen was locked (`idle` state `locked`). */
@@ -671,6 +706,9 @@ export type PageRequest =
   | { type: 'save-folder'; id: string | null; name: string }
   | { type: 'delete-folder'; id: string }
   | { type: 'open-uri'; id: string; index: number }
+  | { type: 'item-passkeys'; id: string }
+  /** `credentialId`: only if the passkey at `index` still is that one (else `conflict`). */
+  | { type: 'delete-passkey'; id: string; index: number; credentialId: string | null }
   | { type: 'generate'; settings: GeneratorSettings }
   | { type: 'generator-history' }
   | { type: 'clear-generator-history' }

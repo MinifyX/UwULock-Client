@@ -141,6 +141,16 @@ async function handlePage(message: PageRequest): Promise<unknown> {
     case 'delete-folder':
       await session.requireUnlocked();
       return vault.deleteFolder(message.id);
+    case 'item-passkeys':
+      await session.requireUnlocked();
+      return vault.itemPasskeys(message.id);
+    case 'delete-passkey':
+      await session.requireUnlocked();
+      return vault.deletePasskey(
+        message.id,
+        message.index,
+        typeof message.credentialId === 'string' ? message.credentialId : null,
+      );
     case 'open-uri': {
       const uri = await vault.reveal(message.id, `uri:${message.index}`);
       if (/^https?:\/\//i.test(uri)) await ext.tabs.create({ url: uri });

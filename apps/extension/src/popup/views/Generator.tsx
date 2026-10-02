@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '@desktop/components/Icon';
+import { playNyu } from '@desktop/components/nyu/stage';
+import { MAX_LENGTH, minimumOf, withMinimum, type CharSet } from '@desktop/lib/generator';
 import { t } from '../../shared/i18n';
 import type { Generated, GeneratorSettings, Status } from '../../shared/protocol';
 import { clearGeneratorHistory, copyText, generate, generatorHistory, setSettings } from '../api';
@@ -28,7 +30,11 @@ export function Generator({ status }: { status: Status }) {
   // Switched off by the admin meanwhile: back to passwords.
   const masked = maskedChosen && maskable;
   const [options, setOptions] = useState<GeneratorSettings | null>(settings?.generator ?? null);
-  const [result, setResult] = useState<{ password: string; bits: number } | null>(null);
+  const [result, setResult] = useState<{
+    password: string;
+    bits: number;
+    length?: number;
+  } | null>(null);
   const [history, setHistory] = useState<Generated[]>([]);
   const [showHistory, setShowHistory] = useState(false);
 
@@ -126,7 +132,13 @@ export function Generator({ status }: { status: Status }) {
             <span className="muted">{t('{bits} Bit', { bits: result?.bits ?? 0 })}</span>
           </div>
           <div className="form-actions">
-            <button type="button" onClick={() => void run(options)}>
+            <button
+              type="button"
+              onClick={() => {
+                void run(options);
+                playNyu('generated');
+              }}
+            >
               <Icon name="refresh" size={14} /> {t('Neu')}
             </button>
             <span className="spacer" />
@@ -142,7 +154,15 @@ export function Generator({ status }: { status: Status }) {
           {options.mode === 'password' ? (
             <div className="setting-list">
               <label className="field">
-                <span>{t('Länge: {n}', { n: pw.length })}</span>
+                <span>
+                  {t('Länge: {n}', { n: pw.length })}
+                  {options.mode === 'password' && result?.length && result.length > pw.length && (
+                    <span className="generator-raised">
+                      {' '}
+                      {t('→ {n}, damit die Mindestanzahlen passen', { n: result.length })}
+                    </span>
+                  )}
+                </span>
                 <input
                   type="range"
                   min={5}
@@ -172,6 +192,36 @@ export function Generator({ status }: { status: Status }) {
                   />
                 </div>
               ))}
+              <fieldset className="generator-mins">
+                <legend>{t('Mindestens')}</legend>
+                {(
+                  [
+                    ['uppercase', 'A–Z'],
+                    ['lowercase', 'a–z'],
+                    ['digits', '0–9'],
+                    ['symbols', '!@#$%^&*'],
+                  ] as [CharSet, string][]
+                )
+                  .filter(([key]) => pw[key])
+                  .map(([key, label]) => (
+                    <label key={key} className="mini-field">
+                      <span className="mono">{label}</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={MAX_LENGTH}
+                        value={minimumOf(pw, key)}
+                        aria-label={t('Mindestens {set}', { set: label })}
+                        onChange={(e) =>
+                          change({
+                            ...options,
+                            password: withMinimum(pw, key, Number(e.target.value)),
+                          })
+                        }
+                      />
+                    </label>
+                  ))}
+              </fieldset>
               <div className="setting-row">
                 <span className="setting-label">{t('Verwechselbare Zeichen weglassen')}</span>
                 <Toggle

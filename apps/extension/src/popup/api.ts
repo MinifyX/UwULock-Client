@@ -22,6 +22,7 @@ import type {
   LoginStep,
   Overview,
   PasskeyDecision,
+  PasskeyInfo,
   PasskeyPrompt,
   PendingSave,
   SaveAnswer,
@@ -92,9 +93,16 @@ export const saveFolder = (id: string | null, name: string) =>
   ask<string>({ type: 'save-folder', id, name });
 export const openItemUri = (id: string, index: number) =>
   ask<void>({ type: 'open-uri', id, index });
+export const itemPasskeys = (id: string) => ask<PasskeyInfo[]>({ type: 'item-passkeys', id });
+export const deletePasskey = (id: string, index: number, credentialId: string | null) =>
+  ask<void>({ type: 'delete-passkey', id, index, credentialId });
 
+/** `length` is raised to `required` when the minimums need more. */
 export const generate = (settings: GeneratorSettings) =>
-  ask<{ password: string; bits: number }>({ type: 'generate', settings });
+  ask<{ password: string; bits: number; length?: number; required?: number }>({
+    type: 'generate',
+    settings,
+  });
 export const generatorHistory = () => ask<Generated[]>({ type: 'generator-history' });
 export const clearGeneratorHistory = () => ask<void>({ type: 'clear-generator-history' });
 

@@ -7,6 +7,9 @@
 //! The server talks to the sources; the app only talks to its server. What
 //! the lists are matched against stays on the device (`uwulock_core::health`).
 
+use std::future::Future;
+use std::time::Duration;
+
 use futures_util::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -104,6 +107,36 @@ const AT_ONCE: usize = 4;
 /// The most a range answer of HIBP may weigh (they are about 30 KiB padded).
 const MAX_RANGE: u64 = 1024 * 1024;
 
+/// How often a question the server answers with 429 is asked.
+const BUSY_TRIES: u32 = 8;
+
+/// `job`, asked again while the server answers 429 ("too many", or `busy`
+/// for XposedOrNot's queue): waiting 5 s, 10 s, … up to 30 s between tries,
+/// at most `tries` times. Anything else fails at once. `wait` sleeps; the
+/// tests hand in one that doesn't.
+pub(crate) async fn retrying_busy<T, J, JF, W, WF>(
+    mut job: J,
+    mut wait: W,
+    tries: u32,
+) -> UwuResult<T>
+where
+    J: FnMut() -> JF,
+    JF: Future<Output = UwuResult<T>>,
+    W: FnMut(Duration) -> WF,
+    WF: Future<Output = ()>,
+{
+    let mut attempt = 1;
+    loop {
+        match job().await {
+            Err(error) if error.status() == Some(429) && attempt < tries => {
+                wait(Duration::from_secs(u64::from((5 * attempt).min(30)))).await;
+                attempt += 1;
+            }
+            other => return other,
+        }
+    }
+}
+
 /// What the breach sources said about a prepared report.
 #[derive(Debug, Clone, Default)]
 pub struct BreachAnswers {
@@ -126,11 +159,18 @@ impl Client {
     }
 
     /// How often XposedOrNot saw a password with this ten-digit Keccak-512
-    /// prefix, through the server; 0 when it doesn't know it.
+    /// prefix, through the server; 0 when it doesn't know it. The server
+    /// queues these questions for the whole instance (about one a second) and
+    /// answers 429 `busy` when the queue is long: that is asked again
+    /// ([`retrying_busy`]), so a long queue never makes the check incomplete.
     pub async fn xon_count(&self, access_token: &str, prefix: &str) -> UwuResult<u64> {
-        let answer = self
-            .uwu_get(access_token, &format!("/xon/{}", uwu_path(prefix)))
-            .await?;
+        let path = format!("/xon/{}", uwu_path(prefix));
+        let answer = retrying_busy(
+            || self.uwu_get(access_token, &path),
+            tokio::time::sleep,
+            BUSY_TRIES,
+        )
+        .await?;
         Ok(answer.get("count").and_then(Value::as_u64).unwrap_or(0))
     }
 
@@ -338,4 +378,87 @@ fn read<T: serde::de::DeserializeOwned>(value: Value, what: &str) -> UwuResult<T
             message: format!("the server's {what} doesn't read: {e}"),
         })
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::{Cell, RefCell};
+
+    fn busy() -> UwuError {
+        UwuError::Refused {
+            status: 429,
+            code: "busy".into(),
+            message: "XposedOrNot is busy.".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn busy_is_asked_again_with_growing_waits() {
+        let calls = Cell::new(0);
+        let waits = RefCell::new(Vec::new());
+        let answer = retrying_busy(
+            || {
+                calls.set(calls.get() + 1);
+                let n = calls.get();
+                async move {
+                    if n < 4 {
+                        Err(busy())
+                    } else {
+                        Ok(7)
+                    }
+                }
+            },
+            |d| {
+                waits.borrow_mut().push(d.as_secs());
+                async {}
+            },
+            BUSY_TRIES,
+        )
+        .await
+        .unwrap();
+        assert_eq!(answer, 7);
+        assert_eq!(calls.get(), 4);
+        assert_eq!(*waits.borrow(), vec![5, 10, 15]);
+    }
+
+    #[tokio::test]
+    async fn gives_up_after_the_last_try_and_on_other_errors() {
+        let calls = Cell::new(0);
+        let waits = RefCell::new(Vec::new());
+        let failed = retrying_busy::<u64, _, _, _, _>(
+            || {
+                calls.set(calls.get() + 1);
+                async { Err(busy()) }
+            },
+            |d| {
+                waits.borrow_mut().push(d.as_secs());
+                async {}
+            },
+            BUSY_TRIES,
+        )
+        .await;
+        assert_eq!(failed.unwrap_err().status(), Some(429));
+        assert_eq!(calls.get(), BUSY_TRIES);
+        assert_eq!(waits.borrow().last(), Some(&30));
+
+        calls.set(0);
+        let refused = retrying_busy::<u64, _, _, _, _>(
+            || {
+                calls.set(calls.get() + 1);
+                async {
+                    Err(UwuError::Refused {
+                        status: 403,
+                        code: "feature_off".into(),
+                        message: "off".into(),
+                    })
+                }
+            },
+            |_| async {},
+            BUSY_TRIES,
+        )
+        .await;
+        assert_eq!(refused.unwrap_err().status(), Some(403));
+        assert_eq!(calls.get(), 1, "only 429 is asked again");
+    }
 }

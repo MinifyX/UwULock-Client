@@ -35,6 +35,7 @@ import { toast } from '../lib/toast';
 import { GeneratorDialog } from './GeneratorDialog';
 import { Icon } from './Icon';
 import { ItemTile } from './ItemTile';
+import { NyuBusy, playNyu } from './nyu/stage';
 
 type Props = {
   /** `report` or `review`, chosen in the sidebar. */
@@ -64,6 +65,7 @@ export function HealthPane({ mode, onMode, items, onOpen, phone, onMenu }: Props
     setBusy(fresh ? t('Prüft …') : t('Lädt …'));
     try {
       setView(await healthReport(fresh));
+      if (fresh) playNyu('checked');
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -270,11 +272,7 @@ function HealthReport({
                 )}
         </p>
       )}
-      {busy && (
-        <p className="dialog-lead" role="status">
-          {busy}
-        </p>
-      )}
+      {busy && <NyuBusy label={busy} />}
       {error && (
         <p className="form-error" role="alert">
           {error}

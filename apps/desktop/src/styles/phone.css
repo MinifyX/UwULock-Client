@@ -239,6 +239,15 @@ html[data-platform='ios'] select {
     flex-wrap: wrap;
   }
 
+  .setting-control:has(.font-picker) {
+    max-width: 100%;
+    flex: 1 1 100%;
+  }
+
+  .font-picker {
+    min-width: 0;
+  }
+
   /* ── Sign-in and lock ──────────────────────────────────── */
 
   .welcome {

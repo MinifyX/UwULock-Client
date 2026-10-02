@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { FontPicker } from '@desktop/components/FontPicker';
 import { Icon } from '@desktop/components/Icon';
 import { ext } from '../../shared/browser';
 import { N_, t } from '../../shared/i18n';
@@ -333,6 +334,17 @@ export function SettingsView({
             <option value="dark">{t('Dunkel')}</option>
           </select>
         </Row>
+        <div className="setting-block">
+          <span className="setting-label">{t('Schrift')}</span>
+          <span className="setting-description">{t('Nur in diesem Browser.')}</span>
+          <FontPicker
+            label={t('Schrift')}
+            value={settings.font}
+            onChange={(font) => void change({ font })}
+            systemName={t('System')}
+            sample={t('Tresor 0123 Il1 O0')}
+          />
+        </div>
       </div>
 
       <p className="about-line muted">
@@ -377,6 +389,7 @@ function PinForm({ onDone }: { onDone: () => void }) {
       <label className="check">
         <input
           type="checkbox"
+          role="switch"
           checked={afterRestart}
           onChange={(e) => setAfterRestart(e.target.checked)}
         />

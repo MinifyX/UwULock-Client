@@ -31,7 +31,14 @@ therefore use `#e11d74` (4.5:1, WCAG AA).
 
 ## Type
 
-- **Manrope** (variable, bundled, no network) for the interface.
+- **UwU Sans** for the interface, as in every UwU app: UwUMail's font
+  (Atkinson Hyperlegible, SIL OFL 1.1, see `brand/fonts/uwu-sans/`), set a
+  touch tighter. Its ligatures are off everywhere vault data shows — a value
+  must read exactly as stored — and only on in Nyu's toasts (`.uwu-ligatures`).
+- **Font choice** (Settings → Appearance, per device; the extension per
+  browser): UwU Sans, Manrope (UwULock's font until 0.5), Rubik, DM Sans or
+  the system's. All bundled; nothing loads from the network. One variable
+  `--uwu-font` on `<html>` carries it (`lib/fonts.ts`).
 - **Monospace** for passwords, card numbers, one-time codes, fingerprints and
   keys — anything to compare character by character. A revealed password
   colours digits pink and symbols violet, so `l1I|` can be told apart.
@@ -67,7 +74,14 @@ therefore use `#e11d74` (4.5:1, WCAG AA).
   to the name; editing opens a wide dialog, where a value the page never saw
   says so ("Bleibt, wie es ist") instead of showing dots that could be typed over. Secrets are dots until the eye is clicked.
   The one-time code counts down in a ring and turns amber for its last five
-  seconds.
+  seconds; in its last ten, the next code shows below it, small, with its
+  own copy button. Only the first website shows; the others wait behind
+  "+2 weitere Websites". A login's passkeys get a card of their own (site,
+  user, since when, delete). The renewal reminder row only shows when it
+  is switched on in the editor.
+- **Controls**: checkboxes as in UwUMail — a pink filled box with a tick that
+  pops in; on/off settings are switches (`role="switch"`, a pill with a
+  knob). The editor's favourite is a star next to the name.
 - **Login and lock** get the whole window: Nyu on the left and a card on the
   right to log in; Nyu asleep on a centred card to unlock.
 
@@ -100,6 +114,24 @@ every mood and scene fits.
 | Vault   | No item picked — Nyu holds her key |
 | Pick    | An empty vault                     |
 | Puzzled | A search without results           |
+
+**Appearances** (`nyu/stage.tsx`): short scenes, about a second and a half,
+in a corner of the window, as in UwUMail. They take no clicks, never move the
+layout, and a new one replaces the playing one.
+
+| Appearance | When                              | Reduced motion |
+| ---------- | --------------------------------- | -------------- |
+| saved      | An item saved: a tick on its card | still          |
+| copied     | A value copied (at most every 6s) | none           |
+| trashed    | An item into the trash            | still          |
+| shared     | A Send made: a paper plane        | still          |
+| unlocked   | The vault opened                  | none           |
+| checked    | The password check done           | still          |
+| generated  | _Neu würfeln_: the die tumbles    | none           |
+
+Reduced motion is the app's setting, else the system's
+(`prefers-reduced-motion`). Waiting shows `NyuBusy`: Nyu bobbing next to
+three blinking dots, still with reduced motion.
 
 ## Tone of voice
 

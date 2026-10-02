@@ -72,12 +72,95 @@ button {
   font-size: 13px;
 }
 
-.check input {
+/*
+ * Checkboxes and switches in UwUMail's style instead of the system's: a
+ * rounded box that fills pink with a tick that pops in, and — for an on/off
+ * setting, `role="switch"` on the input — the pill switch of the settings.
+ * Still native inputs, so keyboard and screen readers work as before.
+ */
+input[type='checkbox'] {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-grid;
+  place-content: center;
+  flex: none;
   margin: 0;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid var(--uwu-border);
+  border-radius: 6px;
+  background: var(--uwu-surface);
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+
+input[type='checkbox']::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  background: var(--uwu-on-pink);
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+  transform: scale(0);
+  transition: transform 180ms cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+input[type='checkbox']:checked {
+  border-color: var(--uwu-pink-solid);
+  background: var(--uwu-pink-solid);
+}
+
+input[type='checkbox']:checked::before {
+  transform: scale(1);
+}
+
+input[type='checkbox']:hover:not(:disabled) {
+  border-color: var(--uwu-pink);
+}
+
+input[type='checkbox']:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+input[type='checkbox'][role='switch'] {
+  place-content: center start;
+  width: 40px;
+  height: 24px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--uwu-radius-pill);
+  background: var(--uwu-border);
+}
+
+input[type='checkbox'][role='switch']::before {
   width: 16px;
   height: 16px;
-  accent-color: var(--uwu-pink-solid);
-  flex: none;
+  border-radius: 50%;
+  background: #fff;
+  clip-path: none;
+  box-shadow: 0 1px 2px rgba(20, 16, 22, 0.25);
+  transform: none;
+  transition: transform 140ms ease;
+}
+
+input[type='checkbox'][role='switch']:checked {
+  background: var(--uwu-pink-solid);
+}
+
+input[type='checkbox'][role='switch']:checked::before {
+  transform: translateX(16px);
+}
+
+/* A switch sits after its words, like the settings' rows. */
+.check:has(> input[role='switch']) {
+  flex-direction: row-reverse;
+  justify-content: space-between;
+}
+
+.check:has(> input[role='switch']) > span {
+  flex: 1;
 }
 
 .select {
@@ -1363,4 +1446,130 @@ button.add-row {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* The next one-time code, in the last seconds of a period (TotpRow). */
+.totp-block {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.totp-next {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--uwu-muted);
+  animation: totp-next-in 220ms ease-out both;
+}
+
+.totp-next b {
+  font-family: var(--uwu-mono);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--uwu-ink);
+}
+
+.totp-next .icon-button {
+  width: 26px;
+  height: 26px;
+}
+
+@keyframes totp-next-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* "+2 weitere Websites" under the first one. */
+.more-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 4px;
+  font-size: 12.5px;
+}
+
+/* An item's passkeys in its details. */
+.passkey-row .detail-value {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.passkey-meta {
+  font-size: 12px;
+  color: var(--uwu-muted);
+  overflow-wrap: anywhere;
+}
+
+/* The generator's minimum per set that is on. */
+.generator-mins {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.generator-mins legend {
+  float: left;
+  margin-right: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--uwu-muted);
+}
+
+.mini-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+}
+
+.mini-field input {
+  width: 58px;
+  padding: 4px 6px;
+  font: inherit;
+  text-align: center;
+  border: 1px solid var(--uwu-border);
+  border-radius: var(--uwu-radius-control);
+  background: var(--uwu-canvas);
+  color: var(--uwu-ink);
+}
+
+.generator-raised {
+  font-weight: 500;
+  color: var(--uwu-pink-ink);
+}
+
+/* The editor's renewal reminder, under its switch. */
+.editor-reminder {
+  display: grid;
+  gap: 10px;
+}
+
+.editor-reminder .extras-form {
+  padding: 10px 12px;
+  border-radius: var(--uwu-radius-control);
+  background: var(--uwu-canvas);
+}
+
+/* The editor's favourite star pops when switched on. */
+.star-toggle[aria-pressed='true'] svg {
+  animation: star-pop 320ms cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+@keyframes star-pop {
+  0% {
+    transform: scale(0.6) rotate(-20deg);
+  }
+  100% {
+    transform: none;
+  }
 }

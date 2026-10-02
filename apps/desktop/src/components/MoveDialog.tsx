@@ -25,6 +25,7 @@ import '../styles/moving.css';
 import { NewDevice, TwoFactor, type CodeActions } from './LoginScreen';
 import { Modal } from './Modal';
 import { PasswordInput } from './PasswordInput';
+import { NyuBusy } from './nyu/stage';
 
 const CODES: CodeActions<MoveStep> = {
   twoFactor: (provider, code) => moveLoginTwoFactor(provider, code),
@@ -166,7 +167,7 @@ export function MoveDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal title={t('Von Bitwarden umziehen')} onCancel={close}>
-      {phase.name === 'checking' && <p className="dialog-lead">{t('Einen Moment …')}</p>}
+      {phase.name === 'checking' && <NyuBusy label={t('Einen Moment …')} />}
 
       {phase.name === 'no-target' && (
         <div className="form">

@@ -67,7 +67,15 @@ const core = {
       `${base}|${accessId}|${key}|${sendDomain}`,
   ),
   items: vi.fn(() => JSON.stringify(items)),
+  open: vi.fn((_text: string) => undefined),
+  autofillIndex: vi.fn(() => '[]'),
+  deletePasskey: vi.fn((_id: string, _index: number, _credentialId?: string) =>
+    JSON.stringify({ cipher: { type: 1, name: '2.name', login: { fido2Credentials: [] } } }),
+  ),
 };
+
+// The vault's live connection isn't under test here.
+vi.mock('../src/background/live', () => ({ start: () => undefined, stop: () => undefined }));
 
 vi.mock('../src/background/wasm', () => ({
   call: async (work: (c: typeof core) => unknown) => work(core),
@@ -299,6 +307,26 @@ describe('sharing an item as a Send', () => {
     const shared = await extras.shareItem(cloud, 'item-1', options);
     expect(shared.link).toBe('https://vault.bitwarden.eu|acc1|2.seed|false');
     expect(calls.map((c) => c.url)).toEqual(['https://api.bitwarden.eu/sends']);
+  });
+
+  it('is an entry Send only when asked for one, in so many words', async () => {
+    route('POST', `${WEB}/api/sends`, () => json({ id: 's1', accessId: 'a', key: '2.k' }));
+    route('GET', `${WEB}/uwu/v1/account`, () => json({ sendDomainId: null }));
+    await extras.shareItem(account(), 'item-1', {
+      ...options,
+      fields: [...options.fields, ['totp', 'One-time code']],
+      entry: true,
+    });
+    const entry = JSON.parse(core.sealShare.mock.calls.at(-1)![1]);
+    expect(entry.entry).toBe(true);
+    expect(entry.fields).toContainEqual(['totp', 'One-time code']);
+    await extras.shareItem(account(), 'item-1', options);
+    expect(JSON.parse(core.sealShare.mock.calls.at(-1)![1]).entry).toBe(false);
+    await extras.shareItem(account(), 'item-1', {
+      ...options,
+      entry: 'yes' as unknown as boolean,
+    });
+    expect(JSON.parse(core.sealShare.mock.calls.at(-1)![1]).entry).toBe(false);
   });
 
   it('needs something to share, and keeps the limits sane', async () => {
@@ -609,5 +637,31 @@ describe('feature switches', () => {
     expect(shown).toMatch(/^data:image\/png;base64,/);
     expect(shown).not.toBe('data:image/png;base64,png-of-2.i0');
     expect(calls.some((c) => c.url.endsWith('/icons/own/get'))).toBe(false);
+  });
+});
+
+// ── Passkeys ──────────────────────────────────────────────
+
+describe('deleting a passkey', () => {
+  it('saves the item the core answers, checked against the credential', async () => {
+    await vault.open(account(), JSON.stringify({ profile: { id: 'u1' } }));
+    route('PUT', `${WEB}/api/ciphers/item-1`, () => json({ id: 'item-1' }));
+    await vault.deletePasskey('item-1', 0, 'cred-1');
+    expect(core.deletePasskey).toHaveBeenCalledWith('item-1', 0, 'cred-1');
+    const put = calls.find((c) => c.method === 'PUT')!;
+    expect(put.url).toBe(`${WEB}/api/ciphers/item-1`);
+    expect(put.body).toMatchObject({ type: 1, name: '2.name', encryptedFor: 'u1' });
+  });
+
+  it('refuses an index that is none, and needs the vault open', async () => {
+    await vault.open(account(), JSON.stringify({ profile: { id: 'u1' } }));
+    await expect(vault.deletePasskey('item-1', -1, null)).rejects.toMatchObject({
+      kind: 'invalid',
+    });
+    expect(core.deletePasskey).not.toHaveBeenCalled();
+    vault.closed();
+    await expect(vault.deletePasskey('item-1', 0, null)).rejects.toMatchObject({
+      kind: 'locked',
+    });
   });
 });

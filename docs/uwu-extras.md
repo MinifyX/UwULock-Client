@@ -133,6 +133,13 @@ hidden}], totp?}`. `totp` is the key (secret or `otpauth://` URI), only for
   the entry. No marker, another version (`v2`) or one that doesn't decode: the
   text shows as it is. Older Sends are untouched.
 
+The desktop app, the phone apps and the browser extension make entry Sends
+whenever the server is UwULock Server (_Share as Send_ on an item); with
+Vaultwarden and Bitwarden they make plain text Sends as before. The choice
+lists every website by its address, and _One-time code_ when the login has
+one — with the hint that whoever can open the Send gets codes as long as it
+exists. The apps don't open Sends themselves; the Send page does.
+
 ## Travel mode
 
 While travel mode is on, the items in the folders marked for it are hidden on

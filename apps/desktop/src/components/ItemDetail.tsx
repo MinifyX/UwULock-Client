@@ -2,7 +2,9 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import {
   copyField,
   deleteItem,
+  deletePasskey,
   failure,
+  itemPasskeys,
   openItemUri,
   openWebVault,
   restoreItem,
@@ -14,6 +16,7 @@ import {
   type ItemDetail as Detail,
   type ItemSummary,
   type Overview,
+  type PasskeyInfo,
   type TotpCode,
 } from '../lib/api';
 import { errorText, toastError } from '../lib/errors';
@@ -29,12 +32,14 @@ import { IconMenu, ReminderCard, ShareSendDialog, VersionsCard } from './ItemExt
 import { ItemTile } from './ItemTile';
 import { Modal } from './Modal';
 import { PasswordInput } from './PasswordInput';
+import { playNyu } from './nyu/stage';
 import { WifiShare } from './WifiShare';
 
 async function copy(id: string, field: string) {
   try {
     await copyField(id, field);
     toast(copiedText(field, getSettings().clipboardClear));
+    playNyu('copied');
   } catch (e) {
     toastError(e);
   }
@@ -195,21 +200,31 @@ function TotpRow({ id }: { id: string }) {
       {error ? (
         <span className="detail-error">{error}</span>
       ) : code ? (
-        <span className="totp" data-soon={code.remaining <= 5 || undefined}>
-          <span className="totp-code">{spacedCode(code.code)}</span>
-          <svg className="totp-ring" viewBox="0 0 24 24" width="22" height="22" aria-hidden>
-            <circle cx="12" cy="12" r="9" className="totp-track" />
-            <circle
-              cx="12"
-              cy="12"
-              r="9"
-              className="totp-left"
-              strokeDasharray={circumference}
-              strokeDashoffset={circumference * (1 - fraction)}
-              transform="rotate(-90 12 12)"
-            />
-          </svg>
-          <span className="totp-seconds">{code.remaining}</span>
+        <span className="totp-block">
+          <span className="totp" data-soon={code.remaining <= 5 || undefined}>
+            <span className="totp-code">{spacedCode(code.code)}</span>
+            <svg className="totp-ring" viewBox="0 0 24 24" width="22" height="22" aria-hidden>
+              <circle cx="12" cy="12" r="9" className="totp-track" />
+              <circle
+                cx="12"
+                cy="12"
+                r="9"
+                className="totp-left"
+                strokeDasharray={circumference}
+                strokeDashoffset={circumference * (1 - fraction)}
+                transform="rotate(-90 12 12)"
+              />
+            </svg>
+            <span className="totp-seconds">{code.remaining}</span>
+          </span>
+          {code.showNext && (
+            <span className="totp-next">
+              <span>
+                {t('Nächster:')} <b>{spacedCode(code.next)}</b>
+              </span>
+              <CopyButton id={id} field="totp-next" label={t('Nächsten Code')} />
+            </span>
+          )}
         </span>
       ) : (
         '…'
@@ -424,6 +439,170 @@ function ConfirmDelete({
   );
 }
 
+/**
+ * A login's passkeys: for which site, for whom, since when — and deleting
+ * one. Nothing secret comes up from Rust for this.
+ */
+function PasskeysSection({ id, revision }: { id: string; revision: string | null }) {
+  useLanguage();
+  const [keys, setKeys] = useState<PasskeyInfo[] | null>(null);
+  const [asking, setAsking] = useState<PasskeyInfo | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let stopped = false;
+    itemPasskeys(id)
+      .then((next) => !stopped && setKeys(next))
+      .catch((e) => {
+        if (!stopped) setKeys([]);
+        toastError(e);
+      });
+    return () => {
+      stopped = true;
+    };
+  }, [id, revision]);
+  if (!keys || keys.length === 0) return null;
+
+  const remove = async (key: PasskeyInfo) => {
+    setBusy(true);
+    try {
+      await deletePasskey(id, key.index, key.credentialId || null);
+      setKeys((current) => current?.filter((k) => k !== key) ?? null);
+      toast(t('Passkey gelöscht.'));
+      playNyu('trashed');
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setBusy(false);
+      setAsking(null);
+    }
+  };
+
+  return (
+    <Section title={keys.length === 1 ? t('Passkey') : t('Passkeys')}>
+      {keys.map((key) => {
+        const site = key.rpName || key.rpId || t('Unbekannte Website');
+        const user = key.userName || key.userDisplayName;
+        const created = when(key.creationDate);
+        return (
+          <div className="detail-row passkey-row" key={`${key.index}-${key.credentialId}`}>
+            <div className="detail-text">
+              <span className="detail-label">
+                <Icon name="key" size={12} className="icon-gap" />
+                {site}
+              </span>
+              <span className="detail-value">
+                <span>{user ?? <span className="muted">{t('ohne Benutzernamen')}</span>}</span>
+                <span className="passkey-meta">
+                  {[
+                    key.rpId && key.rpId !== site ? key.rpId : null,
+                    created && t('erstellt {when}', { when: created }),
+                    !key.readable && t('lässt sich nicht lesen – nur löschen'),
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </span>
+              </span>
+            </div>
+            <div className="detail-actions">
+              <button
+                className="icon-button"
+                disabled={busy}
+                title={t('Passkey löschen')}
+                aria-label={t('Passkey für {site} löschen', { site })}
+                onClick={() => setAsking(key)}
+              >
+                <Icon name="trash" size={15} />
+              </button>
+            </div>
+          </div>
+        );
+      })}
+      {asking && (
+        <Modal
+          title={t('Passkey löschen?')}
+          tone="warning"
+          onCancel={() => setAsking(null)}
+          footer={
+            <>
+              <span className="spacer" />
+              <button
+                className="danger"
+                data-secondary
+                disabled={busy}
+                onClick={() => void remove(asking)}
+              >
+                {t('Löschen')}
+              </button>
+              <button className="primary" data-autofocus onClick={() => setAsking(null)}>
+                {t('Abbrechen')}
+              </button>
+            </>
+          }
+        >
+          <p className="dialog-lead">
+            {t(
+              'Mit diesem Passkey meldest du dich danach nicht mehr bei {site} an. Leg vorher einen anderen Weg zur Anmeldung an, falls du keinen mehr hast.',
+              { site: asking.rpName || asking.rpId },
+            )}
+          </p>
+        </Modal>
+      )}
+    </Section>
+  );
+}
+
+/** The first website, the others behind "+2 weitere Websites". */
+function WebsitesSection({ id, uris }: { id: string; uris: NonNullable<Detail['login']>['uris'] }) {
+  useLanguage();
+  const [all, setAll] = useState(false);
+  useEffect(() => setAll(false), [id]);
+  const shown = all ? uris : uris.slice(0, 1);
+  const more = uris.length - 1;
+  return (
+    <Section title={uris.length === 1 ? t('Website') : t('Websites')}>
+      {shown.map((uri, index) => (
+        <Row
+          key={index}
+          label={uri.host ?? t('Adresse')}
+          actions={
+            <>
+              {uri.openable && (
+                <button
+                  className="icon-button"
+                  onClick={() =>
+                    void openItemUri(id, index).catch((e) => toast(String(e), 'error'))
+                  }
+                  aria-label={t('{uri} im Browser öffnen', { uri: uri.uri })}
+                  title={t('Im Browser öffnen')}
+                >
+                  <Icon name="external" size={15} />
+                </button>
+              )}
+              <CopyButton id={id} field={`uri:${index}`} label={t('Adresse')} />
+            </>
+          }
+        >
+          <span className="uri">{uri.uri}</span>
+        </Row>
+      ))}
+      {more > 0 && (
+        <button
+          className="more-toggle link-button"
+          aria-expanded={all}
+          onClick={() => setAll(!all)}
+        >
+          {all
+            ? t('Weniger zeigen')
+            : more === 1
+              ? t('+1 weitere Website')
+              : t('+{n} weitere Websites', { n: more })}
+          <Icon name="chevron" size={12} className={all ? 'turned' : undefined} />
+        </button>
+      )}
+    </Section>
+  );
+}
+
 export function ItemDetail({
   summary,
   overview,
@@ -610,6 +789,7 @@ export function ItemDetail({
                 if (disableMasked && masked)
                   await setMaskedState(masked.id, 'disabled').catch((e) => toastError(e));
                 await deleteItem(id, asking === 'permanent');
+                playNyu('trashed');
               },
               asking === 'permanent' ? t('Gelöscht.') : t('Im Papierkorb.'),
             )
@@ -660,34 +840,10 @@ export function ItemDetail({
             </Section>
           )}
 
-          {d.login && d.login.uris.length > 0 && (
-            <Section title={d.login.uris.length === 1 ? t('Website') : t('Websites')}>
-              {d.login.uris.map((uri, index) => (
-                <Row
-                  key={index}
-                  label={uri.host ?? t('Adresse')}
-                  actions={
-                    <>
-                      {uri.openable && (
-                        <button
-                          className="icon-button"
-                          onClick={() =>
-                            void openItemUri(id, index).catch((e) => toast(String(e), 'error'))
-                          }
-                          aria-label={t('{uri} im Browser öffnen', { uri: uri.uri })}
-                          title={t('Im Browser öffnen')}
-                        >
-                          <Icon name="external" size={15} />
-                        </button>
-                      )}
-                      <CopyButton id={id} field={`uri:${index}`} label={t('Adresse')} />
-                    </>
-                  }
-                >
-                  <span className="uri">{uri.uri}</span>
-                </Row>
-              ))}
-            </Section>
+          {d.login && d.login.uris.length > 0 && <WebsitesSection id={id} uris={d.login.uris} />}
+
+          {d.login && d.login.passkeys > 0 && (
+            <PasskeysSection id={id} revision={summary.revisionDate} />
           )}
 
           {d.card && (
@@ -886,12 +1042,6 @@ export function ItemDetail({
           <VersionsCard summary={summary} />
 
           <footer className="detail-foot">
-            {d.login && d.login.passkeys > 0 && (
-              <p>
-                <Icon name="key" size={13} />
-                {t('Mit Passkey – den kann UwULock noch nicht benutzen.')}
-              </p>
-            )}
             {(d.attachments ?? 0) > 0 && (
               <p>
                 <Icon name="file" size={13} />

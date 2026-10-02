@@ -31,6 +31,7 @@ import {
 } from '../lib/uwu';
 import { Icon } from './Icon';
 import { Modal } from './Modal';
+import { NyuBusy } from './nyu/stage';
 
 type View =
   { kind: 'list' } | { kind: 'request'; id: string } | { kind: 'form'; id: string | null };
@@ -171,7 +172,7 @@ function RequestList({
   onOpen: (id: string) => void;
 }) {
   useLanguage();
-  if (requests === null) return <p className="dialog-lead">{t('Einen Moment …')}</p>;
+  if (requests === null) return <NyuBusy label={t('Einen Moment …')} />;
   if (requests.length === 0)
     return (
       <p className="dialog-lead">
@@ -351,7 +352,7 @@ function RequestView({
       )}
 
       <h3 className="extras-heading">{t('Eingegangen')}</h3>
-      {submissions === null && <p className="muted">{t('Einen Moment …')}</p>}
+      {submissions === null && <NyuBusy label={t('Einen Moment …')} />}
       {submissions?.length === 0 && <p className="muted">{t('Noch nichts angekommen.')}</p>}
       {submissions?.map((submission) => (
         <section className="detail-card submission" key={submission.id}>
@@ -768,6 +769,7 @@ function RequestForm({
       <label className="check">
         <input
           type="checkbox"
+          role="switch"
           checked={form.textAllowed}
           onChange={(e) => set({ textAllowed: e.target.checked })}
         />
@@ -813,6 +815,7 @@ function RequestForm({
           <label className="check">
             <input
               type="checkbox"
+              role="switch"
               checked={form.disabled}
               onChange={(e) => set({ disabled: e.target.checked })}
             />

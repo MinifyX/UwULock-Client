@@ -35,6 +35,7 @@ import {
 import { ContextMenu } from './ContextMenu';
 import { Icon } from './Icon';
 import { Modal } from './Modal';
+import { NyuBusy, playNyu } from './nyu/stage';
 
 // ── Names of values ────────────────────────────────────────
 
@@ -184,7 +185,130 @@ function day(iso: string | null): string | null {
   return date.toLocaleDateString(locale(), { dateStyle: 'medium', timeZone: 'UTC' });
 }
 
-/** "Remind me to renew this password": every so many months, or on a date. */
+/** The reminder as the item editor holds it: switched on, and when. */
+export type ReminderDraft = { on: boolean; mode: 'months' | 'date'; months: number; date: string };
+
+type Reminder = { due: string | null; everyMonths: number | null };
+
+export function reminderDraft(reminder: Reminder | undefined): ReminderDraft {
+  return {
+    on: Boolean(reminder),
+    mode: reminder?.everyMonths || !reminder?.due ? 'months' : 'date',
+    months: reminder?.everyMonths ?? 6,
+    date: reminder?.due ?? '',
+  };
+}
+
+/**
+ * Saves what the editor's switch says for item `id`, if it differs from
+ * `before`: on (every so many months, or on a date) or off.
+ */
+export async function saveReminder(
+  id: string,
+  draft: ReminderDraft,
+  before: Reminder | undefined,
+): Promise<void> {
+  if (!draft.on) {
+    if (before) await deleteReminder(id);
+    return;
+  }
+  const due = draft.mode === 'date' ? draft.date || null : null;
+  const every = draft.mode === 'months' ? draft.months : null;
+  if (draft.mode === 'date' && !due) return;
+  if (before) {
+    // Every so many months counts from the password's last change: the server works out the date.
+    const same =
+      every !== null
+        ? before.everyMonths === every
+        : before.everyMonths === null && before.due === due;
+    if (same) return;
+  }
+  await setReminder(id, due, every);
+}
+
+/** The item editor's "remind me to renew" switch and its settings. */
+export function ReminderEditor({
+  value,
+  onChange,
+}: {
+  value: ReminderDraft;
+  onChange: (next: ReminderDraft) => void;
+}) {
+  useLanguage();
+  const set = (patch: Partial<ReminderDraft>) => onChange({ ...value, ...patch });
+  return (
+    <div className="editor-reminder">
+      <label className="check">
+        <input
+          type="checkbox"
+          role="switch"
+          checked={value.on}
+          onChange={(e) => set({ on: e.target.checked })}
+        />
+        <span>
+          <Icon name="bell" size={13} className="icon-gap" />
+          {t('Ans Erneuern des Passworts erinnern')}
+        </span>
+      </label>
+      {value.on && (
+        <div className="extras-form">
+          <div className="segmented" role="radiogroup" aria-label={t('Wann')}>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={value.mode === 'months'}
+              onClick={() => set({ mode: 'months' })}
+            >
+              {t('Regelmäßig')}
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={value.mode === 'date'}
+              onClick={() => set({ mode: 'date' })}
+            >
+              {t('An einem Datum')}
+            </button>
+          </div>
+          {value.mode === 'months' ? (
+            <label className="field">
+              <span>{t('Alle')}</span>
+              <select
+                value={value.months}
+                onChange={(e) => set({ months: Number(e.target.value) })}
+              >
+                {MONTHS.map((n) => (
+                  <option key={n} value={n}>
+                    {n === 1 ? t('1 Monat') : t('{n} Monate', { n })}
+                  </option>
+                ))}
+              </select>
+              <small className="field-hint">
+                {t(
+                  'Gezählt ab der letzten Passwortänderung; ändert sich das Passwort, beginnt es neu.',
+                )}
+              </small>
+            </label>
+          ) : (
+            <label className="field">
+              <span>{t('Datum')}</span>
+              <input
+                type="date"
+                value={value.date}
+                onChange={(e) => set({ date: e.target.value })}
+              />
+            </label>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * "Remind me to renew this password": every so many months, or on a date.
+ * Only once it is switched on in the editor; here it can be changed or removed.
+ */
 export function ReminderCard({ summary }: { summary: ItemSummary }) {
   useLanguage();
   const uwu = useUwu();
@@ -194,7 +318,8 @@ export function ReminderCard({ summary }: { summary: ItemSummary }) {
   const [months, setMonths] = useState(6);
   const [date, setDate] = useState('');
   const [busy, setBusy] = useState(false);
-  if (!has(uwu, 'reminders') || summary.kind !== 'login' || summary.deleted) return null;
+  if (!has(uwu, 'reminders') || summary.kind !== 'login' || summary.deleted || !reminder)
+    return null;
 
   const run = async (what: () => Promise<void>, done: string) => {
     setBusy(true);
@@ -217,7 +342,6 @@ export function ReminderCard({ summary }: { summary: ItemSummary }) {
   };
 
   const describe = () => {
-    if (!reminder) return t('Keine Erinnerung.');
     const every = reminder.everyMonths
       ? reminder.everyMonths === 1
         ? t('jeden Monat')
@@ -246,21 +370,17 @@ export function ReminderCard({ summary }: { summary: ItemSummary }) {
           </div>
           <div className="detail-actions">
             <button className="quiet" disabled={busy} onClick={open}>
-              {reminder ? t('Ändern') : t('Erinnern …')}
+              {t('Ändern')}
             </button>
-            {reminder && (
-              <button
-                className="icon-button"
-                disabled={busy}
-                title={t('Erinnerung entfernen')}
-                aria-label={t('Erinnerung entfernen')}
-                onClick={() =>
-                  void run(() => deleteReminder(summary.id), t('Erinnerung entfernt.'))
-                }
-              >
-                <Icon name="trash" size={15} />
-              </button>
-            )}
+            <button
+              className="icon-button"
+              disabled={busy}
+              title={t('Erinnerung entfernen')}
+              aria-label={t('Erinnerung entfernen')}
+              onClick={() => void run(() => deleteReminder(summary.id), t('Erinnerung entfernt.'))}
+            >
+              <Icon name="trash" size={15} />
+            </button>
           </div>
         </div>
       ) : (
@@ -443,7 +563,7 @@ export function VersionsCard({ summary }: { summary: ItemSummary }) {
           : t('Frühere Versionen')}
         <Icon name="chevron" size={14} className={open ? 'turned' : undefined} />
       </button>
-      {open && versions === null && <p className="detail-empty-line">{t('Einen Moment …')}</p>}
+      {open && versions === null && <NyuBusy label={t('Einen Moment …')} />}
       {open && versions?.length === 0 && (
         <p className="detail-empty-line">
           {t('Noch keine. Jede Änderung hebt den Stand davor hier auf.')}
@@ -574,23 +694,41 @@ export function VersionsCard({ summary }: { summary: ItemSummary }) {
 
 // ── Share as Send ──────────────────────────────────────────
 
-type Choice = { field: string; label: string; checked: boolean; secret: boolean };
+type Choice = {
+  field: string;
+  /** What the recipient reads before the value. */
+  label: string;
+  /** What the list shows, when that is more than the label (a website's address). */
+  shown?: string;
+  checked: boolean;
+  secret: boolean;
+};
 
 /**
- * What an item has that can be shared — never the authenticator key, and no
- * secrets of an item whose organisation hides its passwords from this member.
+ * What an item has that can be shared — no secrets of an item whose
+ * organisation hides its passwords from this member. The one-time code only
+ * in an entry Send (`entry`): its page shows the live codes, the readable
+ * text never holds the key.
  */
-function choices(detail: Detail, viewPassword: boolean): Choice[] {
+export function choices(detail: Detail, viewPassword: boolean, entry = false): Choice[] {
   const out: Choice[] = [];
-  const add = (field: string, label: string, checked: boolean, secret = false) => {
+  const add = (field: string, label: string, checked: boolean, secret = false, shown?: string) => {
     if (!viewPassword && secret && !WITHHELD_EXCEPT.test(field)) return;
-    out.push({ field, label, checked, secret });
+    out.push({ field, label, checked, secret, ...(shown ? { shown } : {}) });
   };
   if (detail.login) {
     if (detail.login.username) add('username', t('Benutzername'), true);
     if (detail.login.hasPassword) add('password', t('Passwort'), true, true);
+    if (entry && detail.login.hasTotp) add('totp', t('Einmal-Code'), false, true);
+    const many = detail.login.uris.length > 1;
     detail.login.uris.forEach((uri, index) =>
-      add(`uri:${index}`, uri.host ?? t('Website {n}', { n: index + 1 }), index === 0),
+      add(
+        `uri:${index}`,
+        many ? t('Website {n}', { n: index + 1 }) : t('Website'),
+        index === 0,
+        false,
+        uri.uri,
+      ),
     );
   }
   if (detail.card) {
@@ -638,7 +776,11 @@ export function ShareSendDialog({
   onClose: () => void;
 }) {
   useLanguage();
-  const [fields, setFields] = useState<Choice[]>(() => choices(detail, summary.viewPassword));
+  // UwULock Server's Send page shows an entry Send as the entry, with live codes.
+  const entry = useUwu().uwu;
+  const [fields, setFields] = useState<Choice[]>(() =>
+    choices(detail, summary.viewPassword, entry),
+  );
   const [options, setOptions] = useState<SendOptions | null>(null);
   const [days, setDays] = useState(1);
   const [maxAccess, setMaxAccess] = useState('1');
@@ -678,8 +820,10 @@ export function ShareSendDialog({
         emails: onlyFor ? addresses : [],
         sendDomainId: domain || null,
         hideText,
+        entry,
       });
       setMade(result);
+      playNyu('shared');
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -744,9 +888,13 @@ export function ShareSendDialog({
       ) : (
         <div className="extras-form">
           <p className="dialog-lead">
-            {t(
-              'Die gewählten Werte gehen verschlüsselt an einen Send. Der Schlüssel steckt im Link, nicht auf dem Server. Der Einmal-Code-Schlüssel wird nie geteilt.',
-            )}
+            {entry
+              ? t(
+                  'Die gewählten Werte gehen verschlüsselt an einen Send. Der Schlüssel steckt im Link, nicht auf dem Server. Die Send-Seite zeigt sie als Eintrag mit Kopier-Knöpfen.',
+                )
+              : t(
+                  'Die gewählten Werte gehen verschlüsselt an einen Send. Der Schlüssel steckt im Link, nicht auf dem Server. Der Einmal-Code-Schlüssel wird nie geteilt.',
+                )}
           </p>
           <fieldset className="editor-list">
             <legend>{t('Was geteilt wird')}</legend>
@@ -766,12 +914,19 @@ export function ShareSendDialog({
                     )
                   }
                 />
-                <span>
-                  {field.label}
+                <span className={field.shown ? 'share-choice uri' : 'share-choice'}>
+                  {field.shown ?? field.label}
                   {field.secret && <Icon name="lock" size={12} className="icon-gap" />}
                 </span>
               </label>
             ))}
+            {fields.some((f) => f.field === 'totp' && f.checked) && (
+              <p className="field-hint">
+                {t(
+                  'Die Send-Seite zeigt nur die laufenden Codes, nie den Schlüssel. Wer den Send öffnen kann, bekommt aber Codes, solange es ihn gibt.',
+                )}
+              </p>
+            )}
           </fieldset>
           <div className="editor-row">
             <label className="field">
@@ -800,6 +955,7 @@ export function ShareSendDialog({
             <label className="check">
               <input
                 type="checkbox"
+                role="switch"
                 checked={onlyFor}
                 onChange={(e) => setOnlyFor(e.target.checked)}
               />
@@ -844,6 +1000,7 @@ export function ShareSendDialog({
           <label className="check">
             <input
               type="checkbox"
+              role="switch"
               checked={hideText}
               onChange={(e) => setHideText(e.target.checked)}
             />

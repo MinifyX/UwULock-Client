@@ -67,8 +67,18 @@ Still to come:
       details and deletion, entry Sends
       ([uwu-extras.md](uwu-extras.md#entry-sends)) — in the extension's WASM
       and the desktop app's commands
-- [ ] The apps' UI for these, passkey providers on Android, iOS/macOS,
-      Windows and Linux
+- [x] The apps' UI for these (desktop, Android, iOS, extension): minimums in
+      the generator, the next code, a login's passkeys with deletion, sharing
+      as an entry Send with websites and the one-time code; only the first
+      website in the details (the others behind "+n weitere"), a star for
+      favourites in the editor, the renewal reminder set in the editor
+- [x] Look and feel like UwUMail: UwU Sans and a font choice per device, Nyu's
+      short appearances (saved, copied, trashed, shared, unlocked, checked,
+      generated; still or none with reduced motion), UwUMail's checkboxes and
+      switches
+- [x] XON (password leak check): a busy answer (429) is asked again, waiting a
+      little longer each time
+- [ ] Passkey providers on Android, iOS/macOS, Windows and Linux
 
 ## 0.4 · Wi-Fi networks and phones (0.4.0-beta.3 released)
 

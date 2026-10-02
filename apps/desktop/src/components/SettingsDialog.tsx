@@ -20,6 +20,7 @@ import { N_, t, useLanguage } from '../lib/i18n';
 import { isMobile, systemName } from '../lib/platform';
 import { updateSettings, useSettings, type AutoLock, type ClipboardClear } from '../lib/settings';
 import { unlockDescription, unlockLabel, unlockPrompt } from '../lib/unlock';
+import { FontPicker } from './FontPicker';
 import { Modal } from './Modal';
 import { MoveSetting } from './MoveDialog';
 import { Nyu } from './nyu/Nyu';
@@ -145,6 +146,18 @@ function Appearance() {
             { value: 'light', label: t('Hell') },
             { value: 'dark', label: t('Dunkel') },
           ]}
+        />
+      </Row>
+      <Row
+        label={t('Schrift')}
+        description={t('Nur auf diesem Gerät. UwU Sans ist die Schrift aller UwU-Apps.')}
+      >
+        <FontPicker
+          label={t('Schrift')}
+          value={settings.font}
+          onChange={(font) => updateSettings({ font })}
+          systemName={t('System')}
+          sample={t('Tresor 0123 Il1 O0')}
         />
       </Row>
       <Row

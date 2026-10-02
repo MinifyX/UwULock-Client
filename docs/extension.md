@@ -45,7 +45,8 @@ release checks the download (see the [install guide](install.md)). What it sends
   for their own account.
 - **Passkeys**: sites that use passkeys can create them in your vault and sign you in with
   them, in Bitwarden's format — so passkeys made by Bitwarden's apps work here, and the other
-  way round. Cancel, and the browser's own passkey dialog takes over.
+  way round. Cancel, and the browser's own passkey dialog takes over. A login's details list
+  its passkeys (site, user name, since when); one can be deleted there.
 - **Live**: changes from your other devices arrive at once through the server's notification
   hub; if that connection is down, the extension asks the server every minute.
 - German and English, following the browser (or the setting).
@@ -146,8 +147,13 @@ the permission is there now.
 - **Context menu**: right-click in a page → UwULock → fill a login, card or address, copy a
   password, or generate one.
 - **Settings** in the popup: lock timeout, locking with the computer, PIN, clipboard clearing, the inline button, the save
-  prompt, copying the one-time code, passkeys, the default match detection, language and theme,
-  and your accounts.
+  prompt, copying the one-time code, passkeys, the default match detection, language, theme and
+  font (UwU Sans, Manrope, Rubik, DM Sans or the system's — for this browser only), and your
+  accounts.
+- **One-time codes**: in a code's last 10 seconds the next one shows below it, small, with its
+  own copy button.
+- **Generator**: a minimum per character set (at least 2 digits, say); if the minimums don't fit
+  the length, the password gets longer and the generator says so.
 
 ## For UwULock Server
 
@@ -174,9 +180,11 @@ such an answer is a note, not an error. An older server without switches offers 
   email field — sign-up forms included. The address is made for the site of the tab you are on
   and typed into the field.
 - **Share as a Send** (the share button of an item): pick the values (never the authenticator
-  key), how long the link lives (a day by default), how often it opens (once by default) and an
-  optional password. The link is copied from the popup; on UwULock Server it uses your default
-  send domain if you chose one.
+  key; websites show with their address), how long the link lives (a day by default), how often
+  it opens (once by default) and an optional password. The link is copied from the popup; on
+  UwULock Server it uses your default send domain if you chose one, and the Send is an
+  [entry Send](uwu-extras.md#entry-sends): its page shows the entry with copy buttons, and — if
+  you tick _One-time code_ — the live codes, never the key.
 - **File requests** (Settings → UwULock Server → _File requests_): your links with their label,
   until when they run and what arrived; copy a link again, or open it in the web vault, where
   you make and manage them.
@@ -229,7 +237,8 @@ Mit UwULock Server kommen die Extras dazu, sobald der Server sie anbietet: Icons
 (eigene Icons und die, die dein Server lädt – er erfährt dadurch, welche Websites in deinem
 Tresor sind; in den Einstellungen abschaltbar), maskierte Adressen von UwUMail im Generator, im
 Editor (**@**) und im Menü von Benutzername- und E-Mail-Feldern, Einträge als Send teilen (auch
-mit Vaultwarden und Bitwarden; nie mit dem Einmal-Code-Schlüssel) und deine Dateianfragen zum
+mit Vaultwarden und Bitwarden; nie mit dem Einmal-Code-Schlüssel; mit UwULock Server als
+Eintrags-Send, auf Wunsch mit laufenden Einmal-Codes) und deine Dateianfragen zum
 Nachsehen und Link-Kopieren. Was der Admin auf dem Server abschaltet, verschwindet nach spätestens
 fünf Minuten aus der Erweiterung, ohne Fehlermeldung.
 

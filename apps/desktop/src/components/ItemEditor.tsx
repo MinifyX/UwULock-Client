@@ -35,7 +35,9 @@ import {
 import { useCloseGuard } from './CloseGuard';
 import { GeneratorDialog } from './GeneratorDialog';
 import { Icon } from './Icon';
+import { reminderDraft, ReminderEditor, saveReminder, type ReminderDraft } from './ItemExtras';
 import { Modal } from './Modal';
+import { NyuBusy, playNyu } from './nyu/stage';
 
 /**
  * A value the editor may not have: a password, a card number, a hidden field.
@@ -427,6 +429,12 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
   const [masking, setMasking] = useState(false);
   const uwu = useUwu();
   const id = summary?.id ?? null;
+  const remindable = has(uwu, 'reminders') && kind === 'login';
+  const reminderBefore = id ? uwu.reminders[id] : undefined;
+  const [reminder, setReminder] = useState<ReminderDraft>(() => reminderDraft(reminderBefore));
+  const [reminderInitial, setReminderInitial] = useState(() =>
+    JSON.stringify(reminderDraft(reminderBefore)),
+  );
 
   useEffect(() => {
     if (!summary) return;
@@ -459,7 +467,10 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
       name: !current.name.trim() || current.name === current.wifi.ssid ? ssid : current.name,
       wifi: { ...current.wifi, ssid },
     }));
-  const dirty = useMemo(() => JSON.stringify(form) !== initial, [form, initial]);
+  const dirty = useMemo(
+    () => JSON.stringify(form) !== initial || JSON.stringify(reminder) !== reminderInitial,
+    [form, initial, reminder, reminderInitial],
+  );
   const guard = useCloseGuard(dirty && !busy, onClose);
 
   const save = async (event: FormEvent) => {
@@ -473,8 +484,13 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
     try {
       const saved = await saveItem(id, draftOf(form, kind));
       if (newMasked && !id) await linkMaskedAddress(newMasked, saved).catch((e) => toastError(e));
+      // The item is saved either way; a reminder that didn't take says so.
+      if (remindable)
+        await saveReminder(saved, reminder, reminderBefore).catch((e) => toastError(e));
       setInitial(JSON.stringify(form));
+      setReminderInitial(JSON.stringify(reminder));
       toast(id ? t('Gespeichert ✧') : t('Angelegt ✧'));
+      playNyu('saved');
       onSaved(saved);
     } catch (e) {
       setError(errorText(e));
@@ -534,7 +550,7 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
         }
       >
         {loading ? (
-          <p className="dialog-lead">{t('Einen Moment …')}</p>
+          <NyuBusy label={t('Einen Moment …')} />
         ) : (
           <form id="item-editor" className="editor" onSubmit={save}>
             {error && (
@@ -544,15 +560,35 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
             )}
 
             <div className="editor-row">
-              <Field label={t('Name')}>
+              <div className="field">
+                <span className="field-label-row">
+                  <label htmlFor="editor-name">{t('Name')}</label>
+                  <span className="field-actions">
+                    <button
+                      type="button"
+                      className="icon-button star-toggle"
+                      aria-pressed={form.favorite}
+                      title={form.favorite ? t('Favorit entfernen') : t('Zu Favoriten')}
+                      aria-label={t('Favorit')}
+                      onClick={() => set({ favorite: !form.favorite })}
+                    >
+                      <Icon
+                        name="star"
+                        size={16}
+                        className={form.favorite ? 'badge-star' : undefined}
+                      />
+                    </button>
+                  </span>
+                </span>
                 <input
+                  id="editor-name"
                   type="text"
                   value={form.name}
                   autoFocus
                   maxLength={200}
                   onChange={(e) => set({ name: e.target.value })}
                 />
-              </Field>
+              </div>
               <Field label={t('Ordner')}>
                 <select
                   value={form.folderId}
@@ -879,6 +915,7 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
                 <label className="check">
                   <input
                     type="checkbox"
+                    role="switch"
                     checked={form.wifi.hidden}
                     onChange={(e) => setWifi({ hidden: e.target.checked })}
                   />
@@ -1084,17 +1121,11 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
             </fieldset>
 
             <div className="editor-switches">
+              {remindable && <ReminderEditor value={reminder} onChange={setReminder} />}
               <label className="check">
                 <input
                   type="checkbox"
-                  checked={form.favorite}
-                  onChange={(e) => set({ favorite: e.target.checked })}
-                />
-                <span>{t('Favorit')}</span>
-              </label>
-              <label className="check">
-                <input
-                  type="checkbox"
+                  role="switch"
                   checked={form.reprompt}
                   onChange={(e) => set({ reprompt: e.target.checked })}
                 />

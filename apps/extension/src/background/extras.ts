@@ -195,6 +195,7 @@ function checkOptions(options: ShareOptions): ShareOptions {
         ? Math.min(Math.max(Math.round(count), 1), 1_000_000)
         : null,
     password: typeof options.password === 'string' && options.password ? options.password : null,
+    entry: options.entry === true,
   };
 }
 
@@ -229,6 +230,7 @@ export async function shareItem(
         deletionDate,
         maxAccessCount: checked.maxAccessCount,
         password: checked.password,
+        entry: checked.entry,
       }),
     ),
   );

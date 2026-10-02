@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
-import { copyGenerated, generatePassword, type GeneratorOptions } from '../lib/api';
+import { copyGenerated, generatePassword, type Generated, type GeneratorOptions } from '../lib/api';
 import { toastError } from '../lib/errors';
 import { copiedText } from '../lib/format';
+import {
+  cleanMinimums,
+  MAX_LENGTH,
+  minimumOf,
+  required,
+  withMinimum,
+  type CharSet,
+} from '../lib/generator';
 import { t, useLanguage } from '../lib/i18n';
 import { getSettings } from '../lib/settings';
 import { toast } from '../lib/toast';
@@ -17,6 +25,7 @@ import { Icon } from './Icon';
 import { Colored } from './ItemDetail';
 import { copyAddress, MaskedNotConnected } from './MaskedDialog';
 import { Modal } from './Modal';
+import { NyuBusy, playNyu } from './nyu/stage';
 
 const KEY = 'uwulock.generator';
 
@@ -34,7 +43,7 @@ function loadOptions(): GeneratorOptions {
   try {
     const raw = JSON.parse(window.localStorage.getItem(KEY) ?? '{}') as Partial<GeneratorOptions>;
     const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d);
-    return {
+    const options: GeneratorOptions = {
       length:
         typeof raw.length === 'number' ? Math.min(128, Math.max(5, Math.round(raw.length))) : 20,
       lowercase: bool(raw.lowercase, DEFAULTS.lowercase),
@@ -42,7 +51,10 @@ function loadOptions(): GeneratorOptions {
       digits: bool(raw.digits, DEFAULTS.digits),
       symbols: bool(raw.symbols, DEFAULTS.symbols),
       avoidAmbiguous: bool(raw.avoidAmbiguous, DEFAULTS.avoidAmbiguous),
+      ...cleanMinimums(raw as Record<string, unknown>),
     };
+    // Minimums that can't fit any more start over.
+    return required(options) > MAX_LENGTH ? { ...options, ...cleanMinimums({}) } : options;
   } catch {
     return DEFAULTS;
   }
@@ -70,7 +82,7 @@ export function GeneratorDialog({
   const maskable = !onUse && has(uwu, 'masked-addresses');
   const [mode, setMode] = useState<'password' | 'masked'>('password');
   const [options, setOptions] = useState<GeneratorOptions>(loadOptions);
-  const [result, setResult] = useState<{ password: string; bits: number } | null>(null);
+  const [result, setResult] = useState<Generated | null>(null);
 
   const roll = useCallback(async (next: GeneratorOptions) => {
     try {
@@ -107,7 +119,7 @@ export function GeneratorDialog({
   };
 
   const meter = result ? strength(result.bits) : null;
-  const sets: { key: 'uppercase' | 'lowercase' | 'digits' | 'symbols'; label: string }[] = [
+  const sets: { key: CharSet; label: string }[] = [
     { key: 'uppercase', label: 'A–Z' },
     { key: 'lowercase', label: 'a–z' },
     { key: 'digits', label: '0–9' },
@@ -141,7 +153,12 @@ export function GeneratorDialog({
             {t('Schließen')}
           </button>
           <span className="spacer" />
-          <button onClick={() => void roll(options)}>
+          <button
+            onClick={() => {
+              void roll(options);
+              playNyu('generated');
+            }}
+          >
             <Icon name="dice" size={15} />
             {t('Neu würfeln')}
           </button>
@@ -185,6 +202,12 @@ export function GeneratorDialog({
         <label className="field">
           <span>
             {t('Länge')} <b>{options.length}</b>
+            {result && result.length > options.length && (
+              <span className="generator-raised">
+                {' '}
+                {t('→ {n}, damit die Mindestanzahlen passen', { n: result.length })}
+              </span>
+            )}
           </span>
           <input
             type="range"
@@ -206,9 +229,28 @@ export function GeneratorDialog({
             </label>
           ))}
         </div>
+        <fieldset className="generator-mins">
+          <legend>{t('Mindestens')}</legend>
+          {sets
+            .filter(({ key }) => options[key])
+            .map(({ key, label }) => (
+              <label key={key} className="mini-field">
+                <span className="mono">{label}</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={MAX_LENGTH}
+                  value={minimumOf(options, key)}
+                  aria-label={t('Mindestens {set}', { set: label })}
+                  onChange={(e) => setOptions(withMinimum(options, key, Number(e.target.value)))}
+                />
+              </label>
+            ))}
+        </fieldset>
         <label className="check">
           <input
             type="checkbox"
+            role="switch"
             checked={options.avoidAmbiguous}
             onChange={(e) => set({ avoidAmbiguous: e.target.checked })}
           />
@@ -264,7 +306,7 @@ function MaskedGenerator() {
       });
   }, []);
 
-  if (!connection) return <p className="dialog-lead">{t('Einen Moment …')}</p>;
+  if (!connection) return <NyuBusy label={t('Einen Moment …')} />;
   if (!connection.connected || connection.status === 'revoked')
     return <MaskedNotConnected connection={connection} />;
 

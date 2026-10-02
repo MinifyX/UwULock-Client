@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Icon } from '@desktop/components/Icon';
+import { playNyu } from '@desktop/components/nyu/stage';
 import { N_, t } from '../../shared/i18n';
 import type {
   Draft,
@@ -209,6 +210,7 @@ export function Editor({
     try {
       const id = await saveItem(target.id, draft);
       toast(t('Gespeichert ✧'));
+      playNyu('saved');
       onDone(id || target.id);
     } catch (e) {
       setError(errorText(e));
@@ -245,15 +247,28 @@ export function Editor({
         </div>
       )}
 
-      <label className="field">
-        <span>{t('Name')}</span>
+      <div className="field">
+        <span className="field-label-row">
+          <label htmlFor="editor-name">{t('Name')}</label>
+          <button
+            type="button"
+            className="icon-button star-toggle"
+            aria-pressed={favorite}
+            aria-label={t('Favorit')}
+            title={favorite ? t('Aus Favoriten entfernen') : t('Zu Favoriten')}
+            onClick={() => setFavoriteState(!favorite)}
+          >
+            <Icon name="star" size={16} className={favorite ? 'badge-star' : undefined} />
+          </button>
+        </span>
         <input
+          id="editor-name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
           autoFocus={creating}
         />
-      </label>
+      </div>
 
       {kind === 'login' && (
         <>
@@ -563,13 +578,10 @@ export function Editor({
       <label className="check">
         <input
           type="checkbox"
-          checked={favorite}
-          onChange={(e) => setFavoriteState(e.target.checked)}
+          role="switch"
+          checked={reprompt}
+          onChange={(e) => setReprompt(e.target.checked)}
         />
-        <span>{t('Favorit')}</span>
-      </label>
-      <label className="check">
-        <input type="checkbox" checked={reprompt} onChange={(e) => setReprompt(e.target.checked)} />
         <span>{t('Vor dem Anzeigen nach dem Master-Passwort fragen')}</span>
       </label>
 

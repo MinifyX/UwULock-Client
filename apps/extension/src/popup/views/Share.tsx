@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Icon } from '@desktop/components/Icon';
+import { playNyu } from '@desktop/components/nyu/stage';
 import { N_, t, locale } from '../../shared/i18n';
 import type { ItemDetail, ShareableField, SharedSend } from '../../shared/protocol';
 import { copyText, shareFields, shareItem, vaultItem } from '../api';
@@ -9,6 +10,7 @@ import { BackBar, IDENTITY_LABEL } from './Detail';
 const LABELS: Record<string, string> = {
   username: N_('Benutzername'),
   password: N_('Passwort'),
+  totp: N_('Einmal-Code'),
   notes: N_('Notizen'),
   'card-name': N_('Karteninhaber'),
   'card-number': N_('Kartennummer'),
@@ -34,9 +36,10 @@ const ACCESSES: { value: number | null; label: string }[] = [
 ];
 
 /** What the recipient reads before a value, in the language of the popup. */
-export function shareLabel(field: ShareableField): string {
+export function shareLabel(field: ShareableField, websites = 1): string {
   if (field.name.startsWith('field:')) return field.label ?? t('Feld');
-  if (field.name.startsWith('uri:')) return t('Website');
+  if (field.name.startsWith('uri:'))
+    return websites > 1 ? t('Website {n}', { n: Number(field.name.slice(4)) + 1 }) : t('Website');
   if (field.name.startsWith('identity:')) {
     const name = field.name.slice('identity:'.length);
     return t(IDENTITY_LABEL[name] ?? name);
@@ -50,11 +53,30 @@ function chosenFirst(item: ItemDetail, field: ShareableField): boolean {
   return field.name === 'username' || field.name === 'password' || field.name.startsWith('uri:');
 }
 
+/** What the list shows for a value: a website's own address, else its label. */
+function shownLabel(item: ItemDetail | null, field: ShareableField, websites: number): string {
+  if (field.name.startsWith('uri:')) {
+    const uri = item?.login?.uris[Number(field.name.slice(4))]?.uri;
+    if (uri) return uri;
+  }
+  return shareLabel(field, websites);
+}
+
 /**
  * Shares chosen values of an item as a Send: a link that opens once (by default) and is gone
- * after a day, with an optional password. The authenticator key is never among the values.
+ * after a day, with an optional password. On UwULock Server (`entry`) it is an entry Send, whose
+ * page shows the item with copy buttons — and, if chosen, the live one-time codes, never the
+ * key. Elsewhere the authenticator key is never among the values.
  */
-export function ShareView({ id, onBack }: { id: string; onBack: () => void }) {
+export function ShareView({
+  id,
+  entry,
+  onBack,
+}: {
+  id: string;
+  entry: boolean;
+  onBack: () => void;
+}) {
   const settings = useSettings();
   const [item, setItem] = useState<ItemDetail | null>(null);
   const [fields, setFields] = useState<ShareableField[] | null>(null);
@@ -70,7 +92,12 @@ export function ShareView({ id, onBack }: { id: string; onBack: () => void }) {
     void (async () => {
       try {
         const found = await vaultItem(id);
-        const available = await shareFields(id);
+        const shareable = await shareFields(id);
+        // The one-time code only in an entry Send; the core leaves it out of the shareable ones.
+        const available =
+          entry && found.login?.hasTotp && found.summary.viewPassword !== false
+            ? [...shareable, { name: 'totp' }]
+            : shareable;
         setItem(found);
         setFields(available);
         setChosen(new Set(available.filter((f) => chosenFirst(found, f)).map((f) => f.name)));
@@ -78,7 +105,9 @@ export function ShareView({ id, onBack }: { id: string; onBack: () => void }) {
         setError(errorText(e));
       }
     })();
-  }, [id]);
+  }, [id, entry]);
+
+  const websites = item?.login?.uris.length ?? 0;
 
   const toggle = (name: string, on: boolean) => {
     const next = new Set(chosen);
@@ -96,13 +125,15 @@ export function ShareView({ id, onBack }: { id: string; onBack: () => void }) {
       const picked = fields.filter((f) => chosen.has(f.name));
       setShared(
         await shareItem(id, {
-          fields: picked.map((f) => [f.name, shareLabel(f)]),
+          fields: picked.map((f) => [f.name, shareLabel(f, websites)]),
           deletionHours: hours,
           maxAccessCount: accesses,
           password: password || null,
+          entry,
         }),
       );
       setPassword('');
+      playNyu('shared');
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -173,9 +204,13 @@ export function ShareView({ id, onBack }: { id: string; onBack: () => void }) {
       <h2 className="card-title">{t('Als Send teilen')}</h2>
       {item && (
         <p className="dialog-lead">
-          {t('„{name}“ als Link teilen. Der Einmal-Code-Schlüssel wird nie geteilt.', {
-            name: item.summary.name,
-          })}
+          {entry
+            ? t('„{name}“ als Link teilen. Die Send-Seite zeigt den Eintrag mit Kopier-Knöpfen.', {
+                name: item.summary.name,
+              })
+            : t('„{name}“ als Link teilen. Der Einmal-Code-Schlüssel wird nie geteilt.', {
+                name: item.summary.name,
+              })}
         </p>
       )}
       {!fields && !error && <div aria-busy />}
@@ -192,9 +227,18 @@ export function ShareView({ id, onBack }: { id: string; onBack: () => void }) {
                 checked={chosen.has(field.name)}
                 onChange={(e) => toggle(field.name, e.target.checked)}
               />
-              <span>{shareLabel(field)}</span>
+              <span className={field.name.startsWith('uri:') ? 'uri' : undefined}>
+                {shownLabel(item, field, websites)}
+              </span>
             </label>
           ))}
+          {chosen.has('totp') && (
+            <p className="field-hint">
+              {t(
+                'Die Send-Seite zeigt nur die laufenden Codes, nie den Schlüssel. Wer den Send öffnen kann, bekommt aber Codes, solange es ihn gibt.',
+              )}
+            </p>
+          )}
         </fieldset>
       )}
       <label className="field">

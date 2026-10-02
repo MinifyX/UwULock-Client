@@ -8,7 +8,14 @@
  * time, and the server's equivalent domains.
  */
 
-import type { Draft, ItemDetail, ItemSummary, Overview, TotpCode } from '../shared/protocol';
+import type {
+  Draft,
+  ItemDetail,
+  ItemSummary,
+  Overview,
+  PasskeyInfo,
+  TotpCode,
+} from '../shared/protocol';
 import { equivalentDomains, type EquivalentDomains, NO_EQUIVALENTS } from '../shared/uri';
 import { changed } from './events';
 import { ApiError, failure, MAX_SYNC_BYTES, request, whenFeatureOff } from './http';
@@ -260,6 +267,27 @@ export async function savePassword(id: string, password: string): Promise<void> 
     core.sealPassword(id, password, new Date().toISOString()),
   );
   await putCipher(id, sealed);
+}
+
+/** An item's passkeys, nothing secret. */
+export const itemPasskeys = (id: string) =>
+  callJson<PasskeyInfo[]>((core) => core.itemPasskeys(id));
+
+/**
+ * Deletes a login's passkey at `index` — with `credentialId` only if it still is that one — and
+ * saves the item, everything else as it was.
+ */
+export async function deletePasskey(
+  id: string,
+  index: number,
+  credentialId: string | null,
+): Promise<void> {
+  requireOpen();
+  if (!Number.isInteger(index) || index < 0) throw { kind: 'invalid', message: 'No such passkey.' };
+  const { cipher } = await callJson<{ cipher: Record<string, unknown> }>((core) =>
+    core.deletePasskey(id, index, typeof credentialId === 'string' ? credentialId : undefined),
+  );
+  await putCipher(id, cipher);
 }
 
 export async function setFavorite(id: string, favorite: boolean) {
