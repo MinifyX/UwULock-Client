@@ -6,6 +6,7 @@ import { Icon } from './components/Icon';
 import { LockScreen } from './components/LockScreen';
 import { LoginScreen } from './components/LoginScreen';
 import { NyuStage, playNyu } from './components/nyu/stage';
+import { PasskeyRequestDialog } from './components/PasskeyRequestDialog';
 import { SettingsDialog, type SettingsSection } from './components/SettingsDialog';
 import { TitleBar } from './components/TitleBar';
 import { TravelBadge } from './components/TravelBadge';
@@ -208,6 +209,8 @@ export function App() {
       )}
 
       {generator && <GeneratorDialog onClose={() => setGenerator(false)} />}
+
+      {status && status.state !== 'logged-out' && <PasskeyRequestDialog />}
 
       {settingsOpen && status && (
         <SettingsDialog

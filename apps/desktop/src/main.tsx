@@ -14,6 +14,7 @@ import './styles/suite.css';
 import './styles/tokens.css';
 import './styles/fonts.css';
 import './styles/phone.css';
+import './styles/passkeys.css';
 
 // Dark by default, like the other UwU apps; Settings → Appearance switches to
 // light or follows the system, and decides about animations.

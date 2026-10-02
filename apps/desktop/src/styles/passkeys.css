@@ -1,0 +1,47 @@
+/* A browser or app asks for a passkey (PasskeyRequestDialog). */
+
+/* While the vault is locked: a notice over the lock screen, not a dialog in its way. */
+.passkey-notice {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  max-width: min(520px, calc(100vw - 32px));
+  margin: 0;
+  z-index: 40;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 18%);
+}
+
+.passkey-request {
+  display: grid;
+  gap: 12px;
+}
+
+.passkey-request p {
+  margin: 0;
+}
+
+.passkey-choices {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.passkey-choices legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-size: 13px;
+  color: var(--uwu-muted);
+}
+
+.passkey-choices label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.passkey-choices small {
+  color: var(--uwu-muted);
+}

@@ -9,6 +9,7 @@ import extras from './extras.json';
 import health from './health.json';
 import mobile from './mobile.json';
 import moving from './moving.json';
+import passkeys from './passkeys.json';
 import settings from './settings.json';
 import suite from './suite.json';
 import vault from './vault.json';
@@ -21,6 +22,7 @@ export const EN: Readonly<Record<string, string>> = {
   ...health,
   ...mobile,
   ...moving,
+  ...passkeys,
   ...settings,
   ...suite,
   ...vault,
