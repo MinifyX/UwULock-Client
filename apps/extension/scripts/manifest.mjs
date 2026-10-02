@@ -117,8 +117,19 @@ export function manifest(browser, version) {
           browser_specific_settings: {
             gecko: {
               id: 'uwulock@minifyx.de',
-              strict_min_version: '128.0',
-              data_collection_permissions: { required: ['none'] },
+              // 140 (an ESR) is the first Firefox that asks for the data below at install.
+              strict_min_version: '140.0',
+              // Mozilla counts every byte that leaves the browser, end-to-end encrypted or not:
+              // the login (email, master password hash, device) and the vault's items — logins,
+              // identities and cards — go to the server the user signs in to, nowhere else
+              // (PRIVACY.md).
+              data_collection_permissions: {
+                required: [
+                  'authenticationInfo',
+                  'personallyIdentifyingInfo',
+                  'financialAndPaymentInfo',
+                ],
+              },
             },
           },
         }

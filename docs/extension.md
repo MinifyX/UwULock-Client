@@ -10,11 +10,12 @@ base, two packages, both on every
 | Browser                                                        | File under **Assets**            |
 | -------------------------------------------------------------- | -------------------------------- |
 | Chrome, Edge, Brave, Vivaldi, Opera (Chromium 116 or newer)    | `UwULock-extension-chromium.zip` |
-| Firefox 128 or newer (Developer Edition, Nightly, LibreWolf …) | `UwULock-extension-firefox.xpi`  |
+| Firefox 140 or newer (Developer Edition, Nightly, LibreWolf …) | `UwULock-extension-firefox.xpi`  |
 
 The extension is not in the Chrome Web Store or on addons.mozilla.org, and it doesn't update
 itself: install the newer file from the next release the same way. `SHA256SUMS.txt` on the
-release checks the download (see the [install guide](install.md)).
+release checks the download (see the [install guide](install.md)). What it sends, and to whom:
+[privacy policy](../PRIVACY.md).
 
 ## What it does
 
@@ -210,8 +211,9 @@ Bitwarden, bitwarden.com oder bitwarden.eu** in Chrome, Edge, Brave, Vivaldi, Op
 Firefox. Beide Pakete liegen bei jedem
 [Release](https://github.com/MinifyX/UwULock-Client/releases) (ab 0.3.0-beta.1):
 `UwULock-extension-chromium.zip` für Chromium-Browser (ab Version 116),
-`UwULock-extension-firefox.xpi` für Firefox (ab 128). Die Erweiterung steht in keinem Store und
+`UwULock-extension-firefox.xpi` für Firefox (ab 140). Die Erweiterung steht in keinem Store und
 aktualisiert sich nicht selbst: Die neuere Datei aus dem nächsten Release installierst du genauso.
+Was sie an wen sendet: [Datenschutzerklärung](../PRIVACY.md#datenschutzerklärung--uwulock-browser-erweiterung).
 
 Sie meldet dich an (mit zweistufiger Anmeldung), entsperrt mit Master-Passwort oder PIN, zeigt
 zuerst die Logins der Seite im Tab und dann den ganzen Tresor, füllt Logins, Karten und Adressen

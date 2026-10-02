@@ -59,7 +59,7 @@ Still to come:
 - Import from Bitwarden JSON, KeePass, browser CSV; encrypted export
 - Attachments, sends and passkeys in the desktop app
 
-## 0.4 · Wi-Fi networks and phones (0.4.0-beta.2 released)
+## 0.4 · Wi-Fi networks and phones (0.4.0-beta.3 released)
 
 - [x] Wi-Fi networks as an item type of their own, the same contract as UwULock
       Server's web vault ([wifi.md](wifi.md)): a secure note with a marker field,
@@ -94,6 +94,8 @@ Still to come:
       (0.4.0-beta.2)
 - [x] Security review of the SSH/RDP sections
       ([security-review-0.4.md](security-review-0.4.md#040-beta2-sshrdp-entries))
+- [x] Browser extension ready for addons.mozilla.org: Firefox's data consent at install,
+      Mozilla's full linter in CI, a [privacy policy](../PRIVACY.md) (0.4.0-beta.3)
 
 Later on phones:
 
