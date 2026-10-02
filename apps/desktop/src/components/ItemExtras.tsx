@@ -708,7 +708,9 @@ type Choice = {
  * What an item has that can be shared — no secrets of an item whose
  * organisation hides its passwords from this member. The one-time code only
  * in an entry Send (`entry`): its page shows the live codes, the readable
- * text never holds the key.
+ * text never holds the key — but the key travels in the Send (its last
+ * line), so whoever has the link can take it out. Never ticked by default,
+ * and ticking it asks once more.
  */
 export function choices(detail: Detail, viewPassword: boolean, entry = false): Choice[] {
   const out: Choice[] = [];
@@ -792,6 +794,10 @@ export function ShareSendDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [made, setMade] = useState<{ link: string; deletionDate: string } | null>(null);
+  // Ticking the one-time code hands out its key for good: asked for once more.
+  const [askTotp, setAskTotp] = useState(false);
+  const tick = (name: string, checked: boolean) =>
+    setFields((current) => current.map((f) => (f.field === name ? { ...f, checked } : f)));
 
   useEffect(() => {
     void sendOptions()
@@ -906,13 +912,10 @@ export function ShareSendDialog({
                 <input
                   type="checkbox"
                   checked={field.checked}
-                  onChange={(e) =>
-                    setFields(
-                      fields.map((f) =>
-                        f.field === field.field ? { ...f, checked: e.target.checked } : f,
-                      ),
-                    )
-                  }
+                  onChange={(e) => {
+                    if (field.field === 'totp' && e.target.checked) setAskTotp(true);
+                    else tick(field.field, e.target.checked);
+                  }}
                 />
                 <span className={field.shown ? 'share-choice uri' : 'share-choice'}>
                   {field.shown ?? field.label}
@@ -920,10 +923,33 @@ export function ShareSendDialog({
                 </span>
               </label>
             ))}
-            {fields.some((f) => f.field === 'totp' && f.checked) && (
+            {askTotp && (
+              <div className="field-hint share-totp-confirm" role="alert">
+                <p>
+                  {t(
+                    'Der Schlüssel des Einmal-Codes reist verschlüsselt im Send mit. Die Send-Seite zeigt nur die laufenden Codes – wer den Link hat, kann den Schlüssel aber auslesen und damit auch nach dem Löschen des Sends weiter Codes erzeugen.',
+                  )}{' '}
+                  {t('Teile ihn nur, wenn das okay ist.')}
+                </p>
+                <div className="editor-row">
+                  <button
+                    onClick={() => {
+                      tick('totp', true);
+                      setAskTotp(false);
+                    }}
+                  >
+                    {t('Schlüssel mitgeben')}
+                  </button>
+                  <button className="primary" data-autofocus onClick={() => setAskTotp(false)}>
+                    {t('Lieber nicht')}
+                  </button>
+                </div>
+              </div>
+            )}
+            {!askTotp && fields.some((f) => f.field === 'totp' && f.checked) && (
               <p className="field-hint">
                 {t(
-                  'Die Send-Seite zeigt nur die laufenden Codes, nie den Schlüssel. Wer den Send öffnen kann, bekommt aber Codes, solange es ihn gibt.',
+                  'Der Schlüssel des Einmal-Codes reist verschlüsselt im Send mit. Die Send-Seite zeigt nur die laufenden Codes – wer den Link hat, kann den Schlüssel aber auslesen und damit auch nach dem Löschen des Sends weiter Codes erzeugen.',
                 )}
               </p>
             )}

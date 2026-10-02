@@ -196,7 +196,6 @@
   "+1 weitere Website": "+1 more website",
   "+{n} weitere Websites": "+{n} more websites",
   "Ans Erneuern des Passworts erinnern": "Remind me to renew the password",
-  "Die Send-Seite zeigt nur die laufenden Codes, nie den Schlüssel. Wer den Send öffnen kann, bekommt aber Codes, solange es ihn gibt.": "The Send page only shows the current codes, never the key. But whoever can open the Send gets codes for as long as it exists.",
   "Die gewählten Werte gehen verschlüsselt an einen Send. Der Schlüssel steckt im Link, nicht auf dem Server. Die Send-Seite zeigt sie als Eintrag mit Kopier-Knöpfen.": "The chosen values go into a Send, encrypted. The key is in the link, not on the server. The Send page shows them as an entry with copy buttons.",
   "Einmal-Code": "One-time code",
   "Mindestens": "At least",
@@ -218,5 +217,9 @@
   "erstellt {when}": "created {when}",
   "lässt sich nicht lesen – nur löschen": "can't be read – only deleted",
   "ohne Benutzernamen": "no user name",
-  "→ {n}, damit die Mindestanzahlen passen": "→ {n} so the minimums fit"
+  "→ {n}, damit die Mindestanzahlen passen": "→ {n} so the minimums fit",
+  "Der Schlüssel des Einmal-Codes reist verschlüsselt im Send mit. Die Send-Seite zeigt nur die laufenden Codes – wer den Link hat, kann den Schlüssel aber auslesen und damit auch nach dem Löschen des Sends weiter Codes erzeugen.": "The one-time code's key travels in the Send, encrypted. The Send page only shows the current codes – but whoever has the link can read out the key and keep making codes with it, even after the Send is deleted.",
+  "Teile ihn nur, wenn das okay ist.": "Only share it if that's okay.",
+  "Schlüssel mitgeben": "Include the key",
+  "Lieber nicht": "Better not"
 }

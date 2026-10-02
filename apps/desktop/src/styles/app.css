@@ -399,6 +399,20 @@ button.quiet {
   color: var(--uwu-muted);
 }
 
+/* Asking before the one-time code's key goes into a Send. */
+.share-totp-confirm {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--uwu-alarm);
+  border-radius: 10px;
+  color: inherit;
+}
+
+.share-totp-confirm p {
+  margin: 0;
+}
+
 /* Commands in hints must not break at their hyphens. */
 .field-hint code {
   white-space: nowrap;

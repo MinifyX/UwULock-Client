@@ -189,7 +189,8 @@ export function App() {
 
       {current && (
         <div
-          className="toast uwu-ligatures"
+          // No UwU ligatures: toasts can hold user data (an SSID, a path), which must show as typed.
+          className="toast"
           data-tone={current.tone}
           role="status"
           key={current.id}

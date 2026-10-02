@@ -465,8 +465,11 @@ function PasskeysSection({ id, revision }: { id: string; revision: string | null
   const remove = async (key: PasskeyInfo) => {
     setBusy(true);
     try {
-      await deletePasskey(id, key.index, key.credentialId || null);
-      setKeys((current) => current?.filter((k) => k !== key) ?? null);
+      await deletePasskey(id, key.index, key.credentialId || key.fingerprint);
+      // The places of the others have moved: read them again before the
+      // next delete.
+      setKeys(null);
+      setKeys(await itemPasskeys(id));
       toast(t('Passkey gelöscht.'));
       playNyu('trashed');
     } catch (e) {
@@ -480,7 +483,8 @@ function PasskeysSection({ id, revision }: { id: string; revision: string | null
   return (
     <Section title={keys.length === 1 ? t('Passkey') : t('Passkeys')}>
       {keys.map((key) => {
-        const site = key.rpName || key.rpId || t('Unbekannte Website');
+        // The rpId is what the passkey is bound to; the name is the site's own claim.
+        const site = key.rpId || key.rpName || t('Unbekannte Website');
         const user = key.userName || key.userDisplayName;
         const created = when(key.creationDate);
         return (
@@ -494,7 +498,7 @@ function PasskeysSection({ id, revision }: { id: string; revision: string | null
                 <span>{user ?? <span className="muted">{t('ohne Benutzernamen')}</span>}</span>
                 <span className="passkey-meta">
                   {[
-                    key.rpId && key.rpId !== site ? key.rpId : null,
+                    key.rpName && key.rpName !== site ? key.rpName : null,
                     created && t('erstellt {when}', { when: created }),
                     !key.readable && t('lässt sich nicht lesen – nur löschen'),
                   ]
@@ -542,13 +546,19 @@ function PasskeysSection({ id, revision }: { id: string; revision: string | null
           <p className="dialog-lead">
             {t(
               'Mit diesem Passkey meldest du dich danach nicht mehr bei {site} an. Leg vorher einen anderen Weg zur Anmeldung an, falls du keinen mehr hast.',
-              { site: asking.rpName || asking.rpId },
+              { site: asking.rpId || asking.rpName || t('Unbekannte Website') },
             )}
           </p>
         </Modal>
       )}
     </Section>
   );
+}
+
+/** The hosts of all websites but the first, at most three ("a.example, b.example, …"). */
+function otherHosts(uris: NonNullable<Detail['login']>['uris']): string {
+  const hosts = uris.slice(1).map((uri) => uri.host ?? uri.uri);
+  return hosts.slice(0, 3).join(', ') + (hosts.length > 3 ? ', …' : '');
 }
 
 /** The first website, the others behind "+2 weitere Websites". */
@@ -596,6 +606,10 @@ function WebsitesSection({ id, uris }: { id: string; uris: NonNullable<Detail['l
             : more === 1
               ? t('+1 weitere Website')
               : t('+{n} weitere Websites', { n: more })}
+          {!all && (
+            // Which sites, even folded: an added one shouldn't hide behind a number.
+            <span className="more-hosts">{otherHosts(uris)}</span>
+          )}
           <Icon name="chevron" size={12} className={all ? 'turned' : undefined} />
         </button>
       )}

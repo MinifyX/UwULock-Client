@@ -175,6 +175,9 @@ pub(crate) struct VaultState {
     live: Live,
     /// Moving a vault in (`moving`): dropped whenever the vault locks.
     pub(crate) moves: Arc<crate::moving::MoveState>,
+    /// Counts up whenever an account locks or leaves: long work on an open
+    /// vault (the password check) stops when it changes.
+    locks: tokio::sync::watch::Sender<u64>,
 }
 
 impl VaultState {
@@ -200,7 +203,17 @@ impl VaultState {
             clipboard: Arc::new(Clipboard::default()),
             live: Live::default(),
             moves: Arc::default(),
+            locks: tokio::sync::watch::Sender::new(0),
         }
+    }
+
+    /// Changes whenever an account locks or leaves this device.
+    pub(crate) fn locks(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.locks.subscribe()
+    }
+
+    fn note_lock(&self) {
+        self.locks.send_modify(|n| *n = n.wrapping_add(1));
     }
 
     pub(crate) fn touch(&self) {
@@ -294,6 +307,7 @@ impl VaultState {
     /// Locks every account: no key, no session, no clipboard.
     fn lock_now(&self) {
         self.unlocked.write().clear();
+        self.note_lock();
         *self.pending.lock() = None;
         self.clipboard.clear_now();
         self.moves.forget();
@@ -1006,6 +1020,7 @@ impl VaultState {
             crate::hello::forget(id);
         }
         self.unlocked.write().remove(id);
+        self.note_lock();
         *self.pending.lock() = None;
         self.clipboard.clear_now();
         let on_screen = self.active.lock().as_deref() == Some(id);
@@ -1146,6 +1161,7 @@ impl VaultState {
     /// nothing decrypted, and asks for a new login.
     pub(crate) fn session_ended(&self, id: &str) {
         self.unlocked.write().remove(id);
+        self.note_lock();
         let on_screen = self.active.lock().as_deref() == Some(id);
         if on_screen {
             *self.pending.lock() = None;
@@ -1776,7 +1792,9 @@ fn value_of(unlocked: &Unlocked, id: &str, field: &str) -> Result<Zeroizing<Stri
         }
         "totp-next" => {
             let secret = clone(login.and_then(|l| l.totp.as_ref()))?;
-            Ok(totp::Totp::parse(&secret)?.next_code_at(now()))
+            totp::Totp::parse(&secret)?
+                .shown_next_at(now())
+                .ok_or_else(missing)
         }
         "notes" => clone(item.notes.as_ref()),
         "card-number" => clone(card.and_then(|c| c.number.as_ref())),
@@ -1927,7 +1945,7 @@ pub(crate) fn generate_password(options: generator::Options) -> Result<Generated
         .map_err(|e| Failure::new("invalid", e.to_string()))?;
     let password = generator::password(&options);
     Ok(Generated {
-        bits: generator::entropy_bits(&password),
+        bits: generator::password_entropy_bits(&options),
         password: password.to_string(),
         length: options.effective_length(),
         required: options.required(),
@@ -1957,8 +1975,9 @@ pub(crate) fn item_passkeys(
     })
 }
 
-/// Deletes an item's passkey at `index` — with `credential_id`, only if it
-/// still is that one (else `conflict`) — and saves the item.
+/// Deletes an item's passkey at `index` — only if it still is the one
+/// `credential_id` names (its credential id, or for an unreadable one its
+/// `fingerprint`; else `conflict`) — and saves the item.
 #[tauri::command]
 pub(crate) async fn delete_passkey(
     app: AppHandle,
@@ -1970,12 +1989,13 @@ pub(crate) async fn delete_passkey(
     let (account_id, _) = state.active_account()?;
     let mut trial = prepare(&state, &account_id, &id)?;
     let key = state.with_unlocked(|u| Ok(u.vault.item_key(&trial, &u.user_key)?.clone()))?;
-    passkey::remove(&mut trial, &key, index, credential_id.as_deref()).map_err(|e| match e {
+    let refused = |e: Error| match e {
         Error::Refused(_) => Failure::new("not-found", "This item has no such passkey."),
         other => other.into(),
-    })?;
-    change_item(&app, &state, &id, move |item| {
-        let _ = passkey::remove(item, &key, index, credential_id.as_deref());
+    };
+    passkey::remove(&mut trial, &key, index, credential_id.as_deref()).map_err(refused)?;
+    try_change_item(&app, &state, &id, move |item| {
+        passkey::remove(item, &key, index, credential_id.as_deref()).map_err(refused)
     })
     .await?;
     tracing::info!("a passkey deleted");
@@ -2430,10 +2450,24 @@ pub(crate) async fn change_item(
     id: &str,
     change: impl FnOnce(&mut Item),
 ) -> Result<()> {
+    try_change_item(app, state, id, |item| {
+        change(item);
+        Ok(())
+    })
+    .await
+}
+
+/// [`change_item`] with a change that can fail: then nothing is saved.
+pub(crate) async fn try_change_item(
+    app: &AppHandle,
+    state: &VaultState,
+    id: &str,
+    change: impl FnOnce(&mut Item) -> Result<()>,
+) -> Result<()> {
     state.touch();
     let (account_id, account) = state.active_account()?;
     let mut item = prepare(state, &account_id, id)?;
-    change(&mut item);
+    change(&mut item)?;
     let request = sealed(state, &account_id, &item)?;
     let client = state.client(account.server.clone())?;
     let access = access_token(state, &account_id).await?;
