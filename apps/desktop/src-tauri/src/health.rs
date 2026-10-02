@@ -188,9 +188,16 @@ pub(crate) async fn health_report(
                 &prepared,
                 switches.hibp,
                 switches.xon_passwords,
-                move |done, total| {
-                    let _ = progress_app
-                        .emit("health-progress", json!({ "done": done, "total": total }));
+                move |progress| {
+                    let _ = progress_app.emit(
+                        "health-progress",
+                        json!({
+                            "done": progress.done(),
+                            "total": progress.total(),
+                            "hibp": progress.hibp,
+                            "xon": progress.xon,
+                        }),
+                    );
                 },
             )
             .await;

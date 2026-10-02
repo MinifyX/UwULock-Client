@@ -726,3 +726,54 @@ button.quiet {
   min-height: 0;
   overflow: hidden;
 }
+
+/* ── Font picker (Settings → Appearance) ──────────────────── */
+
+.font-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  min-width: 300px;
+}
+
+.font-picker button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 7px 11px;
+  border: 1px solid var(--uwu-border);
+  border-radius: var(--uwu-radius-control);
+  background: var(--uwu-canvas);
+  color: var(--uwu-ink);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease;
+}
+
+.font-picker button:hover {
+  border-color: var(--uwu-pink);
+}
+
+.font-picker button[aria-checked='true'] {
+  border-color: var(--uwu-pink);
+  background: var(--uwu-pink-tint);
+  color: var(--uwu-pink-ink);
+}
+
+.font-picker-name {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.font-picker-sample {
+  font-size: 12px;
+  color: var(--uwu-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.setting-control:has(.font-picker) {
+  max-width: 62%;
+}

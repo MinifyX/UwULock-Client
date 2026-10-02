@@ -133,6 +133,13 @@ hidden}], totp?}`. `totp` is the key (secret or `otpauth://` URI), only for
   the entry. No marker, another version (`v2`) or one that doesn't decode: the
   text shows as it is. Older Sends are untouched.
 
+The desktop app, the phone apps and the browser extension make entry Sends
+whenever the server is UwULock Server (_Share as Send_ on an item); with
+Vaultwarden and Bitwarden they make plain text Sends as before. The choice
+lists every website by its address, and _One-time code_ when the login has
+one — with the hint that whoever can open the Send gets codes as long as it
+exists. The apps don't open Sends themselves; the Send page does.
+
 ## Travel mode
 
 While travel mode is on, the items in the folders marked for it are hidden on
@@ -181,7 +188,12 @@ trash, not archived) and lists what it finds, in groups:
   Keccak-512 (XposedOrNot) go to your UwULock Server, which asks the sources;
   the password never leaves the device. _Check now_ / _Check again_ asks; the
   answers are kept (encrypted under the extras key, as the web vault keeps
-  them) and count for every password that hasn't changed since.
+  them) and count for every password that hasn't changed since. The server
+  asks XposedOrNot about one prefix a second for everyone on it; when its
+  queue is long it answers `busy` (429 with `Retry-After`), and the app waits
+  that long and asks again (up to 8 times) — the check shows how far each
+  source is and that it waits. Only a source that really fails marks the
+  check as incomplete.
 - **Breach after your last password change** — the site (or a domain above
   it) is on the server's list of breached sites (HIBP and XposedOrNot's
   public lists) with a breach in which passwords were taken on or after the

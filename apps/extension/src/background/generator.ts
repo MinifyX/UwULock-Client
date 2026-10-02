@@ -15,18 +15,15 @@ export async function generate(options?: GeneratorSettings): Promise<string> {
   return (await generateWithBits(options)).password;
 }
 
-export async function generateWithBits(
-  options?: GeneratorSettings,
-): Promise<{ password: string; bits: number }> {
+/** A password's `length` is raised to `required` when its minimums need more. */
+type Result = { password: string; bits: number; length?: number; required?: number };
+
+export async function generateWithBits(options?: GeneratorSettings): Promise<Result> {
   const chosen = options ?? (await settings()).generator;
   const result =
     chosen.mode === 'passphrase'
-      ? await callJson<{ password: string; bits: number }>((core) =>
-          core.passphrase(JSON.stringify(chosen.passphrase)),
-        )
-      : await callJson<{ password: string; bits: number }>((core) =>
-          core.generate(JSON.stringify(chosen.password)),
-        );
+      ? await callJson<Result>((core) => core.passphrase(JSON.stringify(chosen.passphrase)))
+      : await callJson<Result>((core) => core.generate(JSON.stringify(chosen.password)));
   const history = (await session('generated')) ?? [];
   await setSession(
     'generated',

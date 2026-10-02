@@ -577,3 +577,19 @@ button.wide {
   min-width: 0;
   word-break: break-all;
 }
+
+/* Settings → Look → Font: the picker below its words, full width. */
+.setting-block {
+  display: grid;
+  gap: 6px;
+  padding: 9px 0 12px;
+}
+
+.setting-block .font-picker {
+  min-width: 0;
+}
+
+/* The generator's minimums, as in the app. */
+.generator .generator-mins {
+  padding: 4px 0;
+}

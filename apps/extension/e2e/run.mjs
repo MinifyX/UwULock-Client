@@ -459,6 +459,19 @@ async function main() {
       'the signature check',
       async () => (await site.locator('#result').textContent()) === 'verified',
     );
+
+    step('The passkey shows in its login’s details, with its site');
+    await until('the passkey’s login', async () => {
+      await popup.reload();
+      await popup.getByRole('button', { name: 'Vault' }).click();
+      await popup
+        .locator('.item-row', { hasText: 'Passkey test' })
+        .first()
+        .click({ timeout: 3000 });
+      return true;
+    });
+    await popup.locator('.passkey-row', { hasText: 'localhost' }).first().waitFor();
+    await popup.getByRole('button', { name: 'Back' }).click();
     console.log('✓ log in, save, fill and passkeys all work');
 
     const info = await fetch(`${server.url.replace('localhost', '127.0.0.1')}/uwu/v1/info`)

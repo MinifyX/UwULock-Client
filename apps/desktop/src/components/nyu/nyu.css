@@ -235,3 +235,318 @@
     opacity: 0;
   }
 }
+
+/* ── Cameos (stage.tsx) ──────────────────────────────────────
+   Every part runs for the cameo's whole time (--nyu-cameo-ms) so they stay
+   in step; percentages are moments of the cameo. Still (reduced motion):
+   only the key pose, which is every part's resting state. */
+
+.nyu-stage {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 60;
+  width: 150px;
+  pointer-events: none;
+  filter: drop-shadow(0 6px 10px rgb(194 48 111 / 0.14));
+  animation: nyu-stage var(--nyu-cameo-ms, 1500ms) ease-out both;
+}
+
+.nyu-stage svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.nyu-stage-still,
+.nyu-stage-still * {
+  animation: none !important;
+}
+
+.nyu-stage [class^='nyu-c-'],
+.nyu-stage .nyu-c-unlock .nyu-shackle {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation-duration: var(--nyu-cameo-ms, 1500ms);
+  animation-fill-mode: both;
+  animation-timing-function: ease-out;
+}
+
+.nyu-stage .nyu-c-rise {
+  animation-name: nyu-c-rise;
+}
+
+.nyu-stage .nyu-c-stamp {
+  animation-name: nyu-c-stamp;
+  animation-timing-function: cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+.nyu-stage .nyu-c-twinkle {
+  animation-name: nyu-c-twinkle;
+}
+
+.nyu-stage .nyu-c-hop {
+  transform-origin: 50% 100%;
+  animation-name: nyu-c-hop;
+}
+
+.nyu-stage .nyu-c-float {
+  animation-name: nyu-c-float;
+}
+
+.nyu-stage .nyu-c-drop-in {
+  animation-name: nyu-c-drop-in;
+  animation-timing-function: ease-in;
+}
+
+.nyu-stage .nyu-c-trail {
+  animation: nyu-c-trail var(--nyu-cameo-ms, 1700ms) linear both;
+}
+
+.nyu-stage .nyu-c-fly {
+  animation-name: nyu-c-fly;
+  animation-timing-function: cubic-bezier(0.5, 0, 0.8, 0.6);
+}
+
+.nyu-stage .nyu-c-unlock .nyu-shackle {
+  transform-origin: 50% 100%;
+  animation-name: nyu-c-shackle;
+}
+
+.nyu-stage .nyu-c-tumble {
+  animation-name: nyu-c-tumble;
+}
+
+/* Phones and the extension's popup: smaller, clear of the edges. */
+@media (max-width: 700px) {
+  .nyu-stage {
+    right: 10px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 72px);
+    width: 104px;
+  }
+}
+
+@keyframes nyu-stage {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.92);
+  }
+  14%,
+  84% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes nyu-c-rise {
+  0%,
+  10% {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  32%,
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes nyu-c-stamp {
+  0%,
+  34% {
+    opacity: 0;
+    transform: scale(2.2);
+  }
+  50%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes nyu-c-twinkle {
+  0%,
+  30% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  50%,
+  76% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  88% {
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes nyu-c-hop {
+  0%,
+  100% {
+    transform: none;
+  }
+  20% {
+    transform: translateY(-14px) scaleY(1.04);
+  }
+  36% {
+    transform: translateY(0) scaleY(0.96);
+  }
+  52% {
+    transform: translateY(-8px);
+  }
+  66% {
+    transform: none;
+  }
+}
+
+@keyframes nyu-c-float {
+  0%,
+  12% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  40%,
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes nyu-c-drop-in {
+  0%,
+  8% {
+    transform: translateY(-50px) rotate(-12deg);
+  }
+  46% {
+    transform: translateY(46px) rotate(6deg);
+    opacity: 1;
+  }
+  60%,
+  100% {
+    transform: translateY(54px) rotate(6deg);
+    opacity: 0;
+  }
+}
+
+@keyframes nyu-c-trail {
+  0% {
+    stroke-dashoffset: 120;
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.35;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0.35;
+  }
+}
+
+@keyframes nyu-c-fly {
+  0%,
+  16% {
+    transform: none;
+  }
+  80%,
+  100% {
+    transform: translate(96px, -90px) rotate(-8deg) scale(0.7);
+    opacity: 0;
+  }
+}
+
+@keyframes nyu-c-shackle {
+  0%,
+  24% {
+    transform: none;
+  }
+  40%,
+  100% {
+    transform: translateY(-16px);
+  }
+}
+
+@keyframes nyu-c-tumble {
+  0% {
+    transform: translate(-40px, -60px) rotate(-180deg);
+  }
+  45% {
+    transform: translate(0, 0) rotate(20deg);
+  }
+  60% {
+    transform: translate(0, -10px) rotate(-6deg);
+  }
+  72%,
+  100% {
+    transform: none;
+  }
+}
+
+/* ── Waiting (NyuBusy) ───────────────────────────────────── */
+
+.nyu-busy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  color: var(--uwu-muted, #716672);
+  font-size: 13px;
+}
+
+.nyu-busy svg {
+  flex: none;
+}
+
+.nyu-busy-figure {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: nyu-bob 1.6s ease-in-out infinite;
+}
+
+.nyu-busy-label {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1px;
+}
+
+.nyu-busy-dots {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 4px;
+}
+
+.nyu-busy-dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: nyu-dot 1.2s ease-in-out infinite;
+}
+
+.nyu-busy-dots i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.nyu-busy-dots i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes nyu-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.25;
+    transform: none;
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}

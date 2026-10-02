@@ -5,6 +5,7 @@ import { GeneratorDialog } from './components/GeneratorDialog';
 import { Icon } from './components/Icon';
 import { LockScreen } from './components/LockScreen';
 import { LoginScreen } from './components/LoginScreen';
+import { NyuStage, playNyu } from './components/nyu/stage';
 import { SettingsDialog, type SettingsSection } from './components/SettingsDialog';
 import { TitleBar } from './components/TitleBar';
 import { TravelBadge } from './components/TravelBadge';
@@ -166,7 +167,10 @@ export function App() {
           ) : status.state === 'locked' ? (
             <LockScreen
               status={status}
-              onUnlocked={setStatus}
+              onUnlocked={(next) => {
+                setStatus(next);
+                playNyu('unlocked');
+              }}
               onLoggedOut={() => void vaultStatus().then(setStatus)}
               onAddAccount={() => setAdding(true)}
             />
@@ -183,10 +187,17 @@ export function App() {
       </div>
 
       {current && (
-        <div className="toast" data-tone={current.tone} role="status" key={current.id}>
+        <div
+          className="toast uwu-ligatures"
+          data-tone={current.tone}
+          role="status"
+          key={current.id}
+        >
           {current.text}
         </div>
       )}
+
+      <NyuStage />
 
       {update && !updateDismissed && !settingsOpen && (
         <UpdateHint

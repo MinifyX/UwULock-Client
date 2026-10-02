@@ -30,14 +30,23 @@ pub struct Answer {
     pub status: u16,
     pub content_type: &'static str,
     pub body: Vec<u8>,
+    /// Extra header lines, `Name: value`.
+    pub headers: Vec<String>,
 }
 
 impl Answer {
+    /// The same answer with one more header.
+    pub fn with_header(mut self, name: &str, value: &str) -> Answer {
+        self.headers.push(format!("{name}: {value}"));
+        self
+    }
+
     pub fn json(status: u16, body: serde_json::Value) -> Answer {
         Answer {
             status,
             content_type: "application/json",
             body: body.to_string().into_bytes(),
+            headers: Vec::new(),
         }
     }
 
@@ -46,6 +55,7 @@ impl Answer {
             status: 200,
             content_type,
             body,
+            headers: Vec::new(),
         }
     }
 
@@ -54,6 +64,7 @@ impl Answer {
             status,
             content_type: "text/plain",
             body: Vec::new(),
+            headers: Vec::new(),
         }
     }
 }
@@ -149,10 +160,15 @@ fn serve(
     let answer = handler(&request);
     write!(
         stream,
-        "HTTP/1.1 {} X\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 {} X\r\nContent-Type: {}\r\nContent-Length: {}\r\n{}Connection: close\r\n\r\n",
         answer.status,
         answer.content_type,
-        answer.body.len()
+        answer.body.len(),
+        answer
+            .headers
+            .iter()
+            .map(|line| format!("{line}\r\n"))
+            .collect::<String>()
     )?;
     stream.write_all(&answer.body)
 }

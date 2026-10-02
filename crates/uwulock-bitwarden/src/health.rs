@@ -7,6 +7,10 @@
 //! The server talks to the sources; the app only talks to its server. What
 //! the lists are matched against stays on the device (`uwulock_core::health`).
 
+use std::future::Future;
+use std::sync::Mutex;
+use std::time::Duration;
+
 use futures_util::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -104,6 +108,86 @@ const AT_ONCE: usize = 4;
 /// The most a range answer of HIBP may weigh (they are about 30 KiB padded).
 const MAX_RANGE: u64 = 1024 * 1024;
 
+/// How often a question the server answers with 429 is asked.
+const BUSY_TRIES: u32 = 8;
+
+/// The longest wait between two tries, whatever `Retry-After` says.
+const LONGEST_WAIT: u64 = 60;
+
+/// How long to wait before try `attempt + 1`: as long as the server's
+/// `Retry-After` says (at most a minute), else 5 s, 10 s, … up to 30 s.
+fn busy_wait(retry_after: Option<u64>, attempt: u32) -> Duration {
+    Duration::from_secs(match retry_after {
+        Some(seconds) => seconds.min(LONGEST_WAIT),
+        None => u64::from((5 * attempt).min(30)),
+    })
+}
+
+/// `job`, asked again while the server answers 429 ("too many", or `busy`
+/// for XposedOrNot's queue): waiting as [`busy_wait`] says, at most `tries`
+/// times. Anything else fails at once. `wait` sleeps; the tests hand in one
+/// that doesn't.
+pub(crate) async fn retrying_busy<T, J, JF, W, WF>(
+    mut job: J,
+    mut wait: W,
+    tries: u32,
+) -> UwuResult<T>
+where
+    J: FnMut() -> JF,
+    JF: Future<Output = UwuResult<T>>,
+    W: FnMut(Duration) -> WF,
+    WF: Future<Output = ()>,
+{
+    let mut attempt = 1;
+    loop {
+        match job().await {
+            Err(error) if error.status() == Some(429) && attempt < tries => {
+                wait(busy_wait(error.retry_after(), attempt)).await;
+                attempt += 1;
+            }
+            other => return other,
+        }
+    }
+}
+
+/// How far one breach source is: questions answered of all, and how many
+/// wait because the server is busy (XposedOrNot's queue).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceProgress {
+    pub done: usize,
+    pub total: usize,
+    pub waiting: usize,
+}
+
+/// How far the breach check is, per source that is on.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BreachProgress {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hibp: Option<SourceProgress>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub xon: Option<SourceProgress>,
+}
+
+impl BreachProgress {
+    /// Answered of all, both sources together.
+    pub fn done(&self) -> usize {
+        self.hibp.map_or(0, |s| s.done) + self.xon.map_or(0, |s| s.done)
+    }
+
+    pub fn total(&self) -> usize {
+        self.hibp.map_or(0, |s| s.total) + self.xon.map_or(0, |s| s.total)
+    }
+
+    fn source(&mut self, source: &str) -> Option<&mut SourceProgress> {
+        match source {
+            "hibp" => self.hibp.as_mut(),
+            _ => self.xon.as_mut(),
+        }
+    }
+}
+
 /// What the breach sources said about a prepared report.
 #[derive(Debug, Clone, Default)]
 pub struct BreachAnswers {
@@ -126,23 +210,48 @@ impl Client {
     }
 
     /// How often XposedOrNot saw a password with this ten-digit Keccak-512
-    /// prefix, through the server; 0 when it doesn't know it.
+    /// prefix, through the server; 0 when it doesn't know it. The server
+    /// queues these questions for the whole instance (about one a second) and
+    /// answers 429 `busy` when the queue is long: that is asked again
+    /// ([`retrying_busy`]), so a long queue never makes the check incomplete.
     pub async fn xon_count(&self, access_token: &str, prefix: &str) -> UwuResult<u64> {
-        let answer = self
-            .uwu_get(access_token, &format!("/xon/{}", uwu_path(prefix)))
-            .await?;
+        self.xon_count_waiting(access_token, prefix, |_| ()).await
+    }
+
+    /// [`Client::xon_count`], saying when it starts (`true`) and stops
+    /// (`false`) waiting for a busy server.
+    async fn xon_count_waiting(
+        &self,
+        access_token: &str,
+        prefix: &str,
+        waiting: impl Fn(bool),
+    ) -> UwuResult<u64> {
+        let path = format!("/xon/{}", uwu_path(prefix));
+        let waiting = &waiting;
+        let answer = retrying_busy(
+            || self.uwu_get(access_token, &path),
+            |pause| async move {
+                waiting(true);
+                tokio::time::sleep(pause).await;
+                waiting(false);
+            },
+            BUSY_TRIES,
+        )
+        .await?;
         Ok(answer.get("count").and_then(Value::as_u64).unwrap_or(0))
     }
 
     /// Asks the sources that are on for every prefix of `prepared`, a few at a
-    /// time; `progress(done, total)` after each answer.
+    /// time; `progress` per source after each answer, and when a question
+    /// starts or stops waiting for a busy server. Only a question that fails
+    /// for good (not a busy server waited out) makes the answers incomplete.
     pub async fn breach_counts(
         &self,
         access_token: &str,
         prepared: &Prepared,
         hibp: bool,
         xon: bool,
-        progress: impl Fn(usize, usize),
+        progress: impl Fn(&BreachProgress) + Sync,
     ) -> BreachAnswers {
         enum Ask {
             Hibp(String),
@@ -155,42 +264,83 @@ impl Client {
         if xon {
             asks.extend(prepared.xon_prefixes().into_iter().map(Ask::Xon));
         }
-        let total = asks.len();
+        let count = |hibp_ask: bool| {
+            asks.iter()
+                .filter(|ask| matches!(ask, Ask::Hibp(_)) == hibp_ask)
+                .count()
+        };
+        let state = Mutex::new(BreachProgress {
+            hibp: hibp.then(|| SourceProgress {
+                total: count(true),
+                ..SourceProgress::default()
+            }),
+            xon: xon.then(|| SourceProgress {
+                total: count(false),
+                ..SourceProgress::default()
+            }),
+        });
         let mut answers = BreachAnswers::default();
-        if total == 0 {
+        if asks.is_empty() {
             return answers;
         }
-        progress(0, total);
-        let mut done = 0;
+        // Changes the progress and says it; never held across an await.
+        let tell = |change: &dyn Fn(&mut BreachProgress)| {
+            let now = {
+                let mut state = state.lock().unwrap_or_else(|e| e.into_inner());
+                change(&mut state);
+                *state
+            };
+            progress(&now);
+        };
+        tell(&|_| ());
+        let tell_ref = &tell;
         let mut results = stream::iter(asks)
             .map(|ask| async move {
-                match ask {
-                    Ask::Hibp(prefix) => self
-                        .hibp_range(access_token, &prefix)
+                let (source, result) = match ask {
+                    Ask::Hibp(prefix) => (
+                        "hibp",
+                        self.hibp_range(access_token, &prefix)
+                            .await
+                            .map(|range| prepared.hibp_hits(&prefix, &range)),
+                    ),
+                    Ask::Xon(prefix) => (
+                        "xon",
+                        self.xon_count_waiting(access_token, &prefix, |on| {
+                            tell_ref(&|p| {
+                                if let Some(xon) = p.xon.as_mut() {
+                                    xon.waiting = if on {
+                                        xon.waiting + 1
+                                    } else {
+                                        xon.waiting.saturating_sub(1)
+                                    };
+                                }
+                            })
+                        })
                         .await
-                        .map(|range| ("hibp", prepared.hibp_hits(&prefix, &range))),
-                    Ask::Xon(prefix) => self
-                        .xon_count(access_token, &prefix)
-                        .await
-                        .map(|count| ("xon", prepared.xon_hits(&prefix, count))),
-                }
+                        .map(|count| prepared.xon_hits(&prefix, count)),
+                    ),
+                };
+                (source, result)
             })
             .buffer_unordered(AT_ONCE);
-        while let Some(result) = results.next().await {
+        while let Some((source, result)) = results.next().await {
             match result {
-                Ok((source, hits)) => {
+                Ok(hits) => {
                     for (id, count) in hits {
                         answers.counts.add(&id, count, source);
                     }
                 }
                 Err(error) => {
                     // Not the prefix: it is part of a password's hash.
-                    tracing::warn!(status = ?error.status(), "a breach source didn't answer");
+                    tracing::warn!(source, status = ?error.status(), "a breach source didn't answer");
                     answers.incomplete = true;
                 }
             }
-            done += 1;
-            progress(done, total);
+            tell(&|p| {
+                if let Some(s) = p.source(source) {
+                    s.done += 1;
+                }
+            });
         }
         answers
     }
@@ -338,4 +488,97 @@ fn read<T: serde::de::DeserializeOwned>(value: Value, what: &str) -> UwuResult<T
             message: format!("the server's {what} doesn't read: {e}"),
         })
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::{Cell, RefCell};
+
+    fn busy() -> UwuError {
+        UwuError::Refused {
+            status: 429,
+            code: "busy".into(),
+            message: "XposedOrNot is busy.".into(),
+            retry_after: None,
+        }
+    }
+
+    #[test]
+    fn retry_after_is_waited_as_said_but_not_forever() {
+        assert_eq!(busy_wait(Some(7), 1), Duration::from_secs(7));
+        assert_eq!(busy_wait(Some(3600), 1), Duration::from_secs(LONGEST_WAIT));
+        assert_eq!(busy_wait(None, 2), Duration::from_secs(10));
+        assert_eq!(busy_wait(None, 7), Duration::from_secs(30));
+    }
+
+    #[tokio::test]
+    async fn busy_is_asked_again_with_growing_waits() {
+        let calls = Cell::new(0);
+        let waits = RefCell::new(Vec::new());
+        let answer = retrying_busy(
+            || {
+                calls.set(calls.get() + 1);
+                let n = calls.get();
+                async move {
+                    if n < 4 {
+                        Err(busy())
+                    } else {
+                        Ok(7)
+                    }
+                }
+            },
+            |d| {
+                waits.borrow_mut().push(d.as_secs());
+                async {}
+            },
+            BUSY_TRIES,
+        )
+        .await
+        .unwrap();
+        assert_eq!(answer, 7);
+        assert_eq!(calls.get(), 4);
+        assert_eq!(*waits.borrow(), vec![5, 10, 15]);
+    }
+
+    #[tokio::test]
+    async fn gives_up_after_the_last_try_and_on_other_errors() {
+        let calls = Cell::new(0);
+        let waits = RefCell::new(Vec::new());
+        let failed = retrying_busy::<u64, _, _, _, _>(
+            || {
+                calls.set(calls.get() + 1);
+                async { Err(busy()) }
+            },
+            |d| {
+                waits.borrow_mut().push(d.as_secs());
+                async {}
+            },
+            BUSY_TRIES,
+        )
+        .await;
+        assert_eq!(failed.unwrap_err().status(), Some(429));
+        assert_eq!(calls.get(), BUSY_TRIES);
+        assert_eq!(waits.borrow().last(), Some(&30));
+
+        calls.set(0);
+        let refused = retrying_busy::<u64, _, _, _, _>(
+            || {
+                calls.set(calls.get() + 1);
+                async {
+                    Err(UwuError::Refused {
+                        status: 403,
+                        code: "feature_off".into(),
+                        message: "off".into(),
+                        retry_after: None,
+                    })
+                }
+            },
+            |_| async {},
+            BUSY_TRIES,
+        )
+        .await;
+        assert_eq!(refused.unwrap_err().status(), Some(403));
+        assert_eq!(calls.get(), 1, "only 429 is asked again");
+    }
 }

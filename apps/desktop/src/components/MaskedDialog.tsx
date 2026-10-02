@@ -23,6 +23,7 @@ import {
 } from '../lib/uwu';
 import { Icon } from './Icon';
 import { Modal } from './Modal';
+import { NyuBusy } from './nyu/stage';
 
 export async function copyAddress(email: string) {
   try {
@@ -142,7 +143,7 @@ export function MaskedDialog({
             {error}
           </p>
         )}
-        {connection === null && !error && <p className="dialog-lead">{t('Einen Moment …')}</p>}
+        {connection === null && !error && <NyuBusy label={t('Einen Moment …')} />}
         {connection && !connected && <MaskedNotConnected connection={connection} />}
         {connected && (
           <div className="extras-form">

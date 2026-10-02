@@ -10,6 +10,7 @@
 import { useSyncExternalStore } from 'react';
 import pkg from '../../package.json';
 import { setAppearance } from './api';
+import { applyFont, DEFAULT_FONT, FONT_CHOICES, type FontChoice } from './fonts';
 import { language } from './i18n';
 import { isMobile, platform } from './platform';
 
@@ -29,6 +30,8 @@ export type Settings = {
   language: LanguageSetting;
   theme: ThemeSetting;
   motion: MotionSetting;
+  /** The interface font, on this device (lib/fonts.ts). */
+  font: FontChoice;
   updateChannel: UpdateChannel;
   autoLock: AutoLock;
   clipboardClear: ClipboardClear;
@@ -48,6 +51,7 @@ export const DEFAULT_SETTINGS: Settings = {
   language: 'system',
   theme: 'dark',
   motion: 'system',
+  font: DEFAULT_FONT,
   // Someone who installed a beta wants the next beta too.
   updateChannel: pkg.version.includes('-') ? 'beta' : 'stable',
   autoLock: 15,
@@ -76,6 +80,7 @@ export function sanitize(raw: unknown): Settings {
     language: oneOf(input.language, ['system', 'de', 'en'] as const, d.language),
     theme: oneOf(input.theme, ['system', 'light', 'dark'] as const, d.theme),
     motion: oneOf(input.motion, ['system', 'on', 'off'] as const, d.motion),
+    font: oneOf(input.font, FONT_CHOICES, d.font),
     updateChannel: oneOf(input.updateChannel, ['stable', 'beta'] as const, d.updateChannel),
     autoLock: oneOf(input.autoLock, [0, 1, 5, 15, 30, 60, 240] as const, d.autoLock),
     clipboardClear: oneOf(input.clipboardClear, [0, 10, 30, 60, 120] as const, d.clipboardClear),
@@ -151,8 +156,11 @@ export function applyAppearance() {
       void setAppearance(dark).catch(() => undefined);
     }
     document.documentElement.lang = language(current);
-    if (motionAllowed()) delete document.documentElement.dataset.motion;
-    else document.documentElement.dataset.motion = 'reduced';
+    applyFont(current.font);
+    // "on" also overrides the system's reduced motion in tokens.css.
+    if (!motionAllowed()) document.documentElement.dataset.motion = 'reduced';
+    else if (current.motion === 'on') document.documentElement.dataset.motion = 'on';
+    else delete document.documentElement.dataset.motion;
   };
   apply();
   subscribeSettings(apply);

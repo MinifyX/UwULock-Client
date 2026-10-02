@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Icon } from '@desktop/components/Icon';
+import { playNyu } from '@desktop/components/nyu/stage';
 import { QrCode } from '@desktop/components/QrCode';
 import { ENTERPRISE_KEYS, isEnterprise, readWifi, wifiQr, type WifiView } from '@desktop/lib/wifi';
 import { N_, t } from '../../shared/i18n';
 import { ItemIcon } from '../icons';
 import { FillReprompt } from './FillReprompt';
-import type { ItemDetail, ItemKind, TotpCode } from '../../shared/protocol';
+import type { ItemDetail, ItemKind, PasskeyInfo, TotpCode } from '../../shared/protocol';
 import {
   copyField,
   deleteItem,
+  deletePasskey,
+  itemPasskeys,
   fillTab,
   openItemUri,
   restoreItem,
@@ -130,6 +133,7 @@ export function Detail({
     try {
       await deleteItem(id, permanent);
       toast(permanent ? t('Endgültig gelöscht') : t('In den Papierkorb gelegt'));
+      playNyu('trashed');
       onBack();
     } catch (e) {
       toastError(e);
@@ -320,42 +324,13 @@ function Body({ item }: { item: ItemDetail }) {
             <SecretRow id={id} label={t('Passwort')} field="password" colored />
           )}
           {login.hasTotp && <TotpRow id={id} />}
-          {login.passkeys > 0 && (
-            <div className="detail-row">
-              <span className="detail-text">
-                <span className="detail-label">{t('Passkey')}</span>
-                <span className="detail-value">{t('Gespeichert ✧')}</span>
-              </span>
-            </div>
-          )}
         </section>
       )}
 
-      {login && login.uris.length > 0 && (
-        <section className="detail-card">
-          <h3 className="detail-card-title">{t('Websites')}</h3>
-          {login.uris.map((uri, index) => (
-            <div className="detail-row" key={index}>
-              <span className="detail-text">
-                <span className="detail-value uri">{uri.uri}</span>
-              </span>
-              <span className="detail-actions">
-                {uri.openable && (
-                  <button
-                    type="button"
-                    className="icon-button"
-                    onClick={() => void openItemUri(id, index)}
-                    aria-label={t('Öffnen')}
-                    title={t('Öffnen')}
-                  >
-                    <Icon name="external" size={15} />
-                  </button>
-                )}
-                <CopyButton id={id} field={`uri:${index}`} />
-              </span>
-            </div>
-          ))}
-        </section>
+      {login && login.uris.length > 0 && <Websites id={id} uris={login.uris} />}
+
+      {login && login.passkeys > 0 && (
+        <Passkeys id={id} revision={item.summary.revisionDate} deleted={item.summary.deleted} />
       )}
 
       {card && (
@@ -602,7 +577,10 @@ function CopyButton({ id, field }: { id: string; field: string }) {
       className="icon-button"
       onClick={() =>
         void copyField(id, field)
-          .then(() => toast(copiedText(field, settings?.clipboardClear ?? 30)))
+          .then(() => {
+            toast(copiedText(field, settings?.clipboardClear ?? 30));
+            playNyu('copied');
+          })
           .catch((e) => toastError(e))
       }
       aria-label={t('Kopieren')}
@@ -723,10 +701,20 @@ function TotpRow({ id }: { id: string }) {
       <span className="detail-text">
         <span className="detail-label">{t('Einmal-Code')}</span>
         {code ? (
-          <span className="totp" data-soon={code.remaining <= 5 || undefined}>
-            <span className="totp-code mono">{spacedCode(code.code)}</span>
-            <TotpRing remaining={code.remaining} period={code.period} />
-            <span className="totp-seconds">{code.remaining}</span>
+          <span className="totp-block">
+            <span className="totp" data-soon={code.remaining <= 5 || undefined}>
+              <span className="totp-code mono">{spacedCode(code.code)}</span>
+              <TotpRing remaining={code.remaining} period={code.period} />
+              <span className="totp-seconds">{code.remaining}</span>
+            </span>
+            {code.showNext && (
+              <span className="totp-next">
+                <span>
+                  {t('Nächster:')} <b>{spacedCode(code.next)}</b>
+                </span>
+                <CopyButton id={id} field="totp-next" />
+              </span>
+            )}
           </span>
         ) : (
           <span className="detail-value muted">– – –</span>
@@ -767,6 +755,143 @@ function History({
             colored
           />
         ))}
+    </section>
+  );
+}
+
+/** The first website; the others behind "+2 weitere Websites". */
+function Websites({ id, uris }: { id: string; uris: NonNullable<ItemDetail['login']>['uris'] }) {
+  const [all, setAll] = useState(false);
+  const more = uris.length - 1;
+  return (
+    <section className="detail-card">
+      <h3 className="detail-card-title">{uris.length === 1 ? t('Website') : t('Websites')}</h3>
+      {(all ? uris : uris.slice(0, 1)).map((uri, index) => (
+        <div className="detail-row" key={index}>
+          <span className="detail-text">
+            <span className="detail-value uri">{uri.uri}</span>
+          </span>
+          <span className="detail-actions">
+            {uri.openable && (
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => void openItemUri(id, index)}
+                aria-label={t('Öffnen')}
+                title={t('Öffnen')}
+              >
+                <Icon name="external" size={15} />
+              </button>
+            )}
+            <CopyButton id={id} field={`uri:${index}`} />
+          </span>
+        </div>
+      ))}
+      {more > 0 && (
+        <button
+          type="button"
+          className="more-toggle link-button"
+          aria-expanded={all}
+          onClick={() => setAll(!all)}
+        >
+          {all
+            ? t('Weniger zeigen')
+            : more === 1
+              ? t('+1 weitere Website')
+              : t('+{n} weitere Websites', { n: more })}
+          <Icon name="chevron" size={12} className={all ? 'turned' : undefined} />
+        </button>
+      )}
+    </section>
+  );
+}
+
+/** A login's passkeys: site, user, since when; deleting one asks first. */
+function Passkeys({
+  id,
+  revision,
+  deleted,
+}: {
+  id: string;
+  revision: string | null;
+  deleted: boolean;
+}) {
+  const [keys, setKeys] = useState<PasskeyInfo[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    itemPasskeys(id)
+      .then((next) => alive && setKeys(next))
+      .catch(() => alive && setKeys([]));
+    return () => {
+      alive = false;
+    };
+  }, [id, revision]);
+  if (!keys || keys.length === 0) return null;
+
+  const remove = async (key: PasskeyInfo) => {
+    const site = key.rpName || key.rpId;
+    if (
+      !window.confirm(
+        t('Den Passkey für {site} löschen? Damit meldest du dich dort danach nicht mehr an.', {
+          site,
+        }),
+      )
+    )
+      return;
+    setBusy(true);
+    try {
+      await deletePasskey(id, key.index, key.credentialId || null);
+      setKeys((current) => current?.filter((k) => k !== key) ?? null);
+      toast(t('Passkey gelöscht.'));
+      playNyu('trashed');
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="detail-card">
+      <h3 className="detail-card-title">{keys.length === 1 ? t('Passkey') : t('Passkeys')}</h3>
+      {keys.map((key) => {
+        const site = key.rpName || key.rpId || t('Unbekannte Website');
+        const created = when(key.creationDate);
+        return (
+          <div className="detail-row passkey-row" key={`${key.index}-${key.credentialId}`}>
+            <span className="detail-text">
+              <span className="detail-label">{site}</span>
+              <span className="detail-value">
+                <span>{key.userName || key.userDisplayName || t('ohne Benutzernamen')}</span>
+                <span className="passkey-meta">
+                  {[
+                    key.rpId && key.rpId !== site ? key.rpId : null,
+                    created && t('erstellt {when}', { when: created }),
+                    !key.readable && t('lässt sich nicht lesen – nur löschen'),
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </span>
+              </span>
+            </span>
+            {!deleted && (
+              <span className="detail-actions">
+                <button
+                  type="button"
+                  className="icon-button"
+                  disabled={busy}
+                  onClick={() => void remove(key)}
+                  aria-label={t('Passkey für {site} löschen', { site })}
+                  title={t('Passkey löschen')}
+                >
+                  <Icon name="trash" size={15} />
+                </button>
+              </span>
+            )}
+          </div>
+        );
+      })}
     </section>
   );
 }

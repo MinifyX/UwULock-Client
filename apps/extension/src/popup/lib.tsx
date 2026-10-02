@@ -6,6 +6,8 @@
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { Icon } from '@desktop/components/Icon';
+import { NyuStage } from '@desktop/components/nyu/stage';
+import { applyFont, isFontChoice } from '@desktop/lib/fonts';
 import { ext } from '../shared/browser';
 import { RequestFailed } from '../shared/messages';
 import { locale, resolveLanguage, setLanguage, t } from '../shared/i18n';
@@ -60,6 +62,7 @@ function applyAppearance(settings: Settings) {
     settings.theme === 'dark' ||
     (settings.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  applyFont(isFontChoice(settings.font) ? settings.font : 'uwu');
 }
 
 export function publishSettings(next: Settings) {
@@ -198,11 +201,20 @@ export function ToastView() {
     },
     () => currentToast,
   );
-  if (!current) return null;
   return (
-    <div className="toast" data-tone={current.tone} role="status" key={current.id}>
-      {current.text}
-    </div>
+    <>
+      {current && (
+        <div
+          className="toast uwu-ligatures"
+          data-tone={current.tone}
+          role="status"
+          key={current.id}
+        >
+          {current.text}
+        </div>
+      )}
+      <NyuStage />
+    </>
   );
 }
 
@@ -265,7 +277,7 @@ export function copiedText(field: string, seconds: number): string {
       ? t('Benutzername kopiert')
       : field === 'password'
         ? t('Passwort kopiert')
-        : field === 'totp'
+        : field === 'totp' || field === 'totp-next'
           ? t('Code kopiert')
           : t('Kopiert');
   return seconds > 0 ? t('{what} ✧ – wird nach {n} s geleert', { what, n: seconds }) : `${what} ✧`;

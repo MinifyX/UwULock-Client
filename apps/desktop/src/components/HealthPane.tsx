@@ -7,11 +7,13 @@ import {
   healthReport,
   openChangePage,
   problemDetail,
+  progressText,
   problemTitle,
   saveNewPassword,
   setIgnored,
   breachText,
   type Card,
+  type CheckProgress,
   type EmailResult,
   type Finding,
   type HealthView,
@@ -35,6 +37,7 @@ import { toast } from '../lib/toast';
 import { GeneratorDialog } from './GeneratorDialog';
 import { Icon } from './Icon';
 import { ItemTile } from './ItemTile';
+import { NyuBusy, playNyu } from './nyu/stage';
 
 type Props = {
   /** `report` or `review`, chosen in the sidebar. */
@@ -64,6 +67,7 @@ export function HealthPane({ mode, onMode, items, onOpen, phone, onMenu }: Props
     setBusy(fresh ? t('Prüft …') : t('Lädt …'));
     try {
       setView(await healthReport(fresh));
+      if (fresh) playNyu('checked');
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -84,8 +88,8 @@ export function HealthPane({ mode, onMode, items, onOpen, phone, onMenu }: Props
   }, []);
 
   useEffect(() => {
-    const stop = listen<{ done: number; total: number }>('health-progress', ({ payload }) => {
-      setBusy((now) => (now ? t('Fragt nach Datenlecks … {done} von {total}', payload) : now));
+    const stop = listen<CheckProgress>('health-progress', ({ payload }) => {
+      setBusy((now) => (now ? progressText(payload) : now));
     });
     return () => void stop.then((unlisten) => unlisten());
   }, []);
@@ -270,11 +274,7 @@ function HealthReport({
                 )}
         </p>
       )}
-      {busy && (
-        <p className="dialog-lead" role="status">
-          {busy}
-        </p>
-      )}
+      {busy && <NyuBusy label={busy} />}
       {error && (
         <p className="form-error" role="alert">
           {error}

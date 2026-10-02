@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import { Icon } from '@desktop/components/Icon';
+import { playNyu } from '@desktop/components/nyu/stage';
 import { t } from '../shared/i18n';
 import { lock, syncNow } from './api';
 import { setIconsEnabled } from './icons';
@@ -78,7 +79,10 @@ export function App() {
         <LockView
           status={status}
           onAddAccount={() => setAdding(true)}
-          onDone={() => void refresh()}
+          onDone={() => {
+            playNyu('unlocked');
+            void refresh();
+          }}
         />
         <ToastView />
       </div>
@@ -151,7 +155,11 @@ export function App() {
           />
         )}
         {layer?.kind === 'share' && (
-          <ShareView id={layer.id} onBack={() => setLayer({ kind: 'item', id: layer.id })} />
+          <ShareView
+            id={layer.id}
+            entry={Boolean(status.uwu)}
+            onBack={() => setLayer({ kind: 'item', id: layer.id })}
+          />
         )}
         {layer?.kind === 'file-requests' && <FileRequestsView onBack={() => setLayer(null)} />}
         {layer?.kind === 'edit' && (
