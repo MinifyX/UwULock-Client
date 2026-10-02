@@ -237,8 +237,10 @@ Mit UwULock Server kommen die Extras dazu, sobald der Server sie anbietet: Icons
 (eigene Icons und die, die dein Server lädt – er erfährt dadurch, welche Websites in deinem
 Tresor sind; in den Einstellungen abschaltbar), maskierte Adressen von UwUMail im Generator, im
 Editor (**@**) und im Menü von Benutzername- und E-Mail-Feldern, Einträge als Send teilen (auch
-mit Vaultwarden und Bitwarden; nie mit dem Einmal-Code-Schlüssel; mit UwULock Server als
-Eintrags-Send, auf Wunsch mit laufenden Einmal-Codes) und deine Dateianfragen zum
+mit Vaultwarden und Bitwarden, dort nie mit dem Einmal-Code-Schlüssel; mit UwULock Server als
+Eintrags-Send, auf Wunsch mit laufenden Einmal-Codes – dann reist der Schlüssel verschlüsselt im
+Send mit, und wer den Link hat, kann ihn auslesen; deshalb fragt die Erweiterung vorher nach) und
+deine Dateianfragen zum
 Nachsehen und Link-Kopieren. Was der Admin auf dem Server abschaltet, verschwindet nach spätestens
 fünf Minuten aus der Erweiterung, ohne Fehlermeldung.
 

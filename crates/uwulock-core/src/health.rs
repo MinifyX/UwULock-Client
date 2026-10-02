@@ -82,10 +82,12 @@ impl ProblemKind {
 /// five hex digits, which are sent, and the rest, which stays here. Upper
 /// case, as HIBP answers.
 pub fn hibp_prefix(password: &str) -> (String, String) {
-    let hash: String = Sha1::digest(password.as_bytes())
-        .iter()
-        .map(|byte| format!("{byte:02X}"))
-        .collect();
+    let hash = zeroize::Zeroizing::new(
+        Sha1::digest(password.as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02X}"))
+            .collect::<String>(),
+    );
     let (prefix, suffix) = hash.split_at(5);
     (prefix.to_string(), suffix.to_string())
 }
@@ -154,13 +156,25 @@ pub struct Report {
 }
 
 /// What a check keeps per login between asking for the prefixes and hearing
-/// the answers. Never leaves the device; the suffix stays here.
-#[derive(Debug, Clone)]
+/// the answers. Never leaves the device; the suffix stays here, wiped when
+/// dropped, and `Debug` doesn't show it.
+#[derive(Clone)]
 pub struct Checked {
     pub id: String,
     pub hibp_prefix: String,
-    pub hibp_suffix: String,
+    pub hibp_suffix: zeroize::Zeroizing<String>,
     pub xon_prefix: String,
+}
+
+impl std::fmt::Debug for Checked {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Checked")
+            .field("id", &self.id)
+            .field("hibp_prefix", &self.hibp_prefix)
+            .field("hibp_suffix", &"…")
+            .field("xon_prefix", &self.xon_prefix)
+            .finish()
+    }
 }
 
 /// A report without breaches yet, and what asking for them needs.
@@ -259,7 +273,7 @@ pub fn prepare<'a>(items: impl IntoIterator<Item = &'a Item>) -> Prepared {
         prepared.checks.push(Checked {
             id: item.id.clone(),
             hibp_prefix,
-            hibp_suffix,
+            hibp_suffix: zeroize::Zeroizing::new(hibp_suffix),
             xon_prefix: xon_prefix(password),
         });
         prepared.report.findings.push(Finding {

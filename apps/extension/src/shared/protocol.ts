@@ -524,6 +524,8 @@ export type PasskeyInfo = {
   index: number;
   readable: boolean;
   credentialId: string;
+  /** Names this stored passkey for a delete, also an unreadable one. */
+  fingerprint: string;
   rpId: string;
   rpName: string | null;
   userName: string | null;

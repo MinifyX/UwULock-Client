@@ -19,16 +19,25 @@ nor anybody else gets data from it.
   websites, to get their icons from your server. They are never fetched from the sites
   themselves.
 - **A live connection** to your server, so changes from your other devices arrive right away.
+- **Masked addresses** (UwULock Server with UwUMail, only when you make one): the domain of the
+  page or item you make the address for, in plain text, so the server can label the address.
+- **Sends and file requests** (only when you share something): the values you choose from an
+  item — with UwULock Server, as an entry Send, optionally including the key of its one-time
+  code — go to your server encrypted with a key that only the link holds. **Whoever has the
+  link can read them**, and with the one-time code key keep making codes, also after the Send
+  is deleted. File requests you look at are listed from your server the same way.
 
 Firefox (at install) and the Chrome Web Store list this as authentication information,
-personally identifying information and financial and payment information: those are the kinds of data a vault holds,
-even though they travel encrypted.
+personally identifying information, financial and payment information and website activity
+(the domain of a masked address): those are the kinds of data a vault holds, even though most
+of it travels encrypted.
 
 ## What stays in the browser
 
 The encrypted vault, the session tokens and your settings are kept in the extension's own
-storage. While the vault is unlocked, its key is held in memory. Web pages see nothing unless
-you fill an item into them.
+storage. While the vault is unlocked, its key is held in memory. Web pages can't read anything
+from your vault unless you fill an item into them; they can notice that the extension is
+installed (it offers passkeys to every https page and shows its menu next to login fields).
 
 ## What UwULock doesn't do
 
@@ -69,16 +78,28 @@ eigenen Server; weder der Entwickler noch sonst jemand bekommt Daten von ihr.
   werden sie nie geladen.
 - **Eine Live-Verbindung** zu deinem Server, damit Änderungen von deinen anderen Geräten sofort
   ankommen.
+- **Maskierte Adressen** (UwULock Server mit UwUMail, nur wenn du eine anlegst): die Domain der
+  Seite oder des Eintrags, für die du die Adresse anlegst, im Klartext, damit der Server die
+  Adresse beschriften kann.
+- **Sends und Dateianfragen** (nur wenn du etwas teilst): die Werte, die du aus einem Eintrag
+  wählst – mit UwULock Server als Eintrags-Send, auf Wunsch mit dem Schlüssel des Einmal-Codes –
+  gehen verschlüsselt an deinen Server, mit einem Schlüssel, den nur der Link enthält. **Wer den
+  Link hat, kann sie lesen**, und mit dem Einmal-Code-Schlüssel weiter Codes erzeugen, auch nach
+  dem Löschen des Sends. Deine Dateianfragen holt die Erweiterung zum Ansehen ebenso von deinem
+  Server.
 
 Firefox (bei der Installation) und der Chrome Web Store zeigen das als Anmeldeinformationen,
-persönlich identifizierende Informationen sowie Finanz- und Zahlungsinformationen an: Das sind die Arten von Daten, die ein
-Tresor enthält, auch wenn sie verschlüsselt übertragen werden.
+persönlich identifizierende Informationen, Finanz- und Zahlungsinformationen sowie
+Website-Aktivität (die Domain einer maskierten Adresse) an: Das sind die Arten von Daten, die ein
+Tresor enthält, auch wenn das meiste verschlüsselt übertragen wird.
 
 ## Was im Browser bleibt
 
 Der verschlüsselte Tresor, die Sitzungstokens und deine Einstellungen liegen im eigenen Speicher
 der Erweiterung. Solange der Tresor entsperrt ist, liegt sein Schlüssel im Arbeitsspeicher.
-Webseiten sehen nichts, außer du füllst einen Eintrag bei ihnen aus.
+Webseiten können nichts aus deinem Tresor lesen, außer du füllst einen Eintrag bei ihnen aus;
+sie können aber merken, dass die Erweiterung installiert ist (sie bietet jeder https-Seite
+Passkeys an und zeigt ihr Menü neben Anmeldefeldern).
 
 ## Was UwULock nicht tut
 

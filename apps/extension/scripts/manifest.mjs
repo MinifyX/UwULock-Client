@@ -122,12 +122,14 @@ export function manifest(browser, version) {
               // Mozilla counts every byte that leaves the browser, end-to-end encrypted or not:
               // the login (email, master password hash, device) and the vault's items — logins,
               // identities and cards — go to the server the user signs in to, nowhere else
-              // (PRIVACY.md).
+              // (PRIVACY.md). Making a masked address sends the domain of the page it is for
+              // to that server in plain text: website activity.
               data_collection_permissions: {
                 required: [
                   'authenticationInfo',
                   'personallyIdentifyingInfo',
                   'financialAndPaymentInfo',
+                  'websiteActivity',
                 ],
               },
             },

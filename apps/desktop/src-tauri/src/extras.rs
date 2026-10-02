@@ -93,7 +93,17 @@ pub(crate) struct Ctx {
 }
 
 pub(crate) async fn ctx(state: &VaultState) -> Result<Ctx> {
-    let (account_id, account) = state.active_account()?;
+    let (account_id, _) = state.active_account()?;
+    ctx_for(state, &account_id).await
+}
+
+/// [`ctx`] for one account, whether on screen or not: for work that
+/// finishes after the user may have switched (the password check). Refuses
+/// unless that account is open.
+pub(crate) async fn ctx_for(state: &VaultState, id: &str) -> Result<Ctx> {
+    with(state, id, |_| Ok(()))?;
+    let account_id = id.to_string();
+    let account = state.account(&account_id)?;
     let client = state.client(account.server.clone())?;
     let token = access_token(state, &account_id).await?;
     Ok(Ctx {
@@ -2371,8 +2381,10 @@ pub(crate) async fn share_as_send(
         None => None,
     };
     let deletion_date = iso_from_unix(now() + u64::from(input.deletion_days) * 86_400, 0);
+    // An entry Send's marker is tagged with the Send's seed.
+    let seed = send_core::generate_send_seed();
     let text = if input.entry {
-        entry_send::share_entry_text(&item, &input.fields)
+        entry_send::share_entry_text(&item, &input.fields, seed.as_ref())
     } else {
         send_core::share_text(&item, &input.fields)
     };
@@ -2393,7 +2405,7 @@ pub(crate) async fn share_as_send(
             emails: emails.clone(),
             hide_email: false,
         }
-        .seal(&u.user_key)?)
+        .seal_with_seed(&u.user_key, seed)?)
     })?;
     let answer = ctx.client.create_send(&ctx.token, &sealed.request).await?;
     let send_id = entry_id(&answer).unwrap_or_default().to_string();

@@ -9,16 +9,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const sent: { tabId: number; message: { token?: string }; options?: { frameId?: number } }[] = [];
+/** What each document's content script says about it (content/frame.ts), by `documentId`. */
+const documents = new Map<
+  string,
+  { origin: string; ancestors: string[] | null; parents: string[] }
+>();
 
 vi.mock('../src/shared/browser', () => ({
+  isFirefox: false,
   ext: {
     tabs: {
       onRemoved: { addListener: () => undefined },
       sendMessage: async (
         tabId: number,
-        message: { token?: string },
-        options?: { frameId?: number },
+        message: { token?: string; type?: string },
+        options?: { frameId?: number; documentId?: string },
       ) => {
+        if (message.type === 'bg:frame-document') return documents.get(options?.documentId ?? '');
         sent.push({ tabId, message, ...(options ? { options } : {}) });
       },
       query: async () => [{ id: 7, url: 'https://bank.example/login' }],
@@ -125,12 +132,31 @@ const { fill, fillBest, fillTab, frameItems, offer, pageInfo } =
   await import('../src/background/autofill');
 
 type Sender = chrome.runtime.MessageSender;
-const frame = (url: string, frameId = 0, tabId = 7): Sender => ({
-  id: 'test',
-  url,
-  frameId,
-  tab: { id: tabId } as chrome.tabs.Tab,
-});
+let documentCount = 0;
+/**
+ * A frame's sender, its document as its content script describes it: by default of its
+ * address's origin, and a frame's ancestors all of the page's origin, bank.example.
+ */
+const frame = (
+  url: string,
+  frameId = 0,
+  tabId = 7,
+  doc: { origin?: string; ancestors?: string[] | null; senderOrigin?: string } = {},
+): Sender => {
+  const documentId = `doc-${++documentCount}`;
+  const origin = doc.origin ?? new URL(url).origin;
+  const ancestors =
+    doc.ancestors !== undefined ? doc.ancestors : frameId === 0 ? [] : ['https://bank.example'];
+  documents.set(documentId, { origin, ancestors, parents: ancestors ?? [] });
+  return {
+    id: 'test',
+    url,
+    frameId,
+    documentId,
+    ...(doc.senderOrigin !== undefined ? { origin: doc.senderOrigin } : {}),
+    tab: { id: tabId } as chrome.tabs.Tab,
+  };
+};
 
 async function offered(tabId: number, itemId: string, explicit: boolean, insecureOk = false) {
   sent.length = 0;
@@ -317,5 +343,66 @@ describe('the re-prompt, per fill (CL-I3)', () => {
     sent.length = 0;
     await fillBest({ id: 7, url: 'https://vault.example.net/login' } as chrome.tabs.Tab);
     expect(sent).toEqual([]);
+  });
+});
+
+describe('the document behind the frame (R4-2)', () => {
+  beforeEach(async () => {
+    equivalents = { global: [], custom: [] };
+    await pageInfo(frame('https://bank.example/login'));
+  });
+
+  const refused = { filled: false, reason: 'refused' };
+
+  it('a sandboxed document on the site’s address gets nothing (Chromium: sender.origin "null")', async () => {
+    const sandboxed = frame('https://bank.example/upload/1', 0, 7, { senderOrigin: 'null' });
+    expect(await frameItems(sandboxed, 'login')).toEqual([]);
+    expect(await frameItems(sandboxed, 'card')).toEqual([]);
+    expect((await pageInfo(sandboxed)).counts).toEqual({ logins: 0, cards: 0, identities: 0 });
+    expect(await fill(sandboxed, 'bank', await offered(7, 'bank', true), false)).toEqual(refused);
+    expect(await fill(sandboxed, 'card', await picked(0, 'card'), false)).toEqual(refused);
+  });
+
+  it('nor when only its content script says so (Firefox: window.origin "null")', async () => {
+    const sandboxed = frame('https://bank.example/upload/1', 0, 7, { origin: 'null' });
+    expect(await frameItems(sandboxed, 'login')).toEqual([]);
+    expect(await fill(sandboxed, 'bank', await picked(0, 'bank'), false)).toEqual(refused);
+    const framed = frame('https://bank.example/upload/2', 3, 7, { origin: 'null' });
+    expect(await frameItems(framed, 'card')).toEqual([]);
+  });
+
+  it('nor a document whose origin differs from its address’s', async () => {
+    const other = frame('https://bank.example/', 0, 7, { senderOrigin: 'https://evil.example' });
+    expect(await frameItems(other, 'login')).toEqual([]);
+    const reported = frame('https://bank.example/', 0, 7, { origin: 'https://evil.example' });
+    expect(await frameItems(reported, 'login')).toEqual([]);
+  });
+
+  it('nor a frame whose content script doesn’t answer', async () => {
+    const silent: Sender = { ...frame('https://bank.example/'), documentId: 'gone' };
+    expect(await frameItems(silent, 'login')).toEqual([]);
+  });
+
+  it('cards only when every frame up to the top is of the same origin (A in B in A is not)', async () => {
+    const aba = frame('https://bank.example/pay', 4, 7, {
+      ancestors: ['https://ads.example', 'https://bank.example'],
+    });
+    expect(await frameItems(aba, 'card')).toEqual([]);
+    expect(await fill(aba, 'card', await picked(4, 'card'), false)).toEqual({
+      filled: false,
+      reason: 'no-match',
+    });
+    const direct = frame('https://bank.example/pay', 4, 7, {
+      ancestors: ['https://bank.example', 'https://bank.example'],
+    });
+    expect(ids(await frameItems(direct, 'card'))).toEqual(['card']);
+  });
+
+  it('a document in a matching frame still gets its logins', async () => {
+    const login = frame('https://login.bank.example/', 2, 7, {
+      senderOrigin: 'https://login.bank.example',
+      ancestors: ['https://bank.example'],
+    });
+    expect(ids(await frameItems(login, 'login'))).toEqual(['bank']);
   });
 });

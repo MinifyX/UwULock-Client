@@ -1491,6 +1491,15 @@ button.add-row {
   gap: 6px;
   margin: 2px 0 4px;
   font-size: 12.5px;
+  max-width: 100%;
+}
+
+.more-toggle .more-hosts {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--uwu-muted);
 }
 
 /* An item's passkeys in its details. */

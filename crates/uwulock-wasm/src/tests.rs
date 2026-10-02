@@ -410,8 +410,10 @@ fn passkeys_are_listed_and_deleted() {
     let wrong = Some(first.credential_id.clone());
     assert_eq!(kind(passkeys::delete("i1", 2, wrong)), "conflict");
     assert_eq!(kind(passkeys::delete("i1", 7, None)), "not-found");
-    // The broken one goes by its place alone.
-    let answer = parse(&passkeys::delete("i1", 1, None).unwrap());
+    // Never by its place alone; the broken one goes by its fingerprint.
+    assert_eq!(kind(passkeys::delete("i1", 1, None)), "not-found");
+    let broken = listed[1]["fingerprint"].as_str().unwrap().to_string();
+    let answer = parse(&passkeys::delete("i1", 1, Some(broken)).unwrap());
     let saved = &answer["cipher"]["login"]["fido2Credentials"];
     assert_eq!(saved.as_array().unwrap().len(), 2);
     // The vault in here changed along.
@@ -1063,8 +1065,14 @@ fn an_item_is_shared_as_a_send_without_its_authenticator_key() {
         readable,
         "Router\nUsername: admin\nWebsite: https://example.com/login"
     );
-    assert!(marker.starts_with("uwulock-entry:v1:"));
-    let decoded = parse(&extras::decode_entry_send(&text).unwrap());
+    assert!(marker.starts_with("uwulock-entry:v2:"));
+    let url_key = URL_SAFE_NO_PAD.encode(seed.as_slice());
+    assert_eq!(
+        extras::decode_entry_send(&text, &URL_SAFE_NO_PAD.encode([1u8; 16])).unwrap(),
+        "null"
+    );
+    let decoded = parse(&extras::decode_entry_send(&text, &url_key).unwrap());
+    assert_eq!(decoded["openable"], json!([true]));
     assert_eq!(decoded["readable"], readable);
     assert_eq!(decoded["entry"]["name"], "Router");
     assert_eq!(decoded["entry"]["username"], "admin");
@@ -1073,7 +1081,10 @@ fn an_item_is_shared_as_a_send_without_its_authenticator_key() {
         decoded["entry"]["websites"],
         json!(["https://example.com/login"])
     );
-    assert_eq!(extras::decode_entry_send(readable).unwrap(), "null");
+    assert_eq!(
+        extras::decode_entry_send(readable, &url_key).unwrap(),
+        "null"
+    );
     // Only the authenticator key chosen is enough for an entry, not for text.
     let only = json!({ "fields": [["totp", "Code"]], "deletionDate": "2026-09-29T12:00:00.000Z",
         "entry": true });
@@ -1171,4 +1182,63 @@ fn a_wifi_network_is_listed_as_one_and_saved_as_a_note() {
     // `wifi` is no kind of the vault's: a draft has to say `note`.
     let wrong = json!({ "kind": "wifi", "name": "Home", "fields": [] });
     assert!(draft::seal_draft("", &wrong.to_string(), NOW).is_err());
+}
+
+#[test]
+fn a_new_passkey_replaces_only_the_same_site_and_user() {
+    let account = account();
+    let make = |rp: &str, handle: &[u8]| {
+        Passkey::generate(
+            rp,
+            Some("Example"),
+            Some(handle),
+            Some("nyu"),
+            None,
+            true,
+            NOW,
+        )
+        .unwrap()
+    };
+    let main = make("example.com", b"user-1");
+    let forum = make("forum.example.com", b"user-1");
+    let mut item = login("Example", "nyu", "hunter2");
+    item.login.as_mut().unwrap().passkeys = Some(vec![
+        main.seal(&account.user_key),
+        forum.seal(&account.user_key),
+    ]);
+    unlocked(&account, vec![cipher(&item, "i1", &account.user_key)]);
+    let create = |rp: &str, handle: Option<&[u8]>| {
+        let request = json!({
+            "itemId": "i1", "name": "", "folderId": null, "rpId": rp, "rpName": "Example",
+            "userHandle": handle.map(|h| URL_SAFE_NO_PAD.encode(h)),
+            "userName": "nyu", "userDisplayName": null,
+            "discoverable": true, "userVerified": false, "now": NOW,
+        });
+        parse(&passkeys::create(&request.to_string()).unwrap())
+    };
+    let listed = || parse(&passkeys::list("i1").unwrap());
+
+    // forum.example.com again, same user: only that one is replaced; example.com's stays.
+    let created = create("forum.example.com", Some(b"user-1"));
+    let now = listed();
+    assert_eq!(now.as_array().unwrap().len(), 2);
+    assert_eq!(now[0]["credentialId"], main.credential_id.as_str());
+    assert_eq!(now[1]["rpId"], "forum.example.com");
+    assert_ne!(now[1]["credentialId"], forum.credential_id.as_str());
+    let saved = &created["cipher"]["login"]["fido2Credentials"];
+    assert_eq!(saved.as_array().unwrap().len(), 2);
+
+    // Another user on example.com: added, nothing replaced.
+    create("example.com", Some(b"user-2"));
+    let now = listed();
+    assert_eq!(now.as_array().unwrap().len(), 3);
+    assert_eq!(now[0]["credentialId"], main.credential_id.as_str());
+
+    // A site that names no user handle replaces the one for its RP id.
+    create("example.net", None);
+    assert_eq!(listed().as_array().unwrap().len(), 4);
+    create("example.net", None);
+    let now = listed();
+    assert_eq!(now.as_array().unwrap().len(), 4);
+    assert_eq!(now[0]["credentialId"], main.credential_id.as_str());
 }

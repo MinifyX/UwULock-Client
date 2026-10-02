@@ -102,11 +102,12 @@ Deleting an item for good asks whether to switch its masked address off
 
 ## Share as Send
 
-The paper plane in an item's details shares the values you pick — never the
-one-time code key — as a Send: by default deleted after one day and opened at
-most once, optionally with a password. On a UwULock Server with mail, _Only for
-these addresses_ lets only the addresses you list open it, with a code by
-e-mail; with send domains you choose which address the link uses.
+The paper plane in an item's details shares the values you pick as a Send: by
+default deleted after one day and opened at most once, optionally with a
+password. On a UwULock Server with mail, _Only for these addresses_ lets only
+the addresses you list open it, with a code by e-mail; with send domains you
+choose which address the link uses. The one-time code key is never in a plain
+text Send; only an entry Send can carry it (below), and only when you tick it.
 
 An item in an organisation that hides its passwords from you (the collection's
 _Hide passwords_) can't share its password, one-time code key, hidden fields,
@@ -117,28 +118,53 @@ leave the device either.
 
 Shared as an _entry_, a Send shows on UwULock's Send page as the entry it is:
 the fields with copy buttons, every website, hidden values behind a click, and
-— if you included it — the live one-time code with its countdown. Never the
-one-time code key, never a QR code of it. It stays a plain text Send, so
-Bitwarden's apps open it too. The contract (`uwulock-core`, `entry_send`; the
-web vault's WASM and the apps share it):
+— if you included it — the live one-time code with its countdown. The page
+never shows the one-time code key nor a QR code of it, **but the key travels
+in the Send**: whoever has the link (or opens the Send in a Bitwarden app,
+which shows the raw last line) can read it out and make codes for good, also
+after the Send is deleted or used up. Share the code only when that is okay.
+It stays a plain text Send, so Bitwarden's apps open it too.
+
+#### Contract (v2)
+
+`uwulock-core`, module `entry_send`; the web vault's WASM and the apps share it.
 
 - Send type text. The text is the readable lines — the name, then
   `label: value` for every chosen value — **without** the one-time code key,
-  followed by one last line `uwulock-entry:v1:<base64url(JSON)>`.
+  followed by one last line
+  `uwulock-entry:v2:<base64url(JSON)>.<base64url(tag)>` (base64url without
+  padding).
 - JSON: `{name, username?, password?, websites[], notes?, fields[{name, value,
 hidden}], totp?}`. `totp` is the key (secret or `otpauth://` URI), only for
   making the codes; card, identity and SSH values travel as `fields`, the
   sensitive ones `hidden`.
-- A page that finds the marker on the last line hides the raw text and shows
-  the entry. No marker, another version (`v2`) or one that doesn't decode: the
-  text shows as it is. Older Sends are untouched.
+- `tag` = HMAC-SHA256 over `uwulock-entry:v2:<base64url(JSON)>` (the line
+  without `.` and the tag), key = HKDF-SHA256(ikm = the Send's 16-byte seed —
+  the part of the link after `#` —, salt `uwulock-entry-send`, info `v2 tag`,
+  32 bytes) (`entry_send::tag_key`). The text is made with the seed the Send is
+  then sealed with (`send::TextSend::seal_with_seed`), so the tag binds the
+  marker to this one Send: a marker line somebody planted in an item's notes
+  before (which a plain text Send would put last) has no valid tag.
+- A page decodes with the seed from its link
+  (`entry_send::decode(text, seed)`, WASM `decodeEntrySend(text, urlKey)` →
+  `{entry, readable, openable[]}` or `null`). Only a valid tag on the last
+  line makes an entry; no marker, another version (`v1` of the unreleased
+  0.8 development builds included), a wrong tag, a text over 256 KiB, more
+  than 100 websites or 200 fields, or anything that doesn't decode: the text
+  shows as it is. Older Sends are untouched.
+- Websites are links only where `openable[i]` (`entry_send::openable`:
+  `http`/`https`); show the others as text.
+- A page that shows an entry should still offer the raw text ("Originaltext
+  anzeigen").
 
 The desktop app, the phone apps and the browser extension make entry Sends
 whenever the server is UwULock Server (_Share as Send_ on an item); with
 Vaultwarden and Bitwarden they make plain text Sends as before. The choice
 lists every website by its address, and _One-time code_ when the login has
-one — with the hint that whoever can open the Send gets codes as long as it
-exists. The apps don't open Sends themselves; the Send page does.
+one: never ticked by default, and ticking it asks once more ("Der Schlüssel
+des Einmal-Codes reist verschlüsselt im Send mit … wer den Link hat, kann den
+Schlüssel aber auslesen"). The apps don't open Sends themselves; the Send page
+does.
 
 ## Travel mode
 

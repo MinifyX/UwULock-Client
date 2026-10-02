@@ -4,14 +4,30 @@
  * `content:passkey-*`, and the answer goes back the same way. One request at a time per frame;
  * anything malformed is dropped. The page learns nothing here it wouldn't get from WebAuthn
  * itself.
+ *
+ * A request that isn't conditional (`mediation: 'conditional'`, the browser's autofill) only
+ * reaches UwULock right after the person did something in this frame — a click, a key
+ * (`navigator.userActivation.isActive`, read here in the isolated world, R4-5). Without that, the
+ * browser's own authenticator answers: a page can't pop UwULock's window at will.
+ *
+ * The background asks this frame about its document (content/frame.ts): its real origin and its
+ * ancestors', which decide whether it may ask at all (R4-2).
  */
 
+import { ext } from '../shared/browser';
 import { ask } from '../shared/messages';
 import type { PasskeyAnswer, PasskeyCreateOptions, PasskeyGetOptions } from '../shared/protocol';
+import { activated, needsActivation } from './activation';
+import { answerFrameDocument } from './frame';
 
 (() => {
   const CHANNEL = 'uwulock-webauthn';
   let busy: string | null = null;
+
+  ext.runtime.onMessage.addListener((message, sender, respond) => {
+    answerFrameDocument(message, sender, respond);
+    return undefined;
+  });
 
   function answer(requestId: string, value: PasskeyAnswer) {
     window.postMessage(
@@ -46,6 +62,11 @@ import type { PasskeyAnswer, PasskeyCreateOptions, PasskeyGetOptions } from '../
       !data.options
     )
       return;
+    // Not right after a click or a key: the browser's own authenticator, not UwULock's window.
+    if (needsActivation(data.kind, data.options) && !activated()) {
+      answer(requestId, { kind: 'fallback' });
+      return;
+    }
     if (busy) {
       answer(requestId, {
         kind: 'error',

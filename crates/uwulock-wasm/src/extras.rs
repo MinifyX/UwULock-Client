@@ -327,11 +327,13 @@ pub fn seal_share(id: &str, options: &str) -> Result<String> {
             .filter(|n| !n.is_empty())
             .map(str::to_string)
             .unwrap_or_else(|| item.name.to_string());
+        // An entry Send's marker is tagged with the Send's seed.
+        let seed = send::generate_send_seed();
         let sealed = TextSend {
             name,
             notes: None,
             text: if options.entry {
-                entry_send::share_entry_text(item, &options.fields)
+                entry_send::share_entry_text(item, &options.fields, seed.as_ref())
             } else {
                 send::share_text(item, &options.fields)
             },
@@ -343,7 +345,7 @@ pub fn seal_share(id: &str, options: &str) -> Result<String> {
             emails: Vec::new(),
             hide_email: false,
         }
-        .seal(&unlocked.user_key)?;
+        .seal_with_seed(&unlocked.user_key, seed)?;
         json(&sealed.request)
     })
 }
@@ -356,14 +358,25 @@ fn has_totp(item: &Item) -> bool {
 }
 
 /// The entry in a Send's text (`uwulock_core::entry_send`), as JSON
-/// `{entry, readable}`, or `null` when the text is plain (no marker, another
-/// version, garbled): then the page shows the text as it is. Needs no
-/// unlocked vault: the Send page of a recipient uses it.
-pub fn decode_entry_send(text: &str) -> Result<String> {
-    match entry_send::decode(text) {
+/// `{entry, readable, openable}`, or `null` when the text is plain (no
+/// marker, another version, a tag that doesn't fit the Send's `key`,
+/// garbled): then the page shows the text as it is. `key` is the part of the
+/// link after the `#` (the seed, URL-safe base64). `openable[i]` says whether
+/// `entry.websites[i]` may be a link (http/https). Needs no unlocked vault:
+/// the Send page of a recipient uses it.
+pub fn decode_entry_send(text: &str, key: &str) -> Result<String> {
+    use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
+    let seed = zeroize::Zeroizing::new(
+        URL_SAFE_NO_PAD
+            .decode(key.trim().trim_end_matches('='))
+            .or_else(|_| URL_SAFE.decode(key.trim()))
+            .map_err(|_| Failure::new("invalid", "The link's key isn't one."))?,
+    );
+    match entry_send::decode(text, &seed) {
         Some(entry) => json(&json!({
+            "openable": entry.websites.iter().map(|w| entry_send::openable(w)).collect::<Vec<_>>(),
             "entry": entry,
-            "readable": entry_send::readable_part(text),
+            "readable": entry_send::readable_part(text, &seed),
         })),
         None => Ok("null".into()),
     }

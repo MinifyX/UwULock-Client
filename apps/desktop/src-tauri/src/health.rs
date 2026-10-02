@@ -130,12 +130,17 @@ async fn saved_report(
     Some((report, revision_date))
 }
 
-/// Keeps `report` on the server for the next time and the other apps.
-fn save_report(app: &AppHandle, report: Report) {
+/// Keeps `report` on the server of the account `id` (the one it was made
+/// for, whichever is on screen by now) for the next time and the other apps.
+/// Nothing is kept when that account is no longer open.
+fn save_report(app: &AppHandle, id: &str, report: Report) {
     let app = app.clone();
+    let id = id.to_string();
     tauri::async_runtime::spawn(async move {
         let state = tauri::Manager::state::<VaultState>(&app);
-        let Ok(ctx) = ctx(&state).await else { return };
+        let Ok(ctx) = crate::extras::ctx_for(&state, &id).await else {
+            return;
+        };
         let Ok(key) = extras_key(&app, &state, &ctx).await else {
             return;
         };
@@ -161,6 +166,9 @@ pub(crate) async fn health_report(
     fresh: bool,
 ) -> Result<HealthView> {
     state.touch();
+    // Locking (or this account leaving) stops the check: the hashes of the
+    // passwords and the access token go with it.
+    let mut locks = state.locks();
     let (id, _) = state.active_account()?;
     let prepared = with(&state, &id, |u| Ok(health::prepare(&u.vault.items)))?;
     let mut view = HealthView {
@@ -176,31 +184,32 @@ pub(crate) async fn health_report(
     view.uwu = true;
     let switches = BreachSwitches::of(&info);
     view.switches = switches;
-    let ctx = ctx(&state).await?;
+    let ctx = crate::extras::ctx_for(&state, &id).await?;
 
     // Breached passwords.
     if fresh && (switches.hibp || switches.xon_passwords) {
         let progress_app = app.clone();
-        let answers = ctx
-            .client
-            .breach_counts(
-                &ctx.token,
-                &prepared,
-                switches.hibp,
-                switches.xon_passwords,
-                move |progress| {
-                    let _ = progress_app.emit(
-                        "health-progress",
-                        json!({
-                            "done": progress.done(),
-                            "total": progress.total(),
-                            "hibp": progress.hibp,
-                            "xon": progress.xon,
-                        }),
-                    );
-                },
-            )
-            .await;
+        let answers = ctx.client.breach_counts(
+            &ctx.token,
+            &prepared,
+            switches.hibp,
+            switches.xon_passwords,
+            move |progress| {
+                let _ = progress_app.emit(
+                    "health-progress",
+                    json!({
+                        "done": progress.done(),
+                        "total": progress.total(),
+                        "hibp": progress.hibp,
+                        "xon": progress.xon,
+                    }),
+                );
+            },
+        );
+        let answers = tokio::select! {
+            answers = answers => answers,
+            _ = locks.changed() => return Err(Failure::locked()),
+        };
         answers
             .counts
             .apply(&mut view.report, true, answers.incomplete);
@@ -210,7 +219,7 @@ pub(crate) async fn health_report(
             u.health.last = Some((view.report.clone(), Some(now)));
             Ok(())
         })?;
-        save_report(&app, view.report.clone());
+        save_report(&app, &id, view.report.clone());
     } else {
         let (known, asked) = with(&state, &id, |u| {
             Ok((u.health.last.clone(), u.health.asked_saved))
@@ -496,7 +505,7 @@ pub(crate) async fn health_save_password(
     })?;
     if let Some(report) = last {
         if info_of(&state, &id)?.is_some() {
-            save_report(&app, report);
+            save_report(&app, &id, report);
         }
     }
     Ok(())

@@ -15,7 +15,7 @@ pub fn password(options: &str) -> Result<String> {
         .check()
         .map_err(|e| Failure::new("invalid", e.to_string()))?;
     let password = generator::password(&options);
-    let bits = generator::entropy_bits(&password);
+    let bits = generator::password_entropy_bits(&options);
     json(&serde_json::json!({
         "password": password.as_str(),
         "bits": bits,
