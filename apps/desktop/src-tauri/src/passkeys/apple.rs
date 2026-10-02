@@ -169,6 +169,11 @@ async fn refresh(app: &AppHandle) -> Result<()> {
     let mut identities = Vec::new();
     for item in &items {
         for (_, passkey) in passkeys_of(&vault, &account_id, item) {
+            // The extension can't count up a signature counter in the vault:
+            // passkeys that use one stay with the app and the browser extension.
+            if passkey.counter > 0 {
+                continue;
+            }
             let Ok(entry) = Entry::of(&passkey, Some(&item.id)) else {
                 continue;
             };

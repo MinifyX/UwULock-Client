@@ -1,0 +1,11 @@
+# UwULock's virtual security key: passkeys from the vault for browsers on Linux (Settings →
+# Passkeys, off until switched on). Installed with UwULock's .deb, .rpm and the Arch package.
+#
+# The person at the seat (uaccess, like Steam's rule for uinput) may create HID devices through
+# /dev/uhid — the key is one — and browsers may talk to it through its hidraw device. Opening
+# /dev/uhid loads the uhid module (static node). docs/passkeys.md has the trade-off.
+KERNEL=="uhid", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uhid"
+
+# The key's hidraw device: bus USB, vendor and product 0000, as UwULock creates it.
+# systemd's 60-fido-id.rules finds it by its FIDO report descriptor too; this covers the rest.
+SUBSYSTEM=="hidraw", KERNELS=="0003:0000:0000.*", TAG+="uaccess"

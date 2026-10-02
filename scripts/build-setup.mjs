@@ -117,9 +117,22 @@ if (process.platform === 'win32') {
   const macOS = { signingIdentity: '-', minimumSystemVersion: '11.0' };
   const apps = mkdtempSync(join(tmpdir(), 'uwulock-apps-'));
 
+  // The AutoFill extension for passkeys: always built, so its Swift stays
+  // sound; inside the app only in a build signed with an Apple developer
+  // team, the only one where it can reach the vault (docs/passkeys.md).
+  console.log('\n▸ Building the AutoFill extension');
+  const extensions = mkdtempSync(join(tmpdir(), 'uwulock-appex-'));
+  run(`bash scripts/macos-passkeys.sh "${version}" "${extensions}"`);
+  const appMacOS = process.env.UWULOCK_APPLE_TEAM_ID
+    ? {
+        ...macOS,
+        files: { 'PlugIns/UwULockPasskeys.appex': join(extensions, 'UwULockPasskeys.appex') },
+      }
+    : macOS;
+
   console.log(`\n▸ Building UwULock ${version}`);
   run(
-    `pnpm --filter @uwulock/desktop tauri build --bundles app${targetArg} --config "${configFile('app', { bundle: { macOS } })}"`,
+    `pnpm --filter @uwulock/desktop tauri build --bundles app${targetArg} --config "${configFile('app', { bundle: { macOS: appMacOS } })}"`,
   );
   execFileSync('ditto', [join(bundles, 'macos', 'UwULock.app'), join(apps, 'UwULock.app')]);
 
@@ -142,6 +155,7 @@ if (process.platform === 'win32') {
   copyFileSync(join(release, 'uwulock-setup'), update);
   produced.push(dmg, update);
   rmSync(apps, { recursive: true, force: true });
+  rmSync(extensions, { recursive: true, force: true });
 } else {
   // The AppImage, unpacked, is both the portable folder and what the setup
   // installs: it runs from its AppDir, brings its own WebKit and needs no FUSE.

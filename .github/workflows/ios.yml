@@ -95,6 +95,9 @@ jobs:
       - name: Build
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          # The AutoFill extension carries the app's version.
+          UWULOCK_IOS_SHORT: ${{ steps.version.outputs.short }}
+          UWULOCK_IOS_BUILD: ${{ steps.version.outputs.build }}
         run: bash scripts/ios-build.sh "$VERSION" out
 
       - name: Smoke test (simulator)

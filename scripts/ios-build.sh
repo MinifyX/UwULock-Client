@@ -61,6 +61,64 @@ node -e '
   if (patched === before) console.error("::warning::Could not find the Rust build phase in project.yml");
   fs.writeFileSync(file, patched);
 ' "$gen/project.yml"
+# The AutoFill extension for passkeys (apps/desktop/src-tauri/apple/PasskeyProvider, iOS 17+):
+# its own target, built into the app's PlugIns. Unsigned like the app; it needs a developer team's
+# App Group and Keychain group to reach the vault (docs/passkeys.md).
+node -e '
+  const fs = require("fs");
+  const [gen, short, build] = process.argv.slice(1);
+  const lines = [
+    "targets:",
+    "  UwULockPasskeys:",
+    "    type: app-extension",
+    "    platform: iOS",
+    "    deploymentTarget: \"17.0\"",
+    "    sources:",
+    "      - path: ../../apple/PasskeyProvider",
+    "        excludes: [\"*.entitlements\", \"Info.plist\"]",
+    "    settings:",
+    "      base:",
+    "        PRODUCT_NAME: UwULockPasskeys",
+    "        PRODUCT_MODULE_NAME: UwULockPasskeys",
+    "        PRODUCT_BUNDLE_IDENTIFIER: app.uwulock.passkeys",
+    "        INFOPLIST_FILE: ../../apple/PasskeyProvider/Info.plist",
+    "        UWULOCK_APP_GROUP: group.app.uwulock",
+    `        MARKETING_VERSION: "${short}"`,
+    `        CURRENT_PROJECT_VERSION: "${build}"`,
+    "        SWIFT_VERSION: \"5.0\"",
+    "        TARGETED_DEVICE_FAMILY: \"1,2\"",
+    "        APPLICATION_EXTENSION_API_ONLY: YES",
+    "        CODE_SIGNING_ALLOWED: NO",
+    "        CODE_SIGNING_REQUIRED: NO",
+    "        CODE_SIGN_IDENTITY: \"\"",
+    "        CODE_SIGN_ENTITLEMENTS: \"\"",
+    "",
+  ];
+  fs.writeFileSync(`${gen}/passkeys.yml`, lines.join("\n"));
+  const file = `${gen}/project.yml`;
+  let text = fs.readFileSync(file, "utf8");
+  if (!text.includes("passkeys.yml")) text = "include:\n  - passkeys.yml\n" + text;
+  // The app depends on the extension, which puts it into PlugIns.
+  const target = text.match(/^  ([^\s:]+_iOS):\s*$/m);
+  if (!target) { console.error("::error::No iOS app target in project.yml"); process.exit(1); }
+  const start = target.index + target[0].length;
+  const next = text.slice(start).search(/^  \S/m);
+  const end = next < 0 ? text.length : start + next;
+  let block = text.slice(start, end);
+  const listed = block.match(/^    dependencies:[ \t]*\n([ \t]*)- /m);
+  const indent = listed ? listed[1] : "      ";
+  const entry = `${indent}- target: UwULockPasskeys\n${indent}  embed: true\n`;
+  if (!block.includes("UwULockPasskeys")) {
+    if (/^    dependencies:\s*$/m.test(block)) {
+      block = block.replace(/^    dependencies:\s*\n/m, (m) => m + entry);
+    } else {
+      block = block.replace(/\n*$/, "\n") + "    dependencies:\n" + entry;
+    }
+  }
+  text = text.slice(0, start) + block + text.slice(end);
+  fs.writeFileSync(file, text);
+  console.log(`AutoFill extension added to ${target[1]}`);
+' "$gen" "${UWULOCK_IOS_SHORT:-${version%%-*}}" "${UWULOCK_IOS_BUILD:-1}"
 (cd "$gen" && xcodegen generate)
 merge_info_plist
 
@@ -99,6 +157,7 @@ mv "$RUNNER_TEMP/unsigned.ipa" "$out/UwULock-$version-unsigned.ipa"
 rm -rf "$RUNNER_TEMP/Payload"
 
 # What ended up inside, so a missing Info.plist key shows in the log.
+test -d "$app/PlugIns/UwULockPasskeys.appex" || { echo "::error::The AutoFill extension isn't in the app"; exit 1; }
 echo "--- Info.plist of $app ---"
 plutil -p "$app/Info.plist" |
   grep -E "CFBundleIdentifier|CFBundleShortVersionString|CFBundleVersion|MinimumOSVersion|NSFaceIDUsageDescription|UIFileSharingEnabled" || true
