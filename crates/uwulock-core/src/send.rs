@@ -14,7 +14,8 @@ use base64::Engine as _;
 use serde_json::{json, Value};
 use zeroize::Zeroizing;
 
-use crate::crypto::{generate_send_seed, send_key, send_password_hash, EncString, SymmetricKey};
+pub use crate::crypto::generate_send_seed;
+use crate::crypto::{send_key, send_password_hash, EncString, SymmetricKey};
 use crate::vault::{FieldKind, Item, Secret};
 use crate::Error;
 
@@ -63,6 +64,17 @@ impl TextSend {
     /// under the user key, the password as its hash. Addresses stay readable:
     /// the server mails the codes to them.
     pub fn seal(&self, user_key: &SymmetricKey) -> Result<SealedSend, Error> {
+        self.seal_with_seed(user_key, generate_send_seed())
+    }
+
+    /// [`Self::seal`] with a seed made beforehand ([`generate_send_seed`]):
+    /// for an entry Send, whose text is tagged with the seed
+    /// ([`crate::entry_send::share_entry_text`]).
+    pub fn seal_with_seed(
+        &self,
+        user_key: &SymmetricKey,
+        seed: Zeroizing<[u8; 16]>,
+    ) -> Result<SealedSend, Error> {
         let emails: Vec<String> = self
             .emails
             .iter()
@@ -78,7 +90,6 @@ impl TextSend {
                 "a Send has either a password or addresses, not both".into(),
             ));
         }
-        let seed = generate_send_seed();
         let key = send_key(seed.as_ref())?;
         let seal = |text: &str| EncString::encrypt(text.as_bytes(), &key).to_string();
         let auth = if !emails.is_empty() {

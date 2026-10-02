@@ -463,6 +463,10 @@ pub struct PasskeyInfo {
     pub readable: bool,
     /// As stored ([`Passkey::credential_id`]); empty when not readable.
     pub credential_id: String,
+    /// Names this stored passkey for [`remove`], readable or not: hex of the
+    /// first 16 bytes of SHA-256 over its stored (encrypted) JSON
+    /// ([`fingerprint`]). Nothing secret.
+    pub fingerprint: String,
     pub rp_id: String,
     pub rp_name: Option<String>,
     pub user_name: Option<String>,
@@ -484,6 +488,7 @@ pub fn list(item: &crate::vault::Item, key: &SymmetricKey) -> Vec<PasskeyInfo> {
             Ok(passkey) => PasskeyInfo {
                 index,
                 readable: true,
+                fingerprint: fingerprint(raw),
                 credential_id: passkey.credential_id.clone(),
                 rp_id: passkey.rp_id.clone(),
                 rp_name: passkey.rp_name.clone(),
@@ -495,6 +500,7 @@ pub fn list(item: &crate::vault::Item, key: &SymmetricKey) -> Vec<PasskeyInfo> {
             Err(_) => PasskeyInfo {
                 index,
                 readable: false,
+                fingerprint: fingerprint(raw),
                 credential_id: String::new(),
                 rp_id: String::new(),
                 rp_name: None,
@@ -517,15 +523,25 @@ fn field_of<'a>(raw: &'a Value, name: &str) -> Option<&'a Value> {
     }
 }
 
+/// What [`PasskeyInfo::fingerprint`] holds for a stored passkey.
+pub fn fingerprint(raw: &Value) -> String {
+    use sha2::{Digest, Sha256};
+    let hash = Sha256::digest(serde_json::to_vec(raw).unwrap_or_default());
+    hash[..16].iter().map(|b| format!("{b:02x}")).collect()
+}
+
 /// Deletes the passkey at `index` from an item (then seal and save the
-/// item). With `credential_id`, only if the passkey there still is that one,
-/// so a sync in between doesn't delete another: otherwise
-/// [`Error::Conflict`]. A login without passkeys left has `passkeys: None`.
+/// item), but only if the passkey there still is the one `which` names —
+/// its credential id, or its [`fingerprint`] (the only name an unreadable
+/// one has) — so a sync or an earlier delete in between doesn't delete
+/// another: otherwise [`Error::Conflict`]. Without `which` nothing is
+/// deleted ([`Error::Refused`]). A login without passkeys left has
+/// `passkeys: None`.
 pub fn remove(
     item: &mut crate::vault::Item,
     key: &SymmetricKey,
     index: usize,
-    credential_id: Option<&str>,
+    which: Option<&str>,
 ) -> Result<(), Error> {
     let passkeys = item
         .login
@@ -533,11 +549,14 @@ pub fn remove(
         .and_then(|l| l.passkeys.as_mut())
         .filter(|p| index < p.len())
         .ok_or_else(|| Error::Refused("this item has no such passkey".into()))?;
-    if let Some(wanted) = credential_id.filter(|id| !id.is_empty()) {
-        let there = Passkey::open(&passkeys[index], key)?;
-        if there.credential_id != wanted {
-            return Err(Error::Conflict);
-        }
+    let wanted = which
+        .filter(|id| !id.is_empty())
+        .ok_or_else(|| Error::Refused("say which passkey to delete".into()))?;
+    let raw = &passkeys[index];
+    let same = fingerprint(raw) == wanted
+        || Passkey::open(raw, key).is_ok_and(|there| there.credential_id == wanted);
+    if !same {
+        return Err(Error::Conflict);
     }
     passkeys.remove(index);
     if passkeys.is_empty() {
@@ -836,13 +855,31 @@ mod tests {
             remove(&mut item, &key, 0, Some(&second.credential_id)),
             Err(Error::Conflict)
         ));
-        assert!(remove(&mut item, &key, 9, None).is_err());
-        remove(&mut item, &key, 2, None).unwrap();
+        assert!(remove(&mut item, &key, 9, Some("x")).is_err());
+        // Without saying which: refused, even for an unreadable one.
+        assert!(matches!(
+            remove(&mut item, &key, 2, None),
+            Err(Error::Refused(_))
+        ));
+        // The broken one by its fingerprint; a stale index after a delete
+        // hits nothing else.
+        let broken = shown[2].fingerprint.clone();
+        assert_eq!(broken.len(), 32);
+        assert!(shown.iter().filter(|p| p.fingerprint == broken).count() == 1);
         remove(&mut item, &key, 0, Some(&first.credential_id)).unwrap();
+        assert!(matches!(
+            remove(&mut item, &key, 2, Some(&broken)),
+            Err(Error::Refused(_))
+        ));
+        assert!(matches!(
+            remove(&mut item, &key, 0, Some(&broken)),
+            Err(Error::Conflict)
+        ));
+        remove(&mut item, &key, 1, Some(&broken)).unwrap();
         let left = list(&item, &key);
         assert_eq!(left.len(), 1);
         assert_eq!(left[0].credential_id, second.credential_id);
-        remove(&mut item, &key, 0, None).unwrap();
+        remove(&mut item, &key, 0, Some(&left[0].fingerprint)).unwrap();
         assert!(item.login.as_ref().unwrap().passkeys.is_none());
         assert!(list(&item, &key).is_empty());
     }

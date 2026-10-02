@@ -145,8 +145,43 @@ pub fn password(options: &Options) -> Zeroizing<String> {
     Zeroizing::new(chars.iter().collect())
 }
 
-/// A rough strength, in bits: length times the bits per character of the
-/// sets the password actually uses. For the meter, not a promise.
+/// The strength of what [`password`] makes with these options, in bits —
+/// from how it is made, not from one result: each forced character
+/// (a set's minimum) adds log2 of its set's size, each free one log2 of all
+/// sets together, plus log2 of the ways the forced and free characters can be
+/// arranged — with the sets as they are after `avoid_ambiguous`. Never more
+/// than length × log2(all). For the meter, not a promise.
+pub fn password_entropy_bits(options: &Options) -> u32 {
+    let size = |set: &str| -> f64 {
+        set.chars()
+            .filter(|c| !options.avoid_ambiguous || !"lIO01".contains(*c))
+            .count() as f64
+    };
+    let length = options.effective_length();
+    let mut left = length;
+    let mut bits = 0f64;
+    let mut forced = Vec::new();
+    let mut all = 0f64;
+    for (set, min) in options.sets() {
+        let take = min.min(left);
+        left -= take;
+        bits += take as f64 * size(set).log2();
+        forced.push(take);
+        all += size(set);
+    }
+    bits += left as f64 * all.log2();
+    // log2(length! / (m1! · … · mk! · free!))
+    let ln_fact = |n: usize| (1..=n).map(|i| (i as f64).ln()).sum::<f64>();
+    let arrangements =
+        (ln_fact(length) - forced.iter().map(|m| ln_fact(*m)).sum::<f64>() - ln_fact(left))
+            / std::f64::consts::LN_2;
+    let total = bits + arrangements;
+    total.min(length as f64 * all.log2()).max(0.0) as u32
+}
+
+/// A rough strength of a typed password, in bits: length times the bits per
+/// character of the sets it actually uses. For the meter, not a promise; a
+/// generated one has [`password_entropy_bits`].
 pub fn entropy_bits(password: &str) -> u32 {
     let mut pool = 0u32;
     if password.chars().any(|c| c.is_ascii_lowercase()) {
@@ -489,5 +524,34 @@ mod tests {
         // Plus log2(10 · 6) = 5.9 for the digit and its word.
         assert_eq!(bits(6, true), 83);
         assert_eq!(bits(1, false), 38);
+    }
+
+    #[test]
+    fn the_meter_counts_what_the_minimums_force() {
+        let mut options = Options {
+            length: 8,
+            min_number: 6,
+            ..Options::default()
+        };
+        // 9 characters, all forced: 26·26·10^6·8 and 9!/6! arrangements ≈ 41 bits.
+        assert_eq!(options.effective_length(), 9);
+        assert_eq!(password_entropy_bits(&options), 41);
+        // No minimums: close to length × log2(70), never above it.
+        options = Options::default();
+        let full = (20.0 * 70f64.log2()) as u32;
+        let bits = password_entropy_bits(&options);
+        assert!(bits <= full && bits + 3 >= full, "{bits} vs {full}");
+        // Fewer characters without the look-alikes.
+        options.avoid_ambiguous = true;
+        assert!(password_entropy_bits(&options) < bits);
+        // Digits only.
+        let digits = Options {
+            length: 10,
+            lowercase: false,
+            uppercase: false,
+            symbols: false,
+            ..Options::default()
+        };
+        assert_eq!(password_entropy_bits(&digits), 33);
     }
 }

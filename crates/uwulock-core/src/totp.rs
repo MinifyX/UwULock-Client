@@ -124,8 +124,26 @@ impl Totp {
     /// apps show small below the current code in its last seconds
     /// ([`NEXT_CODE_WINDOW`]).
     pub fn next_code_at(&self, unix_seconds: u64) -> Zeroizing<String> {
-        let start_of_next = (unix_seconds / self.period + 1).saturating_mul(self.period);
+        let start_of_next = (unix_seconds / self.period)
+            .saturating_add(1)
+            .saturating_mul(self.period);
         self.code_at(start_of_next).0
+    }
+
+    /// The code a click on the small "next" code means at `unix_seconds`:
+    /// the next one while it is shown ([`NEXT_CODE_WINDOW`]); in the first
+    /// [`NEXT_CODE_GRACE`] seconds of a period — the row still on screen from
+    /// the one before — the current code, which is the one that was shown as
+    /// next. `None` at any other time: nothing "next" is on screen then.
+    pub fn shown_next_at(&self, unix_seconds: u64) -> Option<Zeroizing<String>> {
+        let (current, remaining) = self.code_at(unix_seconds);
+        if remaining <= NEXT_CODE_WINDOW {
+            Some(self.next_code_at(unix_seconds))
+        } else if self.period - remaining < NEXT_CODE_GRACE {
+            Some(current)
+        } else {
+            None
+        }
     }
 
     /// The current code, the next one and how long the current one lasts.
@@ -154,6 +172,10 @@ impl Totp {
 /// For how many seconds before a code runs out the apps show the next one
 /// too ("Nächster: 123 456"), with its own copy button.
 pub const NEXT_CODE_WINDOW: u64 = 10;
+
+/// For how many seconds after a period starts a click on the "next" code of
+/// the period before still counts ([`Totp::shown_next_at`]).
+pub const NEXT_CODE_GRACE: u64 = 2;
 
 /// The codes at one moment: [`Totp::codes_at`].
 #[derive(Debug, serde::Serialize)]
@@ -321,5 +343,25 @@ mod tests {
         let (code, _) = totp.code_at(59);
         assert_eq!(code.len(), 5);
         assert!(code.bytes().all(|c| STEAM_CHARS.contains(&c)));
+    }
+
+    #[test]
+    fn a_click_on_next_copies_what_was_shown() {
+        let totp = Totp::parse("JBSWY3DPEHPK3PXP").unwrap();
+        // Last ten seconds: the next code.
+        assert_eq!(
+            totp.shown_next_at(25).unwrap().as_str(),
+            totp.code_at(30).0.as_str()
+        );
+        // Just after the change: the code that was shown as next, now current.
+        assert_eq!(
+            totp.shown_next_at(31).unwrap().as_str(),
+            totp.code_at(30).0.as_str()
+        );
+        // In between nothing next is on screen.
+        assert!(totp.shown_next_at(35).is_none());
+        // No overflow at the end of time.
+        let one = Totp::parse("otpauth://totp/x?secret=JBSWY3DPEHPK3PXP&period=1").unwrap();
+        let _ = one.next_code_at(u64::MAX);
     }
 }

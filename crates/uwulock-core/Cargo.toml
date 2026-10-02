@@ -32,7 +32,7 @@ sha3.workspace = true
 subtle.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
-zeroize.workspace = true
+zeroize = { workspace = true, features = ["serde"] }
 url = "2"
 # The suite vault (UwUSSH's and UwURDP's records): XChaCha20-Poly1305, record
 # ids, and new Ed25519 keys as OpenSSH text. No uuid `v4` (its getrandom would
