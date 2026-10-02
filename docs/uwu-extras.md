@@ -188,7 +188,12 @@ trash, not archived) and lists what it finds, in groups:
   Keccak-512 (XposedOrNot) go to your UwULock Server, which asks the sources;
   the password never leaves the device. _Check now_ / _Check again_ asks; the
   answers are kept (encrypted under the extras key, as the web vault keeps
-  them) and count for every password that hasn't changed since.
+  them) and count for every password that hasn't changed since. The server
+  asks XposedOrNot about one prefix a second for everyone on it; when its
+  queue is long it answers `busy` (429 with `Retry-After`), and the app waits
+  that long and asks again (up to 8 times) — the check shows how far each
+  source is and that it waits. Only a source that really fails marks the
+  check as incomplete.
 - **Breach after your last password change** — the site (or a domain above
   it) is on the server's list of breached sites (HIBP and XposedOrNot's
   public lists) with a breach in which passwords were taken on or after the

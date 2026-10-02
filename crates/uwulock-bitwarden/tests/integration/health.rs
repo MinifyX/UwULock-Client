@@ -96,14 +96,18 @@ async fn breached_passwords_are_asked_for_by_prefix_only() {
     ]);
     let steps = Mutex::new(Vec::new());
     let answers = client
-        .breach_counts(TOKEN, &prepared, true, true, |done, total| {
-            steps.lock().unwrap().push((done, total))
+        .breach_counts(TOKEN, &prepared, true, true, |progress| {
+            steps.lock().unwrap().push(*progress)
         })
         .await;
     assert!(answers.incomplete, "the second HIBP prefix failed");
     let steps = steps.into_inner().unwrap();
-    assert_eq!(steps.first(), Some(&(0, 4)));
-    assert_eq!(steps.last(), Some(&(4, 4)));
+    let first = steps.first().unwrap();
+    assert_eq!((first.done(), first.total()), (0, 4));
+    let last = steps.last().unwrap();
+    assert_eq!((last.done(), last.total()), (4, 4));
+    assert_eq!(last.hibp.map(|s| (s.done, s.total)), Some((2, 2)));
+    assert_eq!(last.xon.map(|s| (s.done, s.total)), Some((2, 2)));
     let mut report = prepared.report.clone();
     answers.counts.apply(&mut report, true, answers.incomplete);
     assert_eq!(report.findings[0].breached, Some(1000));
@@ -122,6 +126,54 @@ async fn breached_passwords_are_asked_for_by_prefix_only() {
             );
         }
     }
+}
+
+#[tokio::test]
+async fn a_busy_xposedornot_is_waited_out_not_counted_as_missing() {
+    let asked = Arc::new(Mutex::new(0));
+    let seen = asked.clone();
+    let fake = FakeHttp::start(move |request| {
+        if !request.path.starts_with("/uwu/v1/xon/") {
+            return Answer::empty(404);
+        }
+        let mut asked = seen.lock().unwrap();
+        *asked += 1;
+        // Busy twice (the queue on the server is long), then the answer.
+        if *asked <= 2 {
+            refused(429, "busy").with_header("Retry-After", "0")
+        } else {
+            Answer::json(200, json!({ "object": "xonPassword", "count": 3 }))
+        }
+    });
+    let client = client(&fake.url);
+    let prepared = health::prepare(&[login("c1", "password")]);
+    let steps = Mutex::new(Vec::new());
+    let answers = client
+        .breach_counts(TOKEN, &prepared, false, true, |progress| {
+            steps.lock().unwrap().push(*progress)
+        })
+        .await;
+    assert!(!answers.incomplete, "a busy server is no failure");
+    assert_eq!(*asked.lock().unwrap(), 3);
+    let steps = steps.into_inner().unwrap();
+    assert!(steps.iter().all(|p| p.hibp.is_none()), "HIBP is off");
+    assert!(
+        steps.iter().any(|p| p.xon.is_some_and(|x| x.waiting == 1)),
+        "the progress says it waits: {steps:?}"
+    );
+    let last = steps.last().unwrap().xon.unwrap();
+    assert_eq!((last.done, last.total, last.waiting), (1, 1, 0));
+    let mut report = prepared.report.clone();
+    answers.counts.apply(&mut report, true, answers.incomplete);
+    assert_eq!(report.findings[0].breached, Some(3));
+
+    // A real failure (502) still makes the check incomplete.
+    let broken = FakeHttp::start(|_| refused(502, "upstream"));
+    let answers = self::client(&broken.url)
+        .breach_counts(TOKEN, &prepared, false, true, |_| ())
+        .await;
+    assert!(answers.incomplete);
+    assert_eq!(broken.calls().len(), 1, "502 isn't asked again");
 }
 
 #[tokio::test]

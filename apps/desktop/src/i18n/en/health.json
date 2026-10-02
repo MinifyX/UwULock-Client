@@ -58,5 +58,8 @@
   "Auf Wunsch fragt dein Server XposedOrNot, ob deine Adressen in Datenlecks auftauchen. Einschalten kannst du das unter Einstellungen → Konto.": "If you like, your server asks XposedOrNot whether your addresses turn up in breaches. Switch it on under Settings → Account.",
   "Adressen in Datenlecks prüfen": "Check addresses for breaches",
   "Die Passwortprüfung fragt dann auch, ob deine Kontoadresse und die Adressen, die in Logins als Benutzername stehen, in Datenlecks auftauchen. Dafür schickt dein Server jede dieser Adressen im Klartext an XposedOrNot (xposedornot.com) – deine Passwörter und deine anderen Daten nicht. Die Antworten merkt er sich eine Woche lang, nur unter einem Hash der Adresse.": "The password check then also asks whether your account address and the addresses used as usernames in logins turn up in breaches. For that your server sends each of these addresses in plain text to XposedOrNot (xposedornot.com) – not your passwords, not your other data. It keeps the answers for a week, only under a hash of the address.",
-  "Zum Blättern wischen.": "Swipe to move through the cards."
+  "Zum Blättern wischen.": "Swipe to move through the cards.",
+  "{name} {done} von {total}": "{name} {done} of {total}",
+  "{count}, wartet auf den Server": "{count}, waiting for the server",
+  "Fragt nach Datenlecks … {sources}": "Checking for breaches … {sources}"
 }

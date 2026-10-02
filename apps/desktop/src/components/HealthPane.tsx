@@ -7,11 +7,13 @@ import {
   healthReport,
   openChangePage,
   problemDetail,
+  progressText,
   problemTitle,
   saveNewPassword,
   setIgnored,
   breachText,
   type Card,
+  type CheckProgress,
   type EmailResult,
   type Finding,
   type HealthView,
@@ -86,8 +88,8 @@ export function HealthPane({ mode, onMode, items, onOpen, phone, onMenu }: Props
   }, []);
 
   useEffect(() => {
-    const stop = listen<{ done: number; total: number }>('health-progress', ({ payload }) => {
-      setBusy((now) => (now ? t('Fragt nach Datenlecks … {done} von {total}', payload) : now));
+    const stop = listen<CheckProgress>('health-progress', ({ payload }) => {
+      setBusy((now) => (now ? progressText(payload) : now));
     });
     return () => void stop.then((unlisten) => unlisten());
   }, []);

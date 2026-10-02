@@ -30,6 +30,8 @@ pub enum UwuError {
         /// server gave none.
         code: String,
         message: String,
+        /// `Retry-After` in seconds, when the server said how long to wait.
+        retry_after: Option<u64>,
     },
 }
 
@@ -38,6 +40,14 @@ impl UwuError {
     pub fn code(&self) -> Option<&str> {
         match self {
             UwuError::Refused { code, .. } if !code.is_empty() => Some(code),
+            _ => None,
+        }
+    }
+
+    /// How long the server asked to wait before asking again, in seconds.
+    pub fn retry_after(&self) -> Option<u64> {
+        match self {
+            UwuError::Refused { retry_after, .. } => *retry_after,
             _ => None,
         }
     }
@@ -195,7 +205,11 @@ impl Client {
         }
         let response = send(request).await?;
         if !response.ok() {
-            return Err(refusal(response.status, &response.body));
+            return Err(refusal(
+                response.status,
+                &response.body,
+                response.retry_after,
+            ));
         }
         if response.body.trim().is_empty() {
             return Ok(Value::Null);
@@ -264,8 +278,9 @@ impl Client {
             .map_err(|e| UwuError::Core(crate::api::network_error(e)))?;
         let status = response.status().as_u16();
         if !(200..300).contains(&status) {
+            let retry_after = crate::api::retry_after_of(response.headers());
             let body = crate::api::error_text(response).await;
-            return Err(refusal(status, &body));
+            return Err(refusal(status, &body, retry_after));
         }
         crate::api::read_capped(response, usize::try_from(max).unwrap_or(usize::MAX))
             .await
@@ -961,7 +976,7 @@ pub fn uwu_path(value: &str) -> String {
     escape(value)
 }
 
-fn refusal(status: u16, body: &str) -> UwuError {
+fn refusal(status: u16, body: &str, retry_after: Option<u64>) -> UwuError {
     let value: Value = serde_json::from_str(body).unwrap_or(Value::Null);
     let text = |key: &str| {
         value
@@ -983,6 +998,7 @@ fn refusal(status: u16, body: &str) -> UwuError {
         status,
         code: text("code").unwrap_or_default(),
         message,
+        retry_after,
     }
 }
 
@@ -995,13 +1011,21 @@ mod tests {
         let error = refusal(
             409,
             r#"{"message":"Connect UwUMail first.","code":"not_connected","object":"error"}"#,
+            None,
         );
         assert_eq!(error.code(), Some("not_connected"));
         assert_eq!(error.to_string(), "Connect UwUMail first.");
         assert!(matches!(Error::from(error), Error::Conflict));
-        let bare = refusal(502, "");
+        let bare = refusal(502, "", None);
         assert_eq!(bare.code(), None);
         assert_eq!(bare.status(), Some(502));
+        let busy = refusal(
+            429,
+            r#"{"message":"XposedOrNot is busy.","code":"busy"}"#,
+            Some(7),
+        );
+        assert_eq!(busy.code(), Some("busy"));
+        assert_eq!(busy.retry_after(), Some(7));
     }
 
     #[test]

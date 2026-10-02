@@ -76,8 +76,10 @@ Still to come:
       short appearances (saved, copied, trashed, shared, unlocked, checked,
       generated; still or none with reduced motion), UwUMail's checkboxes and
       switches
-- [x] XON (password leak check): a busy answer (429) is asked again, waiting a
-      little longer each time
+- [x] XposedOrNot in the password check: a busy server (429 `busy`) is
+      waited out as its `Retry-After` says (at most 8 tries) and doesn't make
+      the check incomplete — only a real failure does; the check shows how far
+      each source is, and when XposedOrNot waits for the server
 - [ ] Passkey providers on Android, iOS/macOS, Windows and Linux
 
 ## 0.4 · Wi-Fi networks and phones (0.4.0-beta.3 released)

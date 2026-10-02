@@ -150,6 +150,41 @@ const SOURCE_NAMES: Record<string, string> = { hibp: 'Have I Been Pwned', xon: '
 export const sourceNames = (sources: string[]) =>
   sources.map((source) => SOURCE_NAMES[source] ?? source).join(', ');
 
+/** How far one breach source is; `waiting`: questions waiting for a busy server. */
+export type SourceProgress = { done: number; total: number; waiting: number };
+
+/** The `health-progress` event: in all, and per source for breached passwords. */
+export type CheckProgress = {
+  done: number;
+  total: number;
+  hibp?: SourceProgress | null;
+  xon?: SourceProgress | null;
+};
+
+/**
+ * What the check says while it asks: per source when the event has them
+ * ("Have I Been Pwned 12 von 40 · XposedOrNot 3 von 40, wartet auf den Server"),
+ * else in all (the addresses).
+ */
+export function progressText(progress: CheckProgress): string {
+  const sources = (['hibp', 'xon'] as const).flatMap((key) => {
+    const source = progress[key];
+    if (!source) return [];
+    const count = t('{name} {done} von {total}', {
+      name: SOURCE_NAMES[key] ?? key,
+      done: source.done,
+      total: source.total,
+    });
+    return [source.waiting > 0 ? t('{count}, wartet auf den Server', { count }) : count];
+  });
+  if (!sources.length)
+    return t('Fragt nach Datenlecks … {done} von {total}', {
+      done: progress.done,
+      total: progress.total,
+    });
+  return t('Fragt nach Datenlecks … {sources}', { sources: sources.join(' · ') });
+}
+
 export function breachText(breach: SiteBreach): string {
   return t('{site}, {date} – {sources}', {
     site: breach.title,

@@ -741,7 +741,12 @@ impl Client {
         let status = response.status().as_u16();
         if !(200..300).contains(&status) {
             let body = error_text(response).await;
-            return Err(Response { status, body }.error());
+            return Err(Response {
+                status,
+                body,
+                retry_after: None,
+            }
+            .error());
         }
         read_capped(response, usize::try_from(max).unwrap_or(usize::MAX)).await
     }
@@ -1223,6 +1228,8 @@ fn refusal_message(refusal: &wire::TokenError, fallback: &str) -> String {
 pub(crate) struct Response {
     pub(crate) status: u16,
     pub(crate) body: String,
+    /// `Retry-After` in seconds, when the answer had one.
+    pub(crate) retry_after: Option<u64>,
 }
 
 impl Response {
@@ -1283,6 +1290,7 @@ impl Response {
 pub(crate) async fn send(request: reqwest::RequestBuilder) -> Result<Response, Error> {
     let response = request.send().await.map_err(network_error)?;
     let status = response.status().as_u16();
+    let retry_after = retry_after_of(response.headers());
     let max = if (200..300).contains(&status) {
         MAX_JSON
     } else {
@@ -1293,7 +1301,22 @@ pub(crate) async fn send(request: reqwest::RequestBuilder) -> Result<Response, E
         status,
         message: "the server's answer isn't text".into(),
     })?;
-    Ok(Response { status, body })
+    Ok(Response {
+        status,
+        body,
+        retry_after,
+    })
+}
+
+/// `Retry-After` in seconds; a date instead of seconds counts as none.
+pub(crate) fn retry_after_of(headers: &reqwest::header::HeaderMap) -> Option<u64> {
+    headers
+        .get(reqwest::header::RETRY_AFTER)?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
 }
 
 /// The most an answer of the API may weigh. Not a few MiB: a full sync of a
