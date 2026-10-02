@@ -77,6 +77,9 @@ windows = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_UI_WindowsAndMessaging",
 ] }
+# The COM plugin passkey manager (passkeys/windows.rs): `#[implement]` and `#[interface]` name
+# windows_core directly. The version the windows crate above brings.
+windows-core = "0.61"
 
 # A package update is handed to the package manager from a private scratch folder.
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -90,4 +93,5 @@ zbus = { version = "5", default-features = false, features = ["async-io", "block
 # security-framework rustls already brings.
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "0.2"
-security-framework = "3"
+# OSX_10_15: the data protection keychain, where Keychain access groups work.
+security-framework = { version = "3", features = ["OSX_10_15"] }

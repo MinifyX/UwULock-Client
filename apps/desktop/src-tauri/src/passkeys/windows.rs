@@ -27,7 +27,7 @@ use std::sync::OnceLock;
 use tauri::{AppHandle, Listener, Manager};
 use uwulock_authenticator::ctap2::{self, Authenticator, Request};
 use windows::core::{
-    implement, interface, IUnknown, IUnknown_Vtbl, Interface, Ref, BOOL, GUID, HRESULT, PCWSTR,
+    implement, interface, IUnknown, IUnknown_Vtbl, Interface, Ref, BOOL, GUID, HRESULT,
 };
 use windows::Win32::System::Com::{
     CoInitializeEx, CoRegisterClassObject, CoRevokeClassObject, IClassFactory, IClassFactory_Impl,

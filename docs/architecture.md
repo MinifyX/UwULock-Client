@@ -297,6 +297,16 @@ strong biometric and dies with a new enrolment; an iOS Keychain item with
 calls block until the phone answers and so never run on the main thread.
 Details: [mobile.md](mobile.md).
 
+## Passkeys for the system
+
+`passkeys/` in the app offers the vault's passkeys outside the browser
+extension: a virtual FIDO2 security key over `/dev/uhid` on Linux, a plugin
+passkey manager on Windows 11, Credential Manager's provider on Android, an
+AutoFill extension on iOS and macOS. The protocol parts (CTAP2, CTAPHID,
+uhid, WebAuthn JSON, the Apple extension's sealed list) are in
+`crates/uwulock-authenticator`. Design and threat model:
+[passkeys.md](passkeys.md).
+
 ## Suite parts
 
 Taken from UwURDP unchanged or nearly: the installer (`apps/setup`), the

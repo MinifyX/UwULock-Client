@@ -150,6 +150,7 @@ LibreWolf and loads temporarily elsewhere. [How to install it](docs/extension.md
 | `crates/uwulock-core`                | Bitwarden's crypto and data formats, no network; also builds to WebAssembly  |
 | `crates/uwulock-bitwarden`           | Bitwarden's and UwULock Server's protocol: login, sync, live updates, saving |
 | `crates/uwulock-wasm`                | uwulock-core as WebAssembly, for the browser extension                       |
+| `crates/uwulock-authenticator`       | CTAP2, CTAPHID, uhid and WebAuthn JSON for the system passkey providers      |
 | `crates/tauri-plugin-uwulock-mobile` | Android's and iOS's own APIs: biometric unlock, clipboard, system bars       |
 | `brand/`                             | Nyu as a padlock: the UwULock icon, symbol, mono symbol                      |
 | `docs/`                              | Vision, architecture, design, roadmap, install guide                         |
@@ -214,6 +215,7 @@ The installer, with the app packed inside: `pnpm build:setup`. Releasing is
 - [Install guide](docs/install.md) — installing, updating, uninstalling, in English and German
 - [Browser extension](docs/extension.md) — what it does, installing it in Chromium and Firefox
 - [Android and iPhone](docs/mobile.md) — installing, what's different on a phone, building, the phone plugin
+- [Passkeys for the system](docs/passkeys.md) — the vault's passkeys in browsers and apps on Linux, Windows, Android, iOS and macOS, threat model
 - [UwULock Server's extras](docs/uwu-extras.md) — icons, versions, reminders, file requests, masked addresses, Sends, travel mode
 - [Moving from Bitwarden](docs/moving-from-bitwarden.md) — a whole vault into UwULock, attachments and Sends included
 - [Konzept](KONZEPT.md) — the concept, in German
