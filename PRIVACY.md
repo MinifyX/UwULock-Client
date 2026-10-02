@@ -20,8 +20,8 @@ nor anybody else gets data from it.
   themselves.
 - **A live connection** to your server, so changes from your other devices arrive right away.
 
-Firefox lists this at install as authentication information, personally identifying
-information and financial and payment information: those are the kinds of data a vault holds,
+Firefox (at install) and the Chrome Web Store list this as authentication information,
+personally identifying information and financial and payment information: those are the kinds of data a vault holds,
 even though they travel encrypted.
 
 ## What stays in the browser
@@ -70,8 +70,8 @@ eigenen Server; weder der Entwickler noch sonst jemand bekommt Daten von ihr.
 - **Eine Live-Verbindung** zu deinem Server, damit Änderungen von deinen anderen Geräten sofort
   ankommen.
 
-Firefox zeigt das bei der Installation als Anmeldeinformationen, persönlich identifizierende
-Informationen sowie Finanz- und Zahlungsinformationen an: Das sind die Arten von Daten, die ein
+Firefox (bei der Installation) und der Chrome Web Store zeigen das als Anmeldeinformationen,
+persönlich identifizierende Informationen sowie Finanz- und Zahlungsinformationen an: Das sind die Arten von Daten, die ein
 Tresor enthält, auch wenn sie verschlüsselt übertragen werden.
 
 ## Was im Browser bleibt
