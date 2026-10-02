@@ -274,7 +274,8 @@ export const itemPasskeys = (id: string) =>
   callJson<PasskeyInfo[]>((core) => core.itemPasskeys(id));
 
 /**
- * Deletes a login's passkey at `index` — with `credentialId` only if it still is that one — and
+ * Deletes a login's passkey at `index` — only if it still is the one `credentialId` names (its
+ * credential id, or the `fingerprint` of an unreadable one; the core refuses none) — and
  * saves the item, everything else as it was.
  */
 export async function deletePasskey(

@@ -13,8 +13,16 @@ let open: string | null = 'user-a';
 let active = 'user-a';
 
 vi.mock('../src/shared/browser', () => ({
+  isFirefox: false,
   ext: {
-    tabs: { onRemoved: { addListener: () => undefined }, sendMessage: async () => undefined },
+    tabs: {
+      onRemoved: { addListener: () => undefined },
+      // Only the content script's answer about its document (content/frame.ts) matters here.
+      sendMessage: async (_tab: number, message: { type?: string }) =>
+        message.type === 'bg:frame-document'
+          ? { origin: 'https://shop.example', ancestors: [], parents: [] }
+          : undefined,
+    },
     runtime: { getURL: (path: string) => `chrome-extension://test${path}` },
   },
 }));

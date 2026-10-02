@@ -799,6 +799,15 @@ function Websites({ id, uris }: { id: string; uris: NonNullable<ItemDetail['logi
             : more === 1
               ? t('+1 weitere Website')
               : t('+{n} weitere Websites', { n: more })}
+          {!all && (
+            // Which sites, even folded: an added one shouldn't hide behind a number.
+            <span className="more-hosts">
+              {uris
+                .slice(1, 4)
+                .map((uri) => uri.host ?? uri.uri)
+                .join(', ') + (more > 3 ? ', …' : '')}
+            </span>
+          )}
           <Icon name="chevron" size={12} className={all ? 'turned' : undefined} />
         </button>
       )}
@@ -806,7 +815,10 @@ function Websites({ id, uris }: { id: string; uris: NonNullable<ItemDetail['logi
   );
 }
 
-/** A login's passkeys: site, user, since when; deleting one asks first. */
+/**
+ * A login's passkeys: site, user, since when; deleting one asks first. The site is the RP id —
+ * what the browser checked — with the name the site gave itself only next to it (R4-6).
+ */
 function Passkeys({
   id,
   revision,
@@ -818,6 +830,8 @@ function Passkeys({
 }) {
   const [keys, setKeys] = useState<PasskeyInfo[] | null>(null);
   const [busy, setBusy] = useState(false);
+  // Fetched again after every delete: the places of the others shift.
+  const [loads, setLoads] = useState(0);
   useEffect(() => {
     let alive = true;
     itemPasskeys(id)
@@ -826,11 +840,11 @@ function Passkeys({
     return () => {
       alive = false;
     };
-  }, [id, revision]);
+  }, [id, revision, loads]);
   if (!keys || keys.length === 0) return null;
 
   const remove = async (key: PasskeyInfo) => {
-    const site = key.rpName || key.rpId;
+    const site = siteOf(key);
     if (
       !window.confirm(
         t('Den Passkey für {site} löschen? Damit meldest du dich dort danach nicht mehr an.', {
@@ -841,8 +855,9 @@ function Passkeys({
       return;
     setBusy(true);
     try {
-      await deletePasskey(id, key.index, key.credentialId || null);
-      setKeys((current) => current?.filter((k) => k !== key) ?? null);
+      await deletePasskey(id, key.index, key.credentialId || key.fingerprint);
+      setKeys(null);
+      setLoads((n) => n + 1);
       toast(t('Passkey gelöscht.'));
       playNyu('trashed');
     } catch (e) {
@@ -856,7 +871,8 @@ function Passkeys({
     <section className="detail-card">
       <h3 className="detail-card-title">{keys.length === 1 ? t('Passkey') : t('Passkeys')}</h3>
       {keys.map((key) => {
-        const site = key.rpName || key.rpId || t('Unbekannte Website');
+        const site = key.rpId || t('Unbekannte Website');
+        const named = key.rpName?.trim();
         const created = when(key.creationDate);
         return (
           <div className="detail-row passkey-row" key={`${key.index}-${key.credentialId}`}>
@@ -866,7 +882,9 @@ function Passkeys({
                 <span>{key.userName || key.userDisplayName || t('ohne Benutzernamen')}</span>
                 <span className="passkey-meta">
                   {[
-                    key.rpId && key.rpId !== site ? key.rpId : null,
+                    named && named.toLowerCase() !== key.rpId.toLowerCase()
+                      ? t('nennt sich „{name}“', { name: named })
+                      : null,
                     created && t('erstellt {when}', { when: created }),
                     !key.readable && t('lässt sich nicht lesen – nur löschen'),
                   ]
@@ -880,7 +898,7 @@ function Passkeys({
                 <button
                   type="button"
                   className="icon-button"
-                  disabled={busy}
+                  disabled={busy || (!key.credentialId && !key.fingerprint)}
                   onClick={() => void remove(key)}
                   aria-label={t('Passkey für {site} löschen', { site })}
                   title={t('Passkey löschen')}
@@ -894,4 +912,13 @@ function Passkeys({
       })}
     </section>
   );
+}
+
+/** A passkey's site for the delete question: the RP id, and the name the site gave itself. */
+function siteOf(key: PasskeyInfo): string {
+  const named = key.rpName?.trim();
+  if (!key.rpId) return named || t('Unbekannte Website');
+  return named && named.toLowerCase() !== key.rpId.toLowerCase()
+    ? `${key.rpId} („${named}“)`
+    : key.rpId;
 }

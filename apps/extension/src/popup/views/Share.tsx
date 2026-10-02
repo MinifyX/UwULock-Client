@@ -87,6 +87,8 @@ export function ShareView({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shared, setShared] = useState<SharedSend | null>(null);
+  // Ticking the one-time code hands out its key for good: asked for once more.
+  const [askTotp, setAskTotp] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -225,17 +227,49 @@ export function ShareView({
               <input
                 type="checkbox"
                 checked={chosen.has(field.name)}
-                onChange={(e) => toggle(field.name, e.target.checked)}
+                onChange={(e) => {
+                  if (field.name === 'totp' && e.target.checked) setAskTotp(true);
+                  else toggle(field.name, e.target.checked);
+                }}
               />
               <span className={field.name.startsWith('uri:') ? 'uri' : undefined}>
                 {shownLabel(item, field, websites)}
               </span>
             </label>
           ))}
-          {chosen.has('totp') && (
+          {askTotp && (
+            <div className="share-totp-confirm" role="alert">
+              <p>
+                {t(
+                  'Der Schlüssel des Einmal-Codes reist verschlüsselt im Send mit. Die Send-Seite zeigt nur die laufenden Codes – wer den Link hat, kann den Schlüssel aber auslesen und damit auch nach dem Löschen des Sends weiter Codes erzeugen.',
+                )}{' '}
+                {t('Teile ihn nur, wenn das okay ist.')}
+              </p>
+              <div className="form-actions">
+                <button
+                  type="button"
+                  onClick={() => {
+                    toggle('totp', true);
+                    setAskTotp(false);
+                  }}
+                >
+                  {t('Schlüssel mitgeben')}
+                </button>
+                <button
+                  type="button"
+                  className="primary"
+                  autoFocus
+                  onClick={() => setAskTotp(false)}
+                >
+                  {t('Lieber nicht')}
+                </button>
+              </div>
+            </div>
+          )}
+          {!askTotp && chosen.has('totp') && (
             <p className="field-hint">
               {t(
-                'Die Send-Seite zeigt nur die laufenden Codes, nie den Schlüssel. Wer den Send öffnen kann, bekommt aber Codes, solange es ihn gibt.',
+                'Der Schlüssel des Einmal-Codes reist verschlüsselt im Send mit. Die Send-Seite zeigt nur die laufenden Codes – wer den Link hat, kann den Schlüssel aber auslesen und damit auch nach dem Löschen des Sends weiter Codes erzeugen.',
               )}
             </p>
           )}

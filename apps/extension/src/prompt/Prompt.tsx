@@ -12,6 +12,8 @@ import { passkeyDecide, passkeyPrompt } from '../popup/api';
 import { errorText, PasswordInput, useSettings, useStatus } from '../popup/lib';
 import { LockView } from '../popup/views/Lock';
 import { LoginView } from '../popup/views/Login';
+import { useArmed } from './armed';
+import { passkeyLoginName } from './names';
 
 export function Prompt({ id }: { id: string }) {
   useSettings();
@@ -21,6 +23,8 @@ export function Prompt({ id }: { id: string }) {
   const [choice, setChoice] = useState<string>('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  // The main button only once the window was focused and visible for a moment (R4-5).
+  const armed = useArmed();
 
   const load = useCallback(async () => {
     try {
@@ -93,6 +97,7 @@ export function Prompt({ id }: { id: string }) {
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    if (!armed) return;
     const secret = needsPassword ? password : null;
     if (prompt.kind === 'create') {
       void decide({ id, choice: 'create', itemId: choice || null, password: secret });
@@ -124,7 +129,9 @@ export function Prompt({ id }: { id: string }) {
               checked={choice === ''}
               onChange={() => setChoice('')}
             />
-            <span>{t('Neuer Login „{name}“', { name: prompt.rpName })}</span>
+            <span>
+              {t('Neuer Login „{name}“', { name: passkeyLoginName(prompt.rpId, prompt.rpName) })}
+            </span>
           </label>
           {prompt.candidates.map((candidate) => (
             <label className="check" key={candidate.id}>
@@ -138,7 +145,10 @@ export function Prompt({ id }: { id: string }) {
                 {candidate.name}
                 {candidate.subtitle && <span className="muted"> · {candidate.subtitle}</span>}
                 {candidate.hasPasskey && (
-                  <small className="muted"> ({t('ersetzt den Passkey darin')})</small>
+                  <small className="muted">
+                    {' '}
+                    ({t('behält seine Passkeys, ersetzt nur einen für dasselbe Konto')})
+                  </small>
                 )}
               </span>
             </label>
@@ -204,6 +214,7 @@ export function Prompt({ id }: { id: string }) {
             type="submit"
             disabled={
               busy ||
+              !armed ||
               (needsPassword ? !password : false) ||
               (prompt.kind === 'create' && prompt.excluded)
             }
@@ -232,6 +243,11 @@ function Header({ prompt }: { prompt: PasskeyPrompt }) {
               })
             : t('{site} möchte, dass du dich mit einem Passkey anmeldest.', { site: prompt.rpId })}
         </p>
+        {prompt.kind === 'create' &&
+          prompt.rpName &&
+          prompt.rpName.toLowerCase() !== prompt.rpId.toLowerCase() && (
+            <p className="muted">{t('Die Seite nennt sich „{name}“.', { name: prompt.rpName })}</p>
+          )}
         <p className="prompt-origin mono">{prompt.origin}</p>
       </div>
     </header>

@@ -22,6 +22,7 @@ import type {
   PageInfo,
   SavePrompt,
 } from '../shared/protocol';
+import { answerFrameDocument } from './frame';
 import { fillCard, fillField, fillIdentity, fillLogin } from './fill';
 import {
   scanFields,
@@ -327,6 +328,7 @@ function onMessage(
   sender: chrome.runtime.MessageSender,
   respond: (answer: unknown) => void,
 ): undefined {
+  if (answerFrameDocument(message, sender, respond)) return;
   if (sender.id !== ext.runtime.id || !message || typeof message !== 'object') return;
   // From the background only, never from another extension page (the menu's frame has a port).
   if (sender.tab !== undefined) return;

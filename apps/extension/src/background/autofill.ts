@@ -12,14 +12,21 @@
  * frame may have it — never an iframe. Plain http pages ask first.
  *
  * Cards and addresses have no address to match. They are listed to, and filled into, only the
- * page itself and frames from the same origin as it — never an ad's or another site's frame,
- * whatever that frame asks — and only after somebody picked one, in the page's menu or the popup.
+ * page itself and frames from the same origin as it and as every frame in between — never an
+ * ad's or another site's frame, whatever that frame asks — and only after somebody picked one,
+ * in the page's menu or the popup.
+ *
+ * A frame's address isn't always its origin: a sandboxed document (an iframe with `sandbox`, a
+ * page served with `Content-Security-Policy: sandbox`) has the site's address but an opaque
+ * origin, and no business with the site's items (R4-2). So before anything is listed or filled,
+ * the background asks the frame's content script for its document's real origin and its
+ * ancestors' (`frameDocument`), and on Chromium also checks the sender's `origin`.
  *
  * Sent logins are kept in the background's memory, and offered to save in the page's
  * notification bar — or, while the vault is locked, in `storage.session` until it is unlocked.
  */
 
-import { ext } from '../shared/browser';
+import { ext, isFirefox } from '../shared/browser';
 import type {
   FillAnswer,
   FillValues,
@@ -35,6 +42,7 @@ import type {
   BackgroundMessage,
 } from '../shared/protocol';
 import { resolveLanguage } from '../shared/i18n';
+import { FRAME_DOCUMENT, type FrameDocument } from '../content/frame';
 import { hostnameOf, isFillableUrl, isInsecureUrl, itemMatches, pageDomains } from '../shared/uri';
 import * as clipboard from './clipboard';
 import { changed } from './events';
@@ -129,32 +137,105 @@ function state(): Promise<PageInfo['state']> {
   return session.vaultState();
 }
 
-/** The frame is the page itself, or from the same origin as the page's top frame. */
-export function sameOriginAsTop(sender: Sender): boolean {
-  if (sender.frameId === 0) return true;
+// ── Which document asks ───────────────────────────────────
+
+/** A frame's document, checked: its origin is its address's, and not opaque. */
+export type CheckedFrame = FrameDocument & { url: string };
+
+function strings(value: unknown): string[] | null {
+  return Array.isArray(value) && value.every((v) => typeof v === 'string')
+    ? (value as string[])
+    : null;
+}
+
+/**
+ * The document behind a sender, or `null` when it gets nothing: no address, an opaque origin
+ * (a sandboxed document), or an origin that isn't its address's. Chromium names the document's
+ * origin in `sender.origin` (`"null"` when opaque); in every browser the frame's content script
+ * reports `window.origin` and its ancestors' origins (content/frame.ts), asked by `documentId`
+ * where the browser has it, so the answer is from that very document.
+ */
+export async function frameDocument(sender: Sender): Promise<CheckedFrame | null> {
+  const url = sender.url;
   const tabId = sender.tab?.id;
-  const top = (tabId !== undefined ? tabUrls.get(tabId) : undefined) ?? sender.tab?.url;
-  if (!top || !sender.url) return false;
+  if (!url || tabId === undefined || sender.frameId === undefined) return null;
+  let origin: string;
   try {
-    const origin = new URL(sender.url).origin;
-    return origin !== 'null' && origin === new URL(top).origin;
+    origin = new URL(url).origin;
   } catch {
-    return false;
+    return null;
   }
+  if (origin === 'null') return null;
+  if (sender.origin !== undefined && sender.origin !== origin) return null;
+  // Chromium: that very document (verified on Chromium); Firefox: by frame.
+  const target =
+    !isFirefox && typeof sender.documentId === 'string'
+      ? { documentId: sender.documentId }
+      : { frameId: sender.frameId };
+  const reply = (await ext.tabs
+    .sendMessage(tabId, { type: FRAME_DOCUMENT }, target)
+    .catch(() => null)) as Partial<FrameDocument> | null | undefined;
+  if (!reply || typeof reply !== 'object' || reply.origin !== origin) return null;
+  return {
+    origin,
+    ancestors: strings(reply.ancestors),
+    parents: strings(reply.parents),
+    url,
+  };
+}
+
+/**
+ * The frame is the page itself, or of the same origin as the page and every frame in between
+ * (A in B in A is not). `walked`: on browsers without `location.ancestorOrigins` (Firefox), the
+ * origins read up the `window.parent` chain count too.
+ */
+export function sameOriginAncestors(
+  sender: Sender,
+  frame: CheckedFrame,
+  { walked }: { walked: boolean },
+): boolean {
+  const chain = frame.ancestors ?? (walked ? frame.parents : null);
+  if (!chain) return false;
+  if (sender.frameId === 0) return chain.length === 0;
+  if (chain.length === 0 || !chain.every((origin) => origin === frame.origin)) return false;
+  // Where the browser tells the tab's address, it agrees.
+  const top = sender.tab?.url;
+  if (top) {
+    try {
+      if (new URL(top).origin !== frame.origin) return false;
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** The frame is the page itself, or from the same origin as the page and all frames between. */
+export async function sameOriginAsTop(
+  sender: Sender,
+  known?: CheckedFrame | null,
+): Promise<boolean> {
+  const frame = known === undefined ? await frameDocument(sender) : known;
+  return frame !== null && sameOriginAncestors(sender, frame, { walked: true });
 }
 
 /**
  * The items a frame's menu may list, for a field of `kind`: the logins matching the frame's own
- * address, or — only in the page itself and frames of its origin — cards and addresses.
+ * address, or — only in the page itself and frames of its origin — cards and addresses. Nothing
+ * for a document whose origin isn't its address's (`known`: already asked).
  */
-export async function frameItems(sender: Sender, kind: MenuKind): Promise<PageItem[]> {
+export async function frameItems(
+  sender: Sender,
+  kind: MenuKind,
+  known?: CheckedFrame | null,
+): Promise<PageItem[]> {
   if (!session.unlockedAccountId()) return [];
+  const frame = known === undefined ? await frameDocument(sender) : known;
+  if (!frame) return [];
   if (kind === 'login') {
-    return (await matchingLogins(sender.url ?? '', { topFrame: sender.frameId === 0 })).map(
-      pageItem,
-    );
+    return (await matchingLogins(frame.url, { topFrame: sender.frameId === 0 })).map(pageItem);
   }
-  if ((kind === 'card' || kind === 'identity') && sameOriginAsTop(sender)) {
+  if ((kind === 'card' || kind === 'identity') && (await sameOriginAsTop(sender, frame))) {
     return ofKind(kind).map(pageItem);
   }
   return [];
@@ -170,12 +251,14 @@ export async function pageInfo(sender: Sender): Promise<PageInfo> {
   }
   const config = await settings();
   const unlocked = Boolean(session.unlockedAccountId());
+  // Asked once for the three counts.
+  const frame = unlocked ? await frameDocument(sender) : null;
   return {
     state: await state(),
     counts: {
-      logins: (await frameItems(sender, 'login')).length,
-      cards: (await frameItems(sender, 'card')).length,
-      identities: (await frameItems(sender, 'identity')).length,
+      logins: (await frameItems(sender, 'login', frame)).length,
+      cards: (await frameItems(sender, 'card', frame)).length,
+      identities: (await frameItems(sender, 'identity', frame)).length,
     },
     insecure: isInsecureUrl(url),
     inlineMenu: config.inlineMenu && isFillableUrl(url),
@@ -289,11 +372,15 @@ export async function fill(
     return refuse('expired');
   }
 
+  // A sandboxed document, or one whose origin isn't its address's, gets nothing (R4-2).
+  const frame = await frameDocument(sender);
+  if (!frame) return refuse('refused');
+
   if (entry.kind === 'login') {
     const matches = await loginMatches(entry, url, { topFrame: sender.frameId === 0 });
     // An item picked for a page it doesn't match goes to that page itself, not into its frames.
     if (!matches && !(fromOffer.explicit && sender.frameId === 0)) return refuse('no-match');
-  } else if (!sameOriginAsTop(sender)) {
+  } else if (!(await sameOriginAsTop(sender, frame))) {
     // Cards and addresses have no address to match: only into the page itself, or a frame of
     // its own origin — from the popup or from the page's own menu.
     return refuse('no-match');
@@ -516,6 +603,8 @@ export async function submitted(
   if (tabId === undefined || !isFillableUrl(url) || !config.savePrompt) return;
   const host = hostnameOf(url);
   if (!host || config.neverSave.includes(host)) return;
+  // Nothing typed into a sandboxed document is the site's login.
+  if (!(await frameDocument(sender))) return;
   const typed = username?.trim() || null;
   if (!password && !newPassword) {
     // The first step of a login in two: remember who, for the password on the next page.

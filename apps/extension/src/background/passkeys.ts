@@ -11,6 +11,14 @@
  * Whenever UwULock can't or shouldn't answer — logged out, cancelled, nothing for the site, a
  * cross-origin frame, an algorithm other than ES256, a conditional (autofill) request — the
  * page falls back to the browser's own authenticator.
+ *
+ * Which origin asks is the document's, not its address's (R4-2, `frameDocument`): a sandboxed
+ * document on the site's address has an opaque origin and gets nothing. A frame may ask only
+ * when it and every frame above it are of one origin, which `location.ancestorOrigins` shows;
+ * a browser without it (Firefox) only serves top frames. So `crossOrigin` is always false.
+ *
+ * One window per tab at a time; after the person cancelled, that tab and origin get the
+ * browser's authenticator for a while (R4-5).
  */
 
 import { ext } from '../shared/browser';
@@ -25,7 +33,9 @@ import type {
   VaultState,
 } from '../shared/protocol';
 import { checkRpId } from '../shared/rpid';
-import { matchingLogins, tabUrl } from './autofill';
+import { hostnameOf } from '../shared/uri';
+import { passkeyLoginName } from '../prompt/names';
+import { frameDocument, matchingLogins, sameOriginAncestors } from './autofill';
 import * as session from './session';
 import { settings } from './settings';
 import * as vault from './vault';
@@ -42,6 +52,7 @@ type Waiting = {
   origin: string;
   rpId: string;
   url: string;
+  tabId: number;
   windowId: number | null;
   timer: ReturnType<typeof setTimeout>;
   resolve: (answer: PasskeyAnswer) => void;
@@ -52,6 +63,24 @@ const waiting = new Map<string, Waiting>();
 const byPageRequest = new Map<string, string>();
 
 const FALLBACK: PasskeyAnswer = { kind: 'fallback' };
+
+/** After a cancel: how long that tab and origin get the browser's authenticator instead. */
+export const CANCEL_BACKOFF = 10_000;
+/** `tabId|origin` → until when. */
+const backoff = new Map<string, number>();
+
+function backoffKey(tabId: number, origin: string) {
+  return `${tabId}|${origin}`;
+}
+
+function backingOff(tabId: number, origin: string): boolean {
+  const key = backoffKey(tabId, origin);
+  const until = backoff.get(key);
+  if (until === undefined) return false;
+  if (Date.now() < until) return true;
+  backoff.delete(key);
+  return false;
+}
 
 function error(
   name: Extract<PasskeyAnswer, { kind: 'error' }>['name'],
@@ -74,22 +103,19 @@ function verification(value: string | undefined): 'required' | 'preferred' | 'di
   return value === 'required' || value === 'discouraged' ? value : 'preferred';
 }
 
-/** The frame may ask: a top frame, or a frame of the same origin as its page. */
-function frameOrigin(sender: Sender): { origin: string; url: string } | null {
-  const url = sender.url;
+type Frame = { origin: string; url: string; tabId: number };
+
+/**
+ * The frame may ask: a top frame whose document's origin is its address's, or a frame of that
+ * same origin with every ancestor of it too — known from `location.ancestorOrigins` only, so
+ * not on browsers without it.
+ */
+export async function frameOrigin(sender: Sender): Promise<Frame | null> {
   const tabId = sender.tab?.id;
-  if (!url || tabId === undefined) return null;
-  let origin: string;
-  try {
-    origin = new URL(url).origin;
-  } catch {
-    return null;
-  }
-  if (sender.frameId !== 0) {
-    const top = tabUrl(tabId) ?? sender.tab?.url;
-    if (!top || new URL(top).origin !== origin) return null;
-  }
-  return { origin, url };
+  if (tabId === undefined) return null;
+  const frame = await frameDocument(sender);
+  if (!frame || !sameOriginAncestors(sender, frame, { walked: false })) return null;
+  return { origin: frame.origin, url: frame.url, tabId };
 }
 
 function vaultState(): Promise<VaultState> {
@@ -118,8 +144,9 @@ export async function create(
   options: PasskeyCreateOptions,
 ): Promise<PasskeyAnswer> {
   if (!(await settings()).passkeys) return FALLBACK;
-  const frame = frameOrigin(sender);
+  const frame = await frameOrigin(sender);
   if (!frame) return FALLBACK;
+  if (backingOff(frame.tabId, frame.origin)) return FALLBACK;
   const rp = checkRpId(frame.origin, options.rp?.id);
   if (!rp.ok) return error('SecurityError', `The relying party is not this site (${rp.reason}).`);
   // Only ES256; a site that doesn't take it gets the browser's authenticator.
@@ -137,8 +164,9 @@ export async function get(
   if (!(await settings()).passkeys) return FALLBACK;
   // The browser's autofill of passkeys stays the browser's.
   if (options.mediation === 'conditional') return FALLBACK;
-  const frame = frameOrigin(sender);
+  const frame = await frameOrigin(sender);
   if (!frame) return FALLBACK;
+  if (backingOff(frame.tabId, frame.origin)) return FALLBACK;
   const rp = checkRpId(frame.origin, options.rpId);
   if (!rp.ok) return error('SecurityError', `The relying party is not this site (${rp.reason}).`);
   const state = await vaultState();
@@ -157,10 +185,16 @@ export function abort(pageRequestId: string) {
 function ask(
   pageRequestId: string,
   request: Request,
-  frame: { origin: string; url: string },
+  frame: Frame,
   rpId: string,
   timeout: number | undefined,
 ): Promise<PasskeyAnswer> {
+  // One window per tab: N frames of a page don't get N windows.
+  for (const other of waiting.values()) {
+    if (other.tabId === frame.tabId) {
+      return Promise.resolve(error('NotAllowedError', 'Another request is running.'));
+    }
+  }
   const id = crypto.randomUUID();
   const limit = Math.min(Math.max(timeout ?? 300_000, 30_000), 600_000);
   return new Promise<PasskeyAnswer>((resolve) => {
@@ -170,6 +204,7 @@ function ask(
       origin: frame.origin,
       rpId,
       url: frame.url,
+      tabId: frame.tabId,
       windowId: null,
       timer: setTimeout(() => finish(entry, error('NotAllowedError', 'Timed out.')), limit),
       resolve,
@@ -204,15 +239,38 @@ function finish(entry: Waiting, answer: PasskeyAnswer) {
   entry.resolve(answer);
 }
 
-// Closing the window is cancelling: the browser's authenticator gets its turn.
+/** Cancelled: the browser's authenticator gets its turn, and this tab and origin a pause. */
+function cancel(entry: Waiting) {
+  backoff.set(backoffKey(entry.tabId, entry.origin), Date.now() + CANCEL_BACKOFF);
+  finish(entry, FALLBACK);
+}
+
+// Closing the window is cancelling.
 ext.windows.onRemoved.addListener((windowId) => {
   for (const entry of waiting.values()) {
     if (entry.windowId === windowId) {
       entry.windowId = null;
-      finish(entry, FALLBACK);
+      cancel(entry);
     }
   }
 });
+
+ext.tabs.onRemoved.addListener((tabId) => {
+  for (const key of backoff.keys()) if (key.startsWith(`${tabId}|`)) backoff.delete(key);
+});
+
+/**
+ * Whether a login may take a passkey for `rpId`: one of its own addresses is on that very host
+ * or under it — not a login that matches only through its base domain or equivalent domains
+ * (R4-3).
+ */
+export function loginFitsRpId(entry: { uris?: { uri: string }[] | null }, rpId: string): boolean {
+  const wanted = rpId.toLowerCase();
+  return (entry.uris ?? []).some(({ uri }) => {
+    const host = hostnameOf(uri)?.toLowerCase();
+    return Boolean(host) && (host === wanted || host!.endsWith(`.${wanted}`));
+  });
+}
 
 // ── The window asks ───────────────────────────────────────
 
@@ -251,8 +309,9 @@ export async function prompt(id: string): Promise<PasskeyPrompt> {
       );
     const candidates =
       state === 'unlocked'
-        ? (await matchingLogins(entry.url, { topFrame: false })).map(
-            (e): PageItem & { hasPasskey: boolean } => ({
+        ? (await matchingLogins(entry.url, { topFrame: false, strict: true }))
+            .filter((e) => loginFitsRpId(e, entry.rpId))
+            .map((e): PageItem & { hasPasskey: boolean } => ({
               id: e.id,
               kind: e.kind,
               name: e.name,
@@ -261,8 +320,7 @@ export async function prompt(id: string): Promise<PasskeyPrompt> {
               hasTotp: e.hasTotp,
               reprompt: e.reprompt,
               hasPasskey: (e.passkeys ?? []).length > 0,
-            }),
-          )
+            }))
         : [];
     return {
       id,
@@ -322,7 +380,7 @@ export async function decide(decision: PasskeyDecision): Promise<void> {
   const entry = waiting.get(decision.id);
   if (!entry) throw { kind: 'expired', message: 'This request is over.' };
   if (decision.choice === 'cancel' || decision.choice === 'browser') {
-    finish(entry, FALLBACK);
+    cancel(entry);
     return;
   }
   await session.requireUnlocked();
@@ -354,7 +412,7 @@ export async function decide(decision: PasskeyDecision): Promise<void> {
       core.passkeyCreate(
         JSON.stringify({
           itemId: target?.id ?? null,
-          name: options.rp?.name || entry.rpId,
+          name: passkeyLoginName(entry.rpId, options.rp?.name),
           folderId: null,
           rpId: entry.rpId,
           rpName: options.rp?.name ?? null,
