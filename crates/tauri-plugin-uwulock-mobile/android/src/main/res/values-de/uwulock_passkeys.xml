@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="uwulock_passkeys_unlock">UwULock entsperren</string>
+    <string name="uwulock_passkeys_create">Passkey in UwULock speichern</string>
+    <string name="uwulock_passkeys_create_hint">Im Tresor gespeichert, auf deine anderen Geräte synchronisiert</string>
+    <string name="uwulock_passkeys_verify">Bestätige, dass du es bist</string>
+    <string name="uwulock_passkeys_verify_create">Um einen Passkey für %1$s in UwULock zu speichern</string>
+    <string name="uwulock_passkeys_verify_get">Um dich bei %1$s mit UwULock anzumelden</string>
+    <string name="uwulock_passkeys_locked">Entsperr UwULock und geh dann zurück.</string>
+</resources>

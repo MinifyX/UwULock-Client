@@ -6,6 +6,30 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <!-- Android 11+ hides other apps from UwULock: this lets it find the system's add-network
          sheet, so the password goes to that and nothing else (UwuLockMobilePlugin.connectWifi). -->
+    <application>
+        <!-- Passkeys for other apps and browsers through Credential Manager (Android 14+):
+             PasskeyProviderService lists them, PasskeyActivity makes and signs. Switched on by
+             the person in Settings → Passwords, passkeys and accounts. -->
+        <service
+            android:name="app.uwulock.mobile.PasskeyProviderService"
+            android:enabled="@bool/uwulock_passkeys_enabled"
+            android:exported="true"
+            android:label="@string/uwulock_passkeys_label"
+            android:permission="android.permission.BIND_CREDENTIAL_PROVIDER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.credentials.CredentialProviderService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.credentials.provider"
+                android:resource="@xml/uwulock_passkey_provider" />
+        </service>
+        <activity
+            android:name="app.uwulock.mobile.PasskeyActivity"
+            android:enabled="@bool/uwulock_passkeys_enabled"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:theme="@style/UwULockPasskeyTheme" />
+    </application>
     <queries>
         <intent>
             <action android:name="android.settings.WIFI_ADD_NETWORKS" />
