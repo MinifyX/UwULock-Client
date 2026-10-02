@@ -514,6 +514,19 @@ impl Vault {
         }
     }
 
+    /// The key an item's values are under: its own key, or else the one it
+    /// belongs under ([`Vault::outer_key`]). Passkeys need it to open.
+    pub fn item_key<'a>(
+        &'a self,
+        item: &'a Item,
+        user_key: &'a SymmetricKey,
+    ) -> Result<&'a SymmetricKey, Error> {
+        match &item.key {
+            Some(key) => Ok(key),
+            None => self.outer_key(item.organization_id.as_deref(), user_key),
+        }
+    }
+
     /// The account's RSA private key, if the profile has one.
     pub fn private_key(&self) -> Option<&PrivateKey> {
         self.private_key.as_ref()

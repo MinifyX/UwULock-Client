@@ -139,7 +139,30 @@ export type ItemDetail = {
   creationDate?: string | null;
 };
 
-export type TotpCode = { code: string; remaining: number; period: number };
+/**
+ * `next` is the code of the following period; `showNext` is true in its last
+ * 10 seconds. `copyField(id, 'totp-next')` copies the next code.
+ */
+export type TotpCode = {
+  code: string;
+  remaining: number;
+  period: number;
+  next: string;
+  showNext: boolean;
+};
+
+/** A passkey of a login, nothing secret. `readable: false`: can only be deleted. */
+export type PasskeyInfo = {
+  index: number;
+  readable: boolean;
+  credentialId: string;
+  rpId: string;
+  rpName: string | null;
+  userName: string | null;
+  userDisplayName: string | null;
+  creationDate: string;
+  discoverable: boolean;
+};
 
 /**
  * What the editor sends back. A secret it never had — a password nobody
@@ -191,7 +214,15 @@ export type GeneratorOptions = {
   digits: boolean;
   symbols: boolean;
   avoidAmbiguous: boolean;
+  /** At least this many of a set that is on (0 or 1: at least one). */
+  minLowercase?: number;
+  minUppercase?: number;
+  minNumber?: number;
+  minSpecial?: number;
 };
+
+/** `length` is raised to `required` (the minimums) when that is more. */
+export type Generated = { password: string; bits: number; length: number; required: number };
 
 export type UpdateInfo = { version: string; notes: string | null };
 export type ProjectPage = 'source' | 'releases' | 'issues' | 'license' | 'suite';
@@ -249,7 +280,11 @@ export const wifiSettings = () => invoke<boolean>('wifi_settings');
 export const copyGenerated = (text: string) => invoke<void>('copy_generated', { text });
 export const totpCode = (id: string) => invoke<TotpCode>('totp_code', { id });
 export const generatePassword = (options: GeneratorOptions) =>
-  invoke<{ password: string; bits: number }>('generate_password', { options });
+  invoke<Generated>('generate_password', { options });
+export const itemPasskeys = (id: string) => invoke<PasskeyInfo[]>('item_passkeys', { id });
+/** With `credentialId`, only if the passkey at `index` still is that one (else `conflict`). */
+export const deletePasskey = (id: string, index: number, credentialId: string | null) =>
+  invoke<void>('delete_passkey', { id, index, credentialId });
 
 /** Without an id: a new item. Returns the item's id. */
 export const saveItem = (id: string | null, draft: Draft) =>

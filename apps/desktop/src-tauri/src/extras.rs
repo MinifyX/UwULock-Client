@@ -26,6 +26,7 @@ use tauri::{AppHandle, Emitter, Listener, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 use uwulock_bitwarden::api::parse_cipher;
 use uwulock_bitwarden::delta::{IconRef, MaskedLink, Unseen};
+use uwulock_bitwarden::entry_send;
 use uwulock_bitwarden::extras::{open_icon, seal_icon};
 use uwulock_bitwarden::file_request::{
     self, LinkSecret, PublicInfo, SealedFile, SubmissionKey, TEXT_MAX_CHARS,
@@ -2290,6 +2291,12 @@ pub struct ShareInput {
     /// The text stays hidden on the recipient's page until a click.
     #[serde(default)]
     hide_text: bool,
+    /// An entry Send (`entry_send`): readable lines plus the
+    /// `uwulock-entry:v1:` line UwULock's Send page shows as an entry. Only
+    /// then may `fields` name `totp` — live codes on the page, never the key
+    /// in the readable text.
+    #[serde(default)]
+    entry: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -2364,7 +2371,11 @@ pub(crate) async fn share_as_send(
         None => None,
     };
     let deletion_date = iso_from_unix(now() + u64::from(input.deletion_days) * 86_400, 0);
-    let text = send_core::share_text(&item, &input.fields);
+    let text = if input.entry {
+        entry_send::share_entry_text(&item, &input.fields)
+    } else {
+        send_core::share_text(&item, &input.fields)
+    };
     let sealed = with(&state, &ctx.account_id, |u| {
         Ok(TextSend {
             name: item.name.to_string(),

@@ -113,6 +113,26 @@ _Hide passwords_) can't share its password, one-time code key, hidden fields,
 card number and code or SSH private key: official Bitwarden apps don't let them
 leave the device either.
 
+### Entry Sends
+
+Shared as an _entry_, a Send shows on UwULock's Send page as the entry it is:
+the fields with copy buttons, every website, hidden values behind a click, and
+— if you included it — the live one-time code with its countdown. Never the
+one-time code key, never a QR code of it. It stays a plain text Send, so
+Bitwarden's apps open it too. The contract (`uwulock-core`, `entry_send`; the
+web vault's WASM and the apps share it):
+
+- Send type text. The text is the readable lines — the name, then
+  `label: value` for every chosen value — **without** the one-time code key,
+  followed by one last line `uwulock-entry:v1:<base64url(JSON)>`.
+- JSON: `{name, username?, password?, websites[], notes?, fields[{name, value,
+hidden}], totp?}`. `totp` is the key (secret or `otpauth://` URI), only for
+  making the codes; card, identity and SSH values travel as `fields`, the
+  sensitive ones `hidden`.
+- A page that finds the marker on the last line hides the raw text and shows
+  the entry. No marker, another version (`v2`) or one that doesn't decode: the
+  text shows as it is. Older Sends are untouched.
+
 ## Travel mode
 
 While travel mode is on, the items in the folders marked for it are hidden on

@@ -9,6 +9,8 @@
 //!   authenticator's keys, authenticator data and signatures
 //! - [`generator`] — passwords and passphrases
 //! - [`send`] — text Sends, and sharing an item as one
+//! - [`entry_send`] — an item shared as an entry Send: readable lines plus
+//!   the `uwulock-entry:v1:` marker the Send page shows as an entry
 //! - [`extras`] — UwULock's extras key (and what is under it: suite space
 //!   keys, own icons), entry versions in a key rotation
 //! - [`file_request`] — file requests: the link, its public details, the
@@ -27,6 +29,7 @@
 //! `Date.now() / 1000`.
 
 pub mod crypto;
+pub mod entry_send;
 pub mod extras;
 pub mod file_request;
 pub mod generator;

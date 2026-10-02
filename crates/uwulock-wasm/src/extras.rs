@@ -12,6 +12,7 @@ use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uwulock_core::crypto::{EncString, PrivateKey};
+use uwulock_core::entry_send;
 use uwulock_core::extras::{self, Keys, Resolved};
 use uwulock_core::file_request::{self, LinkSecret, PublicInfo};
 use uwulock_core::send::{self, TextSend};
@@ -288,6 +289,12 @@ struct ShareOptions {
     password: Option<String>,
     #[serde(default)]
     hidden: bool,
+    /// An entry Send (`uwulock_core::entry_send`): the readable lines plus
+    /// the `uwulock-entry:v1:` line UwULock's Send page shows as an entry.
+    /// Only then may `fields` name `totp`: the page makes live codes from
+    /// it, the readable lines never hold it.
+    #[serde(default)]
+    entry: bool,
 }
 
 /// A text Send with the chosen values of an item, sealed for
@@ -302,7 +309,9 @@ pub fn seal_share(id: &str, options: &str) -> Result<String> {
             .fields
             .iter()
             .filter(|(name, _)| {
-                !send::withheld(item, name) && send::shareable_value(item, name).is_some()
+                !send::withheld(item, name)
+                    && (send::shareable_value(item, name).is_some()
+                        || (options.entry && name == "totp" && has_totp(item)))
             })
             .count();
         if chosen == 0 {
@@ -321,7 +330,11 @@ pub fn seal_share(id: &str, options: &str) -> Result<String> {
         let sealed = TextSend {
             name,
             notes: None,
-            text: send::share_text(item, &options.fields),
+            text: if options.entry {
+                entry_send::share_entry_text(item, &options.fields)
+            } else {
+                send::share_text(item, &options.fields)
+            },
             hidden: options.hidden,
             max_access_count: options.max_access_count,
             deletion_date: options.deletion_date.clone(),
@@ -333,6 +346,27 @@ pub fn seal_share(id: &str, options: &str) -> Result<String> {
         .seal(&unlocked.user_key)?;
         json(&sealed.request)
     })
+}
+
+fn has_totp(item: &Item) -> bool {
+    item.login
+        .as_ref()
+        .and_then(|l| l.totp.as_ref())
+        .is_some_and(|t| !t.trim().is_empty())
+}
+
+/// The entry in a Send's text (`uwulock_core::entry_send`), as JSON
+/// `{entry, readable}`, or `null` when the text is plain (no marker, another
+/// version, garbled): then the page shows the text as it is. Needs no
+/// unlocked vault: the Send page of a recipient uses it.
+pub fn decode_entry_send(text: &str) -> Result<String> {
+    match entry_send::decode(text) {
+        Some(entry) => json(&json!({
+            "entry": entry,
+            "readable": entry_send::readable_part(text),
+        })),
+        None => Ok("null".into()),
+    }
 }
 
 /// A Send's link from its `key` and `accessId` as the server answered: on the

@@ -381,6 +381,11 @@ export type ShareInput = {
   emails: string[];
   sendDomainId: string | null;
   hideText: boolean;
+  /**
+   * An entry Send: UwULock's Send page shows it as an entry. Only then may
+   * `fields` name `totp` (live codes, never the key in the readable text).
+   */
+  entry?: boolean;
 };
 
 export const sendOptions = () => invoke<SendOptions>('send_options');

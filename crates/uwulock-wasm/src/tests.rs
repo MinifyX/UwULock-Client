@@ -332,6 +332,96 @@ fn generator_answers() {
     assert_eq!(answer["password"].as_str().unwrap().split('.').count(), 4);
     assert_eq!(answer["bits"], 51);
     assert_eq!(kind(generator::passphrase("\"six\"")), "invalid");
+
+    // Minimums raise the length, and too many are refused.
+    let options = json!({ "length": 8, "lowercase": true, "uppercase": true, "digits": true,
+        "symbols": true, "avoidAmbiguous": false, "minNumber": 6, "minSpecial": 4 });
+    let answer = parse(&generator::password(&options.to_string()).unwrap());
+    let password = answer["password"].as_str().unwrap();
+    assert_eq!(
+        (answer["length"].as_u64(), answer["required"].as_u64()),
+        (Some(12), Some(12))
+    );
+    assert_eq!(password.len(), 12);
+    assert!(password.chars().filter(char::is_ascii_digit).count() >= 6);
+    let options = json!({ "length": 8, "lowercase": true, "uppercase": true, "digits": true,
+        "symbols": true, "avoidAmbiguous": false, "minNumber": 100, "minSpecial": 100 });
+    assert_eq!(kind(generator::password(&options.to_string())), "invalid");
+}
+
+#[test]
+fn totp_codes_with_the_next_one() {
+    let account = account();
+    let mut item = login("Shop", "nyu", "hunter2");
+    item.login.as_mut().unwrap().totp = Some(Zeroizing::new("JBSWY3DPEHPK3PXP".into()));
+    unlocked(&account, vec![cipher(&item, "i1", &account.user_key)]);
+    let at_55 = parse(&view::totp_code("i1", 55).unwrap());
+    assert_eq!(at_55["remaining"], 5);
+    assert_eq!(at_55["showNext"], true);
+    let at_60 = parse(&view::totp_code("i1", 60).unwrap());
+    assert_eq!(at_60["showNext"], false);
+    assert_eq!(at_55["next"], at_60["code"]);
+    assert_eq!(
+        view::reveal("i1", "totp-next", 55).unwrap(),
+        at_60["code"].as_str().unwrap()
+    );
+    // The key alone, as an entry Send has it, gives the same codes.
+    let alone = parse(&view::totp_codes("JBSWY3DPEHPK3PXP", 55).unwrap());
+    assert_eq!(alone, at_55);
+    assert_eq!(kind(view::totp_codes("not base32!", 55)), "crypto");
+}
+
+#[test]
+fn passkeys_are_listed_and_deleted() {
+    let account = account();
+    let make = |rp: &str| {
+        Passkey::generate(
+            rp,
+            Some("Example"),
+            Some(b"u"),
+            Some("nyu"),
+            None,
+            true,
+            NOW,
+        )
+        .unwrap()
+    };
+    let (first, second) = (make("example.com"), make("login.example.com"));
+    let mut item = login("Example", "nyu", "hunter2");
+    item.reprompt = true;
+    item.login.as_mut().unwrap().passkeys = Some(vec![
+        first.seal(&account.user_key),
+        json!({ "credentialId": "2.broken", "creationDate": NOW }),
+        second.seal(&account.user_key),
+    ]);
+    unlocked(&account, vec![cipher(&item, "i1", &account.user_key)]);
+
+    assert_eq!(kind(passkeys::list("i1")), "reprompt");
+    assert_eq!(kind(passkeys::delete("i1", 0, None)), "reprompt");
+    session::verify_reprompt("i1", PASSWORD).unwrap();
+    let listed = parse(&passkeys::list("i1").unwrap());
+    assert_eq!(listed.as_array().unwrap().len(), 3);
+    assert_eq!(listed[0]["rpId"], "example.com");
+    assert_eq!(listed[0]["userName"], "nyu");
+    assert_eq!(listed[0]["creationDate"], NOW);
+    assert_eq!(listed[1]["readable"], false);
+    assert_eq!(listed[2]["credentialId"], second.credential_id.as_str());
+
+    let wrong = Some(first.credential_id.clone());
+    assert_eq!(kind(passkeys::delete("i1", 2, wrong)), "conflict");
+    assert_eq!(kind(passkeys::delete("i1", 7, None)), "not-found");
+    // The broken one goes by its place alone.
+    let answer = parse(&passkeys::delete("i1", 1, None).unwrap());
+    let saved = &answer["cipher"]["login"]["fido2Credentials"];
+    assert_eq!(saved.as_array().unwrap().len(), 2);
+    // The vault in here changed along.
+    let listed = parse(&passkeys::list("i1").unwrap());
+    assert_eq!(listed[1]["credentialId"], second.credential_id.as_str());
+    passkeys::delete("i1", 1, Some(second.credential_id.clone())).unwrap();
+    let answer = parse(&passkeys::delete("i1", 0, Some(first.credential_id.clone())).unwrap());
+    assert!(answer["cipher"]["login"]["fido2Credentials"].is_null());
+    assert_eq!(parse(&view::item("i1").unwrap())["login"]["passkeys"], 0);
+    assert_eq!(parse(&passkeys::list("i1").unwrap()), json!([]));
 }
 
 /// What a site checks of a new passkey's attested data: returns the credential
@@ -949,6 +1039,45 @@ fn an_item_is_shared_as_a_send_without_its_authenticator_key() {
     );
     session::verify_reprompt("g1", PASSWORD).unwrap();
     assert!(extras::seal_share("g1", &options.to_string()).is_ok());
+
+    // As an entry: the readable lines, then the marker with the key for codes.
+    let entry = json!({
+        "fields": [["username", "Username"], ["totp", "Code"], ["uri:0", "Website"]],
+        "deletionDate": "2026-09-29T12:00:00.000Z",
+        "entry": true,
+    });
+    let request = parse(&extras::seal_share("r1", &entry.to_string()).unwrap());
+    let seed =
+        uwulock_core::send::open_seed(request["key"].as_str().unwrap(), &account.user_key).unwrap();
+    let send_key = crypto::send_key(&seed).unwrap();
+    let text = request["text"]["text"]
+        .as_str()
+        .unwrap()
+        .parse::<EncString>()
+        .unwrap()
+        .decrypt_string(&send_key)
+        .unwrap()
+        .to_string();
+    let (readable, marker) = text.rsplit_once('\n').unwrap();
+    assert_eq!(
+        readable,
+        "Router\nUsername: admin\nWebsite: https://example.com/login"
+    );
+    assert!(marker.starts_with("uwulock-entry:v1:"));
+    let decoded = parse(&extras::decode_entry_send(&text).unwrap());
+    assert_eq!(decoded["readable"], readable);
+    assert_eq!(decoded["entry"]["name"], "Router");
+    assert_eq!(decoded["entry"]["username"], "admin");
+    assert_eq!(decoded["entry"]["totp"], "JBSWY3DPEHPK3PXP");
+    assert_eq!(
+        decoded["entry"]["websites"],
+        json!(["https://example.com/login"])
+    );
+    assert_eq!(extras::decode_entry_send(readable).unwrap(), "null");
+    // Only the authenticator key chosen is enough for an entry, not for text.
+    let only = json!({ "fields": [["totp", "Code"]], "deletionDate": "2026-09-29T12:00:00.000Z",
+        "entry": true });
+    assert!(extras::seal_share("r1", &only.to_string()).is_ok());
 }
 
 /// A Wi-Fi network (docs/wifi.md): listed as `wifi` with its SSID, never offered
