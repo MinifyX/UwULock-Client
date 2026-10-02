@@ -337,7 +337,8 @@ pub fn detail(unlocked: &Unlocked, id: &str) -> Result<Value> {
 /// A single value of an item, by name: `password`, `username`, `notes`,
 /// `uri:<n>`, `card-number`, `card-code`, `card-name`, `card-expiry`,
 /// `identity:<name>`, `ssh-private`, `ssh-public`, `ssh-fingerprint`,
-/// `field:<n>`, `history:<n>`, `totp` (the current code).
+/// `field:<n>`, `history:<n>`, `totp` (the current code), `totp-next` (the
+/// code of the next period).
 pub fn value_of(unlocked: &Unlocked, id: &str, field: &str, now: u64) -> Result<Zeroizing<String>> {
     let item = find(unlocked, id)?;
     if awaits_reprompt(unlocked, item) {
@@ -360,6 +361,10 @@ pub fn value_of(unlocked: &Unlocked, id: &str, field: &str, now: u64) -> Result<
         "totp" => {
             let secret = clone(login.and_then(|l| l.totp.as_ref()))?;
             Ok(Totp::parse(&secret)?.code_at(now).0)
+        }
+        "totp-next" => {
+            let secret = clone(login.and_then(|l| l.totp.as_ref()))?;
+            Ok(Totp::parse(&secret)?.next_code_at(now))
         }
         "notes" => clone(item.notes.as_ref()),
         "card-number" => clone(card.and_then(|c| c.number.as_ref())),
@@ -400,10 +405,33 @@ pub fn value_of(unlocked: &Unlocked, id: &str, field: &str, now: u64) -> Result<
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TotpCode {
     code: String,
     remaining: u64,
     period: u64,
+    /// The code of the next period, shown in the last
+    /// [`uwulock_core::totp::NEXT_CODE_WINDOW`] seconds (`showNext`).
+    next: String,
+    show_next: bool,
+}
+
+impl From<uwulock_core::totp::Codes> for TotpCode {
+    fn from(codes: uwulock_core::totp::Codes) -> Self {
+        TotpCode {
+            show_next: codes.show_next(),
+            code: codes.code.to_string(),
+            next: codes.next.to_string(),
+            remaining: codes.remaining,
+            period: codes.period,
+        }
+    }
+}
+
+/// The codes of an authenticator key that isn't an item's: the one in an
+/// entry Send, for its page.
+pub fn totp_codes(secret: &str, now: u64) -> Result<String> {
+    json(&TotpCode::from(Totp::parse(secret)?.codes_at(now)))
 }
 
 pub fn totp(unlocked: &Unlocked, id: &str, now: u64) -> Result<TotpCode> {
@@ -416,11 +444,5 @@ pub fn totp(unlocked: &Unlocked, id: &str, now: u64) -> Result<TotpCode> {
         .as_ref()
         .and_then(|l| l.totp.as_ref())
         .ok_or_else(|| Failure::new("not-found", "No authenticator key."))?;
-    let totp = Totp::parse(secret)?;
-    let (code, remaining) = totp.code_at(now);
-    Ok(TotpCode {
-        code: code.to_string(),
-        remaining,
-        period: totp.period,
-    })
+    Ok(Totp::parse(secret)?.codes_at(now).into())
 }

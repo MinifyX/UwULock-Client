@@ -120,6 +120,25 @@ impl Totp {
         (code, remaining)
     }
 
+    /// The code of the period after the one `unix_seconds` falls in: what the
+    /// apps show small below the current code in its last seconds
+    /// ([`NEXT_CODE_WINDOW`]).
+    pub fn next_code_at(&self, unix_seconds: u64) -> Zeroizing<String> {
+        let start_of_next = (unix_seconds / self.period + 1).saturating_mul(self.period);
+        self.code_at(start_of_next).0
+    }
+
+    /// The current code, the next one and how long the current one lasts.
+    pub fn codes_at(&self, unix_seconds: u64) -> Codes {
+        let (code, remaining) = self.code_at(unix_seconds);
+        Codes {
+            code,
+            next: self.next_code_at(unix_seconds),
+            remaining,
+            period: self.period,
+        }
+    }
+
     /// The code now, by the system clock. Not in a browser build
     /// (`wasm32-unknown-unknown`), where `SystemTime::now` panics: the web
     /// vault passes the time to [`Totp::code_at`] itself (`Date.now() / 1000`).
@@ -130,6 +149,38 @@ impl Totp {
             .map_or(0, |d| d.as_secs());
         self.code_at(now)
     }
+}
+
+/// For how many seconds before a code runs out the apps show the next one
+/// too ("Nächster: 123 456"), with its own copy button.
+pub const NEXT_CODE_WINDOW: u64 = 10;
+
+/// The codes at one moment: [`Totp::codes_at`].
+#[derive(Debug, serde::Serialize)]
+pub struct Codes {
+    #[serde(serialize_with = "plain")]
+    pub code: Zeroizing<String>,
+    /// The code of the following period.
+    #[serde(serialize_with = "plain")]
+    pub next: Zeroizing<String>,
+    /// Seconds the current code stays valid, 1 ..= `period`.
+    pub remaining: u64,
+    pub period: u64,
+}
+
+impl Codes {
+    /// Whether the next code is worth showing: the last
+    /// [`NEXT_CODE_WINDOW`] seconds of the period.
+    pub fn show_next(&self) -> bool {
+        self.remaining <= NEXT_CODE_WINDOW
+    }
+}
+
+fn plain<S: serde::Serializer>(
+    value: &Zeroizing<String>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(value)
 }
 
 fn hmac<M: Mac + hmac::digest::KeyInit>(key: &[u8], counter: u64) -> Vec<u8> {
@@ -238,6 +289,30 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn the_next_code_is_the_one_of_the_following_period() {
+        let totp = Totp::parse(&format!("otpauth://totp/x?secret={RFC_SECRET}&digits=8")).unwrap();
+        // 59 is the last second of period 1; 60 starts period 2.
+        assert_eq!(totp.next_code_at(59), totp.code_at(60).0);
+        assert_eq!(totp.next_code_at(31), totp.code_at(60).0);
+        assert_ne!(totp.next_code_at(30), totp.code_at(30).0);
+        let codes = totp.codes_at(59);
+        assert_eq!(codes.code.as_str(), "94287082");
+        assert_eq!(codes.next, totp.code_at(60).0);
+        assert_eq!((codes.remaining, codes.period), (1, 30));
+        assert!(codes.show_next());
+        assert!(!totp.codes_at(30).show_next());
+        assert!(totp.codes_at(50).show_next());
+        assert!(!totp.codes_at(49).show_next());
+        let json = serde_json::to_value(&codes).unwrap();
+        assert_eq!(json["code"], "94287082");
+        assert_eq!(json["remaining"], 1);
+        // A period of 90 seconds, and the end of time, stay sane.
+        let slow = Totp::parse(&format!("otpauth://totp/x?secret={RFC_SECRET}&period=90")).unwrap();
+        assert_eq!(slow.next_code_at(100), slow.code_at(180).0);
+        let _ = totp.next_code_at(u64::MAX);
     }
 
     #[test]

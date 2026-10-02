@@ -28,7 +28,7 @@ use uwulock_bitwarden::uwu::Info;
 use uwulock_bitwarden::vault::{Field, FieldKind, Item, ItemKind, LoginUri, Secret, WIFI_SSID};
 use uwulock_bitwarden::wire;
 use uwulock_bitwarden::{
-    generator, totp, Client, Device, EncString, Error, Kdf, LoginOutcome, Server, Session,
+    generator, passkey, totp, Client, Device, EncString, Error, Kdf, LoginOutcome, Server, Session,
     SymmetricKey, Vault,
 };
 use zeroize::Zeroizing;
@@ -1746,7 +1746,8 @@ pub(crate) async fn verify_reprompt(
 /// A single value of an item, by name: `password`, `username`, `notes`,
 /// `uri:<n>`, `card-number`, `card-code`, `card-name`, `card-expiry`,
 /// `identity:<name>`, `ssh-private`, `ssh-public`, `ssh-fingerprint`,
-/// `field:<n>`, `history:<n>`, `totp` (the current code).
+/// `field:<n>`, `history:<n>`, `totp` (the current code), `totp-next` (the
+/// code of the next period).
 fn value_of(unlocked: &Unlocked, id: &str, field: &str) -> Result<Zeroizing<String>> {
     let item = find(unlocked, id)?;
     if item.reprompt && !unlocked.reprompt_ok.contains(id) {
@@ -1772,6 +1773,10 @@ fn value_of(unlocked: &Unlocked, id: &str, field: &str) -> Result<Zeroizing<Stri
         "totp" => {
             let secret = clone(login.and_then(|l| l.totp.as_ref()))?;
             Ok(totp::Totp::parse(&secret)?.now().0)
+        }
+        "totp-next" => {
+            let secret = clone(login.and_then(|l| l.totp.as_ref()))?;
+            Ok(totp::Totp::parse(&secret)?.next_code_at(now()))
         }
         "notes" => clone(item.notes.as_ref()),
         "card-number" => clone(card.and_then(|c| c.number.as_ref())),
@@ -1869,6 +1874,11 @@ pub struct TotpCode {
     code: String,
     remaining: u64,
     period: u64,
+    /// The code of the next period; `show_next` in its last
+    /// [`totp::NEXT_CODE_WINDOW`] seconds ("Nächster: 123 456"). Copied with
+    /// `copy_field(id, "totp-next")`.
+    next: String,
+    show_next: bool,
 }
 
 #[tauri::command]
@@ -1886,12 +1896,13 @@ pub(crate) fn totp_code(state: State<'_, VaultState>, id: String) -> Result<Totp
             .as_ref()
             .and_then(|l| l.totp.as_ref())
             .ok_or_else(|| Failure::new("not-found", "No authenticator key."))?;
-        let totp = totp::Totp::parse(secret)?;
-        let (code, remaining) = totp.now();
+        let codes = totp::Totp::parse(secret)?.codes_at(now());
         Ok(TotpCode {
-            code: code.to_string(),
-            remaining,
-            period: totp.period,
+            show_next: codes.show_next(),
+            code: codes.code.to_string(),
+            next: codes.next.to_string(),
+            remaining: codes.remaining,
+            period: codes.period,
         })
     })
 }
@@ -1900,15 +1911,75 @@ pub(crate) fn totp_code(state: State<'_, VaultState>, id: String) -> Result<Totp
 pub struct Generated {
     password: String,
     bits: u32,
+    /// The length it has: more than asked for when the minimums need more.
+    length: usize,
+    /// What the minimums of the sets that are on add up to.
+    required: usize,
 }
 
+/// A password; the options' minimums (`minLowercase`, `minUppercase`,
+/// `minNumber`, `minSpecial`) raise the length, and are refused (`invalid`)
+/// beyond 128 characters.
 #[tauri::command]
-pub(crate) fn generate_password(options: generator::Options) -> Generated {
+pub(crate) fn generate_password(options: generator::Options) -> Result<Generated> {
+    options
+        .check()
+        .map_err(|e| Failure::new("invalid", e.to_string()))?;
     let password = generator::password(&options);
-    Generated {
+    Ok(Generated {
         bits: generator::entropy_bits(&password),
         password: password.to_string(),
-    }
+        length: options.effective_length(),
+        required: options.required(),
+    })
+}
+
+// ── Passkeys ───────────────────────────────────────────────
+
+/// An item's passkeys for its details, nothing secret:
+/// `[{index, readable, credentialId, rpId, rpName, userName,
+/// userDisplayName, creationDate, discoverable}]`.
+#[tauri::command]
+pub(crate) fn item_passkeys(
+    state: State<'_, VaultState>,
+    id: String,
+) -> Result<Vec<passkey::PasskeyInfo>> {
+    state.with_unlocked(|u| {
+        let item = find(u, &id)?;
+        if item.reprompt && !u.reprompt_ok.contains(&id) {
+            return Err(Failure::new(
+                "reprompt",
+                "This item asks for the master password first.",
+            ));
+        }
+        let key = u.vault.item_key(item, &u.user_key)?;
+        Ok(passkey::list(item, key))
+    })
+}
+
+/// Deletes an item's passkey at `index` — with `credential_id`, only if it
+/// still is that one (else `conflict`) — and saves the item.
+#[tauri::command]
+pub(crate) async fn delete_passkey(
+    app: AppHandle,
+    state: State<'_, VaultState>,
+    id: String,
+    index: usize,
+    credential_id: Option<String>,
+) -> Result<()> {
+    let (account_id, _) = state.active_account()?;
+    let mut trial = prepare(&state, &account_id, &id)?;
+    let key = state.with_unlocked(|u| Ok(u.vault.item_key(&trial, &u.user_key)?.clone()))?;
+    passkey::remove(&mut trial, &key, index, credential_id.as_deref()).map_err(|e| match e {
+        Error::Refused(_) => Failure::new("not-found", "This item has no such passkey."),
+        other => other.into(),
+    })?;
+    change_item(&app, &state, &id, move |item| {
+        let _ = passkey::remove(item, &key, index, credential_id.as_deref());
+    })
+    .await?;
+    tracing::info!("a passkey deleted");
+    Ok(())
 }
 
 // ── Saving ─────────────────────────────────────────────────

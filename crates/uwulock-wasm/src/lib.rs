@@ -312,9 +312,20 @@ pub fn reveal(id: &str, field: &str, now: f64) -> Result<String, JsValue> {
     js(view::reveal(id, field, now as u64))
 }
 
+/// An item's one-time codes: `{code, remaining, period, next, showNext}`.
+/// `next` is the code of the following period; `showNext` is true in the
+/// last 10 seconds, when the apps show it ("Nächster: 123 456").
+/// `reveal(id, "totp-next", now)` gives the next code alone, for copying.
 #[wasm_bindgen]
 pub fn totp(id: &str, now: f64) -> Result<String, JsValue> {
     js(view::totp_code(id, now as u64))
+}
+
+/// The codes of an authenticator key itself (the one in an entry Send), in
+/// the shape of [`totp`]. Needs no unlocked vault.
+#[wasm_bindgen(js_name = totpCodes)]
+pub fn totp_codes(secret: &str, now: f64) -> Result<String, JsValue> {
+    js(view::totp_codes(secret, now as u64))
 }
 
 /// An item as the server takes it: a new one (`id` empty) or a change to one,
@@ -340,7 +351,9 @@ pub fn encrypt_text(text: &str) -> Result<String, JsValue> {
 
 // ── The generator ─────────────────────────────────────────
 
-/// A random password: `{"password", "bits"}`.
+/// A random password: `{"password", "bits", "length", "required"}`. The
+/// options take `minLowercase`, `minUppercase`, `minNumber`, `minSpecial`
+/// too; `length` is raised to what they need (`required`).
 #[wasm_bindgen]
 pub fn generate(options: &str) -> Result<String, JsValue> {
     js(generator::password(options))
@@ -396,9 +409,20 @@ pub fn shareable_fields(id: &str) -> Result<String, JsValue> {
 }
 
 /// A text Send with chosen values of an item: the body of `POST /api/sends`.
+/// With `"entry": true` in the options it is an entry Send, and `fields` may
+/// name `totp` (live codes on the Send page, never the key in the text).
 #[wasm_bindgen(js_name = sealShare)]
 pub fn seal_share(id: &str, options: &str) -> Result<String, JsValue> {
     js(extras::seal_share(id, options))
+}
+
+/// The entry in a Send's text: `{entry, readable}` or `null` for a plain
+/// text. `entry` is `{name, username?, password?, websites[], notes?,
+/// fields[{name, value, hidden}], totp?}`; show `totp` only as live codes
+/// ([`totp_codes`]). Needs no unlocked vault.
+#[wasm_bindgen(js_name = decodeEntrySend)]
+pub fn decode_entry_send(text: &str) -> Result<String, JsValue> {
+    js(extras::decode_entry_send(text))
 }
 
 /// A Send's link from the `key` and `accessId` the server answered.
@@ -439,4 +463,22 @@ pub fn passkey_create(request: &str) -> Result<String, JsValue> {
 #[wasm_bindgen(js_name = passkeyAssert)]
 pub fn passkey_assert(request: &str) -> Result<String, JsValue> {
     js(passkeys::assert(request))
+}
+
+/// The passkeys of an item: `[{index, readable, credentialId, rpId, rpName,
+/// userName, userDisplayName, creationDate, discoverable}]`.
+#[wasm_bindgen(js_name = itemPasskeys)]
+pub fn item_passkeys(id: &str) -> Result<String, JsValue> {
+    js(passkeys::list(id))
+}
+
+/// Deletes an item's passkey at `index` (checked against `credentialId` when
+/// given): `{cipher}` for `PUT /api/ciphers/<id>`.
+#[wasm_bindgen(js_name = deletePasskey)]
+pub fn delete_passkey(
+    id: &str,
+    index: u32,
+    credential_id: Option<String>,
+) -> Result<String, JsValue> {
+    js(passkeys::delete(id, index as usize, credential_id))
 }

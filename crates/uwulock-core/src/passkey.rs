@@ -451,6 +451,103 @@ fn cbor_text(out: &mut Vec<u8>, text: &str) {
     out.extend_from_slice(text.as_bytes());
 }
 
+/// What a person sees of a passkey in an item's details: no key, nothing
+/// secret. [`list`] makes them.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PasskeyInfo {
+    /// Its place among the login's passkeys: what [`remove`] takes.
+    pub index: usize,
+    /// `false` for one UwULock can't open (another algorithm, a value that
+    /// doesn't decrypt): it can still be deleted, the rest is empty.
+    pub readable: bool,
+    /// As stored ([`Passkey::credential_id`]); empty when not readable.
+    pub credential_id: String,
+    pub rp_id: String,
+    pub rp_name: Option<String>,
+    pub user_name: Option<String>,
+    pub user_display_name: Option<String>,
+    /// An ISO date, or empty when the passkey has none.
+    pub creation_date: String,
+    pub discoverable: bool,
+}
+
+/// The passkeys of an item, for its details. `key` is the item's own key, or
+/// the key it is under ([`crate::vault::Vault::item_key`]).
+pub fn list(item: &crate::vault::Item, key: &SymmetricKey) -> Vec<PasskeyInfo> {
+    let Some(raw) = item.login.as_ref().and_then(|l| l.passkeys.as_ref()) else {
+        return Vec::new();
+    };
+    raw.iter()
+        .enumerate()
+        .map(|(index, raw)| match Passkey::open(raw, key) {
+            Ok(passkey) => PasskeyInfo {
+                index,
+                readable: true,
+                credential_id: passkey.credential_id.clone(),
+                rp_id: passkey.rp_id.clone(),
+                rp_name: passkey.rp_name.clone(),
+                user_name: passkey.user_name.clone(),
+                user_display_name: passkey.user_display_name.clone(),
+                creation_date: passkey.creation_date.clone(),
+                discoverable: passkey.discoverable,
+            },
+            Err(_) => PasskeyInfo {
+                index,
+                readable: false,
+                credential_id: String::new(),
+                rp_id: String::new(),
+                rp_name: None,
+                user_name: None,
+                user_display_name: None,
+                creation_date: match field_of(raw, "creationDate") {
+                    Some(Value::String(date)) => date.clone(),
+                    _ => String::new(),
+                },
+                discoverable: false,
+            },
+        })
+        .collect()
+}
+
+fn field_of<'a>(raw: &'a Value, name: &str) -> Option<&'a Value> {
+    match raw {
+        Value::Object(map) => field(map, name),
+        _ => None,
+    }
+}
+
+/// Deletes the passkey at `index` from an item (then seal and save the
+/// item). With `credential_id`, only if the passkey there still is that one,
+/// so a sync in between doesn't delete another: otherwise
+/// [`Error::Conflict`]. A login without passkeys left has `passkeys: None`.
+pub fn remove(
+    item: &mut crate::vault::Item,
+    key: &SymmetricKey,
+    index: usize,
+    credential_id: Option<&str>,
+) -> Result<(), Error> {
+    let passkeys = item
+        .login
+        .as_mut()
+        .and_then(|l| l.passkeys.as_mut())
+        .filter(|p| index < p.len())
+        .ok_or_else(|| Error::Refused("this item has no such passkey".into()))?;
+    if let Some(wanted) = credential_id.filter(|id| !id.is_empty()) {
+        let there = Passkey::open(&passkeys[index], key)?;
+        if there.credential_id != wanted {
+            return Err(Error::Conflict);
+        }
+    }
+    passkeys.remove(index);
+    if passkeys.is_empty() {
+        if let Some(login) = item.login.as_mut() {
+            login.passkeys = None;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -695,5 +792,58 @@ mod tests {
 
         let short = attestation_object(&[0xaa; 37]);
         assert_eq!(short[short.len() - 39..short.len() - 37], [0x58, 37]);
+    }
+
+    #[test]
+    fn list_and_remove_passkeys() {
+        use crate::vault::{Item, ItemKind};
+        let key = SymmetricKey::generate();
+        let first = passkey();
+        let second = Passkey::generate(
+            "login.example.com",
+            None,
+            None,
+            Some("other"),
+            None,
+            false,
+            "2026-09-29T12:00:00.000Z",
+        )
+        .unwrap();
+        let mut item = Item::new(ItemKind::Login);
+        let other_key = SymmetricKey::generate();
+        item.login.as_mut().unwrap().passkeys = Some(vec![
+            first.seal(&key),
+            second.seal(&key),
+            // Under another key: not readable here, still listed.
+            first.seal(&other_key),
+        ]);
+        let shown = list(&item, &key);
+        assert_eq!(shown.len(), 3);
+        assert_eq!(shown[0].rp_id, "example.com");
+        assert_eq!(shown[0].rp_name.as_deref(), Some("Example"));
+        assert_eq!(shown[0].user_name.as_deref(), Some("nyu@example.com"));
+        assert_eq!(shown[0].creation_date, "2026-09-28T12:00:00.000Z");
+        assert!(shown[0].discoverable && shown[0].readable);
+        assert_eq!(shown[1].credential_id, second.credential_id);
+        assert!(!shown[2].readable && shown[2].credential_id.is_empty());
+        assert_eq!(shown[2].creation_date, "2026-09-28T12:00:00.000Z");
+        let json = serde_json::to_value(&shown[0]).unwrap();
+        assert_eq!(json["rpId"], "example.com");
+        assert!(json.get("keyValue").is_none());
+
+        // The wrong id for that place: nothing is deleted.
+        assert!(matches!(
+            remove(&mut item, &key, 0, Some(&second.credential_id)),
+            Err(Error::Conflict)
+        ));
+        assert!(remove(&mut item, &key, 9, None).is_err());
+        remove(&mut item, &key, 2, None).unwrap();
+        remove(&mut item, &key, 0, Some(&first.credential_id)).unwrap();
+        let left = list(&item, &key);
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].credential_id, second.credential_id);
+        remove(&mut item, &key, 0, None).unwrap();
+        assert!(item.login.as_ref().unwrap().passkeys.is_none());
+        assert!(list(&item, &key).is_empty());
     }
 }

@@ -1,6 +1,7 @@
 //! Random passwords from the system's CSPRNG, with at least one character of
-//! every set that is switched on, like Bitwarden's generator — and
-//! passphrases, words from EFF's long list, like Bitwarden's too.
+//! every set that is switched on (or as many as its minimum asks for), like
+//! Bitwarden's generator — and passphrases, words from EFF's long list, like
+//! Bitwarden's too.
 
 use rand::seq::SliceRandom;
 use rand::Rng;
@@ -18,6 +19,17 @@ pub struct Options {
     pub symbols: bool,
     /// Leaves out characters that look alike: l, 1, I, O, 0.
     pub avoid_ambiguous: bool,
+    /// At least this many of each set, when the set is on; 0 or 1 both mean
+    /// "at least one". Bitwarden keeps `minNumber` and `minSpecial`; the
+    /// other two are UwULock's. Left out, they are 0.
+    #[serde(default)]
+    pub min_lowercase: usize,
+    #[serde(default)]
+    pub min_uppercase: usize,
+    #[serde(default, alias = "minDigits")]
+    pub min_number: usize,
+    #[serde(default, alias = "minSymbols")]
+    pub min_special: usize,
 }
 
 impl Default for Options {
@@ -29,6 +41,10 @@ impl Default for Options {
             digits: true,
             symbols: true,
             avoid_ambiguous: false,
+            min_lowercase: 0,
+            min_uppercase: 0,
+            min_number: 0,
+            min_special: 0,
         }
     }
 }
@@ -36,35 +52,91 @@ impl Default for Options {
 pub const MIN_LENGTH: usize = 5;
 pub const MAX_LENGTH: usize = 128;
 
+impl Options {
+    /// The sets that are on, each with how many of it the password needs
+    /// (at least one). Lower case alone when none is on.
+    fn sets(&self) -> Vec<(&'static str, usize)> {
+        let mut sets = Vec::new();
+        for (on, set, min) in [
+            (
+                self.lowercase,
+                "abcdefghijklmnopqrstuvwxyz",
+                self.min_lowercase,
+            ),
+            (
+                self.uppercase,
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+                self.min_uppercase,
+            ),
+            (self.digits, "0123456789", self.min_number),
+            (self.symbols, "!@#$%^&*", self.min_special),
+        ] {
+            if on {
+                sets.push((set, min.clamp(1, MAX_LENGTH)));
+            }
+        }
+        if sets.is_empty() {
+            sets.push((
+                "abcdefghijklmnopqrstuvwxyz",
+                self.min_lowercase.clamp(1, MAX_LENGTH),
+            ));
+        }
+        sets
+    }
+
+    /// How many characters the minimums of the sets that are on add up to
+    /// (each set at least one).
+    pub fn required(&self) -> usize {
+        self.sets().iter().map(|(_, min)| min).sum()
+    }
+
+    /// The length [`password`] makes: the one asked for, raised to what the
+    /// minimums need, within [`MIN_LENGTH`] ..= [`MAX_LENGTH`]. When it is
+    /// longer than `length`, the editor says so ("raised to 24").
+    pub fn effective_length(&self) -> usize {
+        self.length
+            .max(self.required())
+            .clamp(MIN_LENGTH, MAX_LENGTH)
+    }
+
+    /// Refuses minimums that can't fit into [`MAX_LENGTH`] characters. Any
+    /// other combination works: a length below the minimums is raised.
+    pub fn check(&self) -> Result<(), crate::Error> {
+        if self.required() > MAX_LENGTH {
+            return Err(crate::Error::Crypto(format!(
+                "the minimums add up to more than {MAX_LENGTH} characters"
+            )));
+        }
+        Ok(())
+    }
+}
+
+/// A random password. Never fails: a length below the minimums is raised
+/// ([`Options::effective_length`]); minimums beyond [`MAX_LENGTH`] (which
+/// [`Options::check`] refuses) are cut, the first sets first served.
 pub fn password(options: &Options) -> Zeroizing<String> {
     let strip = |set: &str| -> Vec<char> {
         set.chars()
             .filter(|c| !options.avoid_ambiguous || !"lIO01".contains(*c))
             .collect()
     };
-    let mut sets: Vec<Vec<char>> = Vec::new();
-    if options.lowercase {
-        sets.push(strip("abcdefghijklmnopqrstuvwxyz"));
-    }
-    if options.uppercase {
-        sets.push(strip("ABCDEFGHIJKLMNOPQRSTUVWXYZ"));
-    }
-    if options.digits {
-        sets.push(strip("0123456789"));
-    }
-    if options.symbols {
-        sets.push(strip("!@#$%^&*"));
-    }
-    if sets.is_empty() {
-        sets.push(strip("abcdefghijklmnopqrstuvwxyz"));
-    }
-    let length = options.length.clamp(MIN_LENGTH.max(sets.len()), MAX_LENGTH);
-    let all: Vec<char> = sets.iter().flatten().copied().collect();
+    let sets: Vec<(Vec<char>, usize)> = options
+        .sets()
+        .into_iter()
+        .map(|(set, min)| (strip(set), min))
+        .collect();
+    let length = options.effective_length();
+    let all: Vec<char> = sets.iter().flat_map(|(set, _)| set).copied().collect();
     let mut rng = rand::rngs::OsRng;
 
     let mut chars: Zeroizing<Vec<char>> = Zeroizing::new(Vec::with_capacity(length));
-    for set in &sets {
-        chars.push(set[rng.gen_range(0..set.len())]);
+    'sets: for (set, min) in &sets {
+        for _ in 0..*min {
+            if chars.len() == length {
+                break 'sets;
+            }
+            chars.push(set[rng.gen_range(0..set.len())]);
+        }
     }
     while chars.len() < length {
         chars.push(all[rng.gen_range(0..all.len())]);
@@ -214,6 +286,111 @@ mod tests {
             .len(),
             MAX_LENGTH
         );
+    }
+
+    fn count(p: &str, set: &str) -> usize {
+        p.chars().filter(|c| set.contains(*c)).count()
+    }
+
+    #[test]
+    fn minimums_are_met() {
+        let options = Options {
+            length: 16,
+            min_lowercase: 3,
+            min_uppercase: 4,
+            min_number: 5,
+            min_special: 2,
+            ..Options::default()
+        };
+        assert_eq!(options.required(), 14);
+        assert_eq!(options.effective_length(), 16);
+        options.check().unwrap();
+        for _ in 0..200 {
+            let p = password(&options);
+            assert_eq!(p.chars().count(), 16);
+            assert!(count(&p, "abcdefghijklmnopqrstuvwxyz") >= 3);
+            assert!(count(&p, "ABCDEFGHIJKLMNOPQRSTUVWXYZ") >= 4);
+            assert!(count(&p, "0123456789") >= 5);
+            assert!(count(&p, "!@#$%^&*") >= 2);
+        }
+    }
+
+    #[test]
+    fn a_short_length_is_raised_to_the_minimums() {
+        let options = Options {
+            length: 8,
+            min_number: 9,
+            min_special: 6,
+            ..Options::default()
+        };
+        // 9 + 6 and one each of the letters.
+        assert_eq!(options.required(), 17);
+        assert_eq!(options.effective_length(), 17);
+        let p = password(&options);
+        assert_eq!(p.chars().count(), 17);
+        assert!(count(&p, "0123456789") >= 9);
+        assert!(count(&p, "!@#$%^&*") >= 6);
+    }
+
+    #[test]
+    fn minimums_of_sets_that_are_off_count_for_nothing() {
+        let options = Options {
+            length: 10,
+            digits: false,
+            symbols: false,
+            min_number: 50,
+            min_special: 50,
+            ..Options::default()
+        };
+        assert_eq!(options.required(), 2);
+        let p = password(&options);
+        assert_eq!(count(&p, "0123456789!@#$%^&*"), 0);
+    }
+
+    #[test]
+    fn minimums_beyond_the_longest_password_are_refused_but_never_panic() {
+        let options = Options {
+            length: 20,
+            min_lowercase: 100,
+            min_number: 100,
+            ..Options::default()
+        };
+        assert!(options.check().is_err());
+        assert_eq!(options.effective_length(), MAX_LENGTH);
+        let p = password(&options);
+        assert_eq!(p.chars().count(), MAX_LENGTH);
+        // With avoid_ambiguous the digits are 2–9 only; still no panic.
+        let p = password(&Options {
+            avoid_ambiguous: true,
+            ..options
+        });
+        assert_eq!(p.chars().count(), MAX_LENGTH);
+    }
+
+    #[test]
+    fn options_from_json_with_bitwarden_names() {
+        let options: Options = serde_json::from_str(
+            r#"{"length": 12, "lowercase": true, "uppercase": true, "digits": true,
+                "symbols": true, "avoidAmbiguous": false, "minNumber": 3, "minSpecial": 2,
+                "minLowercase": 1, "minUppercase": 4}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            (
+                options.min_number,
+                options.min_special,
+                options.min_lowercase,
+                options.min_uppercase
+            ),
+            (3, 2, 1, 4)
+        );
+        // Older settings without minimums still read.
+        let old: Options = serde_json::from_str(
+            r#"{"length": 12, "lowercase": true, "uppercase": true, "digits": true,
+                "symbols": true, "avoidAmbiguous": false}"#,
+        )
+        .unwrap();
+        assert_eq!(old.required(), 4);
     }
 
     fn words_of(phrase: &str, separator: &str) -> Vec<String> {

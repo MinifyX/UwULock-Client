@@ -246,3 +246,49 @@ pub fn assert(request: &str) -> Result<String> {
         json(&answer)
     })
 }
+
+// ── Managing an item's passkeys ───────────────────────────
+
+/// The passkeys of an item for its details:
+/// `[{index, readable, credentialId, rpId, rpName, userName,
+/// userDisplayName, creationDate, discoverable}]`. Nothing secret.
+pub fn list(id: &str) -> Result<String> {
+    with_unlocked(|unlocked| {
+        let item = find(unlocked, id)?;
+        if awaits_reprompt(unlocked, item) {
+            return Err(reprompt_first());
+        }
+        let key = unlocked.vault.item_key(item, &unlocked.user_key)?;
+        json(&uwulock_core::passkey::list(item, key))
+    })
+}
+
+/// Deletes the passkey at `index` (with `credential_id`, only if it still is
+/// that one: else a `conflict`). Answers the item as the server takes it,
+/// `{cipher}`, for `PUT /api/ciphers/<id>`; the item in here changes along.
+pub fn delete(id: &str, index: usize, credential_id: Option<String>) -> Result<String> {
+    with_unlocked(|unlocked| {
+        let mut item = existing_login(unlocked, id)?;
+        let key = unlocked.vault.item_key(&item, &unlocked.user_key)?.clone();
+        uwulock_core::passkey::remove(&mut item, &key, index, credential_id.as_deref()).map_err(
+            |error| match error {
+                uwulock_core::Error::Conflict => Failure::new(
+                    "conflict",
+                    "This passkey changed in the meantime. Look again.",
+                ),
+                uwulock_core::Error::Refused(_) => {
+                    Failure::new("not-found", "This item has no such passkey.")
+                }
+                other => other.into(),
+            },
+        )?;
+        let outer = unlocked
+            .vault
+            .outer_key(item.organization_id.as_deref(), &unlocked.user_key)?
+            .clone();
+        item.can_save()?;
+        let cipher = item.seal(&outer)?;
+        replace(unlocked, item);
+        json(&json!({ "cipher": cipher }))
+    })
+}

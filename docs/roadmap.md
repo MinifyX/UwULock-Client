@@ -59,6 +59,17 @@ Still to come:
 - Import from Bitwarden JSON, KeePass, browser CSV; encrypted export
 - Attachments, sends and passkeys in the desktop app
 
+## 0.5 · Passkeys everywhere, entry Sends (in progress)
+
+- [x] uwulock-core: generator minimums per set (`minLowercase`,
+      `minUppercase`, `minNumber`, `minSpecial`; the length is raised to fit),
+      the next one-time code for the last 10 seconds of a period, passkey
+      details and deletion, entry Sends
+      ([uwu-extras.md](uwu-extras.md#entry-sends)) — in the extension's WASM
+      and the desktop app's commands
+- [ ] The apps' UI for these, passkey providers on Android, iOS/macOS,
+      Windows and Linux
+
 ## 0.4 · Wi-Fi networks and phones (0.4.0-beta.3 released)
 
 - [x] Wi-Fi networks as an item type of their own, the same contract as UwULock

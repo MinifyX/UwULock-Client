@@ -116,6 +116,8 @@ pub fn run() {
             vault::copy_generated,
             vault::totp_code,
             vault::generate_password,
+            vault::item_passkeys,
+            vault::delete_passkey,
             vault::save_item,
             vault::set_favorite,
             vault::set_item_folder,
