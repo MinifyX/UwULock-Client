@@ -138,7 +138,11 @@ plugin, `crates/tauri-plugin-uwulock-mobile`:
 
 Commands today: `unlockStatus`, `unlockCreate`, `unlockOpen`, `unlockDelete`
 (biometric unlock), `copySecret`, `clearClipboard`, `setAppearance` (system bar
-colours), `saveToDownloads`, `connectWifi`, `openWifiSettings` (Android). The app reaches the plugin through
+colours), `saveToDownloads`, `connectWifi`, `openWifiSettings` (Android), and for the AutoFill
+extension on iOS `passkeysStatus`, `passkeysStore`, `passkeysOutbox`, `passkeysClearOutbox`,
+`passkeysClear` (`ios/Sources/Passkeys.swift`). Android's passkey provider isn't a command: the
+system starts `PasskeyProviderService` and `PasskeyActivity`, which call into Rust through JNI
+(`PasskeyBridge`) — see [passkeys.md](passkeys.md). The app reaches the plugin through
 `phone::plugin()` in `apps/desktop/src-tauri/src/phone.rs`. Every call waits for
 the phone's answer, so it must never run on the main thread — spawn a thread
 (`std::thread::spawn`) or use `tauri::async_runtime::spawn_blocking`, as

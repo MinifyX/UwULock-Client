@@ -195,6 +195,8 @@ jobs:
           test -f /var/lib/dpkg/info/uwulock.list
           grep -qx /usr/bin/uwulock-desktop /var/lib/dpkg/info/uwulock.list
           grep -q '^Name=UwULock$' /usr/share/applications/uwulock.desktop
+          # The virtual security key's udev rule (passkeys).
+          grep -qx /usr/lib/udev/rules.d/60-uwulock-passkeys.rules /var/lib/dpkg/info/uwulock.list
           ldd /usr/bin/uwulock-desktop | grep "not found" && exit 1 || echo "every library found"
           sudo apt-get remove -y uwulock
           test ! -e /usr/bin/uwulock-desktop
@@ -202,6 +204,7 @@ jobs:
           sudo apt-get install -y rpm
           test "$(rpm -qp --queryformat '%{NAME}' target/installers/UwULock-linux-$arch.rpm)" = uwulock
           rpm -qpl target/installers/UwULock-linux-$arch.rpm | grep -qx /usr/bin/uwulock-desktop
+          rpm -qpl target/installers/UwULock-linux-$arch.rpm | grep -qx /usr/lib/udev/rules.d/60-uwulock-passkeys.rules
 
           portable="$RUNNER_TEMP/portable"
           mkdir -p "$portable"

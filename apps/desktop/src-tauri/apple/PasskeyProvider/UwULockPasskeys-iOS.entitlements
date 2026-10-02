@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- For a signed build only (docs/passkeys.md): the app (app.uwulock) needs the same App Group
+     and Keychain group, without the AutoFill entitlement. -->
+<plist version="1.0">
+<dict>
+	<key>com.apple.developer.authentication-services.autofill-credential-provider</key>
+	<true/>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.app.uwulock</string>
+	</array>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)app.uwulock.passkeys</string>
+	</array>
+</dict>
+</plist>

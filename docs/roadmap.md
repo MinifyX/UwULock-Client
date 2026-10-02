@@ -80,7 +80,11 @@ Still to come:
       waited out as its `Retry-After` says (at most 8 tries) and doesn't make
       the check incomplete — only a real failure does; the check shows how far
       each source is, and when XposedOrNot waits for the server
-- [ ] Passkey providers on Android, iOS/macOS, Windows and Linux
+- [x] Passkey providers ([passkeys.md](passkeys.md)): a virtual security
+      key on Linux, a plugin passkey manager on Windows 11 (experimental),
+      Credential Manager on Android 14+, an AutoFill extension on iOS 17+ and
+      macOS 14+ (works once the app is signed with an Apple developer team).
+      Not yet tried on real devices
 
 ## 0.4 · Wi-Fi networks and phones (0.4.0-beta.3 released)
 
@@ -125,7 +129,7 @@ Later on phones:
 - Filling logins into other apps: an Android autofill service and an iOS
   password provider (credential provider extension; needs a signed app with
   the AutoFill entitlement)
-- Passkeys on the phone
+- [x] Passkeys on the phone (0.5, see above)
 
 ## Later · A server of its own
 

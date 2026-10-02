@@ -65,10 +65,20 @@
     "longDescription": "The password manager I build for myself, in the UwUSuite style: opens your Vaultwarden or Bitwarden vault with the same encryption as the official apps, and nothing leaves your device unencrypted.",
     "linux": {
       "deb": {
-        "desktopTemplate": "linux/uwulock.desktop"
+        "desktopTemplate": "linux/uwulock.desktop",
+        "files": {
+          "/usr/lib/udev/rules.d/60-uwulock-passkeys.rules": "linux/60-uwulock-passkeys.rules",
+          "/usr/lib/modules-load.d/uwulock-passkeys.conf": "linux/uwulock-passkeys.conf"
+        },
+        "postInstallScript": "linux/postinst.sh"
       },
       "rpm": {
-        "desktopTemplate": "linux/uwulock.desktop"
+        "desktopTemplate": "linux/uwulock.desktop",
+        "files": {
+          "/usr/lib/udev/rules.d/60-uwulock-passkeys.rules": "linux/60-uwulock-passkeys.rules",
+          "/usr/lib/modules-load.d/uwulock-passkeys.conf": "linux/uwulock-passkeys.conf"
+        },
+        "postInstallScript": "linux/postinst.sh"
       }
     }
   }

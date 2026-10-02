@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Credential Manager's provider (PasskeyProviderService) only from Android 14 on. -->
+    <bool name="uwulock_passkeys_enabled">false</bool>
+    <string name="uwulock_passkeys_label">UwULock</string>
+    <string name="uwulock_passkeys_unlock">Unlock UwULock</string>
+    <string name="uwulock_passkeys_create">Save the passkey in UwULock</string>
+    <string name="uwulock_passkeys_create_hint">Saved in your vault, synced to your other devices</string>
+    <string name="uwulock_passkeys_verify">Confirm it\'s you</string>
+    <string name="uwulock_passkeys_verify_create">To save a passkey for %1$s in UwULock</string>
+    <string name="uwulock_passkeys_verify_get">To sign in to %1$s with UwULock</string>
+    <string name="uwulock_passkeys_locked">Unlock UwULock, then go back.</string>
+    <style name="UwULockPasskeyTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
+</resources>

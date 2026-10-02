@@ -12,5 +12,12 @@
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+
+	<!-- The AutoFill extension's shared places (passkeys/apple.rs, docs/passkeys.md): only there
+	     in a build signed with an Apple developer team, with the matching entitlements. -->
+	<key>UwULockAppGroup</key>
+	<string>group.app.uwulock</string>
+	<key>UwULockKeychainGroup</key>
+	<string>$(AppIdentifierPrefix)app.uwulock.passkeys</string>
 </dict>
 </plist>

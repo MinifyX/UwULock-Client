@@ -5786,6 +5786,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "uwulock-authenticator"
+version = "0.4.0-beta.3"
+dependencies = [
+ "aes-gcm",
+ "base64 0.22.1",
+ "p256",
+ "rand 0.8.8",
+ "serde",
+ "serde_json",
+ "sha2",
+ "uwulock-core",
+ "zeroize",
+]
+
+[[package]]
 name = "uwulock-bitwarden"
 version = "0.4.0-beta.3"
 dependencies = [
@@ -5844,10 +5859,13 @@ version = "0.4.0-beta.3"
 dependencies = [
  "arboard",
  "base64 0.22.1",
+ "jni 0.21.1",
  "libc",
  "minisign-verify",
  "parking_lot",
  "rand 0.8.8",
+ "reqwest 0.12.28",
+ "security-framework",
  "semver",
  "serde",
  "serde_json",
@@ -5863,9 +5881,11 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
+ "uwulock-authenticator",
  "uwulock-bitwarden",
  "uwulock-core",
  "windows",
+ "windows-core 0.61.2",
  "windows-sys 0.61.2",
  "zbus",
  "zeroize",

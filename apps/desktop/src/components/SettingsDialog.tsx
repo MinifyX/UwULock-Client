@@ -24,6 +24,7 @@ import { FontPicker } from './FontPicker';
 import { Modal } from './Modal';
 import { MoveSetting } from './MoveDialog';
 import { Nyu } from './nyu/Nyu';
+import { PasskeySettings } from './PasskeySettings';
 
 export type SettingsSection = 'appearance' | 'security' | 'account' | 'updates' | 'about';
 
@@ -289,6 +290,7 @@ function Security({ status, onClose }: { status: Status; onClose: () => void }) 
           />
         </Row>
       )}
+      <PasskeySettings Row={Row} Toggle={Toggle} />
       <Row
         label={t('Jetzt sperren')}
         description={isMobile() ? undefined : t('Auch mit Strg+L, von überall in UwULock.')}
