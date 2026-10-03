@@ -28,11 +28,14 @@ mod linux {
     use std::io::{self, Write};
     use std::os::fd::{AsRawFd, FromRawFd};
     use std::os::unix::net::UnixStream;
+    use std::path::Path;
     use std::time::Duration;
 
     use uwulock_authenticator::broker::{self, kind};
     use uwulock_authenticator::uhid;
-    use uwulock_uhid_broker::{active_uid, relay_app, relay_kernel, uevent_uniq};
+    use uwulock_uhid_broker::{
+        active_uid, drop_capabilities, holder_pid, program, relay_app, relay_kernel, uevent_uniq,
+    };
 
     const SEAT: &str = "/run/systemd/seats/seat0";
     const LOCKS: &str = "/run/uwulock";
@@ -60,7 +63,9 @@ mod linux {
         Ok(stream)
     }
 
-    fn peer_uid(stream: &UnixStream) -> io::Result<u32> {
+    /// The connecting program's uid and pid, as the kernel saw them at
+    /// connect time.
+    fn peer(stream: &UnixStream) -> io::Result<(u32, u32)> {
         let mut cred = libc::ucred {
             pid: 0,
             uid: 0,
@@ -80,24 +85,38 @@ mod linux {
         if result != 0 {
             return Err(io::Error::last_os_error());
         }
-        Ok(cred.uid)
+        Ok((cred.uid, u32::try_from(cred.pid).unwrap_or(0)))
     }
 
     fn seat_user() -> Option<u32> {
         active_uid(&std::fs::read_to_string(SEAT).ok()?)
     }
 
-    /// One device per user: an exclusive lock on `/run/uwulock/uhid-<uid>.lock`.
-    fn lock(uid: u32) -> io::Result<File> {
-        let file = OpenOptions::new()
+    /// One device per user: an exclusive lock on `/run/uwulock/uhid-<uid>.lock`,
+    /// which then names the pid it went to. When another connection holds
+    /// it, the reason names that program (the person sees it in UwULock).
+    fn lock(uid: u32, pid: u32) -> io::Result<File> {
+        let path = format!("{LOCKS}/uhid-{uid}.lock");
+        let mut file = OpenOptions::new()
             .create(true)
             .truncate(false)
             .write(true)
-            .open(format!("{LOCKS}/uhid-{uid}.lock"))?;
+            .open(&path)?;
         // SAFETY: a valid fd.
         if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
-            return Err(other("this user's security key is already there"));
+            let holder = std::fs::read_to_string(&path)
+                .ok()
+                .and_then(|text| holder_pid(&text))
+                .map(|pid| program(Path::new("/proc"), pid));
+            eprintln!(
+                "<4>uwulock-uhid-broker: uid {uid}'s security key is held by {}; refused {}",
+                holder.as_deref().unwrap_or("an unknown program"),
+                program(Path::new("/proc"), pid),
+            );
+            return Err(other(broker::held(holder.as_deref())));
         }
+        file.set_len(0)?;
+        writeln!(file, "{pid}")?;
         Ok(file)
     }
 
@@ -124,14 +143,21 @@ mod linux {
 
     pub fn run() -> io::Result<()> {
         let mut app = connection()?;
-        let uid = peer_uid(&app)?;
+        let (uid, pid) = peer(&app)?;
         if seat_user() != Some(uid) {
             return Err(refuse(
                 &mut app,
                 "only the person at the seat gets a security key",
             ));
         }
-        let _lock = lock(uid).map_err(|e| refuse(&mut app, &e.to_string()))?;
+        let _lock = lock(uid, pid).map_err(|e| refuse(&mut app, &e.to_string()))?;
+        eprintln!(
+            "uwulock-uhid-broker: uid {uid}'s security key goes to {}",
+            program(Path::new("/proc"), pid)
+        );
+        // Looking at other programs is over: nothing beyond root's uid from
+        // here on, before anything from the app is read.
+        drop_capabilities().map_err(|e| refuse(&mut app, &format!("capabilities: {e}")))?;
         let kernel = OpenOptions::new()
             .read(true)
             .write(true)

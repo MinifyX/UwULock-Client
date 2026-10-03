@@ -34,6 +34,29 @@ pub mod kind {
     pub const ERROR: u8 = 0x7f;
 }
 
+/// The start of the broker's [`kind::ERROR`] reason when another program of
+/// the same user holds the security key already (one per user). After it,
+/// [`held`] names that program as the broker saw it, when it could.
+pub const HELD: &str = "this user's security key is already there";
+
+/// The reason for "already there", with the program holding the key.
+pub fn held(holder: Option<&str>) -> String {
+    match holder {
+        Some(holder) => format!("{HELD}: held by {holder}"),
+        None => HELD.to_string(),
+    }
+}
+
+/// Whether `reason` (a [`kind::ERROR`] payload) says another program holds
+/// the key, and which one: `Some(None)` when the broker couldn't tell.
+pub fn holder_of(reason: &str) -> Option<Option<&str>> {
+    let rest = reason.strip_prefix(HELD)?;
+    if rest.is_empty() {
+        return Some(None);
+    }
+    Some(rest.strip_prefix(": held by ").filter(|h| !h.is_empty()))
+}
+
 /// A frame.
 pub fn frame(kind: u8, payload: &[u8]) -> Vec<u8> {
     let payload = &payload[..payload.len().min(MAX_FRAME)];
@@ -71,6 +94,19 @@ pub fn uniq(uid: u32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn held_names_the_holder() {
+        assert_eq!(holder_of(&held(None)), Some(None));
+        assert_eq!(
+            holder_of(&held(Some("/home/nyu/.cache/x (pid 42)"))),
+            Some(Some("/home/nyu/.cache/x (pid 42)"))
+        );
+        assert_eq!(
+            holder_of("only the person at the seat gets a security key"),
+            None
+        );
+    }
 
     #[test]
     fn frames_both_ways() {

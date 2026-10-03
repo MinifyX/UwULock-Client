@@ -30,6 +30,8 @@ pub mod status {
     pub const INVALID_COMMAND: u8 = 0x01;
     pub const INVALID_PARAMETER: u8 = 0x02;
     pub const INVALID_LENGTH: u8 = 0x03;
+    /// CTAP1_ERR_CHANNEL_BUSY: another request is being answered.
+    pub const CHANNEL_BUSY: u8 = 0x06;
     pub const CBOR_UNEXPECTED_TYPE: u8 = 0x11;
     pub const INVALID_CBOR: u8 = 0x12;
     pub const MISSING_PARAMETER: u8 = 0x14;

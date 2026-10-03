@@ -6,6 +6,7 @@
 //!   [`ctap2::Authenticator`] that turns one into the other with the app's
 //!   [`ctap2::Backend`] (Linux's virtual security key, Windows' plugin)
 //! - [`ctaphid`] — CTAP2 over HID reports (Linux)
+//! - [`flight`] — the one request with the person, cancelled and cleared by identity
 //! - [`opsign`] — checks Windows' signatures on a plugin's requests
 //! - [`rpid`] — which relying party ids are taken (no public suffixes)
 //! - [`uhid`] — Linux's `/dev/uhid` events, for a HID device made by UwULock
@@ -21,6 +22,7 @@ pub mod broker;
 pub mod cbor;
 pub mod ctap2;
 pub mod ctaphid;
+pub mod flight;
 pub mod opsign;
 pub mod rpid;
 pub mod uhid;

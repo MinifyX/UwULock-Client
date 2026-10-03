@@ -57,12 +57,15 @@ system's own sheets: the screen lock, Face ID or Touch ID.
 
 The dialog starts on _Ablehnen_ and its yes works only 0.7 s after the request turned up, so a
 request that pops up while the person types elsewhere isn't accepted by a stray Enter. The rpId
-comes first and large, the site's own name after it. It names who asks: on Linux the programs
-holding the key's hidraw node open (from `/proc/*/fd`), on Windows "Windows" (only signed
-requests get this far); a program that isn't a browser UwULock knows, installed by the system
-(under `/usr`, `/opt`, `/snap` or Flatpak's `/app`, owned by root), gets a warning. That is a
-hint for the person, not proof: a program of the same user can still drive an installed
-browser.
+comes first and large, the site's own name after it. It names who asks, as the system says: on
+Linux the programs holding the key's hidraw node open (from `/proc/*/fd`), on Windows "Windows"
+(only signed requests get this far); a program that isn't a browser UwULock knows, installed by
+the system (under `/usr`, `/opt`, `/snap` or Flatpak's `/app`, owned by root), gets a warning.
+That name is **a hint, not proof**: a program of the same user can still drive an installed
+browser (`firefox --headless --marionette`, `LD_PRELOAD`), and then the dialog says "Firefox" and
+even the origin is real. So the dialog says so for known browsers too ("Wer fragt, sagt dein
+System … ein Hinweis, kein Beweis"), and asks to decline unless the person just started a
+sign-in.
 
 Silent requests (`up: false`, the check browsers send before the real request: is one of these
 credential ids here?) never reach the dialog and never get a real signature:
@@ -96,12 +99,26 @@ the kernel crafted descriptors. So UwULock never opens it. A small root helper d
   `/usr/lib/uwulock/uwulock-uhid-broker`), socket-activated by systemd:
   `uwulock-uhid-broker.socket` listens on `/run/uwulock/uhid-broker.sock` (mode 0666,
   `Accept=yes`, at most 8 connections) and starts `uwulock-uhid-broker@.service` as root for each
-  connection — no capabilities, no network, `DeviceAllow=/dev/uhid`, read-only system, a
-  `@system-service` syscall filter (`systemd-analyze security`: 1.3).
+  connection — no network, `DeviceAllow=/dev/uhid`, read-only system, a `@system-service`
+  syscall filter. Its only capability, `CAP_SYS_PTRACE` (with `ProtectProc=default`), lets it read
+  `/proc/<pid>/exe` of the program it serves or refuses, for the journal and for the warning
+  below; it drops every capability (`capset`) right after the lock, before it reads anything from
+  the app.
 - **Who**: only the user of the active session on seat0 (`SO_PEERCRED` against logind's
   `/run/systemd/seats/seat0`), checked when connecting and every 2 seconds after; when the seat
-  changes hands, the device goes. One device per user (a lock in `/run/uwulock`). The app
-  connects again by itself (after 5 seconds, then up to every minute) while the setting is on.
+  changes hands, the device goes. One device per user (a lock in `/run/uwulock`, which records
+  the pid it went to; the journal names that program's executable). The app connects again by
+  itself (after 5 seconds, then up to every minute) while the setting is on; switching off while
+  it connects drops the new connection again.
+- **Another program of yours first**: the broker checks the uid, not the program, so any program
+  of the person at the seat that connects before UwULock gets the one key per user — and with it
+  a FIDO key of its own in front of the browser (it could keep the private key of a passkey the
+  person thinks they save "in UwULock"). The broker answers UwULock "already there: held by
+  `<exe> (pid …)`", and UwULock shows it: _Ein anderes Programm hält deinen
+  UwULock-Sicherheitsschlüssel_ in Settings → Security and as a note, logged at warn. This is a
+  limit of the design, not something the broker can prevent: requiring the packaged
+  `/usr/bin/uwulock-desktop` as the peer's executable wouldn't stop `LD_PRELOAD` or ptrace into
+  it. If the warning names a program you don't know, quit it and check the computer.
 - **Limits**: at most 8 connections (4 per user); no systemd trigger limit, which any local
   user could trip to leave the socket failed — instead systemd pauses accepting while
   connections come faster than 50 in 2 seconds (`PollLimit…`, systemd 255+).
@@ -133,7 +150,13 @@ Settings → Security → _Passkeys in Windows_. Windows 11 with third-party pas
 Windows Hello through webauthn.dll's plugin API. When switched on, UwULock
 
 - registers a COM class for the user (`HKCU\Software\Classes\CLSID\{5B0C8E7A-…}`,
-  `LocalServer32 = "uwulock-desktop.exe" --passkey-plugin`) so Windows can start it,
+  `LocalServer32 = "uwulock-desktop.exe" --passkey-plugin`) so Windows can start it. That key
+  is the user's: while UwULock isn't running, any program of theirs can point it at itself and
+  get Windows' (signed) requests — Linux's "another program first" (above). At every start with
+  the setting on, UwULock reads the entry; when it names another command, UwULock warns in
+  Settings → Security and as a note (_Der Windows-Eintrag … zeigte auf ein anderes Programm_),
+  logs it at warn and writes its own command back. It notices only afterwards, hence the
+  warning,
 - adds itself with `WebAuthNPluginAddAuthenticator` (AAGUID `4d0c2e23-4c15-c411-9bd1-f265e4266ad6`),
 - tells Windows which passkeys there are (`WebAuthNPluginAuthenticatorAddCredentials`: ids,
   sites, names; no keys), refreshed when the vault changes,
@@ -151,7 +174,8 @@ encoded bytes with the private half. `uwulock_authenticator::opsign` verifies th
 (ECDSA P-256 over SHA-256, or RSA PKCS #1 v1.5/PSS; CNG key blob or DER) before anything else; a
 request without a valid one gets `E_ACCESSDENIED` and nobody is asked. `CancelOperation` counts
 only for the transaction in flight (its id, a random GUID only Windows knows, kept for the whole
-process); a cancel can only end a request. Without Windows' key the plugin is removed again and
+process); a cancel can only end a request. One request at a time: a second one while the first
+runs gets busy (`ERROR_BUSY`) and leaves the first one cancellable. Without Windows' key the plugin is removed again and
 doesn't start (adding it next time hands over a fresh key), and the setting says why. Requests are capped at 7609 bytes.
 
 The person then switches UwULock on in Windows: Settings → Accounts → Passkeys → Advanced options.
@@ -231,6 +255,10 @@ may not run, so it never sees the open vault. Instead:
   of that account (they are taken in after the next login).
 - Passkeys that use a signature counter stay out of the list: the extension can't count up in
   the vault. UwULock's own passkeys don't use one.
+- Logins marked "ask for the master password again" (re-prompt) stay out of the list and the
+  system's identities: the extension has only Face ID, Touch ID or the passcode, and everywhere
+  else such a login's passkey needs the master password (desktop, Android, browser extension).
+  Sign in with those from UwULock or the browser extension.
 
 On macOS the app writes the list from Rust (`passkeys/apple.rs`, Keychain via
 `security-framework`), and the extension fills the system's identity list when it runs (and when
@@ -280,12 +308,17 @@ What is protected: the private keys of passkeys, which are as good as the accoun
   programs make keyboards or feed the kernel's HID drivers. A program of the same user can still
   open the key's hidraw node and send requests (as it could to a USB key), and could watch the
   screen, but gets no signature without the person's yes to that site's request; the dialog
-  names the programs holding the key open and warns when one isn't a known browser. The browser
+  names the programs holding the key open (a hint, not proof) and warns when one isn't a known
+  browser. Such a program can also take the one key per user before UwULock does and stand in
+  for it; UwULock then warns visibly (see "Another program of yours first"). Before UwULock was
+  installed, that needed root. The browser
   decides which site may ask for which relying party, as with any security key; UwULock refuses
   rpIds that aren't host names or are public suffixes.
 - **Windows**: only requests signed by Windows' WebAuthn service are taken, so another program of
   the user can't drive the plugin (or make the dialog say "Windows" asks). Windows binds the
-  origin to the rpId.
+  origin to the rpId. While UwULock isn't running, a program of the user can re-point UwULock's
+  `LocalServer32` entry at itself and get those requests; UwULock notices at its next start,
+  warns and puts the entry back.
 - **Silent checks** (`up: false`, Linux and Windows): only with an allow list, never with the
   account, throttled, never signed with a passkey. A program that knows a credential id (sites
   hand those to anyone who types a user name) learns whether that passkey is in the open vault,
@@ -298,8 +331,8 @@ What is protected: the private keys of passkeys, which are as good as the accoun
 - **Apple**: the extension holds only the provider key and the list, for as long as it runs, and
   opens one private key per request. A thief with the unlocked phone still needs Face ID / Touch
   ID / the passcode for each use. The passcode itself unlocks the provider key — weaker than the
-  master password, which is the platform's norm for AutoFill. That includes passkeys of
-  organisation items: an organisation that doesn't want its passkeys behind the device passcode
+  master password, which is the platform's norm for AutoFill; logins marked to ask for the master
+  password again stay out of the list. That includes passkeys of organisation items: an organisation that doesn't want its passkeys behind the device passcode
   asks its members to leave the setting off (a per-organisation switch is open). Logging out or
   switching the setting off deletes the list, the key and the system's identities. Passkeys
   deleted on another device stay usable in the extension until the vault is next opened on this

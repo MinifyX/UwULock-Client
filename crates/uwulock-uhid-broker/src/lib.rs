@@ -123,6 +123,58 @@ pub fn uevent_uniq(uevent: &str) -> Option<&str> {
         .find_map(|line| line.strip_prefix("HID_UNIQ="))
 }
 
+/// The pid in a lock file: the program the key went to.
+pub fn holder_pid(lock_file: &str) -> Option<u32> {
+    lock_file.trim().parse().ok().filter(|pid| *pid > 0)
+}
+
+/// The program `pid` runs, for the journal: the path of its executable
+/// (`<proc>/<pid>/exe`), else the name it gives itself, marked as such.
+/// Read only while the broker may still look (see [`drop_capabilities`]).
+pub fn program(proc: &std::path::Path, pid: u32) -> String {
+    let dir = proc.join(pid.to_string());
+    if let Ok(exe) = std::fs::read_link(dir.join("exe")) {
+        return format!("{} (pid {pid})", exe.display());
+    }
+    match std::fs::read_to_string(dir.join("comm")) {
+        Ok(comm) => format!("a program calling itself {:?} (pid {pid})", comm.trim()),
+        Err(_) => format!("pid {pid}"),
+    }
+}
+
+/// Gives up every capability of this thread for good (the broker is one
+/// thread when it calls this). The unit grants `CAP_SYS_PTRACE` only so the
+/// broker can name the program it serves or refuses (`/proc/<pid>/exe`);
+/// it is dropped before the first byte from the app is read.
+#[cfg(target_os = "linux")]
+pub fn drop_capabilities() -> io::Result<()> {
+    #[repr(C)]
+    struct Header {
+        version: u32,
+        pid: i32,
+    }
+    #[repr(C)]
+    #[derive(Clone, Copy, Default)]
+    struct Data {
+        effective: u32,
+        permitted: u32,
+        inheritable: u32,
+    }
+    // _LINUX_CAPABILITY_VERSION_3: two 32-bit halves.
+    let header = Header {
+        version: 0x2008_0522,
+        pid: 0,
+    };
+    let data = [Data::default(); 2];
+    // SAFETY: capset with a valid header and two data structs, as v3 wants.
+    let result =
+        unsafe { libc::syscall(libc::SYS_capset, &header as *const Header, data.as_ptr()) };
+    if result != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -262,5 +314,27 @@ mod tests {
         let uevent = "DRIVER=hid-generic\nHID_ID=0003:00000000:00000000\nHID_NAME=UwULock Passkeys\nHID_PHYS=uwulock\nHID_UNIQ=uwulock-1000\nMODALIAS=hid:b0003g0001v00000000p00000000\n";
         assert_eq!(uevent_uniq(uevent), Some("uwulock-1000"));
         assert_eq!(uevent_uniq("HID_NAME=x\n"), None);
+    }
+
+    #[test]
+    fn who_holds_the_key() {
+        assert_eq!(holder_pid("4242\n"), Some(4242));
+        assert_eq!(holder_pid(""), None);
+        assert_eq!(holder_pid("0"), None);
+        assert_eq!(holder_pid("nope"), None);
+        let me = std::process::id();
+        let named = program(std::path::Path::new("/proc"), me);
+        assert!(named.ends_with(&format!("(pid {me})")), "{named}");
+        let gone = program(std::path::Path::new("/nonexistent"), 7);
+        assert_eq!(gone, "pid 7");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn capabilities_go() {
+        // Giving up what one has always works, also without any.
+        std::thread::spawn(|| drop_capabilities().unwrap())
+            .join()
+            .unwrap();
     }
 }

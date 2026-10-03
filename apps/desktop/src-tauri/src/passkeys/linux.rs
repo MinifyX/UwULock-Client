@@ -24,8 +24,9 @@ use tauri::{AppHandle, Manager};
 use uwulock_authenticator::broker::{self, kind};
 use uwulock_authenticator::ctap2::Authenticator;
 use uwulock_authenticator::ctaphid::{self, Event, Hid};
+use uwulock_authenticator::flight::Slot;
 
-use super::{Client, DesktopBackend, Provider};
+use super::{Client, DesktopBackend, Provider, Warning};
 
 /// The running key: the connection to the broker and the flag that stops it.
 pub(crate) struct Device {
@@ -60,8 +61,23 @@ pub(crate) fn problem() -> Option<String> {
     (!Path::new(broker::SOCKET).exists()).then(not_installed)
 }
 
+/// Why there is no key.
+#[derive(Debug)]
+enum Failed {
+    /// Another program of this user holds the one key the broker makes per
+    /// user; the broker named it when it could.
+    Held(Option<String>),
+    Other(String),
+}
+
+impl From<String> for Failed {
+    fn from(text: String) -> Self {
+        Failed::Other(text)
+    }
+}
+
 /// Connects to the broker and waits for the device.
-fn connect() -> Result<UnixStream, String> {
+fn connect() -> Result<UnixStream, Failed> {
     let mut stream = UnixStream::connect(broker::SOCKET).map_err(|error| {
         if matches!(
             error.kind(),
@@ -78,16 +94,29 @@ fn connect() -> Result<UnixStream, String> {
     match broker::receive(&mut stream) {
         Ok((kind::READY, _)) => {}
         Ok((kind::ERROR, why)) => {
-            return Err(format!(
-                "the security key helper said no: {}",
-                String::from_utf8_lossy(&why)
-            ))
+            let why = String::from_utf8_lossy(&why);
+            if let Some(holder) = broker::holder_of(&why) {
+                return Err(Failed::Held(holder.map(str::to_owned)));
+            }
+            return Err(format!("the security key helper said no: {why}").into());
         }
-        Ok((other, _)) => return Err(format!("the security key helper said {other}")),
-        Err(error) => return Err(format!("the security key helper didn't answer: {error}")),
+        Ok((other, _)) => return Err(format!("the security key helper said {other}").into()),
+        Err(error) => return Err(format!("the security key helper didn't answer: {error}").into()),
     }
     stream.set_read_timeout(None).map_err(|e| e.to_string())?;
     Ok(stream)
+}
+
+/// Connects, and keeps the connection only if the key is still `wanted`
+/// once it is there: switching off during the up to 5 s of `connect` found
+/// no device to stop (R7 L-4). Called under the device lock, which `stop`
+/// takes after the setting is saved.
+fn connect_if<T, E>(
+    wanted: impl Fn() -> bool,
+    connect: impl FnOnce() -> Result<T, E>,
+) -> Result<Option<T>, E> {
+    let connection = connect()?;
+    Ok(wanted().then_some(connection))
 }
 
 pub(crate) fn start(app: &AppHandle) -> Result<(), String> {
@@ -97,7 +126,28 @@ pub(crate) fn start(app: &AppHandle) -> Result<(), String> {
     if device.is_some() {
         return Ok(());
     }
-    let stream = connect()?;
+    let connected = connect_if(|| provider.settings().security_key, connect);
+    let stream = match connected {
+        Ok(Some(stream)) => stream,
+        // Switched off meanwhile: dropping the connection removes the device.
+        Ok(None) => return Ok(()),
+        Err(Failed::Held(holder)) => {
+            super::warn(
+                app,
+                Some(Warning {
+                    kind: "held",
+                    holder: holder.clone(),
+                }),
+            );
+            return Err(format!(
+                "another program holds this user's security key: {}",
+                holder
+                    .as_deref()
+                    .unwrap_or("the helper couldn't tell which")
+            ));
+        }
+        Err(Failed::Other(error)) => return Err(error),
+    };
     let reader = stream.try_clone().map_err(|e| e.to_string())?;
     let link = Link(Arc::new(Mutex::new(stream)));
     let stop = Arc::new(AtomicBool::new(false));
@@ -123,6 +173,8 @@ pub(crate) fn start(app: &AppHandle) -> Result<(), String> {
         })
         .map_err(|e| e.to_string())?;
     *device = Some(Device { link, stop });
+    drop(device);
+    super::warn(app, None);
     tracing::info!("the virtual security key is there");
     Ok(())
 }
@@ -162,6 +214,8 @@ fn keep_up(app: &AppHandle) {
 }
 
 pub(crate) fn stop(app: &AppHandle) {
+    // Off: nothing to warn about any more.
+    super::warn(app, None);
     let Some(device) = app.state::<Provider>().device.lock().take() else {
         return;
     };
@@ -172,28 +226,13 @@ pub(crate) fn stop(app: &AppHandle) {
     tracing::info!("the virtual security key is gone");
 }
 
-/// The request in flight: its channel, the flag that cancels it, and
-/// whether the channel was re-initialised meanwhile (then its answer is
-/// stale and isn't sent).
-struct InFlight {
-    cid: u32,
-    cancelled: Arc<AtomicBool>,
-    resynced: Arc<AtomicBool>,
-}
-
 fn run(mut reader: UnixStream, link: Link, stop: Arc<AtomicBool>, app: AppHandle) {
     let hid = Arc::new(Mutex::new(Hid::default()));
-    let in_flight: Arc<Mutex<Option<InFlight>>> = Arc::default();
+    // The request with the person, by channel; cleared only by its own
+    // worker (by identity, R7 L-3).
+    let in_flight: Arc<Slot<u32>> = Arc::default();
     // The key's hidraw node, as the broker named it when it was opened.
     let mut node = String::new();
-    let cancel = |cid: u32, resync: bool| {
-        if let Some(flight) = in_flight.lock().as_ref().filter(|f| f.cid == cid) {
-            if resync {
-                flight.resynced.store(true, Ordering::Relaxed);
-            }
-            flight.cancelled.store(true, Ordering::Relaxed);
-        }
-    };
     loop {
         let frame = broker::receive(&mut reader);
         if stop.load(Ordering::Relaxed) {
@@ -215,48 +254,51 @@ fn run(mut reader: UnixStream, link: Link, stop: Arc<AtomicBool>, app: AppHandle
                 );
                 break;
             }
-            kind::REPORT => match hid.lock().receive(&payload) {
-                Event::Reply(packets) => link.send(&packets),
-                Event::Pending => {}
-                Event::Cancel { cid } => cancel(cid, false),
-                Event::Resync { cid, reply } => {
-                    cancel(cid, true);
-                    link.send(&reply);
-                }
-                Event::Cbor { cid, request } => {
-                    let cancelled = Arc::new(AtomicBool::new(false));
-                    let resynced = Arc::new(AtomicBool::new(false));
-                    *in_flight.lock() = Some(InFlight {
-                        cid,
-                        cancelled: Arc::clone(&cancelled),
-                        resynced: Arc::clone(&resynced),
-                    });
-                    let (link, worker_hid, in_flight, app, client) = (
-                        link.clone(),
-                        Arc::clone(&hid),
-                        Arc::clone(&in_flight),
-                        app.clone(),
-                        // Who holds the key open as the request comes in.
-                        who_has(&node),
-                    );
-                    let spawned = std::thread::Builder::new()
-                        .name("uwulock-security-key-request".into())
-                        .spawn(move || {
-                            let answer = answer(&app, &link, client, cid, &request, &cancelled);
-                            if !resynced.load(Ordering::Relaxed) {
-                                link.send(&ctaphid::packets(cid, ctaphid::cmd::CBOR, &answer));
-                            }
-                            worker_hid.lock().finish(cid);
-                            let mut flight = in_flight.lock();
-                            if flight.as_ref().is_some_and(|f| f.cid == cid) {
-                                *flight = None;
-                            }
-                        });
-                    if spawned.is_err() {
-                        hid.lock().finish(cid);
+            kind::REPORT => {
+                // Held while the report is handled, so a worker's answer
+                // never falls between a report and what it starts.
+                let mut channels = hid.lock();
+                match channels.receive(&payload) {
+                    Event::Reply(packets) => link.send(&packets),
+                    Event::Pending => {}
+                    Event::Cancel { cid } => {
+                        in_flight.cancel(&cid, false);
+                    }
+                    Event::Resync { cid, reply } => {
+                        in_flight.cancel(&cid, true);
+                        link.send(&reply);
+                    }
+                    Event::Cbor { cid, request } => {
+                        let flight = in_flight.replace(cid);
+                        let (link, worker_hid, slot, app, client) = (
+                            link.clone(),
+                            Arc::clone(&hid),
+                            Arc::clone(&in_flight),
+                            app.clone(),
+                            // Who holds the key open as the request comes in.
+                            who_has(&node),
+                        );
+                        let ours = flight.clone();
+                        let spawned = std::thread::Builder::new()
+                            .name("uwulock-security-key-request".into())
+                            .spawn(move || {
+                                let answer =
+                                    answer(&app, &link, client, cid, &request, ours.cancelled());
+                                // Slot and channel free first, then the
+                                // answer, all before the next report.
+                                let mut channels = worker_hid.lock();
+                                if let Some(packets) = channels.answered(&slot, &ours, cid, &answer)
+                                {
+                                    link.send(&packets);
+                                }
+                            });
+                        if spawned.is_err() {
+                            in_flight.release(&flight);
+                            channels.finish(cid);
+                        }
                     }
                 }
-            },
+            }
             _ => {}
         }
     }
@@ -431,6 +473,24 @@ mod tests {
         // Only hidraw node names are looked up.
         assert!(who_has("../uhid").name.is_empty());
         assert!(who_has("hidraw").name.is_empty());
+    }
+
+    #[test]
+    fn switched_off_while_connecting() {
+        use std::cell::Cell;
+        let on = Cell::new(true);
+        // The setting goes off during the connect: the connection is dropped.
+        let kept = connect_if(
+            || on.get(),
+            || {
+                on.set(false);
+                Ok::<_, ()>("connection")
+            },
+        );
+        assert_eq!(kept, Ok(None));
+        on.set(true);
+        assert_eq!(connect_if(|| on.get(), || Ok::<_, ()>(1)), Ok(Some(1)));
+        assert_eq!(connect_if(|| on.get(), || Err::<u8, _>("no")), Err("no"));
     }
 
     #[test]

@@ -102,6 +102,20 @@ pub(crate) struct Client {
     pub trusted: bool,
 }
 
+/// Something the person should know while the setting is on (R7 L-1): on
+/// Linux another program of theirs holds the one security key the broker
+/// makes per user; on Windows the registry entry that starts UwULock for a
+/// request pointed elsewhere. Shown in the settings and as a note.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Warning {
+    /// `held` (Linux) or `registry` (Windows).
+    pub kind: &'static str,
+    /// The program holding the key, or what the registry entry started, as
+    /// far as UwULock could tell.
+    pub holder: Option<String>,
+}
+
 struct Pending {
     id: u64,
     ask: Ask,
@@ -114,6 +128,7 @@ pub(crate) struct Provider {
     settings: Mutex<Settings>,
     pending: Mutex<Option<Pending>>,
     next_id: AtomicU64,
+    warning: Mutex<Option<Warning>>,
     #[cfg(target_os = "linux")]
     device: Mutex<Option<linux::Device>>,
     #[cfg(windows)]
@@ -132,6 +147,7 @@ impl Provider {
             settings: Mutex::new(settings),
             pending: Mutex::new(None),
             next_id: AtomicU64::new(1),
+            warning: Mutex::new(None),
             #[cfg(target_os = "linux")]
             device: Mutex::new(None),
             #[cfg(windows)]
@@ -142,6 +158,33 @@ impl Provider {
     pub(crate) fn settings(&self) -> Settings {
         self.settings.lock().clone()
     }
+
+    /// Sets (or with `None` clears) the warning; whether it changed.
+    fn set_warning(&self, warning: Option<Warning>) -> bool {
+        let mut current = self.warning.lock();
+        if *current == warning {
+            return false;
+        }
+        *current = warning;
+        true
+    }
+}
+
+/// Sets the warning, and when it is new, logs it and tells the page
+/// (`passkey-provider-warning`, which shows a note and refreshes the
+/// settings).
+pub(crate) fn warn(app: &AppHandle, warning: Option<Warning>) {
+    if !app.state::<Provider>().set_warning(warning.clone()) {
+        return;
+    }
+    if let Some(warning) = &warning {
+        tracing::warn!(
+            kind = warning.kind,
+            holder = warning.holder.as_deref().unwrap_or("unknown"),
+            "another program stands in for UwULock's passkeys"
+        );
+    }
+    let _ = app.emit("passkey-provider-warning", warning);
 }
 
 /// Starts what the settings switched on.
@@ -415,6 +458,8 @@ pub struct ProviderStatus {
     active: bool,
     /// Why it isn't, when it should be.
     problem: Option<String>,
+    /// Another program stands in for UwULock ([`Warning`]).
+    warning: Option<Warning>,
 }
 
 #[tauri::command]
@@ -445,11 +490,13 @@ fn status_of(app: &AppHandle) -> ProviderStatus {
         target_os = "macos"
     )))]
     let (platform, active, problem) = ("none", false, None::<String>);
+    let warning = provider.warning.lock().clone();
     ProviderStatus {
         settings,
         platform,
         active,
         problem: if active { None } else { problem },
+        warning,
     }
 }
 
@@ -1005,6 +1052,21 @@ mod tests {
         let named = new_login("login.example.com", Some("Example"), None);
         assert_eq!(named.name.as_str(), "Example");
         assert!(for_site(&named, "example.com"));
+    }
+
+    #[test]
+    fn a_warning_is_news_once() {
+        let dir = std::env::temp_dir().join(format!("uwulock-warning-{}", std::process::id()));
+        let provider = Provider::new(&dir);
+        let held = Warning {
+            kind: "held",
+            holder: Some("/home/nyu/.local/bin/thing (pid 42)".into()),
+        };
+        assert!(provider.set_warning(Some(held.clone())));
+        // The keeper trying again finds the same: no second note.
+        assert!(!provider.set_warning(Some(held)));
+        assert!(provider.set_warning(None));
+        assert!(!provider.set_warning(None));
     }
 
     #[test]
