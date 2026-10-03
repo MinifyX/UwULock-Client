@@ -187,16 +187,22 @@ export async function frameDocument(sender: Sender): Promise<CheckedFrame | null
 /**
  * The frame is the page itself, or of the same origin as the page and every frame in between
  * (A in B in A is not). `walked`: on browsers without `location.ancestorOrigins` (Firefox), the
- * origins read up the `window.parent` chain count too.
+ * origins read up the `window.parent` chain count too for sub-frames; the page itself needs no
+ * ancestors either way.
  */
 export function sameOriginAncestors(
   sender: Sender,
   frame: CheckedFrame,
   { walked }: { walked: boolean },
 ): boolean {
+  // The page itself: `window.parent === window`, so the walked chain is `[]` and reliable even
+  // without `location.ancestorOrigins` (Firefox).
+  if (sender.frameId === 0) {
+    const top = frame.ancestors ?? frame.parents;
+    return top !== null && top.length === 0;
+  }
   const chain = frame.ancestors ?? (walked ? frame.parents : null);
   if (!chain) return false;
-  if (sender.frameId === 0) return chain.length === 0;
   if (chain.length === 0 || !chain.every((origin) => origin === frame.origin)) return false;
   // Where the browser tells the tab's address, it agrees.
   const top = sender.tab?.url;
