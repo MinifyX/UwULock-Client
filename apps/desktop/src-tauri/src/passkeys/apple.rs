@@ -337,7 +337,7 @@ async fn refresh(app: &AppHandle) -> Result<()> {
         let opened = std::iter::once(&key)
             .chain(&old_keys)
             .map(|key| sealed::open_outbox(key, &bytes))
-            .find(Result::is_ok)
+            .find(|opened| opened.is_ok())
             .unwrap_or_else(|| sealed::open_outbox(&key, &bytes))
             .and_then(|(_, entry)| {
                 state.generation = state.generation.max(entry.generation);
