@@ -13,6 +13,7 @@
 //!   here.
 
 use std::io::{self, Read, Write};
+use std::path::Path;
 
 use uwulock_authenticator::broker::{self, kind, REPORT};
 use uwulock_authenticator::uhid::{self, Incoming};
@@ -123,23 +124,91 @@ pub fn uevent_uniq(uevent: &str) -> Option<&str> {
         .find_map(|line| line.strip_prefix("HID_UNIQ="))
 }
 
-/// The pid in a lock file: the program the key went to.
-pub fn holder_pid(lock_file: &str) -> Option<u32> {
-    lock_file.trim().parse().ok().filter(|pid| *pid > 0)
+/// Who a lock file says holds the key: the pid and when that process
+/// started (field 22 of `/proc/<pid>/stat`, clock ticks since boot). The
+/// start time tells the holder from a later process that got the same pid
+/// once the holder is gone (R8 C-2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Holder {
+    pub pid: u32,
+    pub start: u64,
 }
 
-/// The program `pid` runs, for the journal: the path of its executable
-/// (`<proc>/<pid>/exe`), else the name it gives itself, marked as such.
-/// Read only while the broker may still look (see [`drop_capabilities`]).
-pub fn program(proc: &std::path::Path, pid: u32) -> String {
+impl Holder {
+    /// The process `pid` as it is now in `proc`, if it is there.
+    pub fn of(proc: &Path, pid: u32) -> Option<Holder> {
+        let stat = std::fs::read_to_string(proc.join(pid.to_string()).join("stat")).ok()?;
+        Some(Holder {
+            pid,
+            start: start_time(&stat)?,
+        })
+    }
+
+    /// What the lock file holds: `<pid> <start>`.
+    pub fn line(&self) -> String {
+        format!("{} {}\n", self.pid, self.start)
+    }
+
+    /// The holder a lock file names. A file without a start time (written
+    /// by an older broker) names nobody that can be checked: `None`.
+    pub fn parse(lock_file: &str) -> Option<Holder> {
+        let mut fields = lock_file.split_whitespace();
+        let pid = fields.next()?.parse().ok().filter(|pid| *pid > 0)?;
+        let start = fields.next()?.parse().ok()?;
+        fields.next().is_none().then_some(Holder { pid, start })
+    }
+}
+
+/// A process's start time from its `/proc/<pid>/stat`: field 22. The name
+/// (field 2) is in parentheses and may hold spaces and `)` itself, so the
+/// fields are counted from the last `)`.
+pub fn start_time(stat: &str) -> Option<u64> {
+    let rest = &stat[stat.rfind(')')? + 1..];
+    // After the name: field 3 (state) is the first, so 22 is the 20th.
+    rest.split_whitespace().nth(19)?.parse().ok()
+}
+
+/// The real and effective uid from a `/proc/<pid>/status`.
+pub fn uids(status: &str) -> Option<(u32, u32)> {
+    let line = status.lines().find_map(|line| line.strip_prefix("Uid:"))?;
+    let mut ids = line.split_whitespace().map(str::parse::<u32>);
+    Some((ids.next()?.ok()?, ids.next()?.ok()?))
+}
+
+/// The program `pid` runs, for the journal and the app: the path of its
+/// executable (`<proc>/<pid>/exe`), else the name it gives itself, marked as
+/// such; both escaped and cut ([`broker::printable`], R8 C-1).
+///
+/// Named only when the process belongs to `uid` (real and effective), and,
+/// with `start`, only while it is still the process that started then: the
+/// broker looks with root's eyes and `CAP_SYS_PTRACE`, and must not tell one
+/// user what another user's process runs (R8 C-2). `None` otherwise. Read
+/// only while the broker may still look (see [`drop_capabilities`]).
+pub fn program(proc: &Path, pid: u32, uid: u32, start: Option<u64>) -> Option<String> {
     let dir = proc.join(pid.to_string());
-    if let Ok(exe) = std::fs::read_link(dir.join("exe")) {
-        return format!("{} (pid {pid})", exe.display());
-    }
-    match std::fs::read_to_string(dir.join("comm")) {
-        Ok(comm) => format!("a program calling itself {:?} (pid {pid})", comm.trim()),
-        Err(_) => format!("pid {pid}"),
-    }
+    let same = || {
+        let status = std::fs::read_to_string(dir.join("status")).ok()?;
+        let still = match start {
+            Some(start) => Holder::of(proc, pid)?.start == start,
+            None => true,
+        };
+        (still && uids(&status)? == (uid, uid)).then_some(())
+    };
+    same()?;
+    let named = match std::fs::read_link(dir.join("exe")) {
+        Ok(exe) => broker::printable(&exe.to_string_lossy(), broker::PATH_SHOWN),
+        Err(_) => {
+            let comm = std::fs::read_to_string(dir.join("comm")).ok()?;
+            format!(
+                "a program calling itself {:?}",
+                broker::printable(comm.trim(), 64)
+            )
+        }
+    };
+    // Still the same process after the look: the pid didn't change hands
+    // in between.
+    same()?;
+    Some(format!("{named} (pid {pid})"))
 }
 
 /// Gives up every capability of this thread for good (the broker is one
@@ -316,17 +385,134 @@ mod tests {
         assert_eq!(uevent_uniq("HID_NAME=x\n"), None);
     }
 
+    #[cfg(unix)]
+    /// A `/proc/<pid>` with `stat`, `status` and an `exe` link, in a fresh
+    /// directory under the system's temp dir.
+    struct FakeProc(std::path::PathBuf);
+
+    #[cfg(unix)]
+    impl FakeProc {
+        fn new(name: &str) -> FakeProc {
+            let dir =
+                std::env::temp_dir().join(format!("uwulock-broker-{name}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            FakeProc(dir)
+        }
+
+        fn process(&self, pid: u32, start: u64, uid: u32, exe: &str) {
+            let dir = self.0.join(pid.to_string());
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            // A name with spaces and a ")" of its own.
+            let stat = format!(
+                "{pid} (evil) 1 2 3) S 1 {pid} {pid} 0 -1 4194560 100 0 0 0 1 1 0 0 20 0 1 0 {start} 1000 100 18446744073709551615\n"
+            );
+            std::fs::write(dir.join("stat"), stat).unwrap();
+            std::fs::write(
+                dir.join("status"),
+                format!("Name:\tx\nUid:\t{uid}\t{uid}\t{uid}\t{uid}\nGid:\t1\t1\t1\t1\n"),
+            )
+            .unwrap();
+            std::fs::write(dir.join("comm"), "x\n").unwrap();
+            std::os::unix::fs::symlink(exe, dir.join("exe")).unwrap();
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for FakeProc {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     #[test]
     fn who_holds_the_key() {
-        assert_eq!(holder_pid("4242\n"), Some(4242));
-        assert_eq!(holder_pid(""), None);
-        assert_eq!(holder_pid("0"), None);
-        assert_eq!(holder_pid("nope"), None);
+        let holder = Holder {
+            pid: 4242,
+            start: 987654,
+        };
+        assert_eq!(Holder::parse(&holder.line()), Some(holder));
+        assert_eq!(Holder::parse(""), None);
+        assert_eq!(Holder::parse("0 5"), None);
+        assert_eq!(Holder::parse("nope 5"), None);
+        // An older broker's file (pid only): nobody that can be checked.
+        assert_eq!(Holder::parse("4242\n"), None);
+        assert_eq!(Holder::parse("4242 5 6"), None);
+
+        let stat = "42 (a) b) c) R 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 777 19 20";
+        assert_eq!(start_time(stat), Some(777));
+        assert_eq!(start_time("42 (x) R 1"), None);
+        assert_eq!(uids("Name:\tx\nUid:\t1000\t0\t0\t0\n"), Some((1000, 0)));
+        assert_eq!(uids("Name:\tx\n"), None);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn this_process_is_named() {
         let me = std::process::id();
-        let named = program(std::path::Path::new("/proc"), me);
+        let uid = unsafe { libc::getuid() };
+        let proc = Path::new("/proc");
+        let start = Holder::of(proc, me).unwrap().start;
+        let named = program(proc, me, uid, Some(start)).unwrap();
         assert!(named.ends_with(&format!("(pid {me})")), "{named}");
-        let gone = program(std::path::Path::new("/nonexistent"), 7);
-        assert_eq!(gone, "pid 7");
+        // Another start time: a later process with the same pid.
+        assert_eq!(program(proc, me, uid, Some(start + 1)), None);
+        // Another user's.
+        assert_eq!(program(proc, me, uid.wrapping_add(1), None), None);
+        assert_eq!(program(Path::new("/nonexistent"), 7, uid, None), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn only_the_same_users_holder_is_named() {
+        let proc = FakeProc::new("holder");
+        proc.process(4242, 500, 1000, "/home/nyu/.local/bin/thing");
+        let holder = Holder::of(&proc.0, 4242).unwrap();
+        assert_eq!(holder.start, 500);
+        assert_eq!(
+            program(&proc.0, 4242, 1000, Some(holder.start)).as_deref(),
+            Some("/home/nyu/.local/bin/thing (pid 4242)")
+        );
+        // The holder went, and the pid went to root's (or anybody's)
+        // process: not named, whoever's it is.
+        proc.process(4242, 900, 0, "/usr/sbin/secret-daemon");
+        assert_eq!(program(&proc.0, 4242, 1000, Some(holder.start)), None);
+        // Same user, but a later process with the holder's pid.
+        proc.process(4242, 900, 1000, "/usr/bin/other");
+        assert_eq!(program(&proc.0, 4242, 1000, Some(holder.start)), None);
+        // Another user's process with the right start time: not named.
+        proc.process(4242, 500, 1001, "/home/other/bin/x");
+        assert_eq!(program(&proc.0, 4242, 1000, Some(500)), None);
+        // Real uid ours, effective root (a setuid program): not named.
+        std::fs::write(proc.0.join("4242/status"), "Uid:\t1000\t0\t0\t0\n").unwrap();
+        assert_eq!(program(&proc.0, 4242, 1000, Some(500)), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_path_cannot_forge_journal_lines() {
+        let proc = FakeProc::new("forge");
+        proc.process(
+            77,
+            1,
+            1000,
+            "/tmp/x\n<0>uwulock-uhid-broker: uid 1000's security key goes to /usr/bin/firefox",
+        );
+        let named = program(&proc.0, 77, 1000, Some(1)).unwrap();
+        assert!(!named.contains('\n'), "{named}");
+        assert!(named.starts_with("/tmp/x\\n<0>"), "{named}");
+        // A very long path: cut.
+        let long = format!("/tmp/{}", "a".repeat(250));
+        let deep = format!("{long}/{long}/{long}");
+        proc.process(78, 1, 1000, &deep);
+        let named = program(&proc.0, 78, 1000, Some(1)).unwrap();
+        assert!(
+            named.len() <= broker::PATH_SHOWN + " (pid 78)".len(),
+            "{}",
+            named.len()
+        );
+        assert!(named.ends_with("… (pid 78)"), "{named}");
     }
 
     #[cfg(target_os = "linux")]

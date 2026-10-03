@@ -47,6 +47,38 @@ pub fn held(holder: Option<&str>) -> String {
     }
 }
 
+/// The most bytes of a program's path the broker names (R8 C-1).
+pub const PATH_SHOWN: usize = 256;
+
+/// `text` safe to log and show (R8 C-1): control characters (a newline
+/// would start a forged journal entry, `<0>` and all) and the invisible
+/// direction and width marks that make a path read as another are escaped
+/// as `\n`, `\u{202e}`; then it is cut to at most `max` bytes on a
+/// character boundary, ending in `…` when cut.
+pub fn printable(text: &str, max: usize) -> String {
+    let mut out = String::with_capacity(text.len().min(max));
+    for c in text.chars() {
+        let hidden = c.is_control()
+            || matches!(c, '\u{200b}'..='\u{200f}' | '\u{2028}'..='\u{202e}' | '\u{2060}'..='\u{2069}' | '\u{feff}');
+        if hidden {
+            out.extend(c.escape_default());
+        } else {
+            out.push(c);
+        }
+    }
+    if out.len() <= max {
+        return out;
+    }
+    let ellipsis = '…'.len_utf8();
+    let mut end = max.saturating_sub(ellipsis);
+    while !out.is_char_boundary(end) {
+        end -= 1;
+    }
+    out.truncate(end);
+    out.push('…');
+    out
+}
+
 /// Whether `reason` (a [`kind::ERROR`] payload) says another program holds
 /// the key, and which one: `Some(None)` when the broker couldn't tell.
 pub fn holder_of(reason: &str) -> Option<Option<&str>> {
@@ -106,6 +138,37 @@ mod tests {
             holder_of("only the person at the seat gets a security key"),
             None
         );
+    }
+
+    #[test]
+    fn printable_text() {
+        // A path with a newline and a priority prefix: one line, escaped.
+        let forged = "/home/nyu/x\n<0>uwulock-uhid-broker: all fine\r\t\u{1b}[31m";
+        let shown = printable(forged, PATH_SHOWN);
+        assert!(!shown.chars().any(char::is_control), "{shown}");
+        assert_eq!(
+            shown,
+            "/home/nyu/x\\n<0>uwulock-uhid-broker: all fine\\r\\t\\u{1b}[31m"
+        );
+        // Right-to-left override: escaped, so "exe.txt" can't pass as text.
+        assert_eq!(printable("a\u{202e}txt.exe", 64), "a\\u{202e}txt.exe");
+        assert_eq!(printable("/usr/bin/früh", 64), "/usr/bin/früh");
+        // Cut on a character boundary, never longer than asked.
+        let long = "ü".repeat(400);
+        let cut = printable(&long, PATH_SHOWN);
+        assert!(
+            cut.len() <= PATH_SHOWN && cut.ends_with('…'),
+            "{}",
+            cut.len()
+        );
+        // Escaping counts too.
+        assert!(printable(&"\n".repeat(400), 100).len() <= 100);
+        // The longest holder still fits a frame whole.
+        let reason = held(Some(&format!(
+            "{} (pid 4194304)",
+            printable(&long, PATH_SHOWN)
+        )));
+        assert!(reason.len() <= MAX_FRAME, "{}", reason.len());
     }
 
     #[test]

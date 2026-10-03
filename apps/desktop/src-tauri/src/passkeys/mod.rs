@@ -29,6 +29,8 @@ pub(crate) mod android;
 pub(crate) mod apple;
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(any(windows, test))]
+mod registry;
 #[cfg(windows)]
 mod windows;
 
@@ -170,10 +172,25 @@ impl Provider {
     }
 }
 
+/// The most bytes of a holder (a path, a registry entry) UwULock logs or
+/// shows.
+const HOLDER_SHOWN: usize = 512;
+
+/// `text` from another program, safe to log and show: control and
+/// invisible direction characters escaped, cut to [`HOLDER_SHOWN`] bytes.
+pub(crate) fn shown(text: &str) -> String {
+    uwulock_authenticator::broker::printable(text, HOLDER_SHOWN)
+}
+
 /// Sets the warning, and when it is new, logs it and tells the page
 /// (`passkey-provider-warning`, which shows a note and refreshes the
 /// settings).
-pub(crate) fn warn(app: &AppHandle, warning: Option<Warning>) {
+pub(crate) fn warn(app: &AppHandle, mut warning: Option<Warning>) {
+    // The holder comes from another program's path or registry entry:
+    // escaped and cut before it is logged or shown (R8 C-1).
+    if let Some(warning) = &mut warning {
+        warning.holder = warning.holder.as_deref().map(shown);
+    }
     if !app.state::<Provider>().set_warning(warning.clone()) {
         return;
     }
@@ -1067,6 +1084,15 @@ mod tests {
         assert!(!provider.set_warning(Some(held)));
         assert!(provider.set_warning(None));
         assert!(!provider.set_warning(None));
+    }
+
+    #[test]
+    fn holders_are_shown_escaped_and_cut() {
+        let forged = format!("/tmp/x\n<0>fine\u{202e}{}", "a".repeat(1000));
+        let text = shown(&forged);
+        assert!(text.starts_with("/tmp/x\\n<0>fine\\u{202e}"), "{text}");
+        assert!(text.len() <= HOLDER_SHOWN && text.ends_with('…'));
+        assert!(!text.chars().any(char::is_control));
     }
 
     #[test]

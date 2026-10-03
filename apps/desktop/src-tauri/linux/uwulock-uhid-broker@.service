@@ -1,8 +1,14 @@
 # One connection from UwULock to its uhid broker (uwulock-uhid-broker.socket). Root only to open
 # /dev/uhid; no network, nothing writable but its lock files. Its one capability, CAP_SYS_PTRACE,
 # only lets it read /proc/<pid>/exe of the program it serves or refuses (for the journal and for
-# the "another program holds your key" warning); the broker drops it before it reads anything
-# from the app.
+# the "another program holds your key" warning); the broker drops it from every set but the
+# bounding set (NoNewPrivileges keeps it unreachable) before it reads anything from the app.
+# ProtectProc=invisible: CAP_SYS_PTRACE passes hidepid's ptrace check, so the holder is still named
+# (crates/uwulock-uhid-broker/e2e/kernel.py, mode "invisible"). It hides nothing from this broker
+# as it runs now, though: hidepid lets members of its gid= group (0, as systemd mounts it) see every
+# process, and the broker runs in group root (e2e without the capability: status and comm still
+# readable, exe not, as with ProtectProc=default). Kept as defence in depth should the group change
+# (R8 I-B).
 [Unit]
 Description=UwULock virtual security key for one connection
 Documentation=https://github.com/MinifyX/UwULock-Client/blob/main/docs/passkeys.md
@@ -21,7 +27,7 @@ ProtectHome=yes
 PrivateTmp=yes
 PrivateNetwork=yes
 RestrictAddressFamilies=AF_UNIX
-ProtectProc=default
+ProtectProc=invisible
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes
