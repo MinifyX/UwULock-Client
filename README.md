@@ -6,7 +6,7 @@
 
 <p align="center">
   The password manager I build for myself, because every other one annoyed me. (◕‿◕✿)<br/>
-  Vaultwarden · Bitwarden · TOTP · Windows, macOS, Linux and a browser extension, beta
+  Vaultwarden · Bitwarden · TOTP · passkeys · Windows, macOS, Linux, Android, iPhone and a browser extension, beta
 </p>
 
 <p align="center">
@@ -54,14 +54,16 @@ bitwarden.com or bitwarden.eu — with the same encryption the official apps use
 - **Offline too.** The last sync stays on the device exactly as the server
   sent it, still encrypted, and opens with the master password without a
   network. Locking forgets everything decrypted.
-- **Playful.** Nyu, the cat, is a padlock now. Security warnings are never
-  playful.
+- **Playful.** Nyu, the cat, is a padlock now, and pops up for a moment when
+  something is saved, copied, shared or checked — still, or not at all, when
+  your system asks for less motion. Security warnings are never playful.
 
-> **Status: beta.** 0.4.0-beta.3 reads and writes: log in (with two-step
-> login), browse, search, copy, one-time codes — and create, edit and delete,
-> with a private Vaultwarden and one at work side by side. It fits
-> [UwULock Server](https://github.com/MinifyX/UwULock-Server) 0.4: items with
-> attachments, Sends and organisations come through the sync and stay intact.
+> **Status: beta.** 0.5.0-beta.1 reads and writes: log in (with two-step
+> login), browse, search, copy, one-time codes, passkeys — and create, edit and
+> delete, with a private Vaultwarden and one at work side by side. It fits
+> [UwULock Server](https://github.com/MinifyX/UwULock-Server) 0.8 (and works
+> with older ones from 0.4 on): items with attachments, Sends and
+> organisations come through the sync and stay intact.
 >
 > **What works.**
 >
@@ -72,15 +74,29 @@ bitwarden.com or bitwarden.eu — with the same encryption the official apps use
 > - Logins, cards, identities, secure notes and SSH keys; folders,
 >   organisations and collections, favourites, the trash. Items with their own
 >   key and items that ask for the master password again.
-> - Create, edit and delete items, folders and favourites; the trash and back
->   out of it. A password you don't look at never passes through the window,
->   and what UwULock doesn't show — passkeys, linked fields — is handed back
->   to the server untouched.
+> - Create, edit and delete items, folders and favourites (a star in the
+>   editor); the trash and back out of it. A password you don't look at never
+>   passes through the window, and what UwULock doesn't show — linked fields —
+>   is handed back to the server untouched. An item shows its first website,
+>   the others behind "+2 more", and a reminder to renew only when it is
+>   switched on in the editor.
+> - Passkeys: a login's passkeys with site, user and when they were made, and
+>   deleting one. The apps offer them to the rest of the system too
+>   ([passkeys](docs/passkeys.md)): Credential Manager on Android 14+, a
+>   virtual security key on Linux (off until switched on), a plugin passkey
+>   manager on Windows 11 (experimental, off until switched on) and an
+>   AutoFill extension on iOS 17+ and macOS 14+, which is built in but only
+>   works once the app is signed with an Apple developer team. None of them
+>   has been tried on a real device yet.
 > - Several accounts on one device: a private Vaultwarden and one at work,
 >   each with its own vault, its own session and its own master password.
-> - One-time codes (TOTP, also Steam) counting down right in the item.
+> - One-time codes (TOTP, also Steam) counting down right in the item; in a
+>   code's last 10 seconds the next one shows below it, with its own copy
+>   button.
 > - Search, keyboard shortcuts like Bitwarden's (Ctrl+U, Ctrl+P, Ctrl+T), a
->   password generator, also right inside the password field.
+>   password generator, also right inside the password field, with a minimum
+>   per kind of character (A–Z, a–z, 0–9, symbols) — the length grows to fit
+>   them.
 > - Auto-lock, clipboard clearing, sync on unlock and every five minutes.
 > - A password check: weak, reused and `http://` logins, and a review that
 >   goes through them one card at a time.
@@ -90,6 +106,8 @@ bitwarden.com or bitwarden.eu — with the same encryption the official apps use
 >   sideloading), with fingerprint or face unlock ([phones](docs/mobile.md)).
 > - With UwULock Server 0.7: UwUSSH's and UwURDP's hosts, logins, keys,
 >   snippets and port forwards in sections of their own, to view and edit.
+> - UwU Sans, the UwU apps' font, and a font choice per device (Manrope,
+>   Rubik, DM Sans or the system's); checkboxes and switches like UwUMail's.
 > - Its own installer with Nyu, signed automatic updates, German and English.
 >
 > **With UwULock Server 0.6**: changes from your other devices
@@ -101,7 +119,13 @@ bitwarden.com or bitwarden.eu — with the same encryption the official apps use
 > With UwULock Server 0.7 the password check also finds breached passwords
 > (Have I Been Pwned, XposedOrNot), sites breached after your last change and
 > sites that offer two-step login, opens the change-password page and keeps
-> what you ignore in step with the web vault.
+> what you ignore in step with the web vault; when XposedOrNot is busy, the
+> check waits as the server says instead of ending incomplete, and shows how
+> far each source is. With UwULock Server 0.8 an item shared as a Send is an
+> [entry Send](docs/uwu-extras.md#entry-sends): its page shows the entry with
+> copy buttons and the websites you picked, and, if you tick it, live one-time
+> codes — never the key on the page, but the key travels encrypted in the Send,
+> so whoever has the link can read it out (UwULock asks before it goes along).
 > UwULock locks with the computer, unlocks with Windows Hello, and moves a
 > whole vault over from Bitwarden, attachments, Sends and organisations
 > included. [Extras](docs/uwu-extras.md) ·
@@ -120,18 +144,33 @@ Download the file for your system from the newest
 **Install** — no admin prompt. The [install guide](docs/install.md) has the
 details. [Auf Deutsch](docs/install.md#uwulock-installieren).
 
+Passkeys in browsers on Linux: the `.deb` and `.rpm` bring a small root helper,
+`uwulock-uhid-broker`, which makes the virtual security key and nothing else
+(UwULock itself never gets `/dev/uhid`), and switch its socket on. The Arch
+package doesn't switch services on by itself:
+`sudo systemctl enable --now uwulock-uhid-broker.socket`. A test build from
+before the helper gave the person at the seat `/dev/uhid` itself; updating
+takes that back (`setfacl`, or `chmod` without the acl package). Then switch
+it on in the app: Settings → Security.
+[Passkeys for the system](docs/passkeys.md#linux-a-virtual-security-key).
+
 Phones: Android 10 or newer (`UwULock-android.apk`) and the iPhone with iOS 17
 or newer (`UwULock-ios.ipa`, unsigned, for sideloading with your own Apple ID).
 Vault, search, copy, one-time codes and the generator, the password check with
-its swipe review, unlocking with a fingerprint or face. [UwULock on Android and iPhone](docs/mobile.md).
+its swipe review, unlocking with a fingerprint or face. Passkeys for other apps
+and browsers on Android 14 or newer (pick UwULock in Android's Settings →
+Passwords, passkeys & accounts); on the iPhone only with a signed build.
+[UwULock on Android and iPhone](docs/mobile.md).
 
 ## Browser extension
 
 UwULock for Chrome, Edge, Brave, Vivaldi, Opera and Firefox, from one code base: log in (with
 two-step login), unlock with the master password or a PIN, the page's logins first, copy and
-one-time codes, create and edit items, a generator — and filling from a button in the login
-field, the context menu or Ctrl+Shift+L, a bar that offers to save what you signed in with, and
-passkeys kept in your vault in Bitwarden's format. It speaks to UwULock Server, Vaultwarden and
+one-time codes (the next one too, in a code's last 10 seconds), create and edit items, a
+generator with minimums per kind of character, sharing an item as a Send (an entry Send on
+UwULock Server), a font of your choice — and filling from a button in the login field, the
+context menu or Ctrl+Shift+L, a bar that offers to save what you signed in with, and passkeys
+kept in your vault in Bitwarden's format, listed and deleted in the item. It speaks to UwULock Server, Vaultwarden and
 Bitwarden directly; the crypto is uwulock-core, compiled to WebAssembly.
 
 It isn't in any store: `UwULock-extension-chromium.zip` and `UwULock-extension-firefox.xpi` are on
@@ -222,8 +261,11 @@ The installer, with the app packed inside: `pnpm build:setup`. Releasing is
 - [Konzept](KONZEPT.md) — the concept, in German
 - [Vision](docs/vision.md) — what I want UwULock to be and what it will never do
 - [Architecture](docs/architecture.md) — how the pieces fit together, and the crypto
-- [Design](docs/design.md) — colors, type, Nyu, tone of voice
+- [Design](docs/design.md) — colors, type and the font choice, Nyu, tone of voice
 - [Roadmap](docs/roadmap.md) — my wish list, without dates
+- [Security review of 0.5](docs/security-review-0.5.md) — what was found in the apps, the
+  extension, the core and the passkey providers, and how it was fixed
+- [Privacy policy](PRIVACY.md) — what the browser extension sends, and to whom
 
 UwULock is not affiliated with Bitwarden Inc. It speaks the protocol their
 open-source clients speak, and Vaultwarden implements.
