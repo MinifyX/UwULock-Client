@@ -1085,6 +1085,17 @@ fn an_item_is_shared_as_a_send_without_its_authenticator_key() {
         extras::decode_entry_send(readable, &url_key).unwrap(),
         "null"
     );
+    // Only a 16-byte seed is a Send's key (R6 F2): a marker made with an empty
+    // or cut key isn't read with that key either.
+    let entry = uwulock_core::entry_send::Entry {
+        name: "Router".into(),
+        ..Default::default()
+    };
+    for short in [&[][..], &[1u8; 8][..], &[1u8; 32][..]] {
+        let forged = uwulock_core::entry_send::encode("Router", &entry, short);
+        let key = URL_SAFE_NO_PAD.encode(short);
+        assert_eq!(kind(extras::decode_entry_send(&forged, &key)), "invalid");
+    }
     // Only the authenticator key chosen is enough for an entry, not for text.
     let only = json!({ "fields": [["totp", "Code"]], "deletionDate": "2026-09-29T12:00:00.000Z",
         "entry": true });
