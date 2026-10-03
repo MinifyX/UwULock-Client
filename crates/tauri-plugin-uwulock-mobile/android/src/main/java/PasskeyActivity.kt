@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
-import android.util.Log
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
@@ -24,7 +23,6 @@ import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialUnknownException
 import androidx.credentials.exceptions.domerrors.InvalidStateError
 import androidx.credentials.exceptions.publickeycredential.CreatePublicKeyCredentialDomException
-import androidx.credentials.provider.CallingAppInfo
 import androidx.credentials.provider.PendingIntentHandler
 import org.json.JSONObject
 
@@ -39,7 +37,6 @@ import org.json.JSONObject
 @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 class PasskeyActivity : AppCompatActivity() {
     companion object {
-        private const val TAG = "UwULock"
         const val MODE = "app.uwulock.passkeys.MODE"
         const val ITEM_ID = "app.uwulock.passkeys.ITEM_ID"
         const val CREDENTIAL_ID = "app.uwulock.passkeys.CREDENTIAL_ID"
@@ -118,46 +115,27 @@ class PasskeyActivity : AppCompatActivity() {
     /** The vault is open now: Android gets the passkeys it asked for before. */
     private fun unlocked() {
         val request = PendingIntentHandler.retrieveBeginGetCredentialRequest(intent)
-        val response = request?.let { PasskeyProviderService.entries(this, it) }
-        if (response == null) {
+        if (request == null) {
             cancel()
             return
         }
-        val result = Intent()
-        PendingIntentHandler.setBeginGetCredentialResponse(result, response)
-        setResult(Activity.RESULT_OK, result)
-        finish()
-    }
-
-    /** Who asks: the browser's web origin when it is on the privileged list, the app otherwise. */
-    private fun caller(info: CallingAppInfo, requestJson: String, clientDataHash: ByteArray?): JSONObject {
-        val args = JSONObject()
-            .put("requestJson", requestJson)
-            .put("packageName", info.packageName)
-            .put("certHashes", PasskeyBridge.certHashes(info.signingInfo))
-        try {
-            val allowlist = resources.openRawResource(R.raw.privileged_browsers)
-                .bufferedReader().use { it.readText() }
-            val origin = info.getOrigin(allowlist)
-            if (!origin.isNullOrEmpty()) {
-                args.put("origin", origin.trimEnd('/'))
-                if (clientDataHash != null) args.put("clientDataHash", PasskeyBridge.b64(clientDataHash))
+        background {
+            val response = try {
+                PasskeyProviderService.entries(this, request)
+            } catch (error: Exception) {
+                null
             }
-        } catch (error: Exception) {
-            // A browser that claims an origin without being on the list: treated as an app.
-            Log.w(TAG, "no privileged origin for ${info.packageName}: $error")
+            runOnUiThread {
+                if (response == null) {
+                    cancel()
+                } else {
+                    val result = Intent()
+                    PendingIntentHandler.setBeginGetCredentialResponse(result, response)
+                    setResult(Activity.RESULT_OK, result)
+                    finish()
+                }
+            }
         }
-        return args
-    }
-
-    private fun wantsVerification(requestJson: String, create: Boolean): Boolean {
-        val json = try { JSONObject(requestJson) } catch (error: Exception) { return true }
-        val preference = if (create) {
-            json.optJSONObject("authenticatorSelection")?.optString("userVerification")
-        } else {
-            json.optString("userVerification")
-        }
-        return preference != "discouraged"
     }
 
     private fun site(requestJson: String): String = try {
@@ -206,9 +184,9 @@ class PasskeyActivity : AppCompatActivity() {
             finish()
             return
         }
-        val args = caller(request.callingAppInfo, calling.requestJson, calling.clientDataHash)
+        val args = PasskeyBridge.caller(this, request.callingAppInfo, calling.requestJson, calling.clientDataHash)
         verify(
-            wantsVerification(calling.requestJson, true),
+            PasskeyBridge.wantsVerification(calling.requestJson, true),
             getString(R.string.uwulock_passkeys_verify_create, site(calling.requestJson)),
             then = { verified ->
                 args.put("verified", verified)
@@ -254,11 +232,11 @@ class PasskeyActivity : AppCompatActivity() {
             finish()
             return
         }
-        val args = caller(request.callingAppInfo, option.requestJson, option.clientDataHash)
+        val args = PasskeyBridge.caller(this, request.callingAppInfo, option.requestJson, option.clientDataHash)
             .put("itemId", intent.getStringExtra(ITEM_ID))
             .put("credentialId", intent.getStringExtra(CREDENTIAL_ID))
         verify(
-            wantsVerification(option.requestJson, false),
+            PasskeyBridge.wantsVerification(option.requestJson, false),
             getString(R.string.uwulock_passkeys_verify_get, site(option.requestJson)),
             then = { verified ->
                 args.put("verified", verified)

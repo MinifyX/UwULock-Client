@@ -45,3 +45,13 @@
 .passkey-choices small {
   color: var(--uwu-muted);
 }
+
+/* The site the passkey is bound to, first and large; its own name after it. */
+.passkey-site strong {
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+
+.passkey-site small {
+  color: var(--uwu-muted);
+}

@@ -1,6 +1,6 @@
-// The Arch Linux package uwulock-bin on the AUR: writes its PKGBUILD and
-// .SRCINFO for a release, from packaging/aur/uwulock-bin/PKGBUILD.in and the
-// release's SHA256SUMS.txt. No dependencies, no makepkg needed.
+// The Arch Linux package uwulock-bin on the AUR: writes its PKGBUILD,
+// uwulock-bin.install and .SRCINFO for a release, from packaging/aur/uwulock-bin/
+// and the release's SHA256SUMS.txt. No dependencies, no makepkg needed.
 //
 //   node scripts/aur.mjs <version> [--sums SHA256SUMS.txt] [--out <folder>]
 //
@@ -72,6 +72,7 @@ export function aurFiles({ version, sums }) {
     '\tconflicts = uwulock',
     '\toptions = !strip',
     '\toptions = !debug',
+    '\tinstall = uwulock-bin.install',
   ];
   for (const arch of ['x86_64', 'aarch64']) {
     lines.push(
@@ -80,7 +81,10 @@ export function aurFiles({ version, sums }) {
     );
   }
   lines.push('', `pkgname = ${name}`, '');
-  return { PKGBUILD, '.SRCINFO': lines.join('\n') };
+  const install = readFileSync(join(root, 'packaging/aur/uwulock-bin/uwulock-bin.install'), 'utf8')
+    .split('\r\n')
+    .join('\n');
+  return { PKGBUILD, '.SRCINFO': lines.join('\n'), 'uwulock-bin.install': install };
 }
 
 /** Writes both files into `dir`. */

@@ -300,11 +300,13 @@ Details: [mobile.md](mobile.md).
 ## Passkeys for the system
 
 `passkeys/` in the app offers the vault's passkeys outside the browser
-extension: a virtual FIDO2 security key over `/dev/uhid` on Linux, a plugin
-passkey manager on Windows 11, Credential Manager's provider on Android, an
-AutoFill extension on iOS and macOS. The protocol parts (CTAP2, CTAPHID,
-uhid, WebAuthn JSON, the Apple extension's sealed list) are in
-`crates/uwulock-authenticator`. Design and threat model:
+extension: a virtual FIDO2 security key on Linux (made through `/dev/uhid` by
+the root helper `crates/uwulock-uhid-broker`, which makes nothing else), a
+plugin passkey manager on Windows 11 (only requests Windows signed),
+Credential Manager's provider on Android, an AutoFill extension on iOS and
+macOS. The protocol parts (CTAP2, CTAPHID, uhid, the broker's frames, rpId
+rules, Windows' request signatures, WebAuthn JSON, the Apple extension's
+sealed list) are in `crates/uwulock-authenticator`. Design and threat model:
 [passkeys.md](passkeys.md).
 
 ## Suite parts

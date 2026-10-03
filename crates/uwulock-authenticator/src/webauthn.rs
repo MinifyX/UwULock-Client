@@ -258,13 +258,11 @@ pub fn apk_origin(cert_sha256: &[u8]) -> String {
 }
 
 /// Whether a web origin may use passkeys of `rp_id`: HTTPS (or `localhost`
-/// over HTTP), and the RP id is its host or a parent domain of it.
+/// over HTTP), and the RP id is its host or a parent domain of it — never a
+/// public suffix ([`crate::rpid::valid`]).
 pub fn origin_allows(origin: &str, rp_id: &str) -> bool {
     let rp_id = rp_id.trim().to_ascii_lowercase();
-    if rp_id.is_empty()
-        || rp_id.starts_with('.')
-        || !rp_id.contains(|c: char| c.is_ascii_alphanumeric())
-    {
+    if !crate::rpid::valid(&rp_id) {
         return false;
     }
     let (scheme, rest) = match origin.split_once("://") {
@@ -333,7 +331,7 @@ pub fn authentication_response(
 /// Whether a site's Digital Asset Links (`/.well-known/assetlinks.json`)
 /// let the Android app `package`, signed with one of `cert_sha256`, use its
 /// passkeys: a statement with `delegate_permission/common.get_login_creds`
-/// (or `handle_all_urls`) naming the package and a fingerprint.
+/// naming the package and a fingerprint.
 pub fn asset_links_allow(json: &str, package: &str, cert_sha256: &[Vec<u8>]) -> bool {
     let Ok(Value::Array(statements)) = serde_json::from_str::<Value>(json) else {
         return false;
@@ -353,11 +351,9 @@ pub fn asset_links_allow(json: &str, package: &str, cert_sha256: &[Vec<u8>]) -> 
             .and_then(Value::as_array)
             .is_some_and(|relations| {
                 relations.iter().any(|r| {
-                    matches!(
-                        r.as_str(),
-                        Some("delegate_permission/common.get_login_creds")
-                            | Some("delegate_permission/common.handle_all_urls")
-                    )
+                    // Only credential sharing: `handle_all_urls` is App
+                    // Links, which a site may grant without sharing logins.
+                    r.as_str() == Some("delegate_permission/common.get_login_creds")
                 })
             });
         let target = statement.get("target");
@@ -468,6 +464,10 @@ mod tests {
         assert!(!origin_allows("https://example.com", "login.example.com"));
         assert!(!origin_allows("https://example.com", ""));
         assert!(!origin_allows("example.com", "example.com"));
+        // Public suffixes are nobody's (R3-12).
+        assert!(!origin_allows("https://evil.co.uk", "co.uk"));
+        assert!(!origin_allows("https://nyu.github.io", "github.io"));
+        assert!(origin_allows("https://nyu.github.io", "nyu.github.io"));
     }
 
     #[test]
@@ -506,7 +506,14 @@ mod tests {
             &[vec![0xcd; 32]]
         ));
         let web_only = links.replace("get_login_creds", "something_else");
-        assert!(!asset_links_allow(&web_only, "com.example.app", &[cert]));
+        assert!(!asset_links_allow(
+            &web_only,
+            "com.example.app",
+            std::slice::from_ref(&cert)
+        ));
+        // App Links alone don't share logins (R3-12).
+        let app_links = links.replace("get_login_creds", "handle_all_urls");
+        assert!(!asset_links_allow(&app_links, "com.example.app", &[cert]));
         assert!(!asset_links_allow("not json", "com.example.app", &[]));
     }
 }

@@ -1,0 +1,18 @@
+[package]
+name = "uwulock-uhid-broker"
+description = "Root helper for UwULock's virtual security key on Linux: opens /dev/uhid, makes only UwULock's FIDO device for the person at the seat and relays its 64-byte reports. Started by systemd for each connection."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+doctest = false
+
+[dependencies]
+uwulock-authenticator.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"

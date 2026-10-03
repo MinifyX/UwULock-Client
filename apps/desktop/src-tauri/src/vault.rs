@@ -982,6 +982,9 @@ pub(crate) fn logout(
         None => state.active_id()?,
     };
     state.log_out(&id)?;
+    // The AutoFill extension's passkey list of this account goes with it.
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    crate::passkeys::apple::forget(&app, &id);
     tracing::info!("logged out");
     emit_status(&app);
     Ok(status_of(&state))

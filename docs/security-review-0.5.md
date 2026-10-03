@@ -12,7 +12,8 @@ Severity as in 0.4: **High** is a secret leaving the device, or the server able 
 a secret. **Medium** needs a hostile party (server, org member, page, app) or misleads the user
 into leaking, but is real. **Low** is defence in depth. **Info** is worth knowing.
 
-No Critical or High findings.
+No Critical findings. The two High ones are in the passkey providers (R3), which no release
+has shipped yet; both are fixed.
 
 ## App, core and WASM (R2)
 
@@ -53,4 +54,108 @@ container instead.
 
 ## Passkey providers (R3)
 
-See the passkey fixes (`lock08-fix-passkeys`); their status is added here with that change.
+Scope: PR #27 (`69b4a4e`) — `crates/uwulock-authenticator`, `apps/desktop/src-tauri/src/passkeys/`,
+the request dialog, the Android provider, the iOS/macOS AutoFill extension, the Linux packaging
+and [passkeys.md](passkeys.md). The trust boundary added here is **another program of the same
+user** (a malicious npm script, a game mod): it can open the security key's hidraw node, call
+COM classes, or, with the same Apple team, write to the App Group. A throw-away fuzz loop
+(3 M mutated CTAP2/CBOR/uhid inputs, 2 M CTAPHID reports) found no panic or hang. The fixes are
+in PR "Passkeys: security fixes"; [passkeys.md](passkeys.md) has the design they leave behind.
+
+### High
+
+- **R3-1 — `uaccess` on `/dev/uhid` let every program of the seat user make any HID device**
+  (keystroke injection, kernel HID driver attack surface), from the moment the package was
+  installed. **Fixed**: `/dev/uhid` stays root's. A root helper, `uwulock-uhid-broker`
+  (systemd socket activation, one sandboxed instance per connection, no capabilities), opens it
+  and makes exactly one device with everything compiled in (FIDO descriptor, name, bus, ids); it
+  serves only the user of the active seat0 session (`SO_PEERCRED`, re-checked every 2 s), one
+  device per user. The app sends only 64-byte reports and the broker writes `UHID_INPUT2`
+  itself, so no `UHID_DESTROY`/`UHID_CREATE2` from the app reaches the kernel; any other frame
+  ends the device. The udev rule keeps only the key's hidraw node; the boot-time `modprobe` and
+  the modules-load file are gone, and the post-install script removes the old ACL (with
+  `chmod 0600` where `setfacl` is missing). The app reconnects by itself when the broker goes
+  (the seat changed hands); the socket has no systemd trigger limit a local user could trip.
+  Tests: the broker's rules in `crates/uwulock-uhid-broker`, a run against the real kernel
+  (`e2e/kernel.py`), and the installed packages in the Installers workflow (socket enabled,
+  sandboxed helper starts and turns a non-seat caller away, socket gone after removal, the
+  helper `0755` in the `.rpm`).
+- **R3-2 — the Windows plugin took requests from any program** and its dialog said "Windows"
+  asks. **Fixed**: the operation signing key from `WebAuthNPluginAddAuthenticator` (or
+  `…GetOperationSigningPublicKey`) is held in memory — never read from a file, which another
+  program of the user could replace — and every request's signature over its encoded bytes is
+  verified (`uwulock_authenticator::opsign`: P-256 or RSA, CNG blob or DER; tested with real
+  keys) before anybody is asked; unsigned → `E_ACCESSDENIED`. Cancel only for the transaction
+  in flight (process-wide; its GUID only Windows knows; the cancel signature's payload is
+  unconfirmed, so only logged). No key → the plugin is removed and doesn't start.
+  Still experimental and off by default. Not done: a COM access DACL (`CoInitializeSecurity` is
+  process-wide and the WebView initialises COM first) — the signature check is the control.
+
+### Medium
+
+- **R3-3 — silent `up: false` assertions** signed with the passkey, for any rpId, also without
+  an allow list (with the account in the answer); an immediate `NO_CREDENTIALS` was a second
+  oracle. **Fixed**: without an allow list refused; with one, never the user entity, throttled
+  (20, then one per 3 s), and signed with a throwaway key — no passkey signature without the
+  person. `NO_CREDENTIALS` at once only for allow-list requests. Tests in `ctap2`.
+- **R3-4 — Apple provider key lifecycle** (one Keychain slot, per-account key files, outbox
+  entries deleted when they didn't open). **Fixed**: sealed files name their account (format 2,
+  AAD per kind and account); the Keychain item carries a key id and is rewritten when missing
+  or different; outbox entries of other accounts wait, ones that don't open go to
+  `outbox/unreadable/` and are retried, never deleted; a provider key that no longer opens is
+  kept (`.key.old-<ms>`) and tried on them, not overwritten; the extension makes passkeys only
+  for rpIds the app takes; `clear` deletes the key files too.
+- **R3-5 — the Apple list outlived logout**. **Fixed**: logout (and switching off) removes the
+  list, the Keychain item, the identities and the key file of the recorded account (the key
+  stays while the outbox still holds that account's passkeys). Passkeys deleted elsewhere stay
+  usable until the next unlock on the device (documented). A refresh already running can't put
+  the list back after a logout (one lock, and the account is checked right before handing over).
+
+### Low
+
+- **R3-6 — the dialog trusted a fixed caller label, stole focus, and could be accepted by a
+  stray key**. **Fixed**: Linux names the programs holding the hidraw node open (`/proc/*/fd`)
+  and warns unless all are known browsers installed by the system (root-owned, under `/usr`,
+  `/opt`, `/snap` or `/app`) — a hint, not proof, and documented as such; the dialog focuses _Ablehnen_, its yes works only after 0.7 s;
+  the rpId comes first, the site's name second; names lose control/bidi characters and are cut
+  at 64 characters.
+- **R3-7 — rpIds from CTAP were not validated**. **Fixed**: `uwulock_authenticator::rpid` —
+  lower-case LDH host names, ≤ 253, no IPs, no public suffixes (`psl`), `localhost` allowed —
+  in CTAP2 parsing, Android and the Apple outbox; `INVALID_PARAMETER` otherwise.
+- **R3-8 — CTAPHID/transport DoS**. **Fixed**: a half-sent message is dropped after 3 s; one
+  request at a time (also on the same channel), re-INIT cancels without freeing the channel, so
+  never more than one worker; least-recently-used channel eviction that never drops the busy
+  one; requests capped at 7609 bytes everywhere (Windows included). After a re-INIT the
+  cancelled request's answer is dropped, not sent on the re-initialised channel.
+- **R3-9 — signature counter races and a failed save still signed**. **Fixed**: signing is
+  serialised, counted from the saved copy, and no signature when the save fails; silent checks
+  don't touch the counter. Two devices signing at the same moment can still collide (only the
+  server could order them).
+- **R3-10 — macOS Keychain item not this-device-only**. **Fixed**:
+  `AccessibleWhenPasscodeSetThisDeviceOnly` with user presence, not synchronizable, as on iOS.
+- **R3-11 — Android UV only enforced in Kotlin; account names listed before the caller was
+  checked**. **Fixed**: Rust decides whether to verify (bridge call `verification`) and refuses
+  an unverified request that wanted it; listing checks the rpId, the privileged origin or the
+  site's asset links first (cached 5 min allowed / 1 min refused).
+- **R3-12 — no public-suffix check on Android origins; `handle_all_urls` accepted**. **Fixed**:
+  `origin_allows` uses `rpid`, asset links need `get_login_creds`.
+
+### Info
+
+- **R3-13 — docs vs. code**. **Fixed** in [passkeys.md](passkeys.md) (matching is rpId _and_
+  allow list, provider key, Keychain, the broker, Windows signatures, silent checks).
+- **R3-14 — key material in memory, organisation passkeys in the Apple list**. **Fixed** in
+  part: intermediates zeroised, each private key sealed on its own and only the one used opened
+  in the extension. **Accepted**: organisation passkeys stay in the Apple list, behind the
+  device passcode like the person's own — the platform's norm for AutoFill. An organisation
+  that doesn't want that asks its members to leave the setting off; a per-organisation switch
+  is open ([passkeys.md](passkeys.md)).
+- **R3-15 — sealed list replay, shared AAD, `keep()` overwrote the list**. **Fixed**: distinct
+  AADs per kind and account, a generation the extension never goes back from, imported
+  credential ids remembered, the extension only appends to a list it could open.
+- **R3-16 — Windows listeners piled up on each start**. **Fixed**: kept and removed in `stop`.
+
+A second review of the fixes (before merging) found the Linux key not reconnecting after the
+broker went, the Windows key file and cancel handling, the Apple key rotation and logout race,
+the `setfacl` fallback, the caller label, the stale answer after a re-INIT and the socket limits;
+all are fixed as described above.

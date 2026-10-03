@@ -16,7 +16,11 @@ uwulock-core.workspace = true
 aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
 base64.workspace = true
 p256.workspace = true
+# The Public Suffix List, compiled in: an rpId may not be `com` or `github.io`.
+psl = "2"
 rand.workspace = true
+# Windows signs its requests to a plugin passkey manager; RSA or P-256 keys.
+rsa.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

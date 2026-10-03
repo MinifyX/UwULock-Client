@@ -1,0 +1,26 @@
+# UwULock's virtual security key (passkeys in browsers, Settings → Security in the app) needs
+# its helper's socket; Arch packages don't switch services on by themselves.
+_hint() {
+  echo ':: For passkeys in browsers: sudo systemctl enable --now uwulock-uhid-broker.socket'
+}
+
+post_install() {
+  _hint
+}
+
+post_upgrade() {
+  # Packages before 0.5 gave the person at the seat /dev/uhid itself; that rule is gone.
+  # Without setfacl (the acl package), chmod does it: on a node with an ACL it sets the mask,
+  # which takes the named user's access away until the next boot recreates the node.
+  if [ -e /dev/uhid ]; then
+    if command -v setfacl >/dev/null 2>&1; then
+      setfacl --remove-all /dev/uhid 2>/dev/null || true
+    fi
+    chmod 0600 /dev/uhid 2>/dev/null || true
+  fi
+  systemctl is-enabled --quiet uwulock-uhid-broker.socket 2>/dev/null || _hint
+}
+
+pre_remove() {
+  systemctl disable --now uwulock-uhid-broker.socket 2>/dev/null || true
+}

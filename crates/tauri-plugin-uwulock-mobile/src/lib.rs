@@ -333,7 +333,10 @@ mod mobile {
                 .map_err(error)
         }
 
-        /// iOS: removes outbox files the app took into the vault.
+        /// iOS: tidies the outbox. A plain name removes a file the app took
+        /// into the vault; `aside:<name>` moves one that didn't open to
+        /// `outbox/unreadable/` (kept, tried again later); `unreadable/<name>`
+        /// removes a set-aside file that opened after all.
         pub fn passkeys_clear_outbox(&self, names: &[String]) -> Result<(), Error> {
             #[derive(Serialize)]
             struct Names<'a> {

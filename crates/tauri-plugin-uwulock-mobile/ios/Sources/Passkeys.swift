@@ -1,5 +1,7 @@
 import AuthenticationServices
+import CryptoKit
 import Foundation
+import LocalAuthentication
 import Security
 import Tauri
 
@@ -28,6 +30,11 @@ struct PasskeysNamesArgs: Decodable {
 ///
 /// The groups come from the app's Info.plist (UwULockAppGroup, UwULockKeychainGroup) and only
 /// exist in a build signed with an Apple developer team: until then the status says why not.
+///
+/// One Keychain slot holds the provider key of the account whose list is there. Rust hands the key
+/// over with every list; the item is (re)written only when the one there isn't this key — told by
+/// its label (`key_id` in crates/uwulock-authenticator/src/apple.rs), which takes no Face ID to
+/// read — or is gone.
 extension UwuLockMobilePlugin {
   private static let passkeyService = "app.uwulock.passkeys"
   private static let passkeyAccount = "provider-key"
@@ -54,6 +61,44 @@ extension UwuLockMobilePlugin {
       .replacingOccurrences(of: "+", with: "-")
       .replacingOccurrences(of: "/", with: "_")
       .replacingOccurrences(of: "=", with: "")
+  }
+
+  /// "UwULock passkeys " + hex of the first 8 bytes of SHA-256("uwulock-provider-key-id-v1" ‖ key),
+  /// as `key_id` in apple.rs.
+  private static func keyLabel(_ key: Data) -> String {
+    var input = Data("uwulock-provider-key-id-v1".utf8)
+    input.append(key)
+    defer { input.resetBytes(in: 0..<input.count) }
+    let hex = SHA256.hash(data: input).prefix(8).map { (byte: UInt8) -> String in
+      String(format: "%02x", byte)
+    }
+    return "UwULock passkeys " + hex.joined()
+  }
+
+  /// Whether the Keychain has the provider key with this label. Attributes only, and never any UI:
+  /// when the Keychain wants one anyway, the item counts as missing and is written again.
+  private func keyThere(label: String, keychain: String) -> Bool {
+    let context = LAContext()
+    context.interactionNotAllowed = true
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: Self.passkeyService,
+      kSecAttrAccount as String: Self.passkeyAccount,
+      kSecAttrAccessGroup as String: keychain,
+      kSecAttrSynchronizable as String: false,
+      kSecAttrLabel as String: label,
+      kSecReturnAttributes as String: true,
+      kSecMatchLimit as String: kSecMatchLimitOne,
+      kSecUseAuthenticationContext as String: context,
+    ]
+    var found: AnyObject?
+    return SecItemCopyMatching(query as CFDictionary, &found) == errSecSuccess
+  }
+
+  /// A file name in the outbox: nothing that leaves it.
+  private static func outboxFile(_ name: String) -> Bool {
+    name.hasSuffix(".sealed") && name != ".sealed" && !name.hasPrefix(".")
+      && !name.contains("/") && !name.contains("\\")
   }
 
   @objc public func passkeysStatus(_ invoke: Invoke) {
@@ -88,29 +133,33 @@ extension UwuLockMobilePlugin {
           return
         }
         defer { key.resetBytes(in: 0..<key.count) }
-        var accessError: Unmanaged<CFError>?
-        guard
-          let access = SecAccessControlCreateWithFlags(
-            nil, kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly, .userPresence, &accessError)
-        else {
-          invoke.reject("The iPhone couldn't protect the key.", code: "unavailable")
-          return
-        }
-        let query: [String: Any] = [
-          kSecClass as String: kSecClassGenericPassword,
-          kSecAttrService as String: Self.passkeyService,
-          kSecAttrAccount as String: Self.passkeyAccount,
-          kSecAttrAccessGroup as String: groups.keychain,
-          kSecAttrSynchronizable as String: false,
-        ]
-        SecItemDelete(query as CFDictionary)
-        var item = query
-        item[kSecAttrAccessControl as String] = access
-        item[kSecValueData as String] = key
-        let status = SecItemAdd(item as CFDictionary, nil)
-        guard status == errSecSuccess else {
-          invoke.reject("The Keychain said no (\(status)).", code: "failed")
-          return
+        let label = Self.keyLabel(key)
+        if !keyThere(label: label, keychain: groups.keychain) {
+          var accessError: Unmanaged<CFError>?
+          guard
+            let access = SecAccessControlCreateWithFlags(
+              nil, kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly, .userPresence, &accessError)
+          else {
+            invoke.reject("The iPhone couldn't protect the key.", code: "unavailable")
+            return
+          }
+          let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: Self.passkeyService,
+            kSecAttrAccount as String: Self.passkeyAccount,
+            kSecAttrAccessGroup as String: groups.keychain,
+            kSecAttrSynchronizable as String: false,
+          ]
+          SecItemDelete(query as CFDictionary)
+          var item = query
+          item[kSecAttrAccessControl as String] = access
+          item[kSecAttrLabel as String] = label
+          item[kSecValueData as String] = key
+          let status = SecItemAdd(item as CFDictionary, nil)
+          guard status == errSecSuccess else {
+            invoke.reject("The Keychain said no (\(status)).", code: "failed")
+            return
+          }
         }
       }
       try list.write(
@@ -144,28 +193,48 @@ extension UwuLockMobilePlugin {
     }
   }
 
+  /// The outbox's files, and those set aside in `outbox/unreadable/` as "unreadable/<name>": Rust
+  /// tries them again whenever their account is open.
   @objc public func passkeysOutbox(_ invoke: Invoke) {
     guard let groups = passkeyGroups() else {
       invoke.resolve(["entries": [JsonObject]()])
       return
     }
     let outbox = groups.folder.appendingPathComponent("outbox", isDirectory: true)
-    let names = (try? FileManager.default.contentsOfDirectory(atPath: outbox.path)) ?? []
     var entries: [JsonObject] = []
-    for name in names where name.hasSuffix(".sealed") {
-      if let data = try? Data(contentsOf: outbox.appendingPathComponent(name)) {
-        entries.append(["name": name, "sealed": Self.toBase64URL(data)])
+    for (folder, prefix) in [(outbox, ""), (outbox.appendingPathComponent("unreadable"), "unreadable/")] {
+      let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+      for name in names where Self.outboxFile(name) {
+        if let data = try? Data(contentsOf: folder.appendingPathComponent(name)) {
+          entries.append(["name": prefix + name, "sealed": Self.toBase64URL(data)])
+        }
       }
     }
     invoke.resolve(["entries": entries])
   }
 
+  /// Removes outbox files the app took in: "<name>" from the outbox, "unreadable/<name>" from the
+  /// set-aside ones. "aside:<name>" moves one into `outbox/unreadable/` instead — it didn't open,
+  /// and is never deleted for that.
   @objc public func passkeysClearOutbox(_ invoke: Invoke) throws {
     let args = try invoke.parseArgs(PasskeysNamesArgs.self)
     if let groups = passkeyGroups() {
       let outbox = groups.folder.appendingPathComponent("outbox", isDirectory: true)
-      for name in args.names where !name.contains("/") && !name.hasPrefix(".") {
-        try? FileManager.default.removeItem(at: outbox.appendingPathComponent(name))
+      let unreadable = outbox.appendingPathComponent("unreadable", isDirectory: true)
+      for name in args.names {
+        if name.hasPrefix("aside:") {
+          let file = String(name.dropFirst("aside:".count))
+          guard Self.outboxFile(file) else { continue }
+          try? FileManager.default.createDirectory(at: unreadable, withIntermediateDirectories: true)
+          try? FileManager.default.moveItem(
+            at: outbox.appendingPathComponent(file), to: unreadable.appendingPathComponent(file))
+        } else if name.hasPrefix("unreadable/") {
+          let file = String(name.dropFirst("unreadable/".count))
+          guard Self.outboxFile(file) else { continue }
+          try? FileManager.default.removeItem(at: unreadable.appendingPathComponent(file))
+        } else if Self.outboxFile(name) {
+          try? FileManager.default.removeItem(at: outbox.appendingPathComponent(name))
+        }
       }
     }
     invoke.resolve()
@@ -179,6 +248,7 @@ extension UwuLockMobilePlugin {
         kSecAttrService as String: Self.passkeyService,
         kSecAttrAccount as String: Self.passkeyAccount,
         kSecAttrAccessGroup as String: groups.keychain,
+        kSecAttrSynchronizable as String: false,
       ]
       SecItemDelete(query as CFDictionary)
     }

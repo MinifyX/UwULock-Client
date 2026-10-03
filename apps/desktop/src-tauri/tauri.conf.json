@@ -68,17 +68,21 @@
         "desktopTemplate": "linux/uwulock.desktop",
         "files": {
           "/usr/lib/udev/rules.d/60-uwulock-passkeys.rules": "linux/60-uwulock-passkeys.rules",
-          "/usr/lib/modules-load.d/uwulock-passkeys.conf": "linux/uwulock-passkeys.conf"
+          "/usr/lib/systemd/system/uwulock-uhid-broker.socket": "linux/uwulock-uhid-broker.socket",
+          "/usr/lib/systemd/system/uwulock-uhid-broker@.service": "linux/uwulock-uhid-broker@.service"
         },
-        "postInstallScript": "linux/postinst.sh"
+        "postInstallScript": "linux/postinst.sh",
+        "preRemoveScript": "linux/prerm.sh"
       },
       "rpm": {
         "desktopTemplate": "linux/uwulock.desktop",
         "files": {
           "/usr/lib/udev/rules.d/60-uwulock-passkeys.rules": "linux/60-uwulock-passkeys.rules",
-          "/usr/lib/modules-load.d/uwulock-passkeys.conf": "linux/uwulock-passkeys.conf"
+          "/usr/lib/systemd/system/uwulock-uhid-broker.socket": "linux/uwulock-uhid-broker.socket",
+          "/usr/lib/systemd/system/uwulock-uhid-broker@.service": "linux/uwulock-uhid-broker@.service"
         },
-        "postInstallScript": "linux/postinst.sh"
+        "postInstallScript": "linux/postinst.sh",
+        "preRemoveScript": "linux/prerm.sh"
       }
     }
   }

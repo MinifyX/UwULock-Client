@@ -25,8 +25,10 @@ export type PasskeyProviderStatus = {
 export type PasskeyRequest = {
   id: number;
   kind: 'create' | 'get' | 'select';
-  /** Who asks: a browser, an app. */
+  /** Who asks: "Firefox", "Windows", a program's name; empty when unknown. */
   client: string;
+  /** A browser UwULock knows, or a request Windows signed. */
+  trusted: boolean;
   rpId: string | null;
   rpName: string | null;
   userName: string | null;

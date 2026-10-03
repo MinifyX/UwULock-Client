@@ -1,0 +1,25 @@
+# UwULock's virtual security key (passkeys in browsers): the app asks here, and systemd starts
+# uwulock-uhid-broker@.service as root for the connection. Anybody may connect; the broker only
+# serves the user of the active session on seat0 (SO_PEERCRED), one key per user.
+# docs/passkeys.md has the design.
+[Unit]
+Description=UwULock virtual security key helper
+Documentation=https://github.com/MinifyX/UwULock-Client/blob/main/docs/passkeys.md
+
+[Socket]
+ListenStream=/run/uwulock/uhid-broker.sock
+SocketMode=0666
+DirectoryMode=0755
+Accept=yes
+MaxConnections=8
+MaxConnectionsPerSource=4
+# systemd's default trigger limit (200 in 2 s) would put the socket into "failed" for good, and
+# any local user can connect that often. Instead: no trigger limit, and while connections come
+# faster than 50 in 2 s, systemd pauses taking them for a moment (PollLimit, systemd 255+;
+# older ones ignore it). Excess connections wait or are refused, nothing stays broken.
+TriggerLimitIntervalSec=0
+PollLimitIntervalSec=2s
+PollLimitBurst=50
+
+[Install]
+WantedBy=sockets.target

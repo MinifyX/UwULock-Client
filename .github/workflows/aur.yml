@@ -1,7 +1,7 @@
 name: AUR
 
 # Once a release is published (by `pnpm release`), the Arch Linux package
-# uwulock-bin follows it: PKGBUILD and .SRCINFO from scripts/aur.mjs, with the
+# uwulock-bin follows it: PKGBUILD, .SRCINFO and uwulock-bin.install from scripts/aur.mjs, with the
 # hashes from the release's SHA256SUMS.txt, pushed to the AUR. The job holds
 # the AUR key and nothing else — no signing key, a read-only token. Without
 # the key (AUR_SSH_PRIVATE_KEY, the private half of the SSH key on the AUR
@@ -76,9 +76,10 @@ jobs:
 
           aur="$RUNNER_TEMP/aur"
           git clone -q ssh://aur@aur.archlinux.org/uwulock-bin.git "$aur"
-          cp "$RUNNER_TEMP/uwulock-bin/PKGBUILD" "$RUNNER_TEMP/uwulock-bin/.SRCINFO" "$aur/"
+          cp "$RUNNER_TEMP/uwulock-bin/PKGBUILD" "$RUNNER_TEMP/uwulock-bin/.SRCINFO" \
+            "$RUNNER_TEMP/uwulock-bin/uwulock-bin.install" "$aur/"
           cd "$aur"
-          git add PKGBUILD .SRCINFO
+          git add PKGBUILD .SRCINFO uwulock-bin.install
           if git diff --cached --quiet; then
             echo "uwulock-bin is already at ${VERSION#v}"
             exit 0

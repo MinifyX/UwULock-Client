@@ -195,16 +195,43 @@ jobs:
           test -f /var/lib/dpkg/info/uwulock.list
           grep -qx /usr/bin/uwulock-desktop /var/lib/dpkg/info/uwulock.list
           grep -q '^Name=UwULock$' /usr/share/applications/uwulock.desktop
-          # The virtual security key's udev rule (passkeys).
+          # The virtual security key (passkeys): the hidraw rule, the root helper and its
+          # systemd units — and no more uaccess on /dev/uhid (docs/passkeys.md).
           grep -qx /usr/lib/udev/rules.d/60-uwulock-passkeys.rules /var/lib/dpkg/info/uwulock.list
+          if grep -q 'KERNEL=="uhid"' /usr/lib/udev/rules.d/60-uwulock-passkeys.rules; then exit 1; fi
+          grep -qx /usr/lib/uwulock/uwulock-uhid-broker /var/lib/dpkg/info/uwulock.list
+          test -x /usr/lib/uwulock/uwulock-uhid-broker
+          grep -qx /usr/lib/systemd/system/uwulock-uhid-broker.socket /var/lib/dpkg/info/uwulock.list
+          grep -qx /usr/lib/systemd/system/uwulock-uhid-broker@.service /var/lib/dpkg/info/uwulock.list
+          systemd-analyze verify /usr/lib/systemd/system/uwulock-uhid-broker.socket
+          systemctl is-enabled uwulock-uhid-broker.socket
+          test -S /run/uwulock/uhid-broker.sock
+          # The helper starts in its sandbox and turns away whoever isn't the person at
+          # the seat — on a runner, everybody.
+          python3 -c '
+          import socket
+          s = socket.socket(socket.AF_UNIX); s.settimeout(10)
+          s.connect("/run/uwulock/uhid-broker.sock")
+          data = b""
+          while len(data) < 3 or len(data) < 3 + int.from_bytes(data[1:3], "big"):
+              chunk = s.recv(512)
+              assert chunk, data
+              data += chunk
+          print(data)
+          assert data[0] == 0x7f and b"seat" in data, data
+          '
           ldd /usr/bin/uwulock-desktop | grep "not found" && exit 1 || echo "every library found"
           sudo apt-get remove -y uwulock
           test ! -e /usr/bin/uwulock-desktop
+          if systemctl is-active --quiet uwulock-uhid-broker.socket; then exit 1; fi
 
           sudo apt-get install -y rpm
           test "$(rpm -qp --queryformat '%{NAME}' target/installers/UwULock-linux-$arch.rpm)" = uwulock
           rpm -qpl target/installers/UwULock-linux-$arch.rpm | grep -qx /usr/bin/uwulock-desktop
           rpm -qpl target/installers/UwULock-linux-$arch.rpm | grep -qx /usr/lib/udev/rules.d/60-uwulock-passkeys.rules
+          rpm -qpl target/installers/UwULock-linux-$arch.rpm | grep -qx /usr/lib/uwulock/uwulock-uhid-broker
+          # systemd runs it: it has to be executable in the .rpm too.
+          rpm -qplv target/installers/UwULock-linux-$arch.rpm | grep -qE '^-rwxr-xr-x .* /usr/lib/uwulock/uwulock-uhid-broker$'
 
           portable="$RUNNER_TEMP/portable"
           mkdir -p "$portable"

@@ -14,7 +14,15 @@ import { PasswordInput } from './PasswordInput';
  *
  * While the vault is locked the request waits in a notice, so the lock
  * screen stays usable; it opens once the vault does.
+ *
+ * Any program can make a request turn up, also while the person is typing
+ * elsewhere: the dialog starts on "Ablehnen", its yes only works after a
+ * moment, the site's rpId comes first (a site picks its own name), and a
+ * caller UwULock doesn't know as a browser gets a warning.
  */
+
+/** How long the yes stays off after a request turns up, in ms. */
+const ARM_AFTER = 700;
 export function PasskeyRequestDialog() {
   useLanguage();
   const [request, setRequest] = useState<PasskeyRequest | null>(null);
@@ -22,6 +30,7 @@ export function PasskeyRequestDialog() {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [armed, setArmed] = useState(false);
 
   useEffect(() => {
     const load = () =>
@@ -32,6 +41,7 @@ export function PasskeyRequestDialog() {
               setPassword('');
               setError(null);
               setBusy(false);
+              setArmed(false);
               setChoice(
                 next?.kind === 'get'
                   ? (next.passkeys[0]?.credentialId ?? '')
@@ -47,9 +57,19 @@ export function PasskeyRequestDialog() {
     return () => stops.forEach((stop) => void stop.then((unlisten) => unlisten()));
   }, []);
 
+  const requestId = request?.id;
+  useEffect(() => {
+    if (requestId === undefined) return;
+    const timer = window.setTimeout(() => setArmed(true), ARM_AFTER);
+    return () => window.clearTimeout(timer);
+  }, [requestId]);
+
   if (!request) return null;
 
-  const site = request.rpName ? `${request.rpName} (${request.rpId})` : (request.rpId ?? '');
+  // The rpId is what the passkey is bound to; the name is the site's own
+  // words and comes second.
+  const site = request.rpName ? `${request.rpId} („${request.rpName}“)` : (request.rpId ?? '');
+  const client = request.client || t('Ein Programm');
   const decline = () => {
     void passkeyAnswer({ id: request.id, allow: false }).catch(() => undefined);
     setRequest(null);
@@ -60,7 +80,7 @@ export function PasskeyRequestDialog() {
       <div className="notice passkey-notice" role="alert">
         <span>
           {t('{client} möchte einen Passkey von UwULock. Entsperre den Tresor, um fortzufahren.', {
-            client: request.client,
+            client,
           })}
         </span>
         <button onClick={decline}>{t('Ablehnen')}</button>
@@ -70,6 +90,7 @@ export function PasskeyRequestDialog() {
 
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
+    if (blocked) return;
     setBusy(true);
     setError(null);
     try {
@@ -95,7 +116,8 @@ export function PasskeyRequestDialog() {
         ? t('Mit Passkey anmelden')
         : t('Sicherheitsschlüssel auswählen');
   const nothingToSign = request.kind === 'get' && request.passkeys.length === 0;
-  const blocked = busy || nothingToSign || request.excluded || (request.verify && !password);
+  const blocked =
+    !armed || busy || nothingToSign || request.excluded || (request.verify && !password);
 
   return (
     <Modal
@@ -104,7 +126,7 @@ export function PasskeyRequestDialog() {
       footer={
         <>
           <span className="spacer" />
-          <button data-secondary onClick={decline} disabled={busy}>
+          <button data-secondary data-autofocus onClick={decline} disabled={busy}>
             {t('Ablehnen')}
           </button>
           <button className="primary" onClick={() => void submit()} disabled={blocked}>
@@ -119,22 +141,32 @@ export function PasskeyRequestDialog() {
     >
       <form className="passkey-request" onSubmit={(event) => void submit(event)}>
         {request.kind === 'select' ? (
-          <p>
-            {t('{client} sucht einen Sicherheitsschlüssel. UwULock ist einer.', {
-              client: request.client,
-            })}
-          </p>
+          <p>{t('{client} sucht einen Sicherheitsschlüssel. UwULock ist einer.', { client })}</p>
         ) : (
-          <p>
-            {request.kind === 'create'
-              ? t('{client} möchte für {site} einen Passkey in UwULock sichern.', {
-                  client: request.client,
-                  site,
-                })
-              : t('{client} möchte dich mit einem Passkey bei {site} anmelden.', {
-                  client: request.client,
-                  site,
-                })}
+          <>
+            <p className="passkey-site">
+              <strong>{request.rpId}</strong>
+              {request.rpName && <small> · {request.rpName}</small>}
+            </p>
+            <p>
+              {request.kind === 'create'
+                ? t('{client} möchte für {site} einen Passkey in UwULock sichern.', {
+                    client,
+                    site,
+                  })
+                : t('{client} möchte dich mit einem Passkey bei {site} anmelden.', {
+                    client,
+                    site,
+                  })}
+            </p>
+          </>
+        )}
+
+        {!request.trusted && (
+          <p className="notice" data-tone="error">
+            {t(
+              'Das ist kein Browser, den UwULock kennt. Lehne ab, wenn du nicht gerade selbst einen Passkey benutzt.',
+            )}
           </p>
         )}
 
@@ -193,7 +225,7 @@ export function PasskeyRequestDialog() {
         {request.verify && request.kind !== 'select' && !nothingToSign && !request.excluded && (
           <label className="field">
             <span>{t('Die Seite möchte, dass du es bist: Master-Passwort')}</span>
-            <PasswordInput value={password} onChange={setPassword} autoFocus disabled={busy} />
+            <PasswordInput value={password} onChange={setPassword} disabled={busy} />
           </label>
         )}
 
