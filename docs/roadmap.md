@@ -59,7 +59,7 @@ Still to come:
 - Import from Bitwarden JSON, KeePass, browser CSV; encrypted export
 - Attachments, sends and passkeys in the desktop app
 
-## 0.5 · Passkeys everywhere, entry Sends (in progress)
+## 0.5 · Passkeys everywhere, entry Sends (0.5.0-beta.1 released)
 
 - [x] uwulock-core: generator minimums per set (`minLowercase`,
       `minUppercase`, `minNumber`, `minSpecial`; the length is raised to fit),
@@ -85,6 +85,8 @@ Still to come:
       Credential Manager on Android 14+, an AutoFill extension on iOS 17+ and
       macOS 14+ (works once the app is signed with an Apple developer team).
       Not yet tried on real devices
+- [x] Security review of everything new in 0.5, with re-checks
+      ([security-review-0.5.md](security-review-0.5.md))
 
 ## 0.4 · Wi-Fi networks and phones (0.4.0-beta.3 released)
 
