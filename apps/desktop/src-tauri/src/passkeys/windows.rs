@@ -33,6 +33,7 @@ use parking_lot::Mutex;
 use tauri::{AppHandle, EventId, Listener, Manager};
 use uwulock_authenticator::ctap2::{self, Authenticator, Request};
 use uwulock_authenticator::ctaphid::MAX_PAYLOAD;
+use uwulock_authenticator::flight::Slot;
 use uwulock_authenticator::opsign::OpSignKey;
 use windows::core::{
     implement, interface, IUnknown, IUnknown_Vtbl, Interface, Ref, BOOL, GUID, HRESULT,
@@ -42,7 +43,7 @@ use windows::Win32::System::Com::{
     CLSCTX_LOCAL_SERVER, COINIT_MULTITHREADED, REGCLS_MULTIPLEUSE,
 };
 
-use super::{Client, DesktopBackend, Provider};
+use super::{Client, DesktopBackend, Provider, Warning};
 use crate::vault::VaultState;
 
 /// UwULock's plugin class: random, picked once.
@@ -292,10 +293,10 @@ static PROBLEM: Mutex<Option<String>> = parking_lot::const_mutex(None);
 static OP_SIGN_KEY: Mutex<Option<OpSignKey>> = parking_lot::const_mutex(None);
 
 /// The request in flight, for the whole process: Windows may cancel through
-/// another instance of the class than the one it asked. Its transaction id
-/// and the flag that cancels it.
-static IN_FLIGHT: Mutex<Option<(GUID, std::sync::Arc<AtomicBool>)>> =
-    parking_lot::const_mutex(None);
+/// another instance of the class than the one it asked. Keyed by its
+/// transaction id; a second request at the same time is refused as busy
+/// instead of taking the slot (R7 I-2), so the first stays cancellable.
+static IN_FLIGHT: Slot<GUID> = Slot::new();
 
 /// The running plugin: the thread that holds the COM registration, and the
 /// listeners that keep Windows' passkey list current.
@@ -365,7 +366,20 @@ pub(crate) fn start(app: &AppHandle) -> Result<(), String> {
     if plugin.is_some() {
         return Ok(());
     }
-    register_server()?;
+    // While UwULock wasn't running, any program of the user could have
+    // pointed the entry that starts it for a request at itself (R7 L-1):
+    // say so, and put it back.
+    let ours = server_command()?;
+    if let Some(found) = registered_server().filter(|found| !same_command(found, &ours)) {
+        super::warn(
+            app,
+            Some(Warning {
+                kind: "registry",
+                holder: Some(found),
+            }),
+        );
+    }
+    register_server(&ours)?;
 
     let (stop, stopped) = std::sync::mpsc::channel::<()>();
     let (ready, registered) = std::sync::mpsc::channel::<Result<(), String>>();
@@ -455,6 +469,7 @@ pub(crate) fn start(app: &AppHandle) -> Result<(), String> {
 }
 
 pub(crate) fn stop(app: &AppHandle) {
+    super::warn(app, None);
     let Some(plugin) = app.state::<Provider>().plugin.lock().take() else {
         return;
     };
@@ -478,10 +493,45 @@ fn clsid_key() -> String {
     format!("Software\\Classes\\CLSID\\{{{CLSID:?}}}")
 }
 
-fn register_server() -> Result<(), String> {
-    use windows_sys::Win32::System::Registry::{RegSetKeyValueW, HKEY_CURRENT_USER, REG_SZ};
+/// The command Windows should run for a request: this program.
+fn server_command() -> Result<String, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let command = wide(&format!("\"{}\" --passkey-plugin", exe.display()));
+    Ok(format!("\"{}\" --passkey-plugin", exe.display()))
+}
+
+/// Whether two commands are the same (Windows paths ignore case).
+fn same_command(a: &str, b: &str) -> bool {
+    a.trim().eq_ignore_ascii_case(b.trim())
+}
+
+/// What the entry says now, if there is one.
+fn registered_server() -> Option<String> {
+    use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_SZ};
+    let key = wide(&format!("{}\\LocalServer32", clsid_key()));
+    let mut buffer = vec![0u16; 2048];
+    let mut size = (buffer.len() * 2) as u32;
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            key.as_ptr(),
+            std::ptr::null(),
+            RRF_RT_REG_SZ,
+            std::ptr::null_mut(),
+            buffer.as_mut_ptr().cast(),
+            &mut size,
+        )
+    };
+    if status != 0 {
+        return None;
+    }
+    let length = (size as usize / 2).min(buffer.len());
+    let text = String::from_utf16_lossy(&buffer[..length]);
+    Some(text.trim_end_matches('\0').to_string())
+}
+
+fn register_server(command: &str) -> Result<(), String> {
+    use windows_sys::Win32::System::Registry::{RegSetKeyValueW, HKEY_CURRENT_USER, REG_SZ};
+    let command = wide(command);
     let key = wide(&format!("{}\\LocalServer32", clsid_key()));
     let status = unsafe {
         RegSetKeyValueW(
@@ -699,6 +749,8 @@ fn status_hresult(status: u8) -> HRESULT {
         ctap2::status::OPERATION_DENIED | ctap2::status::KEEPALIVE_CANCEL => NTE_USER_CANCELLED,
         ctap2::status::NO_CREDENTIALS => NTE_NOT_FOUND,
         ctap2::status::INVALID_CBOR | ctap2::status::MISSING_PARAMETER => E_INVALIDARG,
+        // HRESULT_FROM_WIN32(ERROR_BUSY)
+        ctap2::status::CHANNEL_BUSY => HRESULT(0x8007_00AA_u32 as i32),
         _ => E_FAIL,
     }
 }
@@ -709,8 +761,11 @@ impl PluginAuthenticator_Impl {
     }
 
     fn answer(&self, transaction: GUID, request: &[u8]) -> Vec<u8> {
-        let cancelled = std::sync::Arc::new(AtomicBool::new(false));
-        *IN_FLIGHT.lock() = Some((transaction, std::sync::Arc::clone(&cancelled)));
+        // One at a time: a second request leaves the first one alone.
+        let Some(flight) = IN_FLIGHT.claim(transaction) else {
+            tracing::info!("a second passkey request while one runs: busy");
+            return ctap2::error(ctap2::status::CHANNEL_BUSY);
+        };
         let mut tick = || {};
         let mut authenticator = Authenticator::new(DesktopBackend {
             app: self.app.clone(),
@@ -719,14 +774,11 @@ impl PluginAuthenticator_Impl {
                 name: "Windows".into(),
                 trusted: true,
             },
-            cancelled: &cancelled,
+            cancelled: flight.cancelled(),
             tick: &mut tick,
         });
         let answer = authenticator.handle(request);
-        let mut flight = IN_FLIGHT.lock();
-        if flight.as_ref().is_some_and(|(id, _)| *id == transaction) {
-            *flight = None;
-        }
+        IN_FLIGHT.release(&flight);
         answer
     }
 }
@@ -941,20 +993,15 @@ impl IPluginAuthenticator_Impl for PluginAuthenticator_Impl {
         // Windows knows (a random GUID). A cancel can only end a request, so
         // that is enough; what exactly Windows signs for a cancel isn't
         // confirmed yet, so its signature is only logged.
-        let flight = IN_FLIGHT.lock();
-        let Some((_, cancelled)) = flight
-            .as_ref()
-            .filter(|(id, _)| *id == request.transaction_id)
-        else {
-            return E_ACCESSDENIED;
-        };
         let signed = signed_by_windows(
             &guid_bytes(&request.transaction_id),
             request.pb_request_signature,
             request.cb_request_signature,
         );
+        if !IN_FLIGHT.cancel(&request.transaction_id, false) {
+            return E_ACCESSDENIED;
+        }
         tracing::debug!(signed, "Windows cancels the passkey request");
-        cancelled.store(true, Ordering::Relaxed);
         HRESULT(0)
     }
 

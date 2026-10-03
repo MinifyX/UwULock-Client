@@ -390,9 +390,10 @@ async fn refresh(app: &AppHandle) -> Result<()> {
             .vault
             .items
             .iter()
-            .filter(|item| {
-                !item.deleted && item.login.as_ref().is_some_and(|l| l.passkey_count() > 0)
-            })
+            // Not in the trash, and no login that asks for the master
+            // password again (R7 L-2): the extension only has Face ID or the
+            // device passcode.
+            .filter(|item| sealed::listed(item))
             .cloned()
             .collect()
     };
@@ -403,7 +404,7 @@ async fn refresh(app: &AppHandle) -> Result<()> {
         for (_, passkey) in passkeys_of(&vault, &account_id, item) {
             // The extension can't count up a signature counter in the vault:
             // passkeys that use one stay with the app and the browser extension.
-            if passkey.counter > 0 {
+            if !sealed::listed_passkey(&passkey) {
                 continue;
             }
             let Ok(entry) = snapshot.push(&key, &passkey, Some(&item.id)) else {

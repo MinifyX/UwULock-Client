@@ -5,6 +5,8 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import { t } from './i18n';
 
 export type PasskeyProviderSettings = {
   /** Linux: the virtual security key over /dev/uhid. */
@@ -15,12 +17,47 @@ export type PasskeyProviderSettings = {
   appleExtension: boolean;
 };
 
+/**
+ * Another program stands in for UwULock (docs/passkeys.md, "Another program
+ * of yours"): `held` on Linux (it holds the one security key per user),
+ * `registry` on Windows (the entry that starts UwULock for a request
+ * pointed elsewhere; UwULock put it back).
+ */
+export type PasskeyProviderWarning = {
+  kind: 'held' | 'registry';
+  /** The program, as far as UwULock could tell. */
+  holder: string | null;
+};
+
 export type PasskeyProviderStatus = {
   settings: PasskeyProviderSettings;
   platform: 'linux' | 'windows' | 'android' | 'apple' | 'none';
   active: boolean;
   problem: string | null;
+  warning: PasskeyProviderWarning | null;
 };
+
+/** The warning in words, for the settings and the note. */
+export function warningText(warning: PasskeyProviderWarning): string {
+  const holder = warning.holder ?? t('ein unbekanntes Programm');
+  return warning.kind === 'held'
+    ? t(
+        'Ein anderes Programm hält deinen UwULock-Sicherheitsschlüssel: {holder}. Browser reden gerade nicht mit UwULock. Kennst du das Programm nicht, beende es und prüfe deinen Rechner.',
+        { holder },
+      )
+    : t(
+        'Der Windows-Eintrag, der UwULock für Passkey-Anfragen startet, zeigte auf ein anderes Programm: {holder}. UwULock hat ihn zurückgesetzt. Kennst du das Programm nicht, prüfe deinen Rechner.',
+        { holder },
+      );
+}
+
+/** Calls `onWarning` whenever the warning comes or goes; returns the unlisten. */
+export const onPasskeyProviderWarning = (
+  onWarning: (warning: PasskeyProviderWarning | null) => void,
+) =>
+  listen<PasskeyProviderWarning | null>('passkey-provider-warning', ({ payload }) =>
+    onWarning(payload),
+  );
 
 export type PasskeyRequest = {
   id: number;

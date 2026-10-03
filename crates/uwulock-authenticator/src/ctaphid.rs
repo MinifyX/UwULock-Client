@@ -14,6 +14,8 @@
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
+use crate::flight::{Flight, Slot};
+
 pub const PACKET: usize = 64;
 const INIT_DATA: usize = PACKET - 7;
 const CONT_DATA: usize = PACKET - 5;
@@ -155,6 +157,26 @@ impl Hid {
         if self.busy == Some(cid) {
             self.busy = None;
         }
+    }
+
+    /// The authenticator's `answer` to `flight`, the request on `cid`. Call
+    /// it while holding the `Hid` (nothing from the browser comes in
+    /// between) and send what it returns before letting go: it frees the
+    /// slot (only if it still holds this request) and the channel first, so
+    /// the browser's next request is neither refused as busy nor robbed of
+    /// its cancel. `None` when the channel was initialised anew meanwhile:
+    /// the answer is stale and isn't sent.
+    pub fn answered(
+        &mut self,
+        slot: &Slot<u32>,
+        flight: &Flight,
+        cid: u32,
+        answer: &[u8],
+    ) -> Option<Vec<Packet>> {
+        if slot.release(flight) || slot.is_empty() {
+            self.finish(cid);
+        }
+        (!flight.resynced()).then(|| packets(cid, cmd::CBOR, answer))
     }
 
     /// One report from the browser.
@@ -529,5 +551,51 @@ mod tests {
         );
         let packet = error(5, err::INVALID_PAR);
         assert_eq!(packet[4..8], [0x80 | cmd::ERROR, 0, 1, err::INVALID_PAR]);
+    }
+
+    #[test]
+    fn an_answer_frees_the_channel_for_the_next_request() {
+        let mut hid = Hid::new(5);
+        let slot = Slot::new();
+        let cid = init(&mut hid);
+        let Event::Cbor { cid: got, .. } = hid.receive(&packets(cid, cmd::CBOR, &[0x02])[0]) else {
+            panic!("a request");
+        };
+        let probe = slot.replace(got);
+        // The answer goes out with the slot and the channel already free:
+        // the browser's next request (probe, then the real one) is taken.
+        let sent = hid.answered(&slot, &probe, cid, &[0x2e]).expect("sent");
+        assert_eq!(reply(Event::Reply(sent)), (cid, cmd::CBOR, vec![0x2e]));
+        assert!(slot.is_empty());
+        assert!(matches!(
+            hid.receive(&packets(cid, cmd::CBOR, &[0x02])[0]),
+            Event::Cbor { .. }
+        ));
+        let real = slot.replace(cid);
+        // The probe's worker, late, doesn't touch the real request: a
+        // CANCEL still reaches it.
+        assert!(!slot.release(&probe));
+        assert_eq!(
+            hid.receive(&packets(cid, cmd::CANCEL, &[])[0]),
+            Event::Cancel { cid }
+        );
+        assert!(slot.cancel(&cid, false));
+        assert!(real.cancelled().load(std::sync::atomic::Ordering::Relaxed));
+        // Re-initialised meanwhile: the stale answer isn't sent, and the
+        // channel is free again.
+        let mut again = [0u8; PACKET];
+        again[..4].copy_from_slice(&cid.to_be_bytes());
+        again[4] = 0x80 | cmd::INIT;
+        again[6] = 8;
+        let Event::Resync { cid: resynced, .. } = hid.receive(&again) else {
+            panic!("a resync");
+        };
+        assert!(slot.cancel(&resynced, true));
+        assert!(hid.answered(&slot, &real, cid, &[0x00]).is_none());
+        assert!(slot.is_empty());
+        assert!(matches!(
+            hid.receive(&packets(cid, cmd::CBOR, &[0x02])[0]),
+            Event::Cbor { .. }
+        ));
     }
 }

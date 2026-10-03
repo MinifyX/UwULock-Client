@@ -361,6 +361,23 @@ impl Snapshot {
     }
 }
 
+/// Whether `item`'s passkeys go into the extension's list (and the
+/// system's credential identity store) at all: not in the trash, and not
+/// marked "ask for the master password again". The extension only has Face
+/// ID, Touch ID or the device passcode, so such a login stays with the app
+/// and the browser extension, which ask for the master password like for
+/// any other secret of it.
+pub fn listed(item: &uwulock_core::vault::Item) -> bool {
+    !item.deleted && !item.reprompt && item.login.as_ref().is_some_and(|l| l.passkey_count() > 0)
+}
+
+/// Whether one passkey goes into the list: the extension can't count up a
+/// signature counter in the vault, so passkeys that use one stay with the
+/// app and the browser extension.
+pub fn listed_passkey(passkey: &Passkey) -> bool {
+    passkey.counter == 0
+}
+
 /// The next generation of a list: later than `last` and, normally, the
 /// time in milliseconds — so it keeps going up even when the clock doesn't.
 pub fn next_generation(last: u64, now_ms: u64) -> u64 {
@@ -393,6 +410,24 @@ mod tests {
             "2026-10-02T10:00:00.000Z",
         )
         .unwrap()
+    }
+
+    #[test]
+    fn reprompt_logins_stay_out_of_the_list() {
+        use uwulock_core::vault::{Item, ItemKind};
+        let mut item = Item::new(ItemKind::Login);
+        assert!(!listed(&item), "no passkey");
+        item.login.as_mut().unwrap().passkeys = Some(vec![serde_json::json!({})]);
+        assert!(listed(&item));
+        item.reprompt = true;
+        assert!(!listed(&item), "asks for the master password");
+        item.reprompt = false;
+        item.deleted = true;
+        assert!(!listed(&item), "in the trash");
+        let mut counting = passkey();
+        assert!(listed_passkey(&counting));
+        counting.counter = 3;
+        assert!(!listed_passkey(&counting));
     }
 
     #[test]

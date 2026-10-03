@@ -170,6 +170,15 @@ export function PasskeyRequestDialog() {
           </p>
         )}
 
+        {request.trusted && (
+          // Who asks is what the system says: a hint, not proof (docs/passkeys.md).
+          <p className="setting-description">
+            {t(
+              'Wer fragt, sagt dein System. Das ist ein Hinweis, kein Beweis: Lehne ab, wenn du nicht gerade selbst eine Anmeldung gestartet hast.',
+            )}
+          </p>
+        )}
+
         {request.kind === 'create' && (request.userName || request.userDisplayName) && (
           <p className="setting-description">
             {t('Konto: {name}', { name: request.userName ?? request.userDisplayName ?? '' })}

@@ -25,7 +25,13 @@ import {
 } from './lib/api';
 import { t, useLanguage } from './lib/i18n';
 import { useSettings } from './lib/settings';
-import { useToast } from './lib/toast';
+import {
+  onPasskeyProviderWarning,
+  passkeyProviderStatus,
+  warningText,
+  type PasskeyProviderWarning,
+} from './lib/passkeys';
+import { toast, useToast } from './lib/toast';
 
 export function App() {
   useLanguage();
@@ -72,6 +78,19 @@ export function App() {
       for (const type of ['keydown', 'pointerdown', 'wheel'] as const)
         window.removeEventListener(type, active, { capture: true });
     };
+  }, []);
+
+  // ── Passkeys: another program stands in for UwULock ─────
+  useEffect(() => {
+    const show = (warning: PasskeyProviderWarning | null) => {
+      if (warning) toast(warningText(warning), 'error');
+    };
+    // A warning from before the page listened (at start) shows once too.
+    void passkeyProviderStatus()
+      .then((status) => show(status.warning))
+      .catch(() => undefined);
+    const stop = onPasskeyProviderWarning(show);
+    return () => void stop.then((unlisten) => unlisten());
   }, []);
 
   // ── Updates ──────────────────────────────────────────────

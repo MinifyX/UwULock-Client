@@ -2,8 +2,10 @@ import { useEffect, useState, type ReactElement, type ReactNode } from 'react';
 import { errorText } from '../lib/errors';
 import { t, useLanguage } from '../lib/i18n';
 import {
+  onPasskeyProviderWarning,
   passkeyProviderStatus,
   setPasskeyProvider,
+  warningText,
   type PasskeyProviderSettings,
   type PasskeyProviderStatus,
 } from '../lib/passkeys';
@@ -26,9 +28,13 @@ export function PasskeySettings({ Row, Toggle }: { Row: Row; Toggle: Toggle }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    void passkeyProviderStatus()
-      .then(setStatus)
-      .catch(() => setStatus(null));
+    const load = () =>
+      void passkeyProviderStatus()
+        .then(setStatus)
+        .catch(() => setStatus(null));
+    load();
+    const stop = onPasskeyProviderWarning(load);
+    return () => void stop.then((unlisten) => unlisten());
   }, []);
 
   if (!status || status.platform === 'none') return null;
@@ -47,6 +53,7 @@ export function PasskeySettings({ Row, Toggle }: { Row: Row; Toggle: Toggle }) {
         ? status.settings.windowsPlugin
         : status.settings.appleExtension;
   const problem = on && status.problem ? status.problem : null;
+  const warning = on && status.warning ? warningText(status.warning) : null;
 
   if (status.platform === 'android') {
     return (
@@ -89,6 +96,14 @@ export function PasskeySettings({ Row, Toggle }: { Row: Row; Toggle: Toggle }) {
       description={
         <>
           {description}
+          {warning && (
+            <>
+              <br />
+              <span className="form-error" role="alert">
+                {warning}
+              </span>
+            </>
+          )}
           {problem && (
             <>
               <br />

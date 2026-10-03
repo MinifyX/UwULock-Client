@@ -1,5 +1,8 @@
 # One connection from UwULock to its uhid broker (uwulock-uhid-broker.socket). Root only to open
-# /dev/uhid; no capabilities, no network, nothing writable but its lock files.
+# /dev/uhid; no network, nothing writable but its lock files. Its one capability, CAP_SYS_PTRACE,
+# only lets it read /proc/<pid>/exe of the program it serves or refuses (for the journal and for
+# the "another program holds your key" warning); the broker drops it before it reads anything
+# from the app.
 [Unit]
 Description=UwULock virtual security key for one connection
 Documentation=https://github.com/MinifyX/UwULock-Client/blob/main/docs/passkeys.md
@@ -9,7 +12,7 @@ CollectMode=inactive-or-failed
 ExecStart=/usr/lib/uwulock/uwulock-uhid-broker
 DevicePolicy=closed
 DeviceAllow=/dev/uhid rw
-CapabilityBoundingSet=
+CapabilityBoundingSet=CAP_SYS_PTRACE
 AmbientCapabilities=
 NoNewPrivileges=yes
 ProtectSystem=strict
@@ -18,7 +21,7 @@ ProtectHome=yes
 PrivateTmp=yes
 PrivateNetwork=yes
 RestrictAddressFamilies=AF_UNIX
-ProtectProc=invisible
+ProtectProc=default
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes
