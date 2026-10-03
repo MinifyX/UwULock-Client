@@ -311,8 +311,13 @@ try {
   // uwulock-bin isn't on the AUR. Not in SHA256SUMS.txt: it carries the .debs' sums itself.
   if (!windowsOnly) {
     const arch = join(work, 'arch');
-    writeAur(arch, { PKGBUILD: aurFiles({ version, sums: readFileSync(sums, 'utf8') }).PKGBUILD });
+    const aurPackage = aurFiles({ version, sums: readFileSync(sums, 'utf8') });
+    writeAur(arch, {
+      PKGBUILD: aurPackage.PKGBUILD,
+      'uwulock-bin.install': aurPackage['uwulock-bin.install'],
+    });
     files.set('PKGBUILD', join(arch, 'PKGBUILD'));
+    files.set('uwulock-bin.install', join(arch, 'uwulock-bin.install'));
   }
 
   console.log(`\n▸ Creating the release on ${REPOSITORY}`);
@@ -435,7 +440,7 @@ function releaseBody(aurLive) {
       : [
           'Arch Linux',
           'Arch Linux',
-          `${code('PKGBUILD')} (\`makepkg -si\`) · AUR: ${code('uwulock-bin')} folgt / coming`,
+          `${code('PKGBUILD')} + ${code('uwulock-bin.install')} (\`makepkg -si\`) · AUR: ${code('uwulock-bin')} folgt / coming`,
         ],
     [
       'Linux portabel',
@@ -538,9 +543,9 @@ function aur(sums) {
   if (!checkout) {
     const dir = join(root, 'target', 'aur', 'uwulock-bin');
     writeAur(dir, files);
-    console.log(`\n▸ AUR: PKGBUILD and .SRCINFO in ${dir}`);
+    console.log(`\n▸ AUR: PKGBUILD, .SRCINFO and uwulock-bin.install in ${dir}`);
     console.log(
-      '  CI pushes them (aur.yml) when AUR_SSH_PRIVATE_KEY is set. By hand: copy both into a\n' +
+      '  CI pushes them (aur.yml) when AUR_SSH_PRIVATE_KEY is set. By hand: copy all three into a\n' +
         '  checkout of ssh://aur@aur.archlinux.org/uwulock-bin.git, commit and push — or set\n' +
         '  UWULOCK_AUR_DIR to that checkout next time.',
     );
@@ -551,7 +556,7 @@ function aur(sums) {
   console.log(`\n▸ AUR: uwulock-bin ${version} from ${checkout}`);
   git(['pull', '-q', '--ff-only'], checkout);
   writeAur(checkout, files);
-  git(['add', 'PKGBUILD', '.SRCINFO'], checkout);
+  git(['add', 'PKGBUILD', '.SRCINFO', 'uwulock-bin.install'], checkout);
   if (!git(['status', '--porcelain'], checkout)) {
     console.log('  already up to date');
     return;

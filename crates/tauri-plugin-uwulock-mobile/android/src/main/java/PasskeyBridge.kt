@@ -1,8 +1,12 @@
 package app.uwulock.mobile
 
+import android.content.Context
 import android.content.pm.SigningInfo
+import android.os.Build
 import android.util.Base64
 import android.util.Log
+import androidx.annotation.RequiresApi
+import androidx.credentials.provider.CallingAppInfo
 import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest
@@ -60,10 +64,55 @@ object PasskeyBridge {
         return out
     }
 
-    /** The passkeys for a request's site: item id, credential id, names. */
-    fun list(requestJson: String): JSONArray? {
-        val answer = call("list", JSONObject().put("requestJson", requestJson))
+    /**
+     * Who asks: the browser's web origin when it is on the privileged list, the app (package and
+     * certificates, for its Digital Asset Links) otherwise.
+     */
+    @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    fun caller(context: Context, info: CallingAppInfo, requestJson: String, clientDataHash: ByteArray?): JSONObject {
+        val args = JSONObject()
+            .put("requestJson", requestJson)
+            .put("packageName", info.packageName)
+            .put("certHashes", certHashes(info.signingInfo))
+        try {
+            val allowlist = context.resources.openRawResource(R.raw.privileged_browsers)
+                .bufferedReader().use { it.readText() }
+            val origin = info.getOrigin(allowlist)
+            if (!origin.isNullOrEmpty()) {
+                args.put("origin", origin.trimEnd('/'))
+                if (clientDataHash != null) args.put("clientDataHash", b64(clientDataHash))
+            }
+        } catch (error: Exception) {
+            // A browser that claims an origin without being on the list: treated as an app.
+            Log.w(TAG, "no privileged origin for ${info.packageName}: $error")
+        }
+        return args
+    }
+
+    /**
+     * The passkeys for a request's site — item id, credential id, names — when the caller may use
+     * them (Rust checks the origin or the site's Digital Asset Links first). `null` when the vault
+     * isn't open. Without [info] (Android didn't say who asks) only the site is checked.
+     */
+    @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    fun list(context: Context, info: CallingAppInfo?, requestJson: String): JSONArray? {
+        val args = if (info != null) {
+            caller(context, info, requestJson, null)
+        } else {
+            JSONObject().put("requestJson", requestJson).put("unknownCaller", true)
+        }
+        val answer = call("list", args)
         if (answer.has("error") || answer.optBoolean("locked", true)) return null
         return answer.optJSONArray("passkeys") ?: JSONArray()
+    }
+
+    /**
+     * Whether the request wants the person verified first. Rust decides (and refuses a request
+     * that wanted it without it), so the two can't read the request differently; when Rust can't
+     * say, it does.
+     */
+    fun wantsVerification(requestJson: String, create: Boolean): Boolean {
+        val answer = call("verification", JSONObject().put("requestJson", requestJson).put("create", create))
+        return answer.optBoolean("wanted", true)
     }
 }

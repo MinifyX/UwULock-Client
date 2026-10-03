@@ -16,16 +16,24 @@
 //!   they show up in Windows' own picker.
 //!
 //! Each request is answered like the Linux security key's: UwULock's dialog
-//! asks, the master password verifies. The API is loaded at run time: on an
-//! older Windows the setting just says it isn't there. Not tried on a real
-//! machine yet; docs/passkeys.md says what is open.
+//! asks, the master password verifies. Only requests Windows signed are
+//! taken: the COM class can be called by any program of the user, so every
+//! request's signature is checked with the operation signing key Windows
+//! handed over when UwULock was added ([`uwulock_authenticator::opsign`]);
+//! a request without a valid one is refused before anybody is asked. The
+//! API is loaded at run time: on an older Windows the setting just says it
+//! isn't there. Not tried on a real machine yet; docs/passkeys.md says what
+//! is open.
 
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 
-use tauri::{AppHandle, Listener, Manager};
+use parking_lot::Mutex;
+use tauri::{AppHandle, EventId, Listener, Manager};
 use uwulock_authenticator::ctap2::{self, Authenticator, Request};
+use uwulock_authenticator::ctaphid::MAX_PAYLOAD;
+use uwulock_authenticator::opsign::OpSignKey;
 use windows::core::{
     implement, interface, IUnknown, IUnknown_Vtbl, Interface, Ref, BOOL, GUID, HRESULT,
 };
@@ -34,7 +42,7 @@ use windows::Win32::System::Com::{
     CLSCTX_LOCAL_SERVER, COINIT_MULTITHREADED, REGCLS_MULTIPLEUSE,
 };
 
-use super::{DesktopBackend, Provider};
+use super::{Client, DesktopBackend, Provider};
 use crate::vault::VaultState;
 
 /// UwULock's plugin class: random, picked once.
@@ -42,6 +50,7 @@ const CLSID: GUID = GUID::from_u128(0x5b0c_8e7a_4f2d_4c61_9a3e_7d1b_2c6f_0e94);
 
 const E_FAIL: HRESULT = HRESULT(0x8000_4005_u32 as i32);
 const E_INVALIDARG: HRESULT = HRESULT(0x8007_0057_u32 as i32);
+const E_ACCESSDENIED: HRESULT = HRESULT(0x8007_0005_u32 as i32);
 /// NTE_USER_CANCELLED: the person said no.
 const NTE_USER_CANCELLED: HRESULT = HRESULT(0x8009_0036_u32 as i32);
 const NTE_NOT_FOUND: HRESULT = HRESULT(0x8009_0011_u32 as i32);
@@ -204,6 +213,8 @@ type RemoveAuthenticator = unsafe extern "system" fn(*const GUID) -> HRESULT;
 type AddCredentials =
     unsafe extern "system" fn(*const GUID, u32, *const CredentialDetails) -> HRESULT;
 type RemoveAllCredentials = unsafe extern "system" fn(*const GUID) -> HRESULT;
+type GetOpSignPubKey = unsafe extern "system" fn(*const GUID, *mut u32, *mut *mut u8) -> HRESULT;
+type FreePubKey = unsafe extern "system" fn(*mut u8);
 type EncodeMakeCredential =
     unsafe extern "system" fn(*const CredentialAttestation, *mut u32, *mut *mut u8) -> HRESULT;
 type EncodeGetAssertion =
@@ -218,6 +229,9 @@ struct Api {
     remove_all_credentials: RemoveAllCredentials,
     encode_make_credential: EncodeMakeCredential,
     encode_get_assertion: EncodeGetAssertion,
+    /// The key Windows signs requests with, for a plugin added before.
+    get_op_sign_pub_key: Option<GetOpSignPubKey>,
+    free_pub_key: Option<FreePubKey>,
 }
 
 fn wide(text: &str) -> Vec<u16> {
@@ -239,7 +253,16 @@ fn api() -> Option<&'static Api> {
                 std::mem::transmute::<unsafe extern "system" fn() -> isize, _>(address)
             }};
         }
+        macro_rules! optional {
+            ($name:literal) => {{
+                GetProcAddress(module, concat!($name, "\0").as_ptr()).map(|address| {
+                    std::mem::transmute::<unsafe extern "system" fn() -> isize, _>(address)
+                })
+            }};
+        }
         Some(Api {
+            get_op_sign_pub_key: optional!("WebAuthNPluginGetOperationSigningPublicKey"),
+            free_pub_key: optional!("WebAuthNPluginFreePublicKeyResponse"),
             add_authenticator: function!("WebAuthNPluginAddAuthenticator"),
             free_add_response: function!("WebAuthNPluginFreeAddAuthenticatorResponse"),
             remove_authenticator: function!("WebAuthNPluginRemoveAuthenticator"),
@@ -253,15 +276,84 @@ fn api() -> Option<&'static Api> {
 }
 
 pub(crate) fn problem() -> Option<String> {
-    api().is_none().then(|| {
-        "This Windows has no plugin API for passkey managers yet (Windows 11 24H2 or 25H2 with the update from late 2025)."
-            .to_string()
-    })
+    if api().is_none() {
+        return Some(
+            "This Windows has no plugin API for passkey managers yet (Windows 11 24H2 or 25H2 with the update from late 2025)."
+                .to_string(),
+        );
+    }
+    PROBLEM.lock().clone()
 }
 
-/// The running plugin: the thread that holds the COM registration.
+/// Why the plugin didn't start last time.
+static PROBLEM: Mutex<Option<String>> = parking_lot::const_mutex(None);
+
+/// The key Windows signs every request with.
+static OP_SIGN_KEY: Mutex<Option<OpSignKey>> = parking_lot::const_mutex(None);
+
+/// The request in flight, for the whole process: Windows may cancel through
+/// another instance of the class than the one it asked. Its transaction id
+/// and the flag that cancels it.
+static IN_FLIGHT: Mutex<Option<(GUID, std::sync::Arc<AtomicBool>)>> =
+    parking_lot::const_mutex(None);
+
+/// The running plugin: the thread that holds the COM registration, and the
+/// listeners that keep Windows' passkey list current.
 pub(crate) struct Plugin {
     stop: std::sync::mpsc::Sender<()>,
+    listeners: Vec<EventId>,
+}
+
+/// Bytes Windows handed over, copied.
+unsafe fn copied(data: *const u8, length: u32) -> Option<Vec<u8>> {
+    (!data.is_null() && length > 0)
+        .then(|| std::slice::from_raw_parts(data, length as usize).to_vec())
+}
+
+/// The operation signing key: from the add (`AddResponse`), else asked for
+/// (UwULock was added before). Never from a file: another program of the
+/// user could put its own key there. Without one, the plugin is removed and
+/// stays off; adding it again next time hands over a fresh key.
+fn op_sign_key(api: &Api, path: &std::path::Path, from_add: Option<Vec<u8>>) -> Option<OpSignKey> {
+    let asked = || unsafe {
+        let get = api.get_op_sign_pub_key?;
+        let (mut length, mut data) = (0u32, std::ptr::null_mut());
+        let result = get(&CLSID, &mut length, &mut data);
+        let bytes = if result.is_ok() {
+            copied(data, length)
+        } else {
+            None
+        };
+        if let (Some(free), false) = (api.free_pub_key, data.is_null()) {
+            free(data);
+        }
+        bytes
+    };
+    // Earlier builds kept a copy; it is never read.
+    let _ = std::fs::remove_file(path.with_file_name("windows-opsign.key"));
+    let bytes = from_add.or_else(asked)?;
+    OpSignKey::parse(&bytes)
+}
+
+/// Whether Windows signed `data` (`signature`, `length`).
+unsafe fn signed_by_windows(data: &[u8], signature: *const u8, length: u32) -> bool {
+    let Some(signature) = copied(signature, length) else {
+        return false;
+    };
+    OP_SIGN_KEY
+        .lock()
+        .as_ref()
+        .is_some_and(|key| key.verify(data, &signature))
+}
+
+/// A GUID's 16 bytes as Windows keeps them in memory.
+fn guid_bytes(guid: &GUID) -> [u8; 16] {
+    let mut out = [0u8; 16];
+    out[..4].copy_from_slice(&guid.data1.to_le_bytes());
+    out[4..6].copy_from_slice(&guid.data2.to_le_bytes());
+    out[6..8].copy_from_slice(&guid.data3.to_le_bytes());
+    out[8..].copy_from_slice(&guid.data4);
+    out
 }
 
 static SYNCING: AtomicBool = AtomicBool::new(false);
@@ -316,8 +408,13 @@ pub(crate) fn start(app: &AppHandle) -> Result<(), String> {
         c_rp_ids: 0,
         rp_ids: std::ptr::null(),
     };
-    let mut response = std::ptr::null_mut();
+    let mut response: *mut AddResponse = std::ptr::null_mut();
     let added = unsafe { (api.add_authenticator)(&options, &mut response) };
+    let from_add = unsafe {
+        response
+            .as_ref()
+            .and_then(|r| copied(r.pb_op_sign_pub_key, r.cb_op_sign_pub_key))
+    };
     if !response.is_null() {
         unsafe { (api.free_add_response)(response) };
     }
@@ -329,12 +426,29 @@ pub(crate) fn start(app: &AppHandle) -> Result<(), String> {
         );
     }
 
-    *plugin = Some(Plugin { stop });
+    // Without Windows' key no request can be checked: none is taken.
+    let Some(key) = op_sign_key(api, &provider.path, from_add) else {
+        let _ = stop.send(());
+        unsafe {
+            let _ = (api.remove_authenticator)(&CLSID);
+        }
+        unregister_server();
+        let why = "Windows didn't hand over the key it signs passkey requests with, so UwULock can't tell its requests from other programs' and stays off.".to_string();
+        *PROBLEM.lock() = Some(why.clone());
+        return Err(why);
+    };
+    *OP_SIGN_KEY.lock() = Some(key);
+    *PROBLEM.lock() = None;
+
+    let listeners = ["vault-changed", "vault-status"]
+        .into_iter()
+        .map(|event| {
+            let handle = app.clone();
+            app.listen(event, move |_| sync_credentials(&handle))
+        })
+        .collect();
+    *plugin = Some(Plugin { stop, listeners });
     drop(plugin);
-    for event in ["vault-changed", "vault-status"] {
-        let handle = app.clone();
-        app.listen(event, move |_| sync_credentials(&handle));
-    }
     sync_credentials(app);
     tracing::info!("the Windows passkey plugin is registered");
     Ok(())
@@ -345,6 +459,10 @@ pub(crate) fn stop(app: &AppHandle) {
         return;
     };
     let _ = plugin.stop.send(());
+    for listener in plugin.listeners {
+        app.unlisten(listener);
+    }
+    *OP_SIGN_KEY.lock() = None;
     if let Some(api) = api() {
         unsafe {
             let _ = (api.remove_all_credentials)(&CLSID);
@@ -492,7 +610,6 @@ impl IClassFactory_Impl for Factory_Impl {
         }
         let instance: IUnknown = PluginAuthenticator {
             app: self.app.clone(),
-            cancelled: AtomicBool::new(false),
         }
         .into();
         unsafe { instance.query(iid, object).ok() }
@@ -522,14 +639,33 @@ unsafe trait IPluginAuthenticator: IUnknown {
 #[implement(IPluginAuthenticator)]
 struct PluginAuthenticator {
     app: AppHandle,
-    cancelled: AtomicBool,
 }
 
-/// The request's CTAP2 bytes with the command byte in front: Windows may
-/// send the CBOR map alone.
-fn ctap_request(command: u8, request: &OperationRequest) -> Option<Vec<u8>> {
-    if request.pb_encoded_request.is_null() || request.cb_encoded_request == 0 {
-        return None;
+/// Why a request isn't taken.
+enum Refusal {
+    Invalid,
+    /// Not signed by Windows.
+    Unsigned,
+}
+
+impl Refusal {
+    fn hresult(&self) -> HRESULT {
+        match self {
+            Refusal::Invalid => E_INVALIDARG,
+            Refusal::Unsigned => E_ACCESSDENIED,
+        }
+    }
+}
+
+/// The request's CTAP2 bytes with the command byte in front (Windows may
+/// send the CBOR map alone) — only when they are no longer than a CTAP
+/// message may be and Windows signed them.
+fn ctap_request(command: u8, request: &OperationRequest) -> Result<Vec<u8>, Refusal> {
+    if request.pb_encoded_request.is_null()
+        || request.cb_encoded_request == 0
+        || request.cb_encoded_request as usize > MAX_PAYLOAD
+    {
+        return Err(Refusal::Invalid);
     }
     let bytes = unsafe {
         std::slice::from_raw_parts(
@@ -537,13 +673,24 @@ fn ctap_request(command: u8, request: &OperationRequest) -> Option<Vec<u8>> {
             request.cb_encoded_request as usize,
         )
     };
+    let signed = unsafe {
+        signed_by_windows(
+            bytes,
+            request.pb_request_signature,
+            request.cb_request_signature,
+        )
+    };
+    if !signed {
+        tracing::warn!("a passkey request without Windows' signature: refused");
+        return Err(Refusal::Unsigned);
+    }
     // A CBOR map starts at 0xa0; a command byte is far below.
     if bytes[0] >= 0xa0 {
         let mut out = vec![command];
         out.extend_from_slice(bytes);
-        Some(out)
+        Ok(out)
     } else {
-        Some(bytes.to_vec())
+        Ok(bytes.to_vec())
     }
 }
 
@@ -561,16 +708,26 @@ impl PluginAuthenticator_Impl {
         Request::parse(request).map_err(ctap2::error)
     }
 
-    fn answer(&self, request: &[u8]) -> Vec<u8> {
-        self.cancelled.store(false, Ordering::Relaxed);
+    fn answer(&self, transaction: GUID, request: &[u8]) -> Vec<u8> {
+        let cancelled = std::sync::Arc::new(AtomicBool::new(false));
+        *IN_FLIGHT.lock() = Some((transaction, std::sync::Arc::clone(&cancelled)));
         let mut tick = || {};
         let mut authenticator = Authenticator::new(DesktopBackend {
             app: self.app.clone(),
-            client: "windows".into(),
-            cancelled: &self.cancelled,
+            // Signed by Windows: it is Windows asking, for a browser or app.
+            client: Client {
+                name: "Windows".into(),
+                trusted: true,
+            },
+            cancelled: &cancelled,
             tick: &mut tick,
         });
-        authenticator.handle(request)
+        let answer = authenticator.handle(request);
+        let mut flight = IN_FLIGHT.lock();
+        if flight.as_ref().is_some_and(|(id, _)| *id == transaction) {
+            *flight = None;
+        }
+        answer
     }
 }
 
@@ -587,13 +744,14 @@ impl IPluginAuthenticator_Impl for PluginAuthenticator_Impl {
             cb_encoded_response: 0,
             pb_encoded_response: std::ptr::null_mut(),
         };
-        let Some(bytes) = ctap_request(ctap2::command::MAKE_CREDENTIAL, request) else {
-            return E_INVALIDARG;
+        let bytes = match ctap_request(ctap2::command::MAKE_CREDENTIAL, request) {
+            Ok(bytes) => bytes,
+            Err(refusal) => return refusal.hresult(),
         };
         if let Err(answer) = self.run(&bytes) {
             return status_hresult(answer[0]);
         }
-        let answer = self.answer(&bytes);
+        let answer = self.answer(request.transaction_id, &bytes);
         if answer.first() != Some(&ctap2::status::OK) {
             return status_hresult(answer.first().copied().unwrap_or(ctap2::status::OTHER));
         }
@@ -670,13 +828,14 @@ impl IPluginAuthenticator_Impl for PluginAuthenticator_Impl {
             cb_encoded_response: 0,
             pb_encoded_response: std::ptr::null_mut(),
         };
-        let Some(bytes) = ctap_request(ctap2::command::GET_ASSERTION, request) else {
-            return E_INVALIDARG;
+        let bytes = match ctap_request(ctap2::command::GET_ASSERTION, request) {
+            Ok(bytes) => bytes,
+            Err(refusal) => return refusal.hresult(),
         };
         if let Err(answer) = self.run(&bytes) {
             return status_hresult(answer[0]);
         }
-        let answer = self.answer(&bytes);
+        let answer = self.answer(request.transaction_id, &bytes);
         if answer.first() != Some(&ctap2::status::OK) {
             return status_hresult(answer.first().copied().unwrap_or(ctap2::status::OTHER));
         }
@@ -774,8 +933,28 @@ impl IPluginAuthenticator_Impl for PluginAuthenticator_Impl {
         HRESULT(0)
     }
 
-    unsafe fn CancelOperation(&self, _request: *const CancelRequest) -> HRESULT {
-        self.cancelled.store(true, Ordering::Relaxed);
+    unsafe fn CancelOperation(&self, request: *const CancelRequest) -> HRESULT {
+        let Some(request) = request.as_ref() else {
+            return E_INVALIDARG;
+        };
+        // Only the request in flight, named by its transaction id, which only
+        // Windows knows (a random GUID). A cancel can only end a request, so
+        // that is enough; what exactly Windows signs for a cancel isn't
+        // confirmed yet, so its signature is only logged.
+        let flight = IN_FLIGHT.lock();
+        let Some((_, cancelled)) = flight
+            .as_ref()
+            .filter(|(id, _)| *id == request.transaction_id)
+        else {
+            return E_ACCESSDENIED;
+        };
+        let signed = signed_by_windows(
+            &guid_bytes(&request.transaction_id),
+            request.pb_request_signature,
+            request.cb_request_signature,
+        );
+        tracing::debug!(signed, "Windows cancels the passkey request");
+        cancelled.store(true, Ordering::Relaxed);
         HRESULT(0)
     }
 

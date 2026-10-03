@@ -4,8 +4,9 @@
 # https://github.com/MinifyX/UwULock-Client for each release; edit the template
 # there, not this file. It repacks the release's .deb, like other Tauri -bin
 # packages. The app doesn't update itself here: pacman does. The .deb brings the
-# udev rule for UwULock's virtual security key (passkeys in browsers, off until
-# switched on in the app); pacman's udev hook reloads the rules.
+# virtual security key's helper (passkeys in browsers, off until switched on in
+# the app): a hidraw udev rule, /usr/lib/uwulock/uwulock-uhid-broker and its
+# systemd socket, which uwulock-bin.install says how to switch on.
 
 pkgname=uwulock-bin
 _pkgname=uwulock
@@ -20,6 +21,7 @@ depends=('webkit2gtk-4.1' 'gtk3' 'alsa-lib')
 provides=("$_pkgname")
 conflicts=("$_pkgname")
 options=('!strip' '!debug')
+install=uwulock-bin.install
 source_x86_64=("$pkgname-$pkgver-x86_64.deb::$url/releases/download/v$_version/UwULock-linux-x64.deb")
 source_aarch64=("$pkgname-$pkgver-aarch64.deb::$url/releases/download/v$_version/UwULock-linux-arm64.deb")
 sha256sums_x86_64=('@SHA256_X86_64@')

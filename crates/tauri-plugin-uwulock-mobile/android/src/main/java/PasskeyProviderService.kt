@@ -34,13 +34,17 @@ import androidx.credentials.provider.PublicKeyCredentialEntry
 @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 class PasskeyProviderService : CredentialProviderService() {
     companion object {
-        /** The entries for a sign-in request, or `null` when the vault isn't open. */
+        /**
+         * The entries for a sign-in request, or `null` when the vault isn't open. Only for a caller
+         * that may use the site's passkeys: an app the site doesn't trust doesn't even get the
+         * names shown. May fetch the site's Digital Asset Links: never on the main thread.
+         */
         fun entries(context: Context, request: BeginGetCredentialRequest): BeginGetCredentialResponse? {
             val response = BeginGetCredentialResponse.Builder()
             var index = 0
             for (option in request.beginGetCredentialOptions) {
                 if (option !is BeginGetPublicKeyCredentialOption) continue
-                val passkeys = PasskeyBridge.list(option.requestJson) ?: return null
+                val passkeys = PasskeyBridge.list(context, request.callingAppInfo, option.requestJson) ?: return null
                 val entries = mutableListOf<CredentialEntry>()
                 for (i in 0 until passkeys.length()) {
                     val passkey = passkeys.getJSONObject(i)
@@ -101,9 +105,18 @@ class PasskeyProviderService : CredentialProviderService() {
         cancellationSignal: CancellationSignal,
         callback: OutcomeReceiver<BeginGetCredentialResponse, GetCredentialException>,
     ) {
-        val response = entries(this, request)
-            ?: BeginGetCredentialResponse.Builder().addAuthenticationAction(unlockAction(this)).build()
-        callback.onResult(response)
+        // Off the main thread: listing may fetch the site's Digital Asset Links.
+        val context: Context = this
+        Thread(Runnable {
+            val listed = try {
+                entries(context, request)
+            } catch (error: Exception) {
+                null
+            }
+            callback.onResult(
+                listed ?: BeginGetCredentialResponse.Builder().addAuthenticationAction(unlockAction(context)).build(),
+            )
+        }, "uwulock-passkey-list").start()
     }
 
     override fun onClearCredentialStateRequest(

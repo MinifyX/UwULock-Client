@@ -91,11 +91,21 @@ pub(crate) struct Decision {
     pub verified: bool,
 }
 
+/// Who asks, as far as UwULock can tell.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Client {
+    /// "Firefox", "Windows", the programs holding the security key open;
+    /// empty when UwULock can't tell.
+    pub name: String,
+    /// A browser UwULock knows (Linux), or a request Windows signed. The
+    /// dialog warns about everything else.
+    pub trusted: bool,
+}
+
 struct Pending {
     id: u64,
     ask: Ask,
-    /// Who asks: "Firefox", "a browser", "Windows".
-    client: String,
+    client: Client,
     reply: mpsc::Sender<std::result::Result<Decision, Status>>,
 }
 
@@ -175,7 +185,7 @@ fn show_window(app: &AppHandle) {
 pub(crate) fn ask(
     app: &AppHandle,
     ask: Ask,
-    client: &str,
+    client: &Client,
     cancelled: &AtomicBool,
     tick: &mut dyn FnMut(),
 ) -> std::result::Result<Decision, Status> {
@@ -191,7 +201,7 @@ pub(crate) fn ask(
         *pending = Some(Pending {
             id,
             ask,
-            client: client.to_string(),
+            client: client.clone(),
             reply,
         });
     }
@@ -251,7 +261,10 @@ pub struct RequestView {
     id: u64,
     /// `create`, `get` or `select`.
     kind: &'static str,
+    /// Who asks; empty when UwULock can't tell.
     client: String,
+    /// `client` is a browser UwULock knows, or Windows itself.
+    trusted: bool,
     rp_id: Option<String>,
     rp_name: Option<String>,
     user_name: Option<String>,
@@ -277,7 +290,8 @@ pub(crate) fn passkey_request(
     let mut view = RequestView {
         id: pending.id,
         kind: "select",
-        client: pending.client.clone(),
+        client: pending.client.name.clone(),
+        trusted: pending.client.trusted,
         rp_id: None,
         rp_name: None,
         user_name: None,
@@ -724,9 +738,15 @@ pub(crate) struct Signed {
     pub signature: Vec<u8>,
 }
 
+/// One signature at a time: a passkey that counts is read, counted up and
+/// saved before the next one reads it, so no two signatures carry the same
+/// counter.
+static SIGNING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// Signs with the passkey `credential_id` of the login `item_id`. A passkey
 /// that counts (one from elsewhere; UwULock's stay at 0) counts up and is
-/// saved again.
+/// saved again — no signature when that save fails, or the next one would
+/// carry the same counter.
 pub(crate) async fn sign(
     app: &AppHandle,
     rp_id: &str,
@@ -736,6 +756,7 @@ pub(crate) async fn sign(
     user_present: bool,
     verified: bool,
 ) -> Result<Signed> {
+    let _one_at_a_time = SIGNING.lock().await;
     let vault = app.state::<VaultState>();
     let (account_id, _) = vault.active_account()?;
     let mut item = prepare(&vault, &account_id, item_id)?;
@@ -768,13 +789,15 @@ pub(crate) async fn sign(
             item.login.as_mut().and_then(|l| l.passkeys.as_mut()),
         ) {
             list[index] = resealed;
-            // The signature counts even when saving doesn't work right now.
             if let Err(error) = save(app, &item, Some(item_id)).await {
                 tracing::warn!(
                     error = error.message(),
-                    "couldn't save the passkey's counter"
+                    "couldn't save the passkey's counter, so no signature"
                 );
+                return Err(error);
             }
+        } else {
+            return Err(Failure::new("invalid", "couldn't count the passkey up"));
         }
     }
     let auth_data = passkey.authenticator_data(flags(user_present, verified), false)?;
@@ -791,7 +814,7 @@ pub(crate) async fn sign(
 /// The authenticator's backend on the desktop: asks in UwULock's window.
 pub(crate) struct DesktopBackend<'a> {
     pub app: AppHandle,
-    pub client: String,
+    pub client: Client,
     pub cancelled: &'a AtomicBool,
     pub tick: &'a mut dyn FnMut(),
 }
@@ -849,16 +872,25 @@ impl ctap2::Backend for DesktopBackend<'_> {
     fn get_assertion(&mut self, request: &GetAssertion) -> std::result::Result<Assertion, Status> {
         let app = self.app.clone();
         let vault = app.state::<VaultState>();
-        // A browser's silent check: is a passkey there? Signed without the
-        // person, and the flags say so; nothing when the vault is locked.
+        // A browser's silent check before the real request: is one of the
+        // passkeys the site named here? The authenticator already refused
+        // it without an allow list and drops the account from the answer;
+        // here it is throttled and gets no signature from the passkey.
         if !request.user_presence {
+            if !PROBES.lock().allow(Instant::now()) {
+                return Err(status::NOT_ALLOWED);
+            }
             let found = matching(&vault, &request.rp_id, &request.allow_list)
                 .map_err(|_| status::NO_CREDENTIALS)?;
             let found = found.into_iter().next().ok_or(status::NO_CREDENTIALS)?;
-            return self.signed(request, &found.item_id, &found.passkey, false, false);
+            return probe(request, &found.passkey);
         }
-        // Nothing for this site in an open vault: say so at once.
-        if is_open(&vault)
+        // None of the passkeys the site named is in an open vault: say so at
+        // once (only a caller that knows the credential ids learns this).
+        // Without an allow list the person is asked even then, so nobody
+        // learns silently which sites have passkeys.
+        if !request.allow_list.is_empty()
+            && is_open(&vault)
             && matching(&vault, &request.rp_id, &request.allow_list)
                 .is_ok_and(|found| found.is_empty())
         {
@@ -889,6 +921,26 @@ impl ctap2::Backend for DesktopBackend<'_> {
     fn select(&mut self) -> std::result::Result<(), Status> {
         self.ask(Ask::Select).map(|_| ())
     }
+}
+
+/// Silent checks answered: 20 at once, then one every 3 s.
+static PROBES: Mutex<ctap2::Throttle> =
+    parking_lot::const_mutex(ctap2::Throttle::new(20, Duration::from_secs(3)));
+
+/// The answer to a silent check: the passkey's id and authenticator data
+/// without UP, signed with a throwaway key ([`ctap2::probe_signature`]).
+fn probe(request: &GetAssertion, passkey: &Passkey) -> std::result::Result<Assertion, Status> {
+    let credential_id = passkey.credential_id_bytes().map_err(|_| status::OTHER)?;
+    let auth_data = passkey
+        .authenticator_data(flags(false, false), false)
+        .map_err(|_| status::OTHER)?;
+    let signature = ctap2::probe_signature(&auth_data, &request.client_data_hash);
+    Ok(Assertion {
+        credential_id,
+        auth_data,
+        signature,
+        user: None,
+    })
 }
 
 impl DesktopBackend<'_> {

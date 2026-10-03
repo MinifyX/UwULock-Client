@@ -1,88 +1,164 @@
-//! Linux: UwULock as a FIDO2 security key, made with `/dev/uhid`.
+//! Linux: UwULock as a FIDO2 security key, made through `/dev/uhid`.
 //!
 //! The kernel turns the device into a `/dev/hidraw*` like a USB key's, and
 //! browsers (Firefox, Chromium, anything with libfido2) talk CTAP2 to it.
 //! Every request that needs the person opens UwULock's dialog; meanwhile the
 //! key sends keepalives ("waiting for the user"), and the browser may cancel.
 //!
-//! Who may open `/dev/uhid` decides who can make security keys: root by
-//! default. The packages bring a udev rule (`60-uwulock-passkeys.rules`)
-//! that gives the person at the seat access (`uaccess`), and load the
-//! `uhid` module at boot. Off until switched on in the settings.
+//! `/dev/uhid` stays root's: whoever writes there can make any HID device,
+//! a keyboard too. The packages bring a small root helper instead,
+//! `uwulock-uhid-broker` (crates/uwulock-uhid-broker, socket-activated by
+//! systemd): it makes only UwULock's FIDO device, only for the person at the
+//! seat, and relays 64-byte reports over [`broker::SOCKET`]. Off until
+//! switched on in the settings. docs/passkeys.md has the design.
 
-use std::fs::{File, OpenOptions};
-use std::io::{ErrorKind, Read, Write};
+use std::io::ErrorKind;
+use std::os::unix::net::UnixStream;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use parking_lot::Mutex;
 use tauri::{AppHandle, Manager};
+use uwulock_authenticator::broker::{self, kind};
 use uwulock_authenticator::ctap2::Authenticator;
 use uwulock_authenticator::ctaphid::{self, Event, Hid};
-use uwulock_authenticator::uhid::{self, Incoming};
 
-use super::{DesktopBackend, Provider};
+use super::{Client, DesktopBackend, Provider};
 
-const UHID: &str = "/dev/uhid";
-
-/// The running key: the open `/dev/uhid` and the flag that stops it.
+/// The running key: the connection to the broker and the flag that stops it.
 pub(crate) struct Device {
-    file: Arc<File>,
+    link: Link,
     stop: Arc<AtomicBool>,
 }
 
-fn open() -> std::io::Result<File> {
-    OpenOptions::new().read(true).write(true).open(UHID)
-}
+/// The connection to the broker, written to from several threads: one
+/// frame at a time.
+#[derive(Clone)]
+struct Link(Arc<Mutex<UnixStream>>);
 
-/// Why the key can't run here, in words for the settings.
-pub(crate) fn problem() -> Option<String> {
-    match open() {
-        Ok(_) => None,
-        Err(error) if error.kind() == ErrorKind::NotFound => Some(
-            "Linux has no /dev/uhid: the uhid kernel module isn't loaded (sudo modprobe uhid)."
-                .into(),
-        ),
-        Err(error) if error.kind() == ErrorKind::PermissionDenied => Some(
-            "No access to /dev/uhid: the udev rule from UwULock's package is missing, or you need to log in again once after installing."
-                .into(),
-        ),
-        Err(error) => Some(format!("/dev/uhid: {error}")),
-    }
-}
-
-/// Writes one event; uhid takes each in a single write.
-fn send(file: &File, event: &[u8]) -> std::io::Result<()> {
-    let mut writer = file;
-    writer.write_all(event)
-}
-
-fn send_packets(file: &File, packets: &[ctaphid::Packet]) {
-    for packet in packets {
-        if let Err(error) = send(file, &uhid::input(packet)) {
-            tracing::warn!(%error, "couldn't answer the browser");
-            return;
+impl Link {
+    fn send(&self, packets: &[ctaphid::Packet]) {
+        let mut stream = self.0.lock();
+        for packet in packets {
+            if let Err(error) = broker::send(&mut *stream, kind::REPORT, packet) {
+                tracing::warn!(%error, "couldn't answer the browser");
+                return;
+            }
         }
     }
 }
 
+fn not_installed() -> String {
+    "UwULock's helper for the security key isn't there: install UwULock's .deb, .rpm or AUR package, then run `sudo systemctl enable --now uwulock-uhid-broker.socket` once."
+        .into()
+}
+
+/// Why the key can't run here, in words for the settings.
+pub(crate) fn problem() -> Option<String> {
+    (!Path::new(broker::SOCKET).exists()).then(not_installed)
+}
+
+/// Connects to the broker and waits for the device.
+fn connect() -> Result<UnixStream, String> {
+    let mut stream = UnixStream::connect(broker::SOCKET).map_err(|error| {
+        if matches!(
+            error.kind(),
+            ErrorKind::NotFound | ErrorKind::ConnectionRefused
+        ) {
+            not_installed()
+        } else {
+            format!("{}: {error}", broker::SOCKET)
+        }
+    })?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .map_err(|e| e.to_string())?;
+    match broker::receive(&mut stream) {
+        Ok((kind::READY, _)) => {}
+        Ok((kind::ERROR, why)) => {
+            return Err(format!(
+                "the security key helper said no: {}",
+                String::from_utf8_lossy(&why)
+            ))
+        }
+        Ok((other, _)) => return Err(format!("the security key helper said {other}")),
+        Err(error) => return Err(format!("the security key helper didn't answer: {error}")),
+    }
+    stream.set_read_timeout(None).map_err(|e| e.to_string())?;
+    Ok(stream)
+}
+
 pub(crate) fn start(app: &AppHandle) -> Result<(), String> {
+    keep_up(app);
     let provider = app.state::<Provider>();
     let mut device = provider.device.lock();
     if device.is_some() {
         return Ok(());
     }
-    let file = Arc::new(open().map_err(|e| problem().unwrap_or_else(|| e.to_string()))?);
-    send(&file, &uhid::create()).map_err(|e| format!("couldn't make the security key: {e}"))?;
+    let stream = connect()?;
+    let reader = stream.try_clone().map_err(|e| e.to_string())?;
+    let link = Link(Arc::new(Mutex::new(stream)));
     let stop = Arc::new(AtomicBool::new(false));
-    let reader = (Arc::clone(&file), Arc::clone(&stop), app.clone());
+    let state = (link.clone(), Arc::clone(&stop), app.clone());
+    let ours = link.clone();
     std::thread::Builder::new()
         .name("uwulock-security-key".into())
-        .spawn(move || run(reader.0, reader.1, reader.2))
+        .spawn(move || {
+            let (link, stop, app) = state;
+            run(reader, link, Arc::clone(&stop), app.clone());
+            if !stop.load(Ordering::Relaxed) {
+                // The broker went (the seat changed hands, it was restarted):
+                // forget this device, so `keep_up` connects again.
+                let provider = app.state::<Provider>();
+                let mut device = provider.device.lock();
+                if device
+                    .as_ref()
+                    .is_some_and(|d| Arc::ptr_eq(&d.link.0, &ours.0))
+                {
+                    *device = None;
+                }
+            }
+        })
         .map_err(|e| e.to_string())?;
-    *device = Some(Device { file, stop });
+    *device = Some(Device { link, stop });
     tracing::info!("the virtual security key is there");
     Ok(())
+}
+
+/// While the setting is on and no key is there (the broker said no, went
+/// away, or the person wasn't at the seat yet), tries again: after 5 s, then
+/// up to every minute. One such thread per process.
+fn keep_up(app: &AppHandle) {
+    static RUNNING: AtomicBool = AtomicBool::new(false);
+    if RUNNING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let app = app.clone();
+    let spawned = std::thread::Builder::new()
+        .name("uwulock-security-key-keeper".into())
+        .spawn(move || {
+            let mut wait = Duration::from_secs(5);
+            loop {
+                std::thread::sleep(wait);
+                let provider = app.state::<Provider>();
+                if !provider.settings().security_key || provider.device.lock().is_some() {
+                    wait = Duration::from_secs(5);
+                    continue;
+                }
+                match start(&app) {
+                    Ok(()) => wait = Duration::from_secs(5),
+                    Err(error) => {
+                        tracing::debug!(%error, "the virtual security key still isn't there");
+                        wait = (wait * 2).min(Duration::from_secs(60));
+                    }
+                }
+            }
+        });
+    if spawned.is_err() {
+        RUNNING.store(false, Ordering::SeqCst);
+    }
 }
 
 pub(crate) fn stop(app: &AppHandle) {
@@ -90,108 +166,278 @@ pub(crate) fn stop(app: &AppHandle) {
         return;
     };
     device.stop.store(true, Ordering::Relaxed);
-    // The kernel answers with UHID_STOP, which wakes the reader.
-    let _ = send(&device.file, &uhid::destroy());
+    // The broker sees the connection end and removes the device; the reader
+    // wakes up with it.
+    let _ = device.link.0.lock().shutdown(std::net::Shutdown::Both);
     tracing::info!("the virtual security key is gone");
 }
 
-/// The request in flight: its channel, and the flag that cancels it.
+/// The request in flight: its channel, the flag that cancels it, and
+/// whether the channel was re-initialised meanwhile (then its answer is
+/// stale and isn't sent).
 struct InFlight {
     cid: u32,
     cancelled: Arc<AtomicBool>,
+    resynced: Arc<AtomicBool>,
 }
 
-fn run(file: Arc<File>, stop: Arc<AtomicBool>, app: AppHandle) {
+fn run(mut reader: UnixStream, link: Link, stop: Arc<AtomicBool>, app: AppHandle) {
     let hid = Arc::new(Mutex::new(Hid::default()));
     let in_flight: Arc<Mutex<Option<InFlight>>> = Arc::default();
-    let mut buffer = vec![0u8; uhid::EVENT_SIZE];
-    loop {
-        let read = (&*file).read(&mut buffer);
-        let event = match read {
-            Ok(0) => break,
-            Ok(n) => uhid::parse(&buffer[..n]),
-            Err(error) if error.kind() == ErrorKind::Interrupted => continue,
-            Err(error) => {
-                tracing::warn!(%error, "reading /dev/uhid failed");
-                break;
+    // The key's hidraw node, as the broker named it when it was opened.
+    let mut node = String::new();
+    let cancel = |cid: u32, resync: bool| {
+        if let Some(flight) = in_flight.lock().as_ref().filter(|f| f.cid == cid) {
+            if resync {
+                flight.resynced.store(true, Ordering::Relaxed);
             }
-        };
+            flight.cancelled.store(true, Ordering::Relaxed);
+        }
+    };
+    loop {
+        let frame = broker::receive(&mut reader);
         if stop.load(Ordering::Relaxed) {
             break;
         }
-        match event {
-            Some(Incoming::Output(report)) => {
-                let event = hid.lock().receive(&report);
-                match event {
-                    Event::Reply(packets) => send_packets(&file, &packets),
-                    Event::Pending => {}
-                    Event::Cancel { cid } => {
-                        if let Some(flight) = in_flight.lock().as_ref().filter(|f| f.cid == cid) {
-                            flight.cancelled.store(true, Ordering::Relaxed);
-                        }
-                    }
-                    Event::Cbor { cid, request } => {
-                        let cancelled = Arc::new(AtomicBool::new(false));
-                        *in_flight.lock() = Some(InFlight {
-                            cid,
-                            cancelled: Arc::clone(&cancelled),
+        let (kind, payload) = match frame {
+            Ok(frame) => frame,
+            Err(error) => {
+                tracing::warn!(%error, "the security key helper went away");
+                break;
+            }
+        };
+        match kind {
+            kind::OPEN => node = String::from_utf8_lossy(&payload).into_owned(),
+            kind::ERROR => {
+                tracing::warn!(
+                    reason = %String::from_utf8_lossy(&payload),
+                    "the security key helper stopped"
+                );
+                break;
+            }
+            kind::REPORT => match hid.lock().receive(&payload) {
+                Event::Reply(packets) => link.send(&packets),
+                Event::Pending => {}
+                Event::Cancel { cid } => cancel(cid, false),
+                Event::Resync { cid, reply } => {
+                    cancel(cid, true);
+                    link.send(&reply);
+                }
+                Event::Cbor { cid, request } => {
+                    let cancelled = Arc::new(AtomicBool::new(false));
+                    let resynced = Arc::new(AtomicBool::new(false));
+                    *in_flight.lock() = Some(InFlight {
+                        cid,
+                        cancelled: Arc::clone(&cancelled),
+                        resynced: Arc::clone(&resynced),
+                    });
+                    let (link, worker_hid, in_flight, app, client) = (
+                        link.clone(),
+                        Arc::clone(&hid),
+                        Arc::clone(&in_flight),
+                        app.clone(),
+                        // Who holds the key open as the request comes in.
+                        who_has(&node),
+                    );
+                    let spawned = std::thread::Builder::new()
+                        .name("uwulock-security-key-request".into())
+                        .spawn(move || {
+                            let answer = answer(&app, &link, client, cid, &request, &cancelled);
+                            if !resynced.load(Ordering::Relaxed) {
+                                link.send(&ctaphid::packets(cid, ctaphid::cmd::CBOR, &answer));
+                            }
+                            worker_hid.lock().finish(cid);
+                            let mut flight = in_flight.lock();
+                            if flight.as_ref().is_some_and(|f| f.cid == cid) {
+                                *flight = None;
+                            }
                         });
-                        let (file, worker_hid, in_flight, app) = (
-                            Arc::clone(&file),
-                            Arc::clone(&hid),
-                            Arc::clone(&in_flight),
-                            app.clone(),
-                        );
-                        let spawned = std::thread::Builder::new()
-                            .name("uwulock-security-key-request".into())
-                            .spawn(move || {
-                                let answer = answer(&app, &file, cid, &request, &cancelled);
-                                send_packets(
-                                    &file,
-                                    &ctaphid::packets(cid, ctaphid::cmd::CBOR, &answer),
-                                );
-                                worker_hid.lock().finish(cid);
-                                let mut flight = in_flight.lock();
-                                if flight.as_ref().is_some_and(|f| f.cid == cid) {
-                                    *flight = None;
-                                }
-                            });
-                        if spawned.is_err() {
-                            hid.lock().finish(cid);
-                        }
+                    if spawned.is_err() {
+                        hid.lock().finish(cid);
                     }
                 }
-            }
-            Some(Incoming::GetReport { id }) => {
-                let _ = send(&file, &uhid::get_report_reply(id));
-            }
-            Some(Incoming::SetReport { id }) => {
-                let _ = send(&file, &uhid::set_report_reply(id));
-            }
+            },
             _ => {}
         }
     }
     tracing::debug!("the security key's reader stopped");
 }
 
+/// Browsers UwULock knows, by their program's name, and how to call them.
+const BROWSERS: &[(&str, &str)] = &[
+    ("firefox", "Firefox"),
+    ("firefox-bin", "Firefox"),
+    ("firefox-esr", "Firefox"),
+    ("librewolf", "LibreWolf"),
+    ("waterfox", "Waterfox"),
+    ("floorp", "Floorp"),
+    ("zen", "Zen"),
+    ("zen-bin", "Zen"),
+    ("chrome", "Chrome"),
+    ("google-chrome", "Chrome"),
+    ("chromium", "Chromium"),
+    ("chromium-browser", "Chromium"),
+    ("brave", "Brave"),
+    ("msedge", "Edge"),
+    ("vivaldi-bin", "Vivaldi"),
+    ("opera", "Opera"),
+    ("thorium", "Thorium"),
+];
+
+/// A program holding the key open: its name, and whether it runs from where
+/// the system installs programs (`/usr`, `/opt`, `/snap`, Flatpak's `/app`),
+/// owned by root and not writable by others. Only such a browser counts as
+/// one: a name alone anybody can take.
+struct Program {
+    name: String,
+    installed: bool,
+}
+
+/// The programs holding the key's hidraw node open, as one [`Client`]:
+/// trusted when all of them are browsers UwULock knows, installed by the
+/// system. This tells the person who asks; it isn't proof (a program of the
+/// same user can still drive an installed browser).
+fn describe(programs: &[Program]) -> Client {
+    if programs.is_empty() {
+        return Client::default();
+    }
+    let mut names: Vec<String> = programs
+        .iter()
+        .map(|Program { name: program, .. }| {
+            BROWSERS
+                .iter()
+                .find(|(name, _)| name == program)
+                .map_or_else(|| program.clone(), |(_, shown)| (*shown).to_string())
+        })
+        .collect();
+    names.sort();
+    names.dedup();
+    Client {
+        name: names.join(", "),
+        trusted: programs.iter().all(|program| {
+            program.installed && BROWSERS.iter().any(|(name, _)| *name == program.name)
+        }),
+    }
+}
+
+/// Whether `exe` lies where the system installs programs and only root may
+/// change it (the file and every folder up to `/`).
+fn installed(exe: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    let system = ["/usr/", "/opt/", "/snap/", "/app/"]
+        .iter()
+        .any(|prefix| exe.starts_with(prefix));
+    system
+        && exe.ancestors().all(|part| {
+            part.as_os_str().is_empty()
+                || std::fs::metadata(part).is_ok_and(|m| m.uid() == 0 && m.mode() & 0o022 == 0)
+        })
+}
+
+/// Who holds `/dev/<hidraw>` open: every process of this user whose open
+/// files include it (`/proc/*/fd`), by its program's name.
+fn who_has(hidraw: &str) -> Client {
+    let valid = hidraw.starts_with("hidraw") && hidraw[6..].bytes().all(|b| b.is_ascii_digit());
+    if !valid || hidraw.len() == 6 {
+        return Client::default();
+    }
+    let node = Path::new("/dev").join(hidraw);
+    let mut programs = Vec::new();
+    let Ok(processes) = std::fs::read_dir("/proc") else {
+        return Client::default();
+    };
+    for process in processes.flatten() {
+        let Ok(fds) = std::fs::read_dir(process.path().join("fd")) else {
+            continue;
+        };
+        let holds = fds
+            .flatten()
+            .any(|fd| std::fs::read_link(fd.path()).is_ok_and(|target| target == node));
+        if !holds {
+            continue;
+        }
+        let exe = std::fs::read_link(process.path().join("exe")).ok();
+        let program = exe
+            .as_ref()
+            .and_then(|exe| exe.file_name().map(|n| n.to_string_lossy().into_owned()))
+            .map(|name| Program {
+                installed: exe.as_deref().is_some_and(installed),
+                name,
+            })
+            .or_else(|| {
+                std::fs::read_to_string(process.path().join("comm"))
+                    .ok()
+                    .map(|comm| Program {
+                        name: comm.trim().to_string(),
+                        installed: false,
+                    })
+            });
+        if let Some(program) = program {
+            programs.push(program);
+        }
+    }
+    describe(&programs)
+}
+
 /// One CTAP2 request through the authenticator, with keepalives while the
 /// person decides.
 fn answer(
     app: &AppHandle,
-    file: &File,
+    link: &Link,
+    client: Client,
     cid: u32,
     request: &[u8],
     cancelled: &AtomicBool,
 ) -> Vec<u8> {
-    let mut tick = || {
-        let packet = ctaphid::keepalive(cid, ctaphid::keepalive::UP_NEEDED);
-        let _ = send(file, &uhid::input(&packet));
-    };
+    let mut tick = || link.send(&[ctaphid::keepalive(cid, ctaphid::keepalive::UP_NEEDED)]);
     let mut authenticator = Authenticator::new(DesktopBackend {
         app: app.clone(),
-        client: "browser".into(),
+        client,
         cancelled,
         tick: &mut tick,
     });
     authenticator.handle(request)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn at(name: &str, installed: bool) -> Program {
+        Program {
+            name: name.into(),
+            installed,
+        }
+    }
+
+    #[test]
+    fn callers_by_name() {
+        let firefox = describe(&[at("firefox", true)]);
+        assert_eq!(firefox.name, "Firefox");
+        assert!(firefox.trusted);
+        let both = describe(&[at("chrome", true), at("chromium", true), at("chrome", true)]);
+        assert_eq!(both.name, "Chrome, Chromium");
+        assert!(both.trusted);
+        // Anything else is named as it is, and not trusted.
+        let odd = describe(&[at("firefox", true), at("python3", true)]);
+        assert_eq!(odd.name, "Firefox, python3");
+        assert!(!odd.trusted);
+        // A "firefox" from the home folder is named, but not trusted.
+        let home = describe(&[at("firefox", false)]);
+        assert_eq!(home.name, "Firefox");
+        assert!(!home.trusted);
+        let nobody = describe(&[]);
+        assert!(nobody.name.is_empty() && !nobody.trusted);
+        // Only hidraw node names are looked up.
+        assert!(who_has("../uhid").name.is_empty());
+        assert!(who_has("hidraw").name.is_empty());
+    }
+
+    #[test]
+    fn installed_programs() {
+        assert!(installed(Path::new("/usr/bin/env")) || !Path::new("/usr/bin/env").exists());
+        assert!(!installed(Path::new("/tmp/firefox")));
+        assert!(!installed(Path::new("/home/someone/firefox")));
+        assert!(!installed(Path::new("/usr/../tmp/firefox")));
+    }
 }

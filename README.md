@@ -151,6 +151,7 @@ LibreWolf and loads temporarily elsewhere. [How to install it](docs/extension.md
 | `crates/uwulock-bitwarden`           | Bitwarden's and UwULock Server's protocol: login, sync, live updates, saving |
 | `crates/uwulock-wasm`                | uwulock-core as WebAssembly, for the browser extension                       |
 | `crates/uwulock-authenticator`       | CTAP2, CTAPHID, uhid and WebAuthn JSON for the system passkey providers      |
+| `crates/uwulock-uhid-broker`         | Linux root helper that makes the virtual security key, and nothing else      |
 | `crates/tauri-plugin-uwulock-mobile` | Android's and iOS's own APIs: biometric unlock, clipboard, system bars       |
 | `brand/`                             | Nyu as a padlock: the UwULock icon, symbol, mono symbol                      |
 | `docs/`                              | Vision, architecture, design, roadmap, install guide                         |

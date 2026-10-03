@@ -150,12 +150,45 @@ fn bytes(value: Option<&Value>) -> Result<Vec<u8>, Status> {
     }
 }
 
+/// The longest name UwULock keeps from a request, in characters (CTAP lets
+/// an authenticator cut names at 64 bytes).
+pub const MAX_NAME: usize = 64;
+
+/// A name for the person's eyes: without control and bidi characters (which
+/// could turn "evil.example" around on screen) and at most [`MAX_NAME`]
+/// characters long.
+pub fn clean_name(text: &str) -> String {
+    text.chars()
+        .filter(|c| {
+            !c.is_control()
+                && !matches!(
+                    *c,
+                    '\u{200e}' | '\u{200f}' | '\u{061c}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'
+                )
+        })
+        .take(MAX_NAME)
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
+
 fn optional_text(value: Option<&Value>) -> Result<Option<String>, Status> {
     match value {
         None | Some(Value::Null) => Ok(None),
-        Some(Value::Text(text)) => Ok(Some(text.clone())),
+        Some(Value::Text(text)) => Ok(Some(clean_name(text)).filter(|t| !t.is_empty())),
         Some(_) => Err(status::CBOR_UNEXPECTED_TYPE),
     }
+}
+
+/// The rpId of a request: a host name UwULock keeps passkeys for
+/// ([`crate::rpid::valid`]). Browsers check it against the page; local
+/// callers don't have to, so it is checked here for everybody.
+fn rp_id(value: &Value) -> Result<String, Status> {
+    let rp_id = value.as_text().ok_or(status::CBOR_UNEXPECTED_TYPE)?;
+    if !crate::rpid::valid(rp_id) {
+        return Err(status::INVALID_PARAMETER);
+    }
+    Ok(rp_id.to_string())
 }
 
 fn client_data_hash(value: Option<&Value>) -> Result<Vec<u8>, Status> {
@@ -222,6 +255,10 @@ fn pin_auth(params: &Value, key: i64) -> Result<Option<Request>, Status> {
 impl Request {
     /// A request as it arrives: the command byte, then its CBOR.
     pub fn parse(request: &[u8]) -> Result<Request, Status> {
+        // No more than one CTAPHID message carries, on every way in.
+        if request.len() > crate::ctaphid::MAX_PAYLOAD {
+            return Err(status::INVALID_LENGTH);
+        }
         let (&command, cbor) = request.split_first().ok_or(status::INVALID_LENGTH)?;
         let params = || -> Result<Value, Status> {
             let value = Value::decode(cbor).map_err(cbor_status)?;
@@ -235,11 +272,7 @@ impl Request {
                 let params = params()?;
                 let client_data_hash = client_data_hash(params.get(1))?;
                 let rp = params.get(2).ok_or(status::MISSING_PARAMETER)?;
-                let rp_id = rp
-                    .get_text("id")
-                    .ok_or(status::MISSING_PARAMETER)?
-                    .as_text()
-                    .ok_or(status::CBOR_UNEXPECTED_TYPE)?;
+                let rp_id = rp_id(rp.get_text("id").ok_or(status::MISSING_PARAMETER)?)?;
                 let user = params.get(3).ok_or(status::MISSING_PARAMETER)?;
                 if !rp.is_map() || !user.is_map() {
                     return Err(status::CBOR_UNEXPECTED_TYPE);
@@ -267,7 +300,7 @@ impl Request {
                 Ok(Request::MakeCredential(MakeCredential {
                     client_data_hash,
                     rp: Rp {
-                        id: rp_id.to_string(),
+                        id: rp_id,
                         name: optional_text(rp.get_text("name"))?,
                     },
                     user: User {
@@ -283,12 +316,7 @@ impl Request {
             }
             command::GET_ASSERTION => {
                 let params = params()?;
-                let rp_id = params
-                    .get(1)
-                    .ok_or(status::MISSING_PARAMETER)?
-                    .as_text()
-                    .ok_or(status::CBOR_UNEXPECTED_TYPE)?
-                    .to_string();
+                let rp_id = rp_id(params.get(1).ok_or(status::MISSING_PARAMETER)?)?;
                 let client_data_hash = client_data_hash(params.get(2))?;
                 let options = params.get(5);
                 if option(options, "rk")?.is_some() {
@@ -404,12 +432,70 @@ pub trait Backend {
     /// (after asking, so a site can't find out silently).
     fn make_credential(&mut self, request: &MakeCredential) -> Result<Vec<u8>, Status>;
 
-    /// A signature. With `user_presence` false the person isn't asked, and
-    /// the flags say so.
+    /// A signature. With `user_presence` false the person isn't asked, the
+    /// flags say so, and the allow list is never empty (the authenticator
+    /// answers that itself). Such a silent check only says whether a passkey
+    /// is there: the backend must not sign with the passkey's key for it
+    /// (UwULock's sign with a throwaway key, see docs/passkeys.md).
     fn get_assertion(&mut self, request: &GetAssertion) -> Result<Assertion, Status>;
 
     /// The person picks this authenticator ("touch your key").
     fn select(&mut self) -> Result<(), Status>;
+}
+
+/// The signature for a silent check (`up: false`): over the same bytes as a
+/// real one, but with a key made for it and thrown away. A browser only
+/// looks at whether the check succeeded; nobody gets a signature from the
+/// passkey without the person's yes.
+pub fn probe_signature(auth_data: &[u8], client_data_hash: &[u8]) -> Vec<u8> {
+    use p256::ecdsa::signature::Signer as _;
+    let key = p256::ecdsa::SigningKey::random(&mut rand::rngs::OsRng);
+    let mut message = auth_data.to_vec();
+    message.extend_from_slice(client_data_hash);
+    let signature: p256::ecdsa::Signature = key.sign(&message);
+    signature.to_der().as_bytes().to_vec()
+}
+
+/// At most `burst` events, refilled by one every `every`: how often silent
+/// checks are answered, so a caller can't run through lists of credential
+/// ids. Time comes from the caller, so it is tested without waiting.
+#[derive(Debug, Clone)]
+pub struct Throttle {
+    burst: u32,
+    every: std::time::Duration,
+    tokens: u32,
+    since: Option<std::time::Instant>,
+}
+
+impl Throttle {
+    pub const fn new(burst: u32, every: std::time::Duration) -> Self {
+        Throttle {
+            burst,
+            every,
+            tokens: burst,
+            since: None,
+        }
+    }
+
+    /// Whether one more is allowed at `now`.
+    pub fn allow(&mut self, now: std::time::Instant) -> bool {
+        let since = *self.since.get_or_insert(now);
+        if !self.every.is_zero() {
+            let earned = now.saturating_duration_since(since).as_nanos() / self.every.as_nanos();
+            if earned > 0 {
+                self.tokens = self.burst.min(
+                    self.tokens
+                        .saturating_add(u32::try_from(earned).unwrap_or(u32::MAX)),
+                );
+                self.since = Some(now);
+            }
+        }
+        if self.tokens == 0 {
+            return false;
+        }
+        self.tokens -= 1;
+        true
+    }
 }
 
 /// The authenticator: requests in, answers out.
@@ -439,6 +525,23 @@ impl<B: Backend> Authenticator<B> {
                 }
                 match self.backend.make_credential(request) {
                     Ok(auth_data) => make_credential_response(&auth_data),
+                    Err(status) => error(status),
+                }
+            }
+            // A silent check (`up: false`) is what browsers send before the
+            // real request, with the allow list they got from the site: is
+            // one of these here? Without an allow list it would list the
+            // person's accounts at any site to any caller, so: no. And the
+            // answer never names the account.
+            Request::GetAssertion(request) if !request.user_presence => {
+                if request.allow_list.is_empty() {
+                    return error(status::NO_CREDENTIALS);
+                }
+                match self.backend.get_assertion(request) {
+                    Ok(mut assertion) => {
+                        assertion.user = None;
+                        get_assertion_response(&assertion)
+                    }
                     Err(status) => error(status),
                 }
             }
@@ -472,6 +575,8 @@ mod tests {
         asked: Vec<GetAssertion>,
         selected: usize,
         refuse: Option<Status>,
+        /// Answer with the account even when the browser named the passkey.
+        user_always: bool,
     }
 
     impl Backend for Fake {
@@ -488,7 +593,7 @@ mod tests {
                 credential_id: vec![1, 2, 3],
                 auth_data: vec![0xbb; 37],
                 signature: vec![0xcc; 70],
-                user: request.allow_list.is_empty().then(|| User {
+                user: (self.user_always || request.allow_list.is_empty()).then(|| User {
                     id: b"user".to_vec(),
                     name: Some("nyu@example.com".into()),
                     display_name: None,
@@ -729,17 +834,33 @@ mod tests {
         let mut params = get_assertion_params(false);
         params.push((
             Value::Int(5),
-            Value::Map(vec![
-                (Value::text("up"), Value::Bool(false)),
-                (Value::text("uv"), Value::Bool(true)),
-            ]),
+            Value::Map(vec![(Value::text("uv"), Value::Bool(true))]),
         ));
         let bytes = request(command::GET_ASSERTION, Value::Map(params));
         let (_, signed) = answer(&authenticator.handle(&bytes));
         let user = signed.unwrap().get(4).unwrap().clone();
         assert_eq!(user.get_text("id").unwrap().as_bytes().unwrap(), b"user");
         let asked = &authenticator.backend.asked[1];
-        assert!(asked.allow_list.is_empty() && !asked.user_presence && asked.user_verification);
+        assert!(asked.allow_list.is_empty() && asked.user_presence && asked.user_verification);
+
+        // A silent check without an allow list would enumerate accounts:
+        // refused before the backend hears of it (R3-3).
+        let silent = || Value::Map(vec![(Value::text("up"), Value::Bool(false))]);
+        let mut params = get_assertion_params(false);
+        params.push((Value::Int(5), silent()));
+        let bytes = request(command::GET_ASSERTION, Value::Map(params));
+        assert_eq!(authenticator.handle(&bytes), [status::NO_CREDENTIALS]);
+        assert_eq!(authenticator.backend.asked.len(), 2);
+        // With one, it is answered, but never with the account.
+        let mut params = get_assertion_params(true);
+        params.push((Value::Int(5), silent()));
+        let bytes = request(command::GET_ASSERTION, Value::Map(params));
+        authenticator.backend.user_always = true;
+        let (status, signed) = answer(&authenticator.handle(&bytes));
+        authenticator.backend.user_always = false;
+        assert_eq!(status, status::OK);
+        assert!(signed.unwrap().get(4).is_none());
+        assert!(!authenticator.backend.asked[2].user_presence);
 
         // rk in a sign-in is an error; there's no next assertion.
         let mut params = get_assertion_params(false);
@@ -824,5 +945,76 @@ mod tests {
         let key =
             p256::ecdsa::VerifyingKey::from(&p256::PublicKey::from_public_key_der(&spki).unwrap());
         assert!(key.verify(&message, &signature).is_ok());
+    }
+
+    #[test]
+    fn rp_ids_and_names_are_checked() {
+        // R3-7: a local caller's rpId is a host name, or the request goes.
+        for bad in [
+            "com",
+            "bank.example@evil.example",
+            "github.io",
+            "192.0.2.1",
+            "",
+        ] {
+            let mut params = get_assertion_params(true);
+            params[0].1 = Value::text(bad);
+            let bytes = request(command::GET_ASSERTION, Value::Map(params));
+            assert_eq!(
+                Request::parse(&bytes),
+                Err(status::INVALID_PARAMETER),
+                "{bad}"
+            );
+            let mut params = make_credential_params();
+            params[1].1 = Value::Map(vec![(Value::text("id"), Value::text(bad))]);
+            let bytes = request(command::MAKE_CREDENTIAL, Value::Map(params));
+            assert_eq!(
+                Request::parse(&bytes),
+                Err(status::INVALID_PARAMETER),
+                "{bad}"
+            );
+        }
+        // R3-6: names lose bidi tricks and length.
+        let mut params = make_credential_params();
+        params[1].1 = Value::Map(vec![
+            (Value::text("id"), Value::text("example.com")),
+            (Value::text("name"), Value::text("Pay\u{202e}lap\u{0007}")),
+        ]);
+        params[2].1 = Value::Map(vec![
+            (Value::text("id"), Value::Bytes(b"user".to_vec())),
+            (Value::text("name"), Value::text(&"n".repeat(500))),
+        ]);
+        let bytes = request(command::MAKE_CREDENTIAL, Value::Map(params));
+        let Ok(Request::MakeCredential(made)) = Request::parse(&bytes) else {
+            panic!("parsed");
+        };
+        assert_eq!(made.rp.name.as_deref(), Some("Paylap"));
+        assert_eq!(made.user.name.unwrap().chars().count(), MAX_NAME);
+        // R3-8: no request is longer than one CTAPHID message.
+        let mut long = vec![command::GET_INFO];
+        long.resize(crate::ctaphid::MAX_PAYLOAD + 1, 0);
+        assert_eq!(Request::parse(&long), Err(status::INVALID_LENGTH));
+    }
+
+    #[test]
+    fn throttle_refills() {
+        use std::time::{Duration, Instant};
+        let mut throttle = Throttle::new(2, Duration::from_secs(10));
+        let start = Instant::now();
+        assert!(throttle.allow(start));
+        assert!(throttle.allow(start));
+        assert!(!throttle.allow(start + Duration::from_secs(5)));
+        assert!(throttle.allow(start + Duration::from_secs(11)));
+        assert!(!throttle.allow(start + Duration::from_secs(12)));
+        assert!(throttle.allow(start + Duration::from_secs(60)));
+        assert!(throttle.allow(start + Duration::from_secs(60)));
+        assert!(!throttle.allow(start + Duration::from_secs(60)));
+    }
+
+    #[test]
+    fn probes_get_no_real_signature() {
+        let signature = probe_signature(&[1; 37], &[2; 32]);
+        assert!(p256::ecdsa::Signature::from_der(&signature).is_ok());
+        assert_ne!(signature, probe_signature(&[1; 37], &[2; 32]));
     }
 }

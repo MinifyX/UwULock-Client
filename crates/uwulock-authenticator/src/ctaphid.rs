@@ -12,6 +12,7 @@
 //! [`Event::Cbor`] for the authenticator.
 
 use std::collections::VecDeque;
+use std::time::{Duration, Instant};
 
 pub const PACKET: usize = 64;
 const INIT_DATA: usize = PACKET - 7;
@@ -19,6 +20,12 @@ const CONT_DATA: usize = PACKET - 5;
 /// The longest message: one initialization packet and 128 continuations.
 pub const MAX_PAYLOAD: usize = INIT_DATA + 128 * CONT_DATA;
 pub const BROADCAST: u32 = 0xffff_ffff;
+/// A message whose next packet doesn't come within this is dropped (the
+/// spec's transaction timeout), so one half-sent message can't block the
+/// device for everybody else.
+pub const TRANSACTION_TIMEOUT: Duration = Duration::from_secs(3);
+/// Channels handed out at once; the least recently used one goes first.
+const MAX_CHANNELS: usize = 32;
 
 pub type Packet = [u8; PACKET];
 
@@ -39,6 +46,7 @@ pub mod err {
     pub const INVALID_PAR: u8 = 0x02;
     pub const INVALID_LEN: u8 = 0x03;
     pub const INVALID_SEQ: u8 = 0x04;
+    pub const MSG_TIMEOUT: u8 = 0x05;
     pub const CHANNEL_BUSY: u8 = 0x06;
     pub const INVALID_CHANNEL: u8 = 0x0b;
 }
@@ -62,6 +70,10 @@ pub enum Event {
     Cbor { cid: u32, request: Vec<u8> },
     /// The browser gave up on the request of `cid`.
     Cancel { cid: u32 },
+    /// `cid` was initialised anew while its request is with the
+    /// authenticator: send `reply` and cancel that request. The channel
+    /// stays busy until [`Hid::finish`], so there is never more than one.
+    Resync { cid: u32, reply: Vec<Packet> },
     /// A packet of a longer message; nothing to do yet.
     Pending,
 }
@@ -73,6 +85,8 @@ struct Partial {
     length: usize,
     data: Vec<u8>,
     next_seq: u8,
+    /// When its last packet came.
+    last: Instant,
 }
 
 /// The device's side of CTAPHID.
@@ -80,7 +94,7 @@ pub struct Hid {
     partial: Option<Partial>,
     /// The channel whose CBOR request is with the authenticator.
     busy: Option<u32>,
-    /// Channels handed out by INIT, newest last.
+    /// Channels handed out by INIT, the most recently used last.
     channels: VecDeque<u32>,
     next_channel: u32,
     /// Version bytes INIT reports: major, minor, build.
@@ -111,9 +125,13 @@ impl Hid {
             self.next_channel = self.next_channel.wrapping_add(1);
             let cid = self.next_channel;
             if cid != 0 && cid != BROADCAST && !self.channels.contains(&cid) {
-                // Only so many at once; the oldest ones go first.
-                if self.channels.len() >= 32 {
-                    self.channels.pop_front();
+                // Only so many at once; the least recently used one goes
+                // first, never the one whose request is in flight.
+                if self.channels.len() >= MAX_CHANNELS {
+                    let busy = self.busy;
+                    if let Some(at) = self.channels.iter().position(|c| Some(*c) != busy) {
+                        self.channels.remove(at);
+                    }
                 }
                 self.channels.push_back(cid);
                 return cid;
@@ -121,8 +139,15 @@ impl Hid {
         }
     }
 
-    fn known(&self, cid: u32) -> bool {
-        self.channels.contains(&cid)
+    /// Whether `cid` was handed out; marks it as used.
+    fn known(&mut self, cid: u32) -> bool {
+        let Some(at) = self.channels.iter().position(|c| *c == cid) else {
+            return false;
+        };
+        if let Some(cid) = self.channels.remove(at) {
+            self.channels.push_back(cid);
+        }
+        true
     }
 
     /// The request of `cid` is answered: the channel takes new ones.
@@ -134,8 +159,21 @@ impl Hid {
 
     /// One report from the browser.
     pub fn receive(&mut self, packet: &[u8]) -> Event {
+        self.receive_at(packet, Instant::now())
+    }
+
+    /// One report from the browser, arriving at `now`.
+    pub fn receive_at(&mut self, packet: &[u8], now: Instant) -> Event {
         if packet.len() < PACKET {
             return Event::Pending;
+        }
+        // A message left half-sent for too long is dropped.
+        if self
+            .partial
+            .as_ref()
+            .is_some_and(|p| now.saturating_duration_since(p.last) > TRANSACTION_TIMEOUT)
+        {
+            self.partial = None;
         }
         let cid = u32::from_be_bytes(packet[..4].try_into().unwrap());
         if cid == 0 {
@@ -175,6 +213,7 @@ impl Hid {
                 length,
                 data: packet[7..7 + take].to_vec(),
                 next_seq: 0,
+                last: now,
             };
             if partial.data.len() == length {
                 return self.complete(partial);
@@ -195,6 +234,7 @@ impl Hid {
                 return Event::Reply(vec![error(cid, err::INVALID_SEQ)]);
             }
             partial.next_seq += 1;
+            partial.last = now;
             let take = (partial.length - partial.data.len()).min(CONT_DATA);
             partial.data.extend_from_slice(&packet[5..5 + take]);
             if partial.data.len() == partial.length {
@@ -212,11 +252,12 @@ impl Hid {
                 if data.len() != 8 {
                     return Event::Reply(vec![error(cid, err::INVALID_LEN)]);
                 }
+                if cid != BROADCAST && !self.known(cid) {
+                    return Event::Reply(vec![error(cid, err::INVALID_CHANNEL)]);
+                }
                 let new = if cid == BROADCAST {
                     self.allocate()
                 } else {
-                    // Re-initialising a channel keeps it, and drops its request.
-                    self.finish(cid);
                     cid
                 };
                 let mut answer = data;
@@ -224,7 +265,12 @@ impl Hid {
                 answer.push(2); // CTAPHID protocol version
                 answer.extend_from_slice(&self.version);
                 answer.push(CAPABILITIES);
-                Event::Reply(packets(cid, cmd::INIT, &answer))
+                let reply = packets(cid, cmd::INIT, &answer);
+                // Re-initialising a channel keeps it, and cancels its request.
+                if self.busy == Some(cid) {
+                    return Event::Resync { cid, reply };
+                }
+                Event::Reply(reply)
             }
             _ if cid == BROADCAST || !self.known(cid) => {
                 Event::Reply(vec![error(cid, err::INVALID_CHANNEL)])
@@ -235,7 +281,8 @@ impl Hid {
                 if data.is_empty() {
                     return Event::Reply(vec![error(cid, err::INVALID_LEN)]);
                 }
-                if self.busy.is_some_and(|busy| busy != cid) {
+                // One request at a time, also on the channel that sent it.
+                if self.busy.is_some() {
                     return Event::Reply(vec![error(cid, err::CHANNEL_BUSY)]);
                 }
                 self.busy = Some(cid);
@@ -371,6 +418,83 @@ mod tests {
             hid.receive(&packets(other, cmd::CBOR, &[0x04])[0]),
             Event::Cbor { .. }
         ));
+    }
+
+    #[test]
+    fn one_request_at_a_time_and_no_stuck_messages() {
+        let mut hid = Hid::new(1);
+        let cid = init(&mut hid);
+        let other = init(&mut hid);
+        assert!(matches!(
+            hid.receive(&packets(cid, cmd::CBOR, &[0x04])[0]),
+            Event::Cbor { .. }
+        ));
+        // The same channel can't start a second request (R3-8) ...
+        let (_, cmd, data) = reply(hid.receive(&packets(cid, cmd::CBOR, &[0x04])[0]));
+        assert_eq!((cmd, data), (cmd::ERROR, vec![err::CHANNEL_BUSY]));
+        // ... and re-initialising it cancels the one in flight, but the
+        // channel stays busy until that one is answered.
+        let mut again = [0u8; PACKET];
+        again[..4].copy_from_slice(&cid.to_be_bytes());
+        again[4] = 0x80 | cmd::INIT;
+        again[6] = 8;
+        match hid.receive(&again) {
+            Event::Resync { cid: c, reply } => {
+                assert_eq!(c, cid);
+                assert_eq!(join(&reply).1, cmd::INIT);
+            }
+            other => panic!("{other:?}"),
+        }
+        let (_, cmd, _) = reply(hid.receive(&packets(cid, cmd::CBOR, &[0x04])[0]));
+        assert_eq!(cmd, cmd::ERROR);
+        hid.finish(cid);
+
+        // A message left half-sent blocks others only until it times out.
+        let start = Instant::now();
+        let long = packets(cid, cmd::PING, &[9; 200]);
+        assert_eq!(hid.receive_at(&long[0], start), Event::Pending);
+        let (_, cmd, data) = reply(hid.receive_at(&packets(other, cmd::PING, &[1])[0], start));
+        assert_eq!((cmd, data), (cmd::ERROR, vec![err::CHANNEL_BUSY]));
+        let later = start + TRANSACTION_TIMEOUT + Duration::from_millis(1);
+        let (_, cmd, data) = reply(hid.receive_at(&packets(other, cmd::PING, &[1])[0], later));
+        assert_eq!((cmd, data), (cmd::PING, vec![1]));
+        // A continuation in time keeps it going.
+        assert_eq!(hid.receive_at(&long[0], later), Event::Pending);
+        let step = later + Duration::from_secs(2);
+        assert_eq!(hid.receive_at(&long[1], step), Event::Pending);
+        let step = step + Duration::from_secs(2);
+        assert_eq!(hid.receive_at(&long[2], step), Event::Pending);
+        let (_, cmd, data) = reply(hid.receive_at(&long[3], step + Duration::from_secs(2)));
+        assert_eq!((cmd, data.len()), (cmd::PING, 200));
+    }
+
+    #[test]
+    fn busy_channels_survive_many_inits() {
+        let mut hid = Hid::new(1);
+        let browser = init(&mut hid);
+        assert!(matches!(
+            hid.receive(&packets(browser, cmd::CBOR, &[0x04])[0]),
+            Event::Cbor { .. }
+        ));
+        for _ in 0..100 {
+            init(&mut hid);
+        }
+        assert_eq!(
+            hid.receive(&packets(browser, cmd::CANCEL, &[])[0]),
+            Event::Cancel { cid: browser }
+        );
+        hid.finish(browser);
+        // In use, it stays among the most recently used.
+        assert!(matches!(
+            hid.receive(&packets(browser, cmd::CBOR, &[0x04])[0]),
+            Event::Cbor { .. }
+        ));
+        hid.finish(browser);
+        for _ in 0..(MAX_CHANNELS - 1) {
+            init(&mut hid);
+        }
+        let (_, cmd, _) = reply(hid.receive(&packets(browser, cmd::PING, &[1])[0]));
+        assert_eq!(cmd, cmd::PING);
     }
 
     #[test]

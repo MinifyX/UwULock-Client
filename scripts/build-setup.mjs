@@ -182,9 +182,24 @@ if (process.platform === 'win32') {
   // "UwULock" `uw-u-lock`; the menu entry keeps saying UwULock through the
   // template in tauri.conf.json. The app looks for `uwulock` when it checks that
   // dpkg or rpm owns it (apps/desktop/src-tauri/src/updates.rs).
+  //
+  // The packages also bring the root helper for the virtual security key
+  // (crates/uwulock-uhid-broker, docs/passkeys.md), built here: Tauri bundles
+  // only the app's own binary.
+  console.log('\n▸ Building the security key helper');
+  run(`cargo build --release --locked -p uwulock-uhid-broker${targetArg}`);
+  const broker = join(release, 'uwulock-uhid-broker');
+  if (!existsSync(broker)) fail(`Missing ${broker}`);
+  const brokerFiles = { files: { '/usr/lib/uwulock/uwulock-uhid-broker': broker } };
   console.log(`\n▸ Packaging UwULock ${version} as .deb and .rpm`);
   run(
-    `pnpm --filter @uwulock/desktop tauri build --bundles deb,rpm${targetArg} --config "${configFile('packages', { productName: 'uwulock' })}"`,
+    `pnpm --filter @uwulock/desktop tauri build --bundles deb,rpm${targetArg} --config "${configFile(
+      'packages',
+      {
+        productName: 'uwulock',
+        bundle: { linux: { deb: brokerFiles, rpm: brokerFiles } },
+      },
+    )}"`,
   );
   const deb = join(out, `UwULock-linux-${arch()}.deb`);
   copyFileSync(

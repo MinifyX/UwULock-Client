@@ -115,9 +115,15 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
           "Diese UwULock-Version ist nicht mit einem Apple-Entwicklerkonto signiert; die Passkey-Erweiterung kann den Tresor nicht erreichen.",
           "This UwULock build isn't signed with an Apple developer account; the passkey extension can't reach the vault.")
       case PasskeyVaultError.noList:
+        // Switched off or logged out: the system's list goes too.
+        ASCredentialIdentityStore.shared.removeAllCredentialIdentities { _, _ in }
         self.model.message = tr(
           "Öffne UwULock einmal und entsperre den Tresor, mit eingeschalteten Passkeys für andere Apps.",
           "Open UwULock once and unlock the vault, with passkeys for other apps switched on.")
+      case PasskeyVaultError.stale:
+        self.model.message = tr(
+          "Die Passkey-Liste ist älter als eine, die schon hier war. Öffne UwULock und entsperre den Tresor.",
+          "The passkey list is older than one seen here before. Open UwULock and unlock the vault.")
       default:
         self.model.message = tr("Das ging nicht: ", "That didn't work: ") + "\(error)"
       }
@@ -131,7 +137,7 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
   }
 
   /// Keeps the system's list of passkeys (QuickType bar, the sheet) in step with the list.
-  private func updateIdentities(_ entries: [PasskeyEntry]) {
+  private func updateIdentities(_ entries: [PasskeyListEntry]) {
     let identities: [ASCredentialIdentity] = entries.compactMap { entry in
       guard let id = Base64URL.decode(entry.credentialId) else { return nil }
       return ASPasskeyCredentialIdentity(
@@ -150,14 +156,18 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
   }
 
   private func answer(
-    _ entry: PasskeyEntry, rpId: String, clientDataHash: Data,
+    _ entry: PasskeyListEntry, list: PasskeyList, key: SymmetricKey, rpId: String,
+    clientDataHash: Data,
     verification: ASAuthorizationPublicKeyCredentialUserVerificationPreference
   ) throws {
     guard let id = Base64URL.decode(entry.credentialId) else {
       throw PasskeyVaultError.broken("a credential id doesn't decode")
     }
     let authData = PasskeyVault.authenticatorData(rpId: rpId, flags: flags(verification))
-    let signature = try PasskeyVault.sign(entry, authData: authData, clientDataHash: clientDataHash)
+    // Only this passkey's private key is opened.
+    let signingKey = try PasskeyVault.signingKey(entry, key: key, account: list.account)
+    let signature = try PasskeyVault.sign(
+      signingKey, authData: authData, clientDataHash: clientDataHash)
     let credential = ASPasskeyAssertionCredential(
       userHandle: entry.userHandle.flatMap(Base64URL.decode) ?? Data(), relyingParty: rpId,
       signature: signature, clientDataHash: clientDataHash, authenticatorData: authData,
@@ -189,10 +199,10 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
       let key = try vault.key(
         reason: tr("Mit UwULock anmelden bei ", "Sign in with UwULock to ")
           + identity.relyingPartyIdentifier)
-      let list = try vault.snapshot(key: key)
-      self.updateIdentities(list.entries)
+      let list = try vault.list(key: key)
+      self.updateIdentities(list.snapshot.entries)
       guard
-        let entry = list.entries.first(where: {
+        let entry = list.snapshot.entries.first(where: {
           Base64URL.decode($0.credentialId) == identity.credentialID
             && $0.rpId == identity.relyingPartyIdentifier
         })
@@ -201,8 +211,8 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
         return
       }
       try self.answer(
-        entry, rpId: identity.relyingPartyIdentifier, clientDataHash: request.clientDataHash,
-        verification: request.userVerificationPreference)
+        entry, list: list, key: key, rpId: identity.relyingPartyIdentifier,
+        clientDataHash: request.clientDataHash, verification: request.userVerificationPreference)
     }
   }
 
@@ -218,17 +228,18 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
       let vault = try PasskeyVault()
       let key = try vault.key(
         reason: tr("Mit UwULock anmelden bei ", "Sign in with UwULock to ") + rpId)
-      let list = try vault.snapshot(key: key)
-      self.updateIdentities(list.entries)
+      let list = try vault.list(key: key)
+      self.updateIdentities(list.snapshot.entries)
       let allowed = requestParameters.allowedCredentials
-      let found = list.entries.filter { entry in
+      let found = list.snapshot.entries.filter { entry in
         entry.rpId == rpId
           && (allowed.isEmpty
             || Base64URL.decode(entry.credentialId).map { allowed.contains($0) } == true)
       }
       if found.count == 1 {
         try self.answer(
-          found[0], rpId: rpId, clientDataHash: requestParameters.clientDataHash,
+          found[0], list: list, key: key, rpId: rpId,
+          clientDataHash: requestParameters.clientDataHash,
           verification: requestParameters.userVerificationPreference)
         return
       }
@@ -248,7 +259,8 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
           self.model.busy = true
           self.background {
             try self.answer(
-              entry, rpId: rpId, clientDataHash: requestParameters.clientDataHash,
+              entry, list: list, key: key, rpId: rpId,
+              clientDataHash: requestParameters.clientDataHash,
               verification: requestParameters.userVerificationPreference)
           }
         }
@@ -269,6 +281,10 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
     show()
     model.title = tr("Passkey sichern", "Save passkey")
     model.message = rpId + " · " + identity.userName
+    guard PasskeyVault.validRpId(rpId) else {
+      fail(PasskeyVaultError.broken("UwULock keeps no passkeys for this site name"))
+      return
+    }
     guard request.supportedAlgorithms.isEmpty || request.supportedAlgorithms.contains(.ES256)
     else {
       fail(PasskeyVaultError.broken("the site takes no ES256 passkeys"))
@@ -279,10 +295,13 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
       let key = try vault.key(
         reason: tr("Passkey für ", "Save a passkey for ") + rpId
           + tr(" in UwULock sichern", " in UwULock"))
+      // The list first: it names the account the passkey is for, and a list that doesn't open is
+      // never replaced by one with only the new passkey.
+      let list = try vault.list(key: key)
       let made = PasskeyVault.make(
         rpId: rpId, userName: identity.userName, userHandle: identity.userHandle)
-      try vault.keep(made.entry, key: key)
-      if let list = try? vault.snapshot(key: key) { self.updateIdentities(list.entries) }
+      let kept = try vault.keep(made.entry, privateKey: made.key, list: list, key: key)
+      self.updateIdentities(kept.snapshot.entries)
       let authData = PasskeyVault.authenticatorData(
         rpId: rpId, flags: self.flags(request.userVerificationPreference), credentialId: made.id,
         publicKey: made.key.publicKey)
@@ -305,8 +324,8 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
       let vault = try PasskeyVault()
       let key = try vault.key(
         reason: tr("UwULocks Passkeys für das System freigeben", "Let the system list UwULock's passkeys"))
-      let list = try vault.snapshot(key: key)
-      self.updateIdentities(list.entries)
+      let list = try vault.list(key: key)
+      self.updateIdentities(list.snapshot.entries)
       DispatchQueue.main.async {
         self.extensionContext.completeExtensionConfigurationRequest()
       }

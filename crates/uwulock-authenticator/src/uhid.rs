@@ -60,8 +60,10 @@ fn event(kind: u32) -> Vec<u8> {
     out
 }
 
-/// `UHID_CREATE2`: the FIDO device appears.
-pub fn create() -> Vec<u8> {
+/// `UHID_CREATE2`: the FIDO device appears. `uniq` tells devices of
+/// different users apart (sysfs `HID_UNIQ`), at most 63 bytes.
+pub fn create(uniq: &str) -> Vec<u8> {
+    let uniq = &uniq.as_bytes()[..uniq.len().min(63)];
     let mut out = event(CREATE2);
     let mut at = 4;
     let mut put = |out: &mut Vec<u8>, bytes: &[u8], width: usize| {
@@ -70,7 +72,7 @@ pub fn create() -> Vec<u8> {
     };
     put(&mut out, NAME.as_bytes(), 128);
     put(&mut out, b"uwulock", 64); // phys
-    put(&mut out, b"", 64); // uniq
+    put(&mut out, uniq, 64);
     put(&mut out, &(REPORT_DESCRIPTOR.len() as u16).to_ne_bytes(), 2);
     put(&mut out, &BUS_USB.to_ne_bytes(), 2);
     put(&mut out, &VENDOR.to_ne_bytes(), 4);
@@ -172,13 +174,14 @@ mod tests {
     fn the_event_is_as_large_as_the_kernels() {
         // linux/uhid.h: 4 + sizeof(struct uhid_create2_req) = 4 + 4372.
         assert_eq!(EVENT_SIZE, 4376);
-        let created = create();
+        let created = create("uwulock-1000");
         assert_eq!(created.len(), EVENT_SIZE);
         assert_eq!(
             u32::from_ne_bytes(created[..4].try_into().unwrap()),
             CREATE2
         );
         assert_eq!(&created[4..4 + NAME.len()], NAME.as_bytes());
+        assert_eq!(&created[196..196 + 12], b"uwulock-1000");
         // rd_size after name, phys, uniq.
         let rd_size = u16::from_ne_bytes(created[260..262].try_into().unwrap());
         assert_eq!(usize::from(rd_size), REPORT_DESCRIPTOR.len());

@@ -5,6 +5,7 @@ members = [
   "crates/uwulock-bitwarden",
   "crates/uwulock-wasm",
   "crates/uwulock-authenticator",
+  "crates/uwulock-uhid-broker",
   "crates/tauri-plugin-uwulock-mobile",
   "apps/desktop/src-tauri",
   "apps/setup/src-tauri",
