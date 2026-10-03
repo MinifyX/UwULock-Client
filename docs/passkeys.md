@@ -100,14 +100,16 @@ the kernel crafted descriptors. So UwULock never opens it. A small root helper d
   `uwulock-uhid-broker.socket` listens on `/run/uwulock/uhid-broker.sock` (mode 0666,
   `Accept=yes`, at most 8 connections) and starts `uwulock-uhid-broker@.service` as root for each
   connection — no network, `DeviceAllow=/dev/uhid`, read-only system, a `@system-service`
-  syscall filter. Its only capability, `CAP_SYS_PTRACE` (with `ProtectProc=default`), lets it read
+  syscall filter. Its only capability, `CAP_SYS_PTRACE` (with `ProtectProc=invisible`), lets it read
   `/proc/<pid>/exe` of the program it serves or refuses, for the journal and for the warning
-  below; it drops every capability (`capset`) right after the lock, before it reads anything from
-  the app.
+  below; it drops every capability (`capset`; only the bounding set keeps it, unreachable under
+  `NoNewPrivileges`) right after the lock, before it reads anything from the app.
 - **Who**: only the user of the active session on seat0 (`SO_PEERCRED` against logind's
   `/run/systemd/seats/seat0`), checked when connecting and every 2 seconds after; when the seat
   changes hands, the device goes. One device per user (a lock in `/run/uwulock`, which records
-  the pid it went to; the journal names that program's executable). The app connects again by
+  the pid it went to and that process's start time; the journal names that program's executable,
+  escaped and cut to 256 bytes, and only while the pid is still that process and the seat user's
+  own; otherwise it says "another process"). The app connects again by
   itself (after 5 seconds, then up to every minute) while the setting is on; switching off while
   it connects drops the new connection again.
 - **Another program of yours first**: the broker checks the uid, not the program, so any program
@@ -153,9 +155,11 @@ Windows Hello through webauthn.dll's plugin API. When switched on, UwULock
   `LocalServer32 = "uwulock-desktop.exe" --passkey-plugin`) so Windows can start it. That key
   is the user's: while UwULock isn't running, any program of theirs can point it at itself and
   get Windows' (signed) requests — Linux's "another program first" (above). At every start with
-  the setting on, UwULock reads the entry; when it names another command, UwULock warns in
-  Settings → Security and as a note (_Der Windows-Eintrag … zeigte auf ein anderes Programm_),
-  logs it at warn and writes its own command back. It notices only afterwards, hence the
+  the setting on, UwULock reads the whole CLSID key; when it holds anything but its own
+  `LocalServer32` default (another or a `REG_EXPAND_SZ` command, a `ServerExecutable` value, a
+  `TreatAs`, `InprocServer32` or other subkey), UwULock warns in Settings → Security and as a note
+  (_Der Windows-Eintrag … zeigte auf ein anderes Programm_), logs it at warn, deletes the key and
+  writes it anew. A key it can't clean keeps the plugin off. It notices only afterwards, hence the
   warning,
 - adds itself with `WebAuthNPluginAddAuthenticator` (AAGUID `4d0c2e23-4c15-c411-9bd1-f265e4266ad6`),
 - tells Windows which passkeys there are (`WebAuthNPluginAuthenticatorAddCredentials`: ids,
@@ -317,8 +321,8 @@ What is protected: the private keys of passkeys, which are as good as the accoun
 - **Windows**: only requests signed by Windows' WebAuthn service are taken, so another program of
   the user can't drive the plugin (or make the dialog say "Windows" asks). Windows binds the
   origin to the rpId. While UwULock isn't running, a program of the user can re-point UwULock's
-  `LocalServer32` entry at itself and get those requests; UwULock notices at its next start,
-  warns and puts the entry back.
+  `LocalServer32` entry (or its CLSID key otherwise) at itself and get those requests; UwULock
+  notices at its next start, warns and writes the key anew.
 - **Silent checks** (`up: false`, Linux and Windows): only with an allow list, never with the
   account, throttled, never signed with a passkey. A program that knows a credential id (sites
   hand those to anyone who types a user name) learns whether that passkey is in the open vault,

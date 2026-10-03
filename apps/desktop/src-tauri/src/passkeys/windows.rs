@@ -43,6 +43,7 @@ use windows::Win32::System::Com::{
     CLSCTX_LOCAL_SERVER, COINIT_MULTITHREADED, REGCLS_MULTIPLEUSE,
 };
 
+use super::registry::{self, Data, Key, Value};
 use super::{Client, DesktopBackend, Provider, Warning};
 use crate::vault::VaultState;
 
@@ -367,19 +368,30 @@ pub(crate) fn start(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     }
     // While UwULock wasn't running, any program of the user could have
-    // pointed the entry that starts it for a request at itself (R7 L-1):
-    // say so, and put it back.
+    // pointed the entry that starts it for a request at itself (R7 L-1), by
+    // its default or anything else under the CLSID key (R8 C-3): say so,
+    // delete the key and write it anew.
     let ours = server_command()?;
-    if let Some(found) = registered_server().filter(|found| !same_command(found, &ours)) {
+    let found = registration_left(&ours);
+    if !found.is_empty() {
         super::warn(
             app,
             Some(Warning {
                 kind: "registry",
-                holder: Some(found),
+                holder: Some(found.join("; ")),
             }),
         );
+        unregister_server();
     }
     register_server(&ours)?;
+    // A key UwULock couldn't delete (its permissions changed): stay off.
+    let left = registration_left(&ours);
+    if !left.is_empty() {
+        return Err(super::shown(&format!(
+            "UwULock couldn't clean its Windows registry entry, so passkeys in Windows stay off: {}",
+            left.join("; ")
+        )));
+    }
 
     let (stop, stopped) = std::sync::mpsc::channel::<()>();
     let (ready, registered) = std::sync::mpsc::channel::<Result<(), String>>();
@@ -499,34 +511,163 @@ fn server_command() -> Result<String, String> {
     Ok(format!("\"{}\" --passkey-plugin", exe.display()))
 }
 
-/// Whether two commands are the same (Windows paths ignore case).
-fn same_command(a: &str, b: &str) -> bool {
-    a.trim().eq_ignore_ascii_case(b.trim())
+/// What the CLSID key holds besides UwULock's own entry (R8 C-3).
+fn registration_left(ours: &str) -> Vec<String> {
+    read_registration()
+        .map(|key| registry::unexpected(&key, ours))
+        .unwrap_or_default()
 }
 
-/// What the entry says now, if there is one.
-fn registered_server() -> Option<String> {
-    use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_SZ};
-    let key = wide(&format!("{}\\LocalServer32", clsid_key()));
-    let mut buffer = vec![0u16; 2048];
-    let mut size = (buffer.len() * 2) as u32;
-    let status = unsafe {
-        RegGetValueW(
-            HKEY_CURRENT_USER,
-            key.as_ptr(),
-            std::ptr::null(),
-            RRF_RT_REG_SZ,
-            std::ptr::null_mut(),
-            buffer.as_mut_ptr().cast(),
-            &mut size,
-        )
+/// How much of the CLSID key is read: entries per key and levels below it.
+/// More than that is "different" by itself.
+const MOST_ENTRIES: u32 = 64;
+const DEEPEST: usize = 4;
+
+/// The CLSID key whole: every value and subkey, a few levels deep. `None`
+/// when it isn't there; a key that is there but can't be read is `cut`.
+fn read_registration() -> Option<Key> {
+    use windows_sys::Win32::Foundation::ERROR_FILE_NOT_FOUND;
+    use windows_sys::Win32::System::Registry::{
+        RegCloseKey, RegOpenKeyExW, HKEY, HKEY_CURRENT_USER, KEY_READ,
     };
-    if status != 0 {
+    let path = wide(&clsid_key());
+    let mut key: HKEY = std::ptr::null_mut();
+    // SAFETY: a NUL-terminated path and a place for the handle.
+    let status = unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, path.as_ptr(), 0, KEY_READ, &mut key) };
+    if status == ERROR_FILE_NOT_FOUND {
         return None;
     }
-    let length = (size as usize / 2).min(buffer.len());
-    let text = String::from_utf16_lossy(&buffer[..length]);
-    Some(text.trim_end_matches('\0').to_string())
+    if status != 0 {
+        return Some(Key {
+            cut: true,
+            ..Key::default()
+        });
+    }
+    // SAFETY: an open key, closed right after.
+    let read = unsafe { read_key(key, 0) };
+    unsafe { RegCloseKey(key) };
+    Some(read)
+}
+
+/// The text up to its first NUL.
+fn until_nul(text: &[u16]) -> &[u16] {
+    let end = text.iter().position(|c| *c == 0).unwrap_or(text.len());
+    &text[..end]
+}
+
+/// One open key's values and subkeys (and theirs, down to [`DEEPEST`]).
+///
+/// # Safety
+/// `key` is an open registry key with read access.
+unsafe fn read_key(key: windows_sys::Win32::System::Registry::HKEY, depth: usize) -> Key {
+    use windows_sys::Win32::Foundation::{ERROR_MORE_DATA, ERROR_NO_MORE_ITEMS};
+    use windows_sys::Win32::System::Registry::{
+        RegCloseKey, RegEnumKeyExW, RegEnumValueW, RegOpenKeyExW, HKEY, KEY_READ, REG_EXPAND_SZ,
+        REG_SZ,
+    };
+    let mut out = Key::default();
+    // Value names are at most 16 383 characters, key names 255.
+    let mut name = vec![0u16; 16_384];
+    let mut data = vec![0u8; 65_536];
+    let mut index = 0;
+    loop {
+        if index == MOST_ENTRIES {
+            out.cut = true;
+            break;
+        }
+        let mut name_length = name.len() as u32;
+        let mut data_length = data.len() as u32;
+        let mut kind = 0u32;
+        let status = RegEnumValueW(
+            key,
+            index,
+            name.as_mut_ptr(),
+            &mut name_length,
+            std::ptr::null(),
+            &mut kind,
+            data.as_mut_ptr(),
+            &mut data_length,
+        );
+        if status == ERROR_NO_MORE_ITEMS {
+            break;
+        }
+        let shown = (name_length as usize).min(name.len());
+        let value_name = String::from_utf16_lossy(until_nul(&name[..shown]));
+        let value = match status {
+            0 if kind == REG_SZ || kind == REG_EXPAND_SZ => {
+                let bytes = &data[..(data_length as usize).min(data.len())];
+                let units: Vec<u16> = bytes
+                    .chunks_exact(2)
+                    .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+                    .collect();
+                Data::Text {
+                    expand: kind == REG_EXPAND_SZ,
+                    text: String::from_utf16_lossy(until_nul(&units)),
+                }
+            }
+            0 => Data::Other(kind),
+            ERROR_MORE_DATA => Data::TooLong,
+            _ => {
+                out.cut = true;
+                break;
+            }
+        };
+        out.values.push(Value {
+            name: value_name,
+            data: value,
+        });
+        index += 1;
+    }
+    let mut index = 0;
+    loop {
+        if index == MOST_ENTRIES {
+            out.cut = true;
+            break;
+        }
+        let mut name_length = name.len() as u32;
+        let status = RegEnumKeyExW(
+            key,
+            index,
+            name.as_mut_ptr(),
+            &mut name_length,
+            std::ptr::null(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        );
+        if status == ERROR_NO_MORE_ITEMS {
+            break;
+        }
+        if status != 0 {
+            out.cut = true;
+            break;
+        }
+        let units = until_nul(&name[..(name_length as usize).min(name.len())]).to_vec();
+        let sub_name = String::from_utf16_lossy(&units);
+        let below = if depth + 1 >= DEEPEST {
+            Key {
+                cut: true,
+                ..Key::default()
+            }
+        } else {
+            let mut path = units;
+            path.push(0);
+            let mut sub: HKEY = std::ptr::null_mut();
+            if RegOpenKeyExW(key, path.as_ptr(), 0, KEY_READ, &mut sub) == 0 {
+                let below = read_key(sub, depth + 1);
+                RegCloseKey(sub);
+                below
+            } else {
+                Key {
+                    cut: true,
+                    ..Key::default()
+                }
+            }
+        };
+        out.subkeys.push((sub_name, below));
+        index += 1;
+    }
+    out
 }
 
 fn register_server(command: &str) -> Result<(), String> {

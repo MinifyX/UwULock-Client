@@ -34,7 +34,7 @@ mod linux {
     use uwulock_authenticator::broker::{self, kind};
     use uwulock_authenticator::uhid;
     use uwulock_uhid_broker::{
-        active_uid, drop_capabilities, holder_pid, program, relay_app, relay_kernel, uevent_uniq,
+        active_uid, drop_capabilities, program, relay_app, relay_kernel, uevent_uniq, Holder,
     };
 
     const SEAT: &str = "/run/systemd/seats/seat0";
@@ -93,9 +93,12 @@ mod linux {
     }
 
     /// One device per user: an exclusive lock on `/run/uwulock/uhid-<uid>.lock`,
-    /// which then names the pid it went to. When another connection holds
-    /// it, the reason names that program (the person sees it in UwULock).
+    /// which then names the process it went to (pid and start time). When
+    /// another connection holds it, the reason names that program (the
+    /// person sees it in UwULock), but only while the pid is still that
+    /// process and the user's own (R8 C-2); else "another process".
     fn lock(uid: u32, pid: u32) -> io::Result<File> {
+        let proc = Path::new("/proc");
         let path = format!("{LOCKS}/uhid-{uid}.lock");
         let mut file = OpenOptions::new()
             .create(true)
@@ -106,17 +109,21 @@ mod linux {
         if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
             let holder = std::fs::read_to_string(&path)
                 .ok()
-                .and_then(|text| holder_pid(&text))
-                .map(|pid| program(Path::new("/proc"), pid));
+                .and_then(|text| Holder::parse(&text));
+            let named = holder.and_then(|h| program(proc, h.pid, uid, Some(h.start)));
             eprintln!(
                 "<4>uwulock-uhid-broker: uid {uid}'s security key is held by {}; refused {}",
-                holder.as_deref().unwrap_or("an unknown program"),
-                program(Path::new("/proc"), pid),
+                named.as_deref().unwrap_or("another process"),
+                program(proc, pid, uid, None).unwrap_or_else(|| format!("pid {pid}")),
             );
-            return Err(other(broker::held(holder.as_deref())));
+            return Err(other(broker::held(named.as_deref())));
         }
         file.set_len(0)?;
-        writeln!(file, "{pid}")?;
+        // Without a start time (the app already gone) the file names
+        // nobody that can be checked.
+        if let Some(holder) = Holder::of(proc, pid) {
+            file.write_all(holder.line().as_bytes())?;
+        }
         Ok(file)
     }
 
@@ -153,7 +160,7 @@ mod linux {
         let _lock = lock(uid, pid).map_err(|e| refuse(&mut app, &e.to_string()))?;
         eprintln!(
             "uwulock-uhid-broker: uid {uid}'s security key goes to {}",
-            program(Path::new("/proc"), pid)
+            program(Path::new("/proc"), pid, uid, None).unwrap_or_else(|| format!("pid {pid}"))
         );
         // Looking at other programs is over: nothing beyond root's uid from
         // here on, before anything from the app is read.

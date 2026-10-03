@@ -96,7 +96,7 @@ fn connect() -> Result<UnixStream, Failed> {
         Ok((kind::ERROR, why)) => {
             let why = String::from_utf8_lossy(&why);
             if let Some(holder) = broker::holder_of(&why) {
-                return Err(Failed::Held(holder.map(str::to_owned)));
+                return Err(Failed::Held(holder.map(super::shown)));
             }
             return Err(format!("the security key helper said no: {why}").into());
         }
