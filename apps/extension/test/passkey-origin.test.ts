@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 /** What each document's content script says about it (content/frame.ts), by `documentId`. */
 const documents = new Map<
   string,
-  { origin: string; ancestors: string[] | null; parents: string[] }
+  { origin: string; ancestors: string[] | null; parents: string[] | null }
 >();
 const windows: string[] = [];
 const removedListeners: ((id: number) => void)[] = [];
@@ -99,14 +99,20 @@ let count = 0;
 function frame(
   url: string,
   frameId = 0,
-  doc: { origin?: string; ancestors?: string[] | null; senderOrigin?: string; tab?: number } = {},
+  doc: {
+    origin?: string;
+    ancestors?: string[] | null;
+    parents?: string[] | null;
+    senderOrigin?: string;
+    tab?: number;
+  } = {},
 ): Sender {
   const documentId = `doc-${++count}`;
   const ancestors = doc.ancestors !== undefined ? doc.ancestors : [];
   documents.set(documentId, {
     origin: doc.origin ?? new URL(url).origin,
     ancestors,
-    parents: ancestors ?? [],
+    parents: doc.parents !== undefined ? doc.parents : (ancestors ?? []),
   });
   return {
     id: 'test',
@@ -185,7 +191,36 @@ describe('the asking document (R4-2)', () => {
   });
 
   it('a frame without ancestorOrigins (Firefox) gets the browser', async () => {
-    const { answer, id } = await start(frame('https://bank.example/inner', 3, { ancestors: null }));
+    const { answer, id } = await start(
+      frame('https://bank.example/inner', 3, {
+        ancestors: null,
+        parents: ['https://bank.example'],
+        tab: 9,
+      }),
+    );
+    expect(id).toBeNull();
+    expect(await answer).toEqual(FALLBACK);
+  });
+
+  it('the page itself without ancestorOrigins (Firefox) asks UwULock (R6 F1)', async () => {
+    const top = await start(frame('https://bank.example/', 0, { ancestors: null, tab: 10 }));
+    expect(top.id).not.toBeNull();
+    await passkeys.decide({ id: top.id!, choice: 'browser' } as never);
+    expect(await top.answer).toEqual(FALLBACK);
+
+    const created = await start(
+      frame('https://bank.example/', 0, { ancestors: null, tab: 11 }),
+      'create',
+    );
+    expect(created.id).not.toBeNull();
+    await passkeys.decide({ id: created.id!, choice: 'browser' } as never);
+    expect(await created.answer).toEqual(FALLBACK);
+  });
+
+  it('a top frame reporting no chain at all gets the browser', async () => {
+    const { answer, id } = await start(
+      frame('https://bank.example/', 0, { ancestors: null, parents: null, tab: 12 }),
+    );
     expect(id).toBeNull();
     expect(await answer).toEqual(FALLBACK);
   });

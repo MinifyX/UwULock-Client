@@ -357,11 +357,15 @@ fn has_totp(item: &Item) -> bool {
         .is_some_and(|t| !t.trim().is_empty())
 }
 
+/// The length of a Send's seed, the link's `#` part decoded.
+const SEND_SEED_LEN: usize = 16;
+
 /// The entry in a Send's text (`uwulock_core::entry_send`), as JSON
 /// `{entry, readable, openable}`, or `null` when the text is plain (no
 /// marker, another version, a tag that doesn't fit the Send's `key`,
 /// garbled): then the page shows the text as it is. `key` is the part of the
-/// link after the `#` (the seed, URL-safe base64). `openable[i]` says whether
+/// link after the `#` (the 16-byte seed, URL-safe base64); any other length
+/// is `invalid`. `openable[i]` says whether
 /// `entry.websites[i]` may be a link (http/https). Needs no unlocked vault:
 /// the Send page of a recipient uses it.
 pub fn decode_entry_send(text: &str, key: &str) -> Result<String> {
@@ -372,6 +376,11 @@ pub fn decode_entry_send(text: &str, key: &str) -> Result<String> {
             .or_else(|_| URL_SAFE.decode(key.trim()))
             .map_err(|_| Failure::new("invalid", "The link's key isn't one."))?,
     );
+    // A Send's seed is 16 bytes (`send::generate_send_seed`); an empty or cut
+    // key would verify markers made with that same wrong key (R6 F2).
+    if seed.len() != SEND_SEED_LEN {
+        return Err(Failure::new("invalid", "The link's key isn't one."));
+    }
     match entry_send::decode(text, &seed) {
         Some(entry) => json(&json!({
             "openable": entry.websites.iter().map(|w| entry_send::openable(w)).collect::<Vec<_>>(),
