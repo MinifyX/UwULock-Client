@@ -204,12 +204,7 @@ export function ToastView() {
   return (
     <>
       {current && (
-        <div
-          className="toast uwu-ligatures"
-          data-tone={current.tone}
-          role="status"
-          key={current.id}
-        >
+        <div className="toast" data-tone={current.tone} role="status" key={current.id}>
           {current.text}
         </div>
       )}

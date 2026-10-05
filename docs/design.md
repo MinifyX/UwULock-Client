@@ -33,8 +33,9 @@ therefore use `#e11d74` (4.5:1, WCAG AA).
 
 - **UwU Sans** for the interface, as in every UwU app: UwUMail's font
   (Atkinson Hyperlegible, SIL OFL 1.1, see `brand/fonts/uwu-sans/`), set a
-  touch tighter. Its ligatures are off everywhere vault data shows — a value
-  must read exactly as stored — and only on in Nyu's toasts (`.uwu-ligatures`).
+  touch tighter. It has no ligatures (`:3` and `<3` stay as typed), and
+  contextual alternates are off on the whole page so JetBrains Mono never joins
+  characters of a vault value: a value must read exactly as stored.
 - **Font choice** (Settings → Appearance, per device; the extension per
   browser): UwU Sans, Manrope (UwULock's font until 0.5), Rubik, DM Sans or
   the system's. All bundled; nothing loads from the network. One variable
