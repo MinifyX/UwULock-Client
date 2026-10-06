@@ -1,0 +1,375 @@
+/*
+ * An item's details and its editor (ItemDetail, ItemEditor). The rows and
+ * cards themselves (detail-card, detail-row, editor-row …) are in app.css.
+ */
+
+/* ── Details ───────────────────────────────────────────── */
+
+.detail-pane {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--uwu-canvas);
+}
+
+.detail {
+  width: min(680px, 100%);
+  margin: 0 auto;
+  padding: var(--uwu-space-6) var(--uwu-space-6) var(--uwu-space-8);
+  display: grid;
+  gap: var(--uwu-space-3);
+  align-content: start;
+}
+
+.detail-head {
+  display: flex;
+  align-items: center;
+  gap: var(--uwu-space-3);
+}
+
+.detail-title {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.detail-title h2 {
+  margin: 0;
+  font-size: var(--uwu-text-title);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: var(--uwu-leading-tight);
+  display: flex;
+  align-items: center;
+  gap: var(--uwu-space-2);
+  overflow-wrap: anywhere;
+}
+
+/* The tools next to an item's name: favourite, send, trash, edit. */
+.detail-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--uwu-space-1);
+  flex: none;
+}
+
+.masked {
+  letter-spacing: 0.08em;
+  color: var(--uwu-muted);
+}
+
+/* A password with digits and symbols told apart (Colored; also the generator). */
+.colored [data-class='digit'] {
+  color: var(--uwu-pink-ink);
+}
+
+.colored [data-class='symbol'] {
+  color: var(--uwu-avatar-violet-ink);
+}
+
+/* The one-time code with its countdown ring (TotpRow). */
+.totp-block {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.totp {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--uwu-space-2);
+}
+
+.totp-code {
+  font-size: var(--uwu-text-section);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--uwu-pink-ink);
+}
+
+.totp[data-soon] .totp-code {
+  color: var(--uwu-warning-ink);
+}
+
+.totp-ring circle {
+  fill: none;
+  stroke-width: 3;
+}
+
+.totp-track {
+  stroke: var(--uwu-hairline);
+}
+
+.totp-left {
+  stroke: var(--uwu-pink);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 900ms linear;
+}
+
+.totp[data-soon] .totp-left {
+  stroke: var(--uwu-warning);
+}
+
+.totp-seconds {
+  font-size: var(--uwu-text-badge);
+  color: var(--uwu-muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 2ch;
+}
+
+/* The next code, in the last seconds of a period. */
+.totp-next {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--uwu-space-1);
+  font-size: var(--uwu-text-caption);
+  color: var(--uwu-muted);
+  animation: totp-next-in var(--uwu-duration-enter) var(--uwu-ease-out) both;
+}
+
+.totp-next b {
+  font-family: var(--uwu-mono);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--uwu-ink);
+}
+
+@keyframes totp-next-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.detail-error {
+  color: var(--uwu-danger-ink);
+  font-family: var(--font-ui);
+  font-size: var(--uwu-text-meta);
+}
+
+.notes {
+  display: flex;
+  gap: var(--uwu-space-2);
+  padding: var(--uwu-space-1) var(--uwu-space-3) var(--uwu-space-3) var(--uwu-space-4);
+}
+
+.notes p {
+  flex: 1;
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: var(--uwu-leading-reading);
+}
+
+.bool {
+  font-weight: 600;
+  color: var(--uwu-muted);
+}
+
+.bool[data-on] {
+  color: var(--uwu-success-ink);
+}
+
+/* "3 frühere Passwörter" (also ItemExtras' versions). */
+.history-toggle {
+  justify-self: start;
+  margin: var(--uwu-space-1) var(--uwu-space-2);
+}
+
+/* "+2 weitere Websites" under the first one. */
+.more-toggle {
+  justify-self: start;
+  gap: 6px;
+  margin: 2px var(--uwu-space-4) var(--uwu-space-2);
+  font-size: var(--uwu-text-caption);
+  max-width: calc(100% - 2 * var(--uwu-space-4));
+}
+
+.more-toggle .more-hosts {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--uwu-muted);
+}
+
+/* An item's passkeys. */
+.passkey-row .detail-label {
+  display: flex;
+  align-items: center;
+  gap: var(--uwu-space-1);
+}
+
+.passkey-row .detail-value {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.passkey-meta {
+  font-size: var(--uwu-text-caption);
+  color: var(--uwu-muted);
+  overflow-wrap: anywhere;
+}
+
+/* The master password again, before an item with re-prompt shows anything. */
+.reprompt {
+  gap: var(--uwu-space-3);
+  padding: var(--uwu-space-3) var(--uwu-space-4) var(--uwu-space-4);
+}
+
+.reprompt .detail-card-title {
+  padding: 0;
+  color: var(--uwu-ink);
+}
+
+.detail-foot {
+  display: grid;
+  gap: 6px;
+  padding: 0 var(--uwu-space-1);
+  font-size: var(--uwu-text-caption);
+  color: var(--uwu-muted);
+}
+
+.detail-foot p {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.detail-beta {
+  flex-wrap: wrap;
+  padding-top: var(--uwu-space-2);
+  border-top: 1px dashed var(--uwu-border);
+}
+
+@media (max-width: 1020px) {
+  .vault {
+    grid-template-columns: 200px minmax(240px, 300px) 1fr;
+  }
+}
+
+/* No hover on a touch screen: an item's copy buttons are always fully there. */
+html[data-platform='android'] .detail-actions,
+html[data-platform='ios'] .detail-actions {
+  opacity: 1;
+}
+
+/* ── Editor ────────────────────────────────────────────── */
+
+.editor {
+  display: grid;
+  gap: var(--uwu-space-3);
+}
+
+.editor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: var(--uwu-space-3);
+}
+
+/* The eye, dice and star in a label row take no extra height: labels stay in line. */
+.editor .field-actions > button {
+  margin-block: calc(-1 * var(--uwu-space-2));
+}
+
+.field textarea.mono,
+.field input.mono {
+  font-family: var(--uwu-mono);
+}
+
+/* The editor's renewal reminder, under its switch (ItemExtras' ReminderEditor). */
+.editor-reminder {
+  display: grid;
+  gap: var(--uwu-space-2);
+}
+
+.editor-reminder .extras-form {
+  padding: var(--uwu-space-2) var(--uwu-space-3);
+  border-radius: var(--uwu-radius-control);
+  background: var(--uwu-canvas);
+}
+
+/* The favourite star pops when switched on (detail head and editor). */
+.star-toggle[aria-pressed='true'] svg {
+  animation: star-pop 320ms var(--uwu-ease-spring);
+}
+
+@keyframes star-pop {
+  0% {
+    transform: scale(0.6) rotate(-20deg);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .star-toggle[aria-pressed='true'] svg,
+  .totp-next {
+    animation: none;
+  }
+}
+
+/* ── Phone ─────────────────────────────────────────────── */
+
+@media (max-width: 699px) {
+  /* "← Alle Einträge" above an opened item (VaultScreen, SuitePane, HealthPane). */
+  .detail-back {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 6px var(--uwu-space-2);
+    border-bottom: 1px solid var(--uwu-hairline);
+    background: var(--uwu-canvas);
+  }
+
+  .detail-back button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .detail {
+    padding: var(--uwu-space-4) var(--uwu-space-3) var(--uwu-space-8);
+  }
+
+  /* The title gets the whole width; the item's buttons go on a row below it. */
+  .detail-head {
+    flex-wrap: wrap;
+  }
+
+  .detail-title {
+    flex: 1;
+  }
+
+  .detail-tools {
+    flex-basis: 100%;
+    justify-content: flex-end;
+  }
+
+  /* The rows' copy and reveal buttons are 36 px here (phone:size-9 in ItemDetail). */
+  .detail-row {
+    padding-left: var(--uwu-space-3);
+    padding-right: var(--uwu-space-1);
+  }
+
+  .notes {
+    padding-left: var(--uwu-space-3);
+    padding-right: var(--uwu-space-1);
+  }
+
+  .more-toggle {
+    margin-left: var(--uwu-space-3);
+    margin-right: var(--uwu-space-3);
+  }
+}

@@ -4,26 +4,30 @@
 .passkey-notice {
   position: fixed;
   left: 50%;
-  bottom: 20px;
+  bottom: calc(var(--uwu-space-5) + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
   max-width: min(520px, calc(100vw - 32px));
   margin: 0;
   z-index: 40;
-  box-shadow: 0 6px 24px rgb(0 0 0 / 18%);
+  box-shadow: var(--uwu-shadow-float);
 }
 
 .passkey-request {
   display: grid;
-  gap: 12px;
+  gap: var(--uwu-space-3);
 }
 
 .passkey-request p {
   margin: 0;
 }
 
+.passkey-request .notice {
+  margin: 0;
+}
+
 .passkey-choices {
   display: grid;
-  gap: 6px;
+  gap: var(--uwu-space-2);
   margin: 0;
   padding: 0;
   border: 0;
@@ -31,15 +35,20 @@
 
 .passkey-choices legend {
   padding: 0;
-  margin-bottom: 4px;
-  font-size: 13px;
+  margin-bottom: var(--uwu-space-1);
+  font-size: var(--uwu-text-meta);
   color: var(--uwu-muted);
 }
 
 .passkey-choices label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--uwu-space-2);
+  min-height: 32px;
+}
+
+.passkey-choices input {
+  accent-color: var(--uwu-pink-solid);
 }
 
 .passkey-choices small {
@@ -48,7 +57,7 @@
 
 /* The site the passkey is bound to, first and large; its own name after it. */
 .passkey-site strong {
-  font-size: 17px;
+  font-size: var(--uwu-text-reading);
   overflow-wrap: anywhere;
 }
 

@@ -1,9 +1,8 @@
-// The generator's minimums (src/lib/generator.ts) and the font list
-// (src/lib/fonts.ts), run by Node itself: node --test apps/desktop/test/
+// The generator's minimums (src/lib/generator.ts), run by Node itself:
+// node --test apps/desktop/test/ (the font list is @uwusuite/design's now).
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { DEFAULT_FONT, FONT_CHOICES, FONT_STACKS, isFontChoice } from '../src/lib/fonts.ts';
 import {
   cleanMinimums,
   effectiveLength,
@@ -58,12 +57,4 @@ test('stored minimums are checked', () => {
     cleanMinimums({ minLowercase: 3, minUppercase: '5', minNumber: -1, minSpecial: 999 }),
     { minLowercase: 3, minNumber: 0, minSpecial: MAX_LENGTH },
   );
-});
-
-test('fonts: UwU Sans first, every choice with a stack', () => {
-  assert.equal(DEFAULT_FONT, 'uwu');
-  assert.equal(FONT_CHOICES[0], 'uwu');
-  for (const choice of FONT_CHOICES) assert.ok(FONT_STACKS[choice].includes('sans-serif'));
-  assert.ok(isFontChoice('rubik'));
-  assert.ok(!isFontChoice('comic-sans'));
 });

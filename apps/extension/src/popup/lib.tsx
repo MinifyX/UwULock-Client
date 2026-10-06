@@ -1,13 +1,23 @@
 /**
  * What the popup and the prompt window share: the status and settings as React state, errors
  * in words, toasts, formatting, and the small controls the desktop app has too (a password
- * field with an eye, a switch, a copy button, the one-time code's ring).
+ * field with an eye, the one-time code's ring).
  */
 
+import {
+  applyAppearance,
+  applyUiFont,
+  createToasts,
+  ICONS,
+  IconButton,
+  isFontChoice,
+  QUERIES,
+  resolveAppearance,
+  Toaster,
+  UwuLabels,
+} from '@uwusuite/design';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { Icon } from '@desktop/components/Icon';
 import { NyuStage } from '@desktop/components/nyu/stage';
-import { applyFont, isFontChoice } from '@desktop/lib/fonts';
 import { ext } from '../shared/browser';
 import { RequestFailed } from '../shared/messages';
 import { locale, resolveLanguage, setLanguage, t } from '../shared/i18n';
@@ -55,19 +65,40 @@ export function uwuFeature(status: Status | null, feature: string): boolean {
 let settingsCache: Settings | null = null;
 const settingsListeners = new Set<() => void>();
 
-function applyAppearance(settings: Settings) {
+/**
+ * Language, theme, contrast, motion and font onto <html>, through @uwusuite/design: data-theme,
+ * data-contrast, data-motion (applyAppearance) and the font (applyUiFont). A font stored before
+ * the package's list counts as UwU Sans.
+ */
+function applyLook(settings: Settings) {
   setLanguage(resolveLanguage(settings.language));
   document.documentElement.lang = resolveLanguage(settings.language);
-  const dark =
-    settings.theme === 'dark' ||
-    (settings.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-  applyFont(isFontChoice(settings.font) ? settings.font : 'uwu');
+  applyAppearance(
+    resolveAppearance({
+      theme: settings.theme,
+      contrast: settings.contrast ?? 'system',
+      motion: settings.motion ?? 'system',
+    }),
+  );
+  applyUiFont(isFontChoice(settings.font) ? settings.font : 'uwu');
+}
+
+/** "System" follows the system while the popup is open, too. */
+let watching = false;
+function watchSystem() {
+  if (watching || typeof window.matchMedia !== 'function') return;
+  watching = true;
+  for (const query of Object.values(QUERIES)) {
+    window.matchMedia(query).addEventListener('change', () => {
+      if (settingsCache) applyLook(settingsCache);
+    });
+  }
 }
 
 export function publishSettings(next: Settings) {
   settingsCache = next;
-  applyAppearance(next);
+  applyLook(next);
+  watchSystem();
   for (const listener of settingsListeners) listener();
 }
 
@@ -166,22 +197,11 @@ export function serverUrlError(code: string): string {
 
 // ── Toasts ────────────────────────────────────────────────
 
-export type Toast = { id: number; text: string; tone: 'info' | 'error' };
+/** @uwusuite/design's toasts, one at a time and quicker: most answer a click just made. */
+const toasts = createToasts({ infoMs: 2600, errorMs: 6000, max: 1 });
 
-let currentToast: Toast | null = null;
-let toastCounter = 0;
-let toastTimer: number | undefined;
-const toastListeners = new Set<() => void>();
-
-function setToast(next: Toast | null) {
-  currentToast = next;
-  for (const listener of toastListeners) listener();
-}
-
-export function toast(text: string, tone: Toast['tone'] = 'info') {
-  window.clearTimeout(toastTimer);
-  setToast({ id: ++toastCounter, text, tone });
-  toastTimer = window.setTimeout(() => setToast(null), tone === 'error' ? 6000 : 2600);
+export function toast(text: string, tone: 'info' | 'error' = 'info') {
+  toasts.show(text, { tone });
 }
 
 /**
@@ -193,25 +213,27 @@ export function toastError(error: unknown) {
   toast(errorText(error), off ? 'info' : 'error');
 }
 
-export function ToastView() {
-  const current = useSyncExternalStore(
-    (listener) => {
-      toastListeners.add(listener);
-      return () => toastListeners.delete(listener);
-    },
-    () => currentToast,
-  );
+/** The toasts (above the tab bar when there is one) and Nyu's cameos. */
+export function ToastView({ raised = false }: { raised?: boolean }) {
+  useSettings();
   return (
     <>
-      {current && (
-        <div className="toast" data-tone={current.tone} role="status" key={current.id}>
-          {current.text}
-        </div>
-      )}
+      <div className={raised ? '[&>div]:bottom-16' : undefined}>
+        <UwuLabels labels={locale().startsWith('en') ? 'en' : 'de'}>
+          <Toaster store={toasts} />
+        </UwuLabels>
+      </div>
       <NyuStage />
     </>
   );
 }
+
+/**
+ * A Segmented control across the whole width, its choices sharing it (on the button elements,
+ * so they win over the package's own padding).
+ */
+export const WIDE_SEGMENTED =
+  'w-full [&>button]:min-w-0 [&>button]:flex-auto [&>button]:truncate [&>button]:px-2';
 
 // ── Formatting ────────────────────────────────────────────
 
@@ -324,45 +346,16 @@ export function PasswordInput({
         placeholder={placeholder}
         inputMode={inputMode}
       />
-      <button
-        type="button"
-        className="icon-button"
+      <IconButton
+        icon={visible ? ICONS.hide : ICONS.show}
+        label={visible ? t('Passwort verbergen') : t('Passwort zeigen')}
+        size="sm"
         onClick={() => setVisible(!visible)}
-        aria-label={visible ? t('Passwort verbergen') : t('Passwort zeigen')}
         aria-pressed={visible}
         tabIndex={-1}
-      >
-        <Icon name={visible ? 'eyeOff' : 'eye'} size={16} />
-      </button>
+      />
       {caps && <small className="caps-hint">{t('Feststelltaste ist an')}</small>}
     </span>
-  );
-}
-
-/** An on/off switch. */
-export function Toggle({
-  checked,
-  onChange,
-  label,
-  disabled,
-}: {
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-  label: string;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      className="toggle"
-      aria-checked={checked}
-      aria-label={label}
-      disabled={disabled}
-      onClick={() => onChange(!checked)}
-    >
-      <span className="toggle-thumb" />
-    </button>
   );
 }
 

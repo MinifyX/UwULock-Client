@@ -4,8 +4,8 @@
  * take over. Locked first? Then it unlocks here.
  */
 
+import { Button, Icon, ICONS } from '@uwusuite/design';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { Icon } from '@desktop/components/Icon';
 import { t } from '../shared/i18n';
 import type { PasskeyDecision, PasskeyPrompt } from '../shared/protocol';
 import { passkeyDecide, passkeyPrompt } from '../popup/api';
@@ -77,13 +77,9 @@ export function Prompt({ id }: { id: string }) {
         <Header prompt={prompt} />
         <LockView status={status} compact onDone={() => void refresh()} />
         <div className="form-actions prompt-actions">
-          <button
-            type="button"
-            className="quiet"
-            onClick={() => void decide({ id, choice: 'browser' })}
-          >
+          <Button variant="ghost" onClick={() => void decide({ id, choice: 'browser' })}>
             {t('Browser verwenden')}
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -199,28 +195,27 @@ export function Prompt({ id }: { id: string }) {
       )}
 
       <div className="form-actions prompt-actions">
-        <button
-          type="button"
-          className="quiet"
+        <Button
+          variant="ghost"
           onClick={() => void decide({ id, choice: 'browser' })}
           disabled={busy}
         >
           {t('Browser verwenden')}
-        </button>
+        </Button>
         <span className="spacer" />
         {!(prompt.kind === 'get' && prompt.choices.length === 0) && (
-          <button
-            className="primary"
+          <Button
+            variant="primary"
             type="submit"
+            busy={busy}
             disabled={
-              busy ||
               !armed ||
               (needsPassword ? !password : false) ||
               (prompt.kind === 'create' && prompt.excluded)
             }
           >
             {prompt.kind === 'create' ? t('Passkey speichern') : t('Anmelden')}
-          </button>
+          </Button>
         )}
       </div>
     </form>
@@ -230,7 +225,7 @@ export function Prompt({ id }: { id: string }) {
 function Header({ prompt }: { prompt: PasskeyPrompt }) {
   return (
     <header className="prompt-head">
-      <Icon name="key" size={22} />
+      <Icon icon={ICONS.passkey} size="xl" />
       <div>
         <h1 className="card-title">
           {prompt.kind === 'create' ? t('Passkey erstellen') : t('Mit Passkey anmelden')}

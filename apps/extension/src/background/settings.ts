@@ -7,6 +7,8 @@ import { local, setLocal } from './store';
 export const DEFAULT_SETTINGS: Settings = {
   language: 'system',
   theme: 'system',
+  contrast: 'system',
+  motion: 'system',
   font: 'uwu',
   lockTimeout: 15,
   lockWithSystem: true,
@@ -82,6 +84,9 @@ export async function updateSettings(patch: Partial<Settings>): Promise<Settings
   if (patch.language && ['system', 'de', 'en'].includes(patch.language))
     next.language = patch.language;
   if (patch.theme && ['system', 'light', 'dark'].includes(patch.theme)) next.theme = patch.theme;
+  if (patch.contrast && ['system', 'normal', 'high'].includes(patch.contrast))
+    next.contrast = patch.contrast;
+  if (patch.motion && ['system', 'on', 'off'].includes(patch.motion)) next.motion = patch.motion;
   if (typeof patch.font === 'string' && FONTS.has(patch.font)) next.font = patch.font;
   if (patch.lockTimeout !== undefined && TIMEOUTS.has(patch.lockTimeout))
     next.lockTimeout = patch.lockTimeout;

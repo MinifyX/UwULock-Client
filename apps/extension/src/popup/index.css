@@ -1,0 +1,38 @@
+/*
+ * Every stylesheet of the popup and the passkey window, in cascade order.
+ *
+ * The suite first: Tailwind and @uwusuite/design (tokens, UwU Sans, the base
+ * layer, motion, Nyu), plus the font picker's fonts — all bundled, nothing is
+ * loaded from the network. Then the desktop app's sheets for what the popup
+ * shares with it (fields, item rows and tiles, detail cards, the generator,
+ * Nyu's cameos), and last popup.css, the popup's own layout. They sit in
+ * Tailwind's `components` layer, so a utility class on an element wins.
+ *
+ * None of this reaches web pages: the content scripts' UI has its own small
+ * sheet in a closed shadow root (content/ui.ts).
+ */
+@import 'tailwindcss';
+@import '@uwusuite/design/tailwind.css';
+@import '@uwusuite/design/font-picker.css';
+
+/*
+ * The popup is 380 px wide, but it is a desktop window, not a phone: the
+ * package's phone layout (taller buttons, toasts on top, full-screen dialogs)
+ * stays off here.
+ */
+@custom-variant phone (&:where(.uwu-never-phone, .uwu-never-phone *));
+
+/* Tailwind looks for class names in the extension and the desktop files it shows. */
+@source '../';
+@source '../../../desktop/src/components/ItemTile.tsx';
+@source '../../../desktop/src/components/FontPicker.tsx';
+@source '../../../desktop/src/components/QrCode.tsx';
+@source '../../../desktop/src/components/nyu';
+
+@import '../../../desktop/src/styles/app.css' layer(components);
+@import '../../../desktop/src/styles/vault.css' layer(components);
+@import '../../../desktop/src/styles/detail.css' layer(components);
+@import '../../../desktop/src/styles/generator.css' layer(components);
+@import '../../../desktop/src/styles/wifi.css' layer(components);
+@import '../../../desktop/src/components/nyu/nyu.css' layer(components);
+@import './popup.css' layer(components);

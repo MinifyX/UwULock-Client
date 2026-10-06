@@ -1,3 +1,4 @@
+import { Button, IconButton, ICONS, Segmented } from '@uwusuite/design';
 import { useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { failure } from '../lib/api';
 import { errorText, toastError } from '../lib/errors';
@@ -24,7 +25,6 @@ import {
 } from '../lib/suiteModel';
 import { useCloseGuard } from './CloseGuard';
 import { GeneratorDialog } from './GeneratorDialog';
-import { Icon } from './Icon';
 import { Modal } from './Modal';
 
 /** What the editors need of the section. */
@@ -61,9 +61,20 @@ export function authLabel(auth: string): string {
   return known ? t(known) : auth;
 }
 
-function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
+function Field({
+  label,
+  children,
+  hint,
+  narrow,
+}: {
+  label: string;
+  children: ReactNode;
+  hint?: string;
+  /** A port or a number: the field keeps to its few digits. */
+  narrow?: boolean;
+}) {
   return (
-    <label className="field">
+    <label className={narrow ? 'field w-28 flex-none' : 'field'}>
       <span>{label}</span>
       {children}
       {hint && <small className="field-hint">{hint}</small>}
@@ -128,18 +139,13 @@ function EditorModal({
         onCancel={guard.request}
         footer={
           <>
-            <button type="button" className="quiet" data-secondary onClick={guard.request}>
+            <Button variant="ghost" data-secondary onClick={guard.request}>
               {t('Abbrechen')}
-            </button>
+            </Button>
             <span className="spacer" />
-            <button
-              type="submit"
-              form="suite-editor"
-              className="primary"
-              disabled={busy || !canSave}
-            >
+            <Button type="submit" form="suite-editor" variant="primary" disabled={busy || !canSave}>
               {busy ? t('Speichert …') : t('Speichern')}
-            </button>
+            </Button>
           </>
         }
       >
@@ -256,7 +262,7 @@ function DrivesFields({
   const setDrive = (i: number, patch: Partial<Drive>) =>
     onChange({ ...drives, list: drives.list.map((d, j) => (j === i ? { ...d, ...patch } : d)) });
   return (
-    <div className="suite-drives">
+    <div className="grid gap-2">
       <Field label={t('Laufwerke umleiten')}>
         <select
           value={drives.mode}
@@ -286,27 +292,25 @@ function DrivesFields({
                   onChange={(e) => setDrive(i, { path: e.target.value })}
                 />
               </Field>
-              <button
-                type="button"
-                className="icon-button"
-                title={t('Entfernen')}
-                aria-label={t('Entfernen')}
+              <IconButton
+                icon={ICONS.delete}
+                size="sm"
+                label={t('Entfernen')}
                 onClick={() => onChange({ ...drives, list: drives.list.filter((_, j) => j !== i) })}
-              >
-                <Icon name="trash" size={15} />
-              </button>
+              />
             </div>
           ))}
-          <button
-            type="button"
-            className="quiet"
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={ICONS.add}
+            className="justify-self-start"
             onClick={() =>
               onChange({ ...drives, list: [...drives.list, { name: '', path: '', orig: {} }] })
             }
           >
-            <Icon name="plus" size={14} />
             {t('Laufwerk hinzufügen')}
-          </button>
+          </Button>
         </>
       )}
     </div>
@@ -511,11 +515,11 @@ export function HostEditor({
               onChange={(e) => set({ address: e.target.value })}
             />
           </Field>
-          <Field label={t('Port')}>
+          <Field label={t('Port')} narrow>
             <input
               type="text"
               inputMode="numeric"
-              className="mono narrow"
+              className="mono"
               value={form.port}
               onChange={(e) => set({ port: e.target.value })}
             />
@@ -565,15 +569,12 @@ export function HostEditor({
               <span className="field-label-row">
                 <span>{t('Passwort')}</span>
                 <span className="field-actions">
-                  <button
-                    type="button"
-                    className="icon-button"
-                    title={t('Passwort erzeugen')}
-                    aria-label={t('Passwort erzeugen')}
+                  <IconButton
+                    icon={ICONS.generate}
+                    size="sm"
+                    label={t('Passwort erzeugen')}
                     onClick={() => setGenerating(true)}
-                  >
-                    <Icon name="dice" size={15} />
-                  </button>
+                  />
                 </span>
               </span>
               <input
@@ -590,7 +591,7 @@ export function HostEditor({
 
         {rdpSpace && (
           <>
-            <h3 className="editor-heading">{t('Anzeige')}</h3>
+            <h3 className="mt-2 text-meta font-semibold">{t('Anzeige')}</h3>
             <div className="editor-row">
               <Field label={t('Größe')}>
                 <select value={form.display} onChange={(e) => set({ display: e.target.value })}>
@@ -604,20 +605,20 @@ export function HostEditor({
               </Field>
               {form.display === 'fixed' && (
                 <>
-                  <Field label={t('Breite')}>
+                  <Field label={t('Breite')} narrow>
                     <input
                       type="text"
                       inputMode="numeric"
-                      className="mono narrow"
+                      className="mono"
                       value={form.width}
                       onChange={(e) => set({ width: e.target.value })}
                     />
                   </Field>
-                  <Field label={t('Höhe')}>
+                  <Field label={t('Höhe')} narrow>
                     <input
                       type="text"
                       inputMode="numeric"
-                      className="mono narrow"
+                      className="mono"
                       value={form.height}
                       onChange={(e) => set({ height: e.target.value })}
                     />
@@ -652,7 +653,7 @@ export function HostEditor({
                 </select>
               </Field>
             </div>
-            <div className="check-grid">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-x-4 gap-y-1.5 phone:grid-cols-1">
               <Check
                 label={t('Verkleinern statt scrollen')}
                 checked={form.smartSizing}
@@ -685,7 +686,7 @@ export function HostEditor({
               />
             </div>
 
-            <h3 className="editor-heading">{t('Gateway')}</h3>
+            <h3 className="mt-2 text-meta font-semibold">{t('Gateway')}</h3>
             <Check
               label={t('Über ein Remotedesktop-Gateway verbinden')}
               checked={form.gatewayOn}
@@ -705,17 +706,17 @@ export function HostEditor({
                       onChange={(e) => set({ gatewayAddress: e.target.value })}
                     />
                   </Field>
-                  <Field label={t('Port')}>
+                  <Field label={t('Port')} narrow>
                     <input
                       type="text"
                       inputMode="numeric"
-                      className="mono narrow"
+                      className="mono"
                       value={form.gatewayPort}
                       onChange={(e) => set({ gatewayPort: e.target.value })}
                     />
                   </Field>
                 </div>
-                <div className="check-grid">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-x-4 gap-y-1.5 phone:grid-cols-1">
                   <Check
                     label={t('Mit der Anmeldung des Hosts')}
                     checked={form.gatewayUseHostLogin}
@@ -1034,35 +1035,26 @@ export function IdentityEditor({
             <span>{t('Passwort')}</span>
             <span className="field-actions">
               {pw.mode === 'keep' && (
-                <button
-                  type="button"
-                  className="icon-button"
+                <IconButton
+                  icon={ICONS.show}
+                  size="sm"
                   onClick={() => void reveal()}
-                  title={t('Zeigen')}
-                  aria-label={t('{label} zeigen', { label: t('Passwort') })}
-                >
-                  <Icon name="eye" size={15} />
-                </button>
+                  label={t('{label} zeigen', { label: t('Passwort') })}
+                />
               )}
-              <button
-                type="button"
-                className="icon-button"
-                title={t('Passwort erzeugen')}
-                aria-label={t('Passwort erzeugen')}
+              <IconButton
+                icon={ICONS.generate}
+                size="sm"
+                label={t('Passwort erzeugen')}
                 onClick={() => setGenerating(true)}
-              >
-                <Icon name="dice" size={15} />
-              </button>
+              />
               {pw.mode === 'value' && hasSecret && (
-                <button
-                  type="button"
-                  className="icon-button"
+                <IconButton
+                  icon={ICONS.undo}
+                  size="sm"
                   onClick={() => set({ password: { mode: 'keep' } })}
-                  title={t('Unverändert lassen')}
-                  aria-label={t('{label} unverändert lassen', { label: t('Passwort') })}
-                >
-                  <Icon name="history" size={15} />
-                </button>
+                  label={t('{label} unverändert lassen', { label: t('Passwort') })}
+                />
               )}
             </span>
           </span>
@@ -1238,24 +1230,16 @@ export function NewKeyDialog({
       onClose={onClose}
       onSubmit={() => void save()}
     >
-      <div className="segmented" role="radiogroup" aria-label={t('Schlüssel')}>
-        <button
-          type="button"
-          role="radio"
-          aria-checked={mode === 'generate'}
-          onClick={() => setMode('generate')}
-        >
-          {t('Neu erzeugen')}
-        </button>
-        <button
-          type="button"
-          role="radio"
-          aria-checked={mode === 'import'}
-          onClick={() => setMode('import')}
-        >
-          {t('Importieren')}
-        </button>
-      </div>
+      <Segmented
+        className="justify-self-start"
+        label={t('Schlüssel')}
+        value={mode}
+        onChange={setMode}
+        options={[
+          { value: 'generate', label: t('Neu erzeugen') },
+          { value: 'import', label: t('Importieren') },
+        ]}
+      />
       <Field label={t('Bezeichnung')}>
         <input
           type="text"
@@ -1311,10 +1295,14 @@ export function NewKeyDialog({
             <span className="field-label-row">
               <span>{t('Privater Schlüssel')}</span>
               <span className="field-actions">
-                <button type="button" className="quiet" onClick={() => fileRef.current?.click()}>
-                  <Icon name="upload" size={14} />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={ICONS.upload}
+                  onClick={() => fileRef.current?.click()}
+                >
                   {t('Datei wählen …')}
-                </button>
+                </Button>
               </span>
             </span>
             <textarea
@@ -1524,11 +1512,11 @@ export function TunnelEditor({
             onChange={(e) => set({ bindAddress: e.target.value })}
           />
         </Field>
-        <Field label={t('Port')}>
+        <Field label={t('Port')} narrow>
           <input
             type="text"
             inputMode="numeric"
-            className="mono narrow"
+            className="mono"
             value={form.bindPort}
             onChange={(e) => set({ bindPort: e.target.value })}
           />
@@ -1544,11 +1532,11 @@ export function TunnelEditor({
             onChange={(e) => set({ targetHost: e.target.value })}
           />
         </Field>
-        <Field label={t('Port')}>
+        <Field label={t('Port')} narrow>
           <input
             type="text"
             inputMode="numeric"
-            className="mono narrow"
+            className="mono"
             value={form.targetPort}
             onChange={(e) => set({ targetPort: e.target.value })}
           />

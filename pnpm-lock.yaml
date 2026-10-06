@@ -14,18 +14,15 @@ importers:
 
   apps/desktop:
     dependencies:
-      '@fontsource-variable/dm-sans':
-        specifier: ^5.3.0
-        version: 5.3.0
-      '@fontsource-variable/manrope':
-        specifier: ^5.2.0
-        version: 5.3.0
-      '@fontsource-variable/rubik':
-        specifier: ^5.3.0
-        version: 5.3.0
       '@tauri-apps/api':
         specifier: ^2.0.0
         version: 2.11.1
+      '@uwusuite/design':
+        specifier: https://github.com/MinifyX/UwUSuite-Design/releases/download/v1.4.1/uwusuite-design-1.4.1.tgz
+        version: https://github.com/MinifyX/UwUSuite-Design/releases/download/v1.4.1/uwusuite-design-1.4.1.tgz(@tauri-apps/api@2.11.1)(lucide-react@1.52.0(@types/react@18.3.31)(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tailwindcss@4.3.3)
+      lucide-react:
+        specifier: ^1.52.0
+        version: 1.52.0(@types/react@18.3.31)(react@18.3.1)
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -36,6 +33,9 @@ importers:
         specifier: ^0.1.3
         version: 0.1.3
     devDependencies:
+      '@tailwindcss/vite':
+        specifier: ^4.3.3
+        version: 4.3.3(vite@5.4.21(@types/node@22.20.3)(lightningcss@1.32.0))
       '@tauri-apps/cli':
         specifier: ^2.0.0
         version: 2.11.4
@@ -48,6 +48,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^4.3.1
         version: 4.7.0(vite@5.4.21(@types/node@22.20.3)(lightningcss@1.32.0))
+      tailwindcss:
+        specifier: ^4.3.3
+        version: 4.3.3
       typescript:
         specifier: ^5.5.4
         version: 5.9.3
@@ -57,15 +60,12 @@ importers:
 
   apps/extension:
     dependencies:
-      '@fontsource-variable/dm-sans':
-        specifier: ^5.3.0
-        version: 5.3.0
-      '@fontsource-variable/manrope':
-        specifier: ^5.2.0
-        version: 5.3.0
-      '@fontsource-variable/rubik':
-        specifier: ^5.3.0
-        version: 5.3.0
+      '@uwusuite/design':
+        specifier: https://github.com/MinifyX/UwUSuite-Design/releases/download/v1.4.1/uwusuite-design-1.4.1.tgz
+        version: https://github.com/MinifyX/UwUSuite-Design/releases/download/v1.4.1/uwusuite-design-1.4.1.tgz(@tauri-apps/api@2.11.1)(lucide-react@1.52.0(@types/react@18.3.31)(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tailwindcss@4.3.3)
+      lucide-react:
+        specifier: ^1.52.0
+        version: 1.52.0(@types/react@18.3.31)(react@18.3.1)
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -79,6 +79,9 @@ importers:
         specifier: ^0.1.3
         version: 0.1.3
     devDependencies:
+      '@tailwindcss/vite':
+        specifier: ^4.3.3
+        version: 4.3.3(vite@5.4.21(@types/node@22.20.3)(lightningcss@1.32.0))
       '@types/chrome':
         specifier: ^0.1.0
         version: 0.1.43
@@ -100,6 +103,9 @@ importers:
       playwright-core:
         specifier: 1.63.0
         version: 1.63.0
+      tailwindcss:
+        specifier: ^4.3.3
+        version: 4.3.3
       typescript:
         specifier: ^5.5.4
         version: 5.9.3
@@ -112,15 +118,18 @@ importers:
 
   apps/setup:
     dependencies:
-      '@fontsource-variable/manrope':
-        specifier: ^5.2.0
-        version: 5.3.0
       '@tauri-apps/api':
         specifier: ^2.11.1
         version: 2.11.1
+      '@uwusuite/design':
+        specifier: https://github.com/MinifyX/UwUSuite-Design/releases/download/v1.4.1/uwusuite-design-1.4.1.tgz
+        version: https://github.com/MinifyX/UwUSuite-Design/releases/download/v1.4.1/uwusuite-design-1.4.1.tgz(@tauri-apps/api@2.11.1)(lucide-react@1.52.0(@types/react@18.3.31)(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tailwindcss@4.3.3)
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      lucide-react:
+        specifier: ^1.52.0
+        version: 1.52.0(@types/react@18.3.31)(react@18.3.1)
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -129,7 +138,7 @@ importers:
         version: 18.3.1(react@18.3.1)
     devDependencies:
       '@tailwindcss/vite':
-        specifier: ^4.1.0
+        specifier: ^4.3.3
         version: 4.3.3(vite@5.4.21(@types/node@22.20.3)(lightningcss@1.32.0))
       '@tauri-apps/cli':
         specifier: ^2.11.4
@@ -147,7 +156,7 @@ importers:
         specifier: ^4.3.1
         version: 4.7.0(vite@5.4.21(@types/node@22.20.3)(lightningcss@1.32.0))
       tailwindcss:
-        specifier: ^4.1.0
+        specifier: ^4.3.3
         version: 4.3.3
       typescript:
         specifier: ^5.5.4
@@ -412,6 +421,9 @@ packages:
 
   '@fontsource-variable/dm-sans@5.3.0':
     resolution: {integrity: sha512-BpUG5bqePiDFMBM4ZtLSlPdAIOM990uB1dlXzIf4aw21yQR7BmykedLXXXMqGWsR18aMLOsbWccwJNh3ztTQaA==}
+
+  '@fontsource-variable/jetbrains-mono@5.3.0':
+    resolution: {integrity: sha512-F32xpS2NsGYoQi2ADSkKTgpJj7ozajsGgDJ8woTnqjmIB+dxDIqImjl4pXZVEExu8UFZ2ndhmX18EBS/hdz3Lw==}
 
   '@fontsource-variable/manrope@5.3.0':
     resolution: {integrity: sha512-6D5dgokHsWDDMtmXHznKa0hK229NN+1a4BLPmUCLqcO1Pw5EEhWY5RFt0AcXnVRAljFFPfRtLkJePQj6LSsV6g==}
@@ -797,6 +809,23 @@ packages:
   '@types/react@18.3.31':
     resolution: {integrity: sha512-vfEqpXTvwT91yhmwdfouStN2hSKwTvyRs8qpLfADyrq/kxDw0hZM7Wk9Ug1FELj8hIby+S/+kQCSRFF32nv2Qw==}
 
+  '@uwusuite/design@https://github.com/MinifyX/UwUSuite-Design/releases/download/v1.4.1/uwusuite-design-1.4.1.tgz':
+    resolution: {integrity: sha512-S5sMWhWgpT6oaiz9NowcK8Ugr4ItcZ1kf53gT1eJMJ+kXPKHTLXWv9DGkHfsyyuG+CpRSp5/J9S7KcO31hI6tw==, tarball: https://github.com/MinifyX/UwUSuite-Design/releases/download/v1.4.1/uwusuite-design-1.4.1.tgz}
+    version: 1.4.1
+    engines: {node: '>=22'}
+    hasBin: true
+    peerDependencies:
+      '@tauri-apps/api': ^2.0.0
+      lucide-react: '>=1.0.0'
+      react: ^18.3.0 || ^19.0.0
+      react-dom: ^18.3.0 || ^19.0.0
+      tailwindcss: ^4.1.0
+    peerDependenciesMeta:
+      '@tauri-apps/api':
+        optional: true
+      tailwindcss:
+        optional: true
+
   '@vitejs/plugin-react@4.7.0':
     resolution: {integrity: sha512-gUu9hwfWvvEDBBmgtAowQCojwZmJ5mcLn3aufeCsitijs3+f2NsrPtlAWIR6OPiqljl96GVCUbLe0HyqIpVaoA==}
     engines: {node: ^14.18.0 || >=16.0.0}
@@ -1142,6 +1171,15 @@ packages:
 
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
+
+  lucide-react@1.52.0:
+    resolution: {integrity: sha512-TUgPtl5ZI9WgxOcbu4ckaC5B3l1qxPQrCMgb6OfUB9owx/OvSJfcf93SMgUWAxRw5/1XDfh9uI5F5iNGXCcGDQ==}
+    peerDependencies:
+      '@types/react': '*'
+      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
 
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
@@ -1644,6 +1682,8 @@ snapshots:
 
   '@fontsource-variable/dm-sans@5.3.0': {}
 
+  '@fontsource-variable/jetbrains-mono@5.3.0': {}
+
   '@fontsource-variable/manrope@5.3.0': {}
 
   '@fontsource-variable/rubik@5.3.0': {}
@@ -1914,6 +1954,20 @@ snapshots:
     dependencies:
       '@types/prop-types': 15.7.15
       csstype: 3.2.3
+
+  '@uwusuite/design@https://github.com/MinifyX/UwUSuite-Design/releases/download/v1.4.1/uwusuite-design-1.4.1.tgz(@tauri-apps/api@2.11.1)(lucide-react@1.52.0(@types/react@18.3.31)(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tailwindcss@4.3.3)':
+    dependencies:
+      '@fontsource-variable/dm-sans': 5.3.0
+      '@fontsource-variable/jetbrains-mono': 5.3.0
+      '@fontsource-variable/manrope': 5.3.0
+      '@fontsource-variable/rubik': 5.3.0
+      clsx: 2.1.1
+      lucide-react: 1.52.0(@types/react@18.3.31)(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+    optionalDependencies:
+      '@tauri-apps/api': 2.11.1
+      tailwindcss: 4.3.3
 
   '@vitejs/plugin-react@4.7.0(vite@5.4.21(@types/node@22.20.3)(lightningcss@1.32.0))':
     dependencies:
@@ -2267,6 +2321,12 @@ snapshots:
   lru-cache@5.1.1:
     dependencies:
       yallist: 3.1.1
+
+  lucide-react@1.52.0(@types/react@18.3.31)(react@18.3.1):
+    dependencies:
+      react: 18.3.1
+    optionalDependencies:
+      '@types/react': 18.3.31
 
   magic-string@0.30.21:
     dependencies:

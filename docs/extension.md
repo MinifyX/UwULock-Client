@@ -147,7 +147,7 @@ the permission is there now.
 - **Context menu**: right-click in a page → UwULock → fill a login, card or address, copy a
   password, or generate one.
 - **Settings** in the popup: lock timeout, locking with the computer, PIN, clipboard clearing, the inline button, the save
-  prompt, copying the one-time code, passkeys, the default match detection, language, theme and
+  prompt, copying the one-time code, passkeys, the default match detection, language, theme, contrast, animations and
   font (UwU Sans, Manrope, Rubik, DM Sans or the system's — for this browser only), and your
   accounts.
 - **One-time codes**: in a code's last 10 seconds the next one shows below it, small, with its

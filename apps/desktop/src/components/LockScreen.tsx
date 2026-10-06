@@ -1,3 +1,4 @@
+import { Button, ICONS } from '@uwusuite/design';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { failure, logout, switchAccount, unlock, unlockWithHello, type Status } from '../lib/api';
 import { errorText, toastError } from '../lib/errors';
@@ -5,7 +6,6 @@ import { ago } from '../lib/format';
 import { t, useLanguage } from '../lib/i18n';
 import { isMobile } from '../lib/platform';
 import { unlockLabel, unlockPrompt } from '../lib/unlock';
-import { Icon } from './Icon';
 import { Modal } from './Modal';
 import { NyuScene } from './nyu/scenes';
 import { PasswordInput } from './PasswordInput';
@@ -97,18 +97,13 @@ export function LockScreen({ status, onUnlocked, onLoggedOut, onAddAccount }: Pr
             {error}
           </p>
         )}
-        <button className="primary lock-button" type="submit" disabled={busy || !password}>
+        <Button variant="primary" size="lg" type="submit" disabled={busy || !password}>
           {busy ? t('Entsperrt …') : t('Entsperren')}
-        </button>
+        </Button>
         {status.hello && (
-          <button
-            type="button"
-            className="lock-button"
-            disabled={busy}
-            onClick={() => void hello()}
-          >
+          <Button size="lg" disabled={busy} onClick={() => void hello()}>
             {unlockLabel(status.helloKind)}
-          </button>
+          </Button>
         )}
         <p className="lock-meta">
           {t('Zuletzt synchronisiert: {when}', { when: ago(status.lastSync) })}
@@ -118,35 +113,44 @@ export function LockScreen({ status, onUnlocked, onLoggedOut, onAddAccount }: Pr
           </button>
         </p>
 
-        <div className="lock-accounts">
+        <div className="mt-1 grid gap-1">
           {others.map((account) => (
-            <button
+            <Button
               key={account.id}
-              type="button"
-              className="quiet lock-account-row"
+              variant="ghost"
+              size="sm"
+              icon={account.unlocked ? ICONS.unlocked : ICONS.locked}
+              className="w-full justify-start!"
               onClick={() => void switchAccount(account.id).catch((e) => toastError(e))}
             >
-              <Icon name={account.unlocked ? 'unlock' : 'lock'} size={14} />
-              <span>{account.label}</span>
-              <small>{account.unlocked ? t('offen') : t('gesperrt')}</small>
-            </button>
+              <span className="truncate">{account.label}</span>
+              <small className="ml-auto text-caption text-muted">
+                {account.unlocked ? t('offen') : t('gesperrt')}
+              </small>
+            </Button>
           ))}
-          <button type="button" className="quiet lock-account-row" onClick={onAddAccount}>
-            <Icon name="plus" size={14} />
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={ICONS.add}
+            className="w-full justify-start!"
+            onClick={onAddAccount}
+          >
             <span>{t('Konto hinzufügen')}</span>
-          </button>
+          </Button>
         </div>
       </form>
 
       {confirmLogout && (
         <Modal
           title={t('Von diesem Gerät abmelden?')}
+          size="small"
           onCancel={() => setConfirmLogout(false)}
           footer={
             <>
               <span className="spacer" />
-              <button
-                className="danger"
+              <Button
+                variant="danger"
                 data-secondary
                 onClick={async () => {
                   try {
@@ -159,10 +163,10 @@ export function LockScreen({ status, onUnlocked, onLoggedOut, onAddAccount }: Pr
                 }}
               >
                 {t('Abmelden')}
-              </button>
-              <button className="primary" data-autofocus onClick={() => setConfirmLogout(false)}>
+              </Button>
+              <Button variant="primary" data-autofocus onClick={() => setConfirmLogout(false)}>
                 {t('Abbrechen')}
-              </button>
+              </Button>
             </>
           }
         >

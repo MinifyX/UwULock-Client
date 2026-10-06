@@ -1,5 +1,5 @@
+import { Button, ICONS, IconButton, Tag } from '@uwusuite/design';
 import { useCallback, useEffect, useState } from 'react';
-import { Icon } from '@desktop/components/Icon';
 import { NyuScene } from '@desktop/components/nyu/scenes';
 import { t } from '../../shared/i18n';
 import { ItemIcon } from '../icons';
@@ -94,42 +94,38 @@ export function TabView({
       </span>
       <span className="row-actions" onClick={(e) => e.stopPropagation()}>
         {item.kind === 'login' && item.hasUsername && (
-          <button
-            type="button"
-            className="icon-button"
+          <IconButton
+            icon={ICONS.account}
+            size="sm"
+            label={t('Benutzername kopieren')}
             onClick={() => void copy(item, 'username')}
-            aria-label={t('Benutzername kopieren')}
-            title={t('Benutzername kopieren')}
-          >
-            <Icon name="user" size={15} />
-          </button>
+          />
         )}
         {item.kind === 'login' && item.hasPassword && (
-          <button
-            type="button"
-            className="icon-button"
+          <IconButton
+            icon={ICONS.secret}
+            size="sm"
+            label={t('Passwort kopieren')}
             onClick={() => void copy(item, 'password')}
-            aria-label={t('Passwort kopieren')}
-            title={t('Passwort kopieren')}
-          >
-            <Icon name="key" size={15} />
-          </button>
+          />
         )}
         {item.kind === 'login' && item.hasTotp && (
-          <button
-            type="button"
-            className="icon-button"
+          <IconButton
+            icon={ICONS.oneTimeCode}
+            size="sm"
+            label={t('Einmal-Code kopieren')}
             onClick={() => void copy(item, 'totp')}
-            aria-label={t('Einmal-Code kopieren')}
-            title={t('Einmal-Code kopieren')}
-          >
-            <Icon name="clock" size={15} />
-          </button>
+          />
         )}
         {fillable && (
-          <button type="button" className="fill-button" onClick={() => void fill(item)}>
+          <Button
+            variant="primary"
+            size="sm"
+            className="fill-button"
+            onClick={() => void fill(item)}
+          >
             {t('Ausfüllen')}
-          </button>
+          </Button>
         )}
       </span>
     </li>
@@ -150,20 +146,20 @@ export function TabView({
             {save.username && <span className="muted"> · {save.username}</span>}
           </p>
           <div className="form-actions">
-            <button type="button" className="quiet" onClick={() => void answer(save, 'never')}>
-              {t('Nie für diese Seite')}
-            </button>
-            <button type="button" className="quiet" onClick={() => void answer(save, 'dismiss')}>
-              {t('Verwerfen')}
-            </button>
-            <span className="spacer" />
             <button
               type="button"
-              className="primary"
-              onClick={() => void answer(save, save.action)}
+              className="link-button text-caption text-muted!"
+              onClick={() => void answer(save, 'never')}
             >
-              {save.action === 'update' ? t('Aktualisieren') : t('Speichern')}
+              {t('Nie für diese Seite')}
             </button>
+            <span className="spacer" />
+            <Button variant="ghost" size="sm" onClick={() => void answer(save, 'dismiss')}>
+              {t('Verwerfen')}
+            </Button>
+            <Button variant="primary" size="sm" onClick={() => void answer(save, save.action)}>
+              {save.action === 'update' ? t('Aktualisieren') : t('Speichern')}
+            </Button>
           </div>
         </section>
       ))}
@@ -171,20 +167,17 @@ export function TabView({
       <h2 className="section-title">
         {items.host ?? t('Diese Seite')}
         {items.insecure && (
-          <span
-            className="chip chip-warning"
-            title={t('Diese Seite ist nicht verschlüsselt (http).')}
-          >
+          <Tag tone="warning" title={t('Diese Seite ist nicht verschlüsselt (http).')}>
             http
-          </span>
+          </Tag>
         )}
       </h2>
 
       {confirm && (
         <div className="notice" data-tone="error" role="alert">
           <span>{t('Diese Seite ist nicht verschlüsselt (http). Trotzdem ausfüllen?')}</span>
-          <button
-            type="button"
+          <Button
+            size="sm"
             onClick={() => {
               const item =
                 items.logins.find((i) => i.id === confirm) ??
@@ -194,10 +187,10 @@ export function TabView({
             }}
           >
             {t('Ausfüllen')}
-          </button>
-          <button type="button" className="quiet" onClick={() => setConfirm(null)}>
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setConfirm(null)}>
             {t('Abbrechen')}
-          </button>
+          </Button>
         </div>
       )}
 
@@ -225,9 +218,11 @@ export function TabView({
         <ul className="item-list plain">{items.logins.map((i) => row(i, canFill))}</ul>
       )}
       {canFill && (
-        <button
-          type="button"
-          className="add-here"
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={ICONS.add}
+          className="add-here text-pink-ink!"
           onClick={() =>
             onNew({
               id: null,
@@ -237,8 +232,8 @@ export function TabView({
             })
           }
         >
-          <Icon name="plus" size={14} /> {t('Neuer Login für diese Seite')}
-        </button>
+          {t('Neuer Login für diese Seite')}
+        </Button>
       )}
 
       {canFill && items.cards.length > 0 && (

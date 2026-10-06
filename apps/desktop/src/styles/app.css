@@ -1,183 +1,46 @@
-* {
-  box-sizing: border-box;
-}
-
-html,
-body,
-#root {
-  height: 100%;
-  margin: 0;
-}
-
-body {
-  background: var(--uwu-canvas);
-  color: var(--uwu-ink);
-  font-family: var(--uwu-font);
-  font-size: 14px;
-  -webkit-font-smoothing: antialiased;
-  overflow: hidden;
-}
-
 /*
- * Scrollbars in the app's colours instead of the system's white ones with
- * arrow buttons: a slim rounded thumb on a clear track. Every webview UwULock
- * runs in (WebView2, WKWebView, WebKitGTK) reads the -webkit- pseudo-elements;
- * the standard scrollbar-color would switch them off in Chromium, so it is
- * deliberately not set.
+ * UwULock's own pieces, built from @uwusuite/design's tokens. Everything the
+ * suite has (buttons, switches, segmented controls, dialogs, toasts, the title
+ * bar, menus, icons, Nyu, fonts, the base layer) comes from the package; what
+ * is here is what only a password manager needs: the fields and rows of an
+ * item, its cards, the checkboxes, the settings page's layout.
+ *
+ * index.css puts this file in Tailwind's `components` layer, so a utility class
+ * on an element always wins over it.
+ *
+ * Text sizes are the package's scale (--uwu-text-*), colours are tokens only,
+ * spacing is on the 4 px scale. Failures are `danger`, things that need
+ * attention are `warning` (docs/color.md in the package).
  */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
 
-::-webkit-scrollbar-track,
-::-webkit-scrollbar-corner {
-  background: transparent;
-}
-
-::-webkit-scrollbar-button {
-  display: none;
-}
-
-::-webkit-scrollbar-thumb {
-  border: 3px solid transparent;
-  border-radius: var(--uwu-radius-pill);
-  background: color-mix(in srgb, var(--uwu-muted) 45%, transparent) padding-box;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--uwu-pink) 70%, transparent) padding-box;
-}
-
-:focus-visible {
-  outline: 2px solid var(--uwu-pink);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-
-code {
-  font-family: var(--uwu-mono);
-  font-size: 0.92em;
-}
+/* ── Small helpers ─────────────────────────────────────── */
 
 .spacer {
   flex: 1;
 }
 
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
+.mono {
+  font-family: var(--uwu-mono);
+  letter-spacing: 0;
+  font-variant-ligatures: no-contextual;
 }
 
-/* ── Buttons ───────────────────────────────────────────── */
-
-button {
-  font: inherit;
-  font-weight: 600;
-  font-size: 13px;
-  padding: 7px 14px;
-  border-radius: var(--uwu-radius-control);
-  border: 1px solid var(--uwu-border);
-  background: var(--uwu-surface);
-  color: var(--uwu-ink);
-  cursor: pointer;
-}
-
-button:hover:not(:disabled) {
-  background: var(--uwu-elevated);
-}
-
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-button.primary {
-  background: var(--uwu-pink-solid);
-  border-color: var(--uwu-pink-solid);
-  color: var(--uwu-on-pink);
-}
-
-button.primary:hover:not(:disabled) {
-  background: var(--uwu-pink-solid);
-  filter: brightness(1.06);
-}
-
-button.danger {
-  color: var(--uwu-alarm);
-  border-color: color-mix(in srgb, var(--uwu-alarm) 45%, transparent);
-}
-
-button.quiet {
-  border-color: transparent;
-  background: transparent;
-  color: var(--uwu-muted);
-  font-weight: 500;
-  padding: 4px 10px;
-}
-
-.icon-button {
-  padding: 0;
-  width: 26px;
-  height: 26px;
-  display: inline-grid;
-  place-items: center;
-  font-size: 15px;
-  line-height: 1;
-  border-color: transparent;
-  background: transparent;
+.muted {
   color: var(--uwu-muted);
 }
 
-/* ── Shell ─────────────────────────────────────────────── */
-
-.shell {
-  height: 100%;
+.small {
+  font-size: var(--uwu-text-caption);
 }
 
-/* Titlebar and body; made inert while a dialog is open. */
-.background {
-  display: grid;
-  grid-template-rows: 38px 1fr;
-  height: 100%;
+p.small,
+p.muted {
+  margin: 0;
 }
 
-.titlebar {
-  display: flex;
-  align-items: stretch;
-  gap: 4px;
-  padding: 0 0 0 14px;
-  border-bottom: 1px solid var(--uwu-hairline);
-  background: var(--uwu-surface);
-  user-select: none;
-}
-
-.titlebar-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.titlebar-action {
-  align-self: center;
-  width: 30px;
-  height: 30px;
-  margin-right: 6px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  border-color: transparent;
-  background: transparent;
-  color: var(--uwu-muted);
-}
-
-.titlebar-action svg {
-  width: 17px;
-  height: 17px;
+/* The old inline icons, until every screen draws the package's <Icon>. */
+.icon {
+  flex: none;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.8;
@@ -185,169 +48,123 @@ button.quiet {
   stroke-linejoin: round;
 }
 
-.titlebar-action:hover:not(:disabled) {
-  color: var(--uwu-ink);
+/* Turns while something works (the sync button's arrows). */
+.spin {
+  animation: uwu-lock-spin 900ms linear infinite;
 }
 
-/* Caption buttons the size Windows uses: the full bar height, 46 px wide. */
-.window-controls {
-  display: flex;
+@keyframes uwu-lock-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
-.window-control {
-  width: 46px;
-  height: 100%;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--uwu-ink);
+/* Keeps the labels of a list in line when an entry has no icon. */
+.icon-gap {
+  flex: none;
+  width: 16px;
 }
 
-.window-control svg {
-  width: 10px;
-  height: 10px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1;
-}
+/* ── Text ──────────────────────────────────────────────── */
 
-.window-control:hover:not(:disabled) {
-  background: var(--uwu-elevated);
-}
-
-.window-control.close:hover:not(:disabled) {
-  background: var(--uwu-pink-solid);
-  color: var(--uwu-on-pink);
-}
-
-.titlebar .wordmark {
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
-.titlebar .wordmark span {
-  color: var(--uwu-pink-solid);
-}
-
-/* ── Shared ────────────────────────────────────────────── */
-
-.search {
-  font: inherit;
-  width: 100%;
-  padding: 7px 10px;
-  border-radius: var(--uwu-radius-control);
-  border: 1px solid var(--uwu-border);
-  background: var(--uwu-canvas);
-  color: var(--uwu-ink);
-}
-
-.notice {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 10px 14px 0;
-  padding: 8px 8px 8px 14px;
-  border-radius: var(--uwu-radius-control);
-  border: 1px solid var(--uwu-border);
-  background: var(--uwu-surface);
-  font-size: 13px;
-}
-
-.notice[data-tone='error'] {
-  border-color: color-mix(in srgb, var(--uwu-alarm) 50%, transparent);
-  color: var(--uwu-alarm);
-}
-
-.notice button {
-  padding: 4px 12px;
-}
-
-/* ── Modal ─────────────────────────────────────────────── */
-
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: color-mix(in srgb, #141016 45%, transparent);
-  z-index: 10;
-}
-
-.modal {
-  position: relative;
-  width: min(520px, 100%);
-  max-height: 100%;
-  overflow-y: auto;
-  display: grid;
-  gap: 14px;
-  padding: 20px 22px 18px;
-  border-radius: var(--uwu-radius-card);
-  border: 1px solid var(--uwu-border);
-  background: var(--uwu-surface);
-  box-shadow: 0 24px 60px -24px rgba(20, 16, 22, 0.45);
-}
-
-.modal[data-size='wide'] {
-  width: min(780px, 100%);
-  height: min(600px, 100%);
-  grid-template-rows: auto 1fr;
-}
-
-/* Security warnings look different on purpose — never like a routine dialog. */
-.modal[data-tone='warning'] {
-  border-color: var(--uwu-alarm);
-  border-top-width: 4px;
-}
-
-.modal-title {
+.card-title {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--uwu-text-title);
   font-weight: 700;
   letter-spacing: -0.01em;
 }
 
-.modal[data-tone='warning'] .modal-title {
-  color: var(--uwu-alarm);
-}
-
-.modal-body {
-  display: grid;
-  gap: 12px;
-}
-
-.modal-footer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .dialog-lead {
   margin: 0;
-  line-height: 1.5;
+  line-height: var(--uwu-leading-reading);
+}
+
+.form-error {
+  margin: 0;
+  font-size: var(--uwu-text-meta);
+  color: var(--uwu-danger-ink);
+}
+
+.danger-text {
+  color: var(--uwu-danger-ink);
+}
+
+/* A button that reads as a link: inline, in the text's flow. */
+.link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--uwu-space-1);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--uwu-pink-ink);
+  font-size: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.link-button:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.link-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* A line of news above a list or inside a card. */
+.notice {
+  display: flex;
+  align-items: center;
+  gap: var(--uwu-space-3);
+  margin: var(--uwu-space-3) var(--uwu-space-4) 0;
+  padding: var(--uwu-space-2) var(--uwu-space-2) var(--uwu-space-2) var(--uwu-space-4);
+  border-radius: var(--uwu-radius-control);
+  border: 1px solid var(--uwu-hairline);
+  background: var(--uwu-elevated);
+  font-size: var(--uwu-text-meta);
+  line-height: var(--uwu-leading);
+}
+
+.notice[data-tone='error'] {
+  border-color: color-mix(in srgb, var(--uwu-danger) 40%, transparent);
+  background: var(--uwu-danger-tint);
+  color: var(--uwu-danger-ink);
+}
+
+.notice[data-tone='warning'] {
+  border-color: color-mix(in srgb, var(--uwu-warning) 40%, transparent);
+  background: var(--uwu-warning-tint);
+  color: var(--uwu-warning-ink);
 }
 
 /* ── Forms ─────────────────────────────────────────────── */
 
 .form {
   display: grid;
-  gap: 12px;
+  gap: var(--uwu-space-3);
 }
 
 .form-row {
   display: flex;
-  gap: 10px;
+  gap: var(--uwu-space-3);
 }
 
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--uwu-space-2);
+  margin-top: var(--uwu-space-1);
+}
+
+/* A label above its control, then a hint or an error. */
 .field {
   display: grid;
   /* Without this a taller neighbour (one with an error line) stretches the
      rows and pushes this input down. */
   align-content: start;
-  gap: 5px;
+  gap: 6px;
   margin: 0;
   padding: 0;
   border: 0;
@@ -362,55 +179,46 @@ button.quiet {
   width: 88px;
 }
 
-.field > span {
-  font-size: 12px;
+.field > span,
+.field-label-row {
+  font-size: var(--uwu-text-caption);
   font-weight: 600;
+  line-height: var(--uwu-leading);
   color: var(--uwu-muted);
-  line-height: 1.45;
 }
 
-.field input {
-  font: inherit;
-  width: 100%;
-  padding: 8px 10px;
-  border-radius: var(--uwu-radius-control);
-  border: 1px solid var(--uwu-border);
-  background: var(--uwu-canvas);
-  color: var(--uwu-ink);
+/* A value the editor may not have: its label carries the eye and the dice. */
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--uwu-space-2);
 }
 
-.field input[aria-invalid='true'] {
-  border-color: var(--uwu-alarm);
+.field-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
-.field-error,
-.field-hint {
+.field-hint,
+.field-error {
+  margin: 0;
   font-style: normal;
-  font-size: 12px;
-  line-height: 1.45;
+  font-size: var(--uwu-text-caption);
+  line-height: var(--uwu-leading);
+}
+
+.field-hint {
+  color: var(--uwu-muted);
+}
+
+.field-hint[data-tone='warn'] {
+  color: var(--uwu-warning-ink);
 }
 
 .field-error {
-  color: var(--uwu-alarm);
-}
-
-.field-hint {
-  margin: 0;
-  color: var(--uwu-muted);
-}
-
-/* Asking before the one-time code's key goes into a Send. */
-.share-totp-confirm {
-  display: grid;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1px solid var(--uwu-alarm);
-  border-radius: 10px;
-  color: inherit;
-}
-
-.share-totp-confirm p {
-  margin: 0;
+  color: var(--uwu-danger-ink);
 }
 
 /* Commands in hints must not break at their hyphens. */
@@ -418,44 +226,461 @@ button.quiet {
   white-space: nowrap;
 }
 
-.form-error {
-  margin: 0;
-  color: var(--uwu-alarm);
-  font-size: 13px;
-}
-
-.segmented {
-  display: inline-flex;
-  padding: 3px;
-  gap: 3px;
+/*
+ * The app's own text controls: the package's control look (docs/components.md
+ * in @uwusuite/design: radius 10, the 3:1 control outline, a pink focus ring),
+ * 40 px high, because a vault item has many of them.
+ */
+.control,
+.field input:not([type='checkbox'], [type='radio'], [type='range']),
+.field textarea,
+.field select,
+.editor-row > input,
+.editor-row > select,
+.password-input input,
+.search,
+.select {
+  min-height: 40px;
+  width: 100%;
+  padding: 0 var(--uwu-space-3);
   border-radius: var(--uwu-radius-control);
-  background: var(--uwu-canvas);
-  border: 1px solid var(--uwu-border);
-  width: max-content;
+  border: 1px solid color-mix(in srgb, var(--uwu-control) 60%, transparent);
+  background: var(--uwu-surface);
+  color: var(--uwu-ink);
+  font-size: var(--uwu-text-body);
+  transition:
+    border-color var(--uwu-duration-fast),
+    box-shadow var(--uwu-duration-fast);
 }
 
-.segmented button {
+.select {
+  width: auto;
+}
+
+.field textarea {
+  min-height: 64px;
+  padding: var(--uwu-space-2) var(--uwu-space-3);
+  line-height: var(--uwu-leading);
+  resize: vertical;
+}
+
+:is(
+  .control,
+  .field input,
+  .field textarea,
+  .field select,
+  .editor-row > input,
+  .editor-row > select,
+  .password-input input,
+  .search,
+  .select
+)::placeholder {
+  color: var(--uwu-faint);
+}
+
+:is(
+  .control,
+  .field input,
+  .field textarea,
+  .field select,
+  .editor-row > input,
+  .editor-row > select,
+  .password-input input,
+  .search,
+  .select
+):focus {
+  outline: none;
+  border-color: var(--uwu-pink);
+  box-shadow: var(--uwu-focus);
+}
+
+:is(
+  .control,
+  .field input,
+  .field textarea,
+  .field select,
+  .password-input input
+)[aria-invalid='true'] {
+  border-color: var(--uwu-danger);
+}
+
+:is(.control, .field input, .field textarea, .field select, .search, .select):disabled {
+  opacity: 0.55;
+}
+
+.field :is(input, textarea).mono {
+  font-family: var(--uwu-mono);
+}
+
+.search::-webkit-search-cancel-button {
+  display: none;
+}
+
+/* A password field with its eye inside, on the right. */
+.password-input {
+  position: relative;
+  display: block;
+}
+
+.password-input input {
+  padding-right: 44px;
+}
+
+.password-input > button {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  translate: 0 -50%;
+}
+
+.caps-hint {
+  display: block;
+  margin-top: var(--uwu-space-1);
+  font-size: var(--uwu-text-caption);
+  color: var(--uwu-warning-ink);
+}
+
+.code-input {
+  font-family: var(--uwu-mono) !important;
+  font-size: var(--uwu-text-section) !important;
+  letter-spacing: 0.2em;
+  text-align: center;
+}
+
+/*
+ * Checkboxes in the suite's colours: a rounded box with the control outline
+ * that fills pink-solid with a tick that pops in. A checkbox with
+ * role="switch" is drawn as the package's Switch (44 × 24). Still native
+ * inputs, so keyboard and screen readers work as before.
+ */
+input[type='checkbox'] {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-grid;
+  place-content: center;
+  flex: none;
+  margin: 0;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid var(--uwu-control);
+  border-radius: 6px;
+  background: var(--uwu-surface);
+  cursor: pointer;
+  transition:
+    background-color var(--uwu-duration-fast),
+    border-color var(--uwu-duration-fast);
+}
+
+input[type='checkbox']::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  background: var(--uwu-on-pink);
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+  transform: scale(0);
+  transition: transform 180ms var(--uwu-ease-spring);
+}
+
+input[type='checkbox']:checked {
+  border-color: var(--uwu-pink-solid);
+  background: var(--uwu-pink-solid);
+}
+
+input[type='checkbox']:checked::before {
+  transform: scale(1);
+}
+
+input[type='checkbox']:hover:not(:disabled) {
+  border-color: var(--uwu-pink);
+}
+
+input[type='checkbox']:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+input[type='checkbox'][role='switch'] {
+  place-content: center start;
+  width: 44px;
+  height: 24px;
+  padding: 0 2px;
   border: 0;
-  background: transparent;
-  padding: 5px 14px;
-  border-radius: 7px;
+  border-radius: var(--uwu-radius-pill);
+  background: color-mix(in srgb, var(--uwu-control) 70%, transparent);
+}
+
+input[type='checkbox'][role='switch']::before {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  clip-path: none;
+  box-shadow: 0 1px 2px rgb(28 20 32 / 0.25);
+  transform: none;
+  transition: transform var(--uwu-duration-base) var(--uwu-ease-out);
+}
+
+input[type='checkbox'][role='switch']:checked {
+  background: var(--uwu-pink-solid);
+}
+
+input[type='checkbox'][role='switch']:checked::before {
+  transform: translateX(20px);
+}
+
+/* A checkbox with its words. */
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--uwu-space-2);
+  font-size: var(--uwu-text-meta);
+  cursor: pointer;
+}
+
+/* A switch sits after its words, like the settings' rows. */
+.check:has(> input[role='switch']) {
+  flex-direction: row-reverse;
+  justify-content: space-between;
+}
+
+.check:has(> input[role='switch']) > span {
+  flex: 1;
+}
+
+/* ── Chips ─────────────────────────────────────────────── */
+
+.chips {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--uwu-space-1);
+  min-height: 22px;
+  padding: 0 10px;
+  border-radius: var(--uwu-radius-pill);
+  border: 1px solid var(--uwu-border);
+  background: var(--uwu-surface);
+  font-size: var(--uwu-text-caption);
+  font-weight: 500;
   color: var(--uwu-muted);
 }
 
-.segmented button[aria-checked='true'] {
-  background: var(--uwu-surface);
-  color: var(--uwu-ink);
-  box-shadow: 0 1px 2px rgba(20, 16, 22, 0.12);
+.chip-muted {
+  border-style: dashed;
 }
 
-/* ── Settings ────────────────────────────────────────────────────────────── */
+/* ── Cards of rows (an item's details, the extras, the reports) ── */
+
+.detail-card {
+  display: grid;
+  padding: var(--uwu-space-1) 0;
+  border-radius: var(--uwu-radius-card);
+  border: 1px solid var(--uwu-hairline);
+  background: var(--uwu-surface);
+}
+
+.detail-card-title {
+  margin: 0;
+  padding: var(--uwu-space-3) var(--uwu-space-4) 2px;
+  display: flex;
+  align-items: center;
+  gap: var(--uwu-space-2);
+  font-size: var(--uwu-text-caption);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--uwu-muted);
+}
+
+.detail-row {
+  display: flex;
+  align-items: center;
+  gap: var(--uwu-space-3);
+  padding: var(--uwu-space-2) var(--uwu-space-3) var(--uwu-space-2) var(--uwu-space-4);
+  min-height: 56px;
+}
+
+.detail-row + .detail-row {
+  border-top: 1px solid var(--uwu-hairline);
+}
+
+.detail-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.detail-label {
+  font-size: var(--uwu-text-caption);
+  font-weight: 600;
+  color: var(--uwu-muted);
+}
+
+.detail-value {
+  overflow-wrap: anywhere;
+  line-height: var(--uwu-leading);
+  user-select: text;
+}
+
+.detail-value.mono {
+  font-size: var(--uwu-text-meta);
+}
+
+/* A row's copy and reveal buttons: quiet until the row is hovered. */
+.detail-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0.6;
+  transition: opacity var(--uwu-duration-fast);
+}
+
+.detail-row:hover .detail-actions,
+.detail-actions:focus-within {
+  opacity: 1;
+}
+
+.detail-empty-line {
+  margin: 0;
+  padding: var(--uwu-space-3) var(--uwu-space-4);
+  color: var(--uwu-muted);
+}
+
+.secret-block {
+  margin: var(--uwu-space-1) 0 0;
+  font-family: var(--uwu-mono);
+  font-size: var(--uwu-text-caption);
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+}
+
+.uri {
+  word-break: break-all;
+}
+
+/* ── Editing: rows of inputs and lists of them ──────────── */
+
+.editor-row {
+  display: flex;
+  gap: var(--uwu-space-3);
+  align-items: flex-end;
+}
+
+.editor-row > .field,
+.editor-row > input,
+.editor-row > select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* A row's remove button sits on the line of the inputs, not above them. */
+.editor-row > button:last-child {
+  flex: none;
+  margin-bottom: var(--uwu-space-1);
+}
+
+.editor-list {
+  display: grid;
+  gap: var(--uwu-space-3);
+  margin: 0;
+  padding: var(--uwu-space-3);
+  border: 1px solid var(--uwu-hairline);
+  border-radius: var(--uwu-radius-control);
+  background: var(--uwu-elevated);
+}
+
+.editor-list legend {
+  padding: 0 6px;
+  font-size: var(--uwu-text-caption);
+  font-weight: 600;
+  color: var(--uwu-muted);
+}
+
+/* ── Marks ─────────────────────────────────────────────── */
+
+.badge-star {
+  color: var(--uwu-pink);
+  fill: currentColor;
+}
+
+.badge-warning {
+  color: var(--uwu-warning-ink);
+}
+
+/* ── Empty lists ───────────────────────────────────────── */
+
+.list-empty {
+  flex: 1;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--uwu-space-3);
+  padding: var(--uwu-space-6);
+  text-align: center;
+  color: var(--uwu-muted);
+}
+
+.list-empty p {
+  margin: 0;
+  max-width: 260px;
+  line-height: var(--uwu-leading);
+  font-size: var(--uwu-text-meta);
+}
+
+.empty-scene {
+  width: 200px;
+}
+
+/* ── The window ────────────────────────────────────────── */
+
+.shell {
+  height: 100%;
+}
+
+/* Title bar and body. On macOS there is no title bar of the app's own (the
+   system draws it), so the stage is the only row. */
+.background {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100%;
+}
+
+.background > .stage:only-child {
+  grid-row: 1 / -1;
+}
+
+/* The screen under the title bar: login, lock or the vault. */
+.stage {
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* On a phone the title bar is the app bar: no window to drag, room for a thumb. */
+.app-bar {
+  height: 48px;
+  padding-right: 6px;
+}
+
+.app-bar .uwu-titlebar-action {
+  width: 40px;
+  height: 40px;
+}
+
+/* ── Settings ──────────────────────────────────────────── */
 
 .settings {
   display: grid;
   grid-template-columns: 170px 1fr;
-  gap: 20px;
+  gap: var(--uwu-space-5);
   min-height: 0;
-  height: 100%;
+  height: min(560px, calc(100svh - 160px));
 }
 
 .settings-nav {
@@ -465,289 +690,96 @@ button.quiet {
 }
 
 .settings-nav button {
-  border: 0;
-  background: transparent;
-  text-align: left;
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 var(--uwu-space-3);
+  border-radius: var(--uwu-radius-pill);
+  font-size: var(--uwu-text-meta);
+  font-weight: 500;
   color: var(--uwu-muted);
-  padding: 9px 12px;
+  text-align: left;
+  transition:
+    background-color var(--uwu-duration-fast),
+    color var(--uwu-duration-fast);
+}
+
+.settings-nav button:hover {
+  background: color-mix(in srgb, var(--uwu-pink-tint) 45%, transparent);
+  color: var(--uwu-ink);
 }
 
 .settings-nav button[aria-current='page'] {
   background: var(--uwu-pink-tint);
   color: var(--uwu-pink-ink);
+  font-weight: 600;
 }
 
 .settings-content {
   min-height: 0;
   overflow-y: auto;
-  padding-right: 4px;
+  padding-right: var(--uwu-space-1);
 }
 
-.settings-close {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  font-size: 18px;
-}
-
-.setting-row {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--uwu-hairline);
-}
-
-.setting-row:last-child {
-  border-bottom: 0;
-}
-
-.setting-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.setting-label {
-  margin: 0;
-  font-weight: 600;
-}
-
-.setting-description {
-  margin: 2px 0 0;
-  font-size: 12.5px;
-  line-height: 1.45;
-  color: var(--uwu-muted);
-}
-
-.setting-control {
-  flex: none;
-  max-width: 55%;
+/* Settings → Appearance → Font: the picker gets more room than a switch. */
+.setting-control:has(.font-picker) {
+  flex: 1 1 300px;
+  max-width: 62%;
 }
 
 .setting-result {
-  margin: 8px 0 0;
-  font-size: 13px;
+  margin: var(--uwu-space-2) 0 0;
+  font-size: var(--uwu-text-meta);
   color: var(--uwu-muted);
 }
 
 .setting-result[data-tone='error'] {
-  color: var(--uwu-alarm);
+  color: var(--uwu-danger-ink);
 }
 
-.select {
-  font: inherit;
-  padding: 7px 10px;
-  border-radius: var(--uwu-radius-control);
-  border: 1px solid var(--uwu-border);
-  background: var(--uwu-canvas);
-  color: var(--uwu-ink);
-}
-
-.toggle {
-  position: relative;
-  width: 40px;
-  height: 24px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--uwu-radius-pill);
-  background: var(--uwu-border);
-}
-
-.toggle[aria-checked='true'],
-.toggle[aria-checked='true']:hover:not(:disabled) {
-  background: var(--uwu-pink-solid);
-}
-
-.toggle-thumb {
-  position: absolute;
-  top: 4px;
-  left: 4px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 2px rgba(20, 16, 22, 0.25);
-  transition: transform 140ms ease;
-}
-
-.toggle[aria-checked='true'] .toggle-thumb {
-  transform: translateX(16px);
+.setting-value {
+  font-weight: 600;
 }
 
 .vault-status {
   display: block;
   max-width: 260px;
-  font-size: 12.5px;
-  line-height: 1.45;
+  font-size: var(--uwu-text-caption);
+  line-height: var(--uwu-leading);
 }
 
 .vault-status[data-status='unlocked'] {
-  color: var(--uwu-online);
+  color: var(--uwu-success-ink);
 }
 
 .shortcuts {
-  padding: 14px 0 4px;
+  padding: var(--uwu-space-4) 0 var(--uwu-space-1);
 }
 
 .shortcuts dl {
   display: grid;
   grid-template-columns: max-content 1fr;
-  gap: 6px 16px;
-  margin: 8px 0 0;
+  gap: 6px var(--uwu-space-4);
+  margin: var(--uwu-space-2) 0 0;
 }
 
 .shortcuts dt {
   font-family: var(--uwu-mono);
-  font-size: 11.5px;
-  letter-spacing: 0;
-  text-transform: none;
+  font-size: var(--uwu-text-badge);
   color: var(--uwu-ink);
 }
 
 .shortcuts dd {
   margin: 0;
-  font-size: 12.5px;
+  font-size: var(--uwu-text-caption);
   color: var(--uwu-muted);
 }
 
-.about {
-  display: grid;
-  justify-items: center;
-  gap: 6px;
-  padding: 16px 0;
-  text-align: center;
-}
-
-.about-name {
-  margin: 6px 0 0;
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
-.about-name span {
-  color: var(--uwu-pink-solid);
-}
-
-.about-version {
-  margin: 0;
-  font-family: var(--uwu-mono);
-  font-size: 12px;
-  color: var(--uwu-muted);
-}
-
-.about-text {
-  max-width: 380px;
-  margin: 8px 0;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--uwu-muted);
-}
-
-.about-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-}
-
-.about-diagnostics {
-  margin-top: 18px;
-  font-size: 13px;
-  color: var(--uwu-muted);
-}
-
-.about-diagnostics summary {
-  cursor: pointer;
-}
-
-.about-diagnostics button {
-  margin-top: 8px;
-}
-
-/* ── Update hint ─────────────────────────────────────────────────────────── */
-
-.update-hint {
-  position: fixed;
-  right: 20px;
-  bottom: 20px;
-  z-index: 8;
-  width: min(340px, calc(100vw - 32px));
-  display: grid;
-  gap: 10px;
-  padding: 14px 16px;
-  border-radius: 20px;
-  border: 1px solid var(--uwu-border);
-  background: var(--uwu-surface);
-  box-shadow: 0 24px 60px -24px rgba(20, 16, 22, 0.45);
-}
-
-.update-hint-head {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
-
-.update-hint-title {
-  margin: 0;
-  font-weight: 700;
-}
-
-.update-hint-meta,
-.update-hint-notes,
-.update-hint-warning {
-  margin: 0;
-  font-size: 12.5px;
-  color: var(--uwu-muted);
-}
-
-.update-hint-notes {
-  max-height: 160px;
-  overflow-y: auto;
-  padding: 8px 10px;
-  border-radius: var(--uwu-radius-control);
-  background: var(--uwu-canvas);
-  line-height: 1.5;
-  white-space: pre-line;
-  user-select: text;
-}
-
-.update-hint-warning {
-  color: var(--uwu-alarm);
-}
-
-.update-hint-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.link-button {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--uwu-pink-ink);
-  font-size: inherit;
-  font-weight: 600;
-}
-
-.link-button:hover:not(:disabled) {
-  background: transparent;
-  text-decoration: underline;
-}
-
-.modal[data-size='wide'] .modal-body {
-  min-height: 0;
-  overflow: hidden;
-}
-
-/* ── Font picker (Settings → Appearance) ──────────────────── */
-
+/* The font picker: every choice shown in itself. */
 .font-picker {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
-  min-width: 300px;
 }
 
 .font-picker button {
@@ -755,16 +787,15 @@ button.quiet {
   flex-direction: column;
   align-items: flex-start;
   gap: 1px;
-  padding: 7px 11px;
+  padding: var(--uwu-space-2) var(--uwu-space-3);
   border: 1px solid var(--uwu-border);
   border-radius: var(--uwu-radius-control);
-  background: var(--uwu-canvas);
+  background: var(--uwu-surface);
   color: var(--uwu-ink);
   text-align: left;
-  cursor: pointer;
   transition:
-    border-color 140ms ease,
-    background-color 140ms ease;
+    border-color var(--uwu-duration-fast),
+    background-color var(--uwu-duration-fast);
 }
 
 .font-picker button:hover {
@@ -778,16 +809,155 @@ button.quiet {
 }
 
 .font-picker-name {
-  font-size: 14px;
-  font-weight: 650;
+  font-size: var(--uwu-text-body);
+  font-weight: 600;
 }
 
 .font-picker-sample {
-  font-size: 12px;
+  font-size: var(--uwu-text-caption);
   color: var(--uwu-muted);
   font-variant-numeric: tabular-nums;
 }
 
-.setting-control:has(.font-picker) {
-  max-width: 62%;
+.about {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: var(--uwu-space-4) 0;
+  text-align: center;
+}
+
+.about-version {
+  margin: 0;
+  font-family: var(--uwu-mono);
+  font-size: var(--uwu-text-caption);
+  color: var(--uwu-muted);
+}
+
+.about-text {
+  max-width: 380px;
+  margin: var(--uwu-space-2) 0;
+  font-size: var(--uwu-text-meta);
+  line-height: var(--uwu-leading);
+  color: var(--uwu-muted);
+}
+
+.about-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--uwu-space-2);
+}
+
+@media (max-width: 699px) {
+  .settings {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    gap: var(--uwu-space-3);
+    height: auto;
+  }
+
+  .settings-nav {
+    flex-direction: row;
+    overflow-x: auto;
+    gap: var(--uwu-space-1);
+    padding-bottom: 2px;
+  }
+
+  .settings-nav button {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .settings-content {
+    overflow: visible;
+  }
+
+  .setting-control:has(.font-picker) {
+    max-width: 100%;
+    flex: 1 1 100%;
+  }
+}
+
+/* ── The update hint, bottom right ─────────────────────── */
+
+.update-hint {
+  position: fixed;
+  right: var(--uwu-space-5);
+  bottom: var(--uwu-space-5);
+  z-index: var(--uwu-z-sticky);
+  width: min(340px, calc(100vw - 32px));
+  display: grid;
+  gap: var(--uwu-space-3);
+  padding: var(--uwu-space-4);
+  border-radius: var(--uwu-radius-card);
+  border: 1px solid var(--uwu-border);
+  background: var(--uwu-surface);
+  box-shadow: var(--uwu-shadow-float);
+}
+
+.update-hint-head {
+  display: flex;
+  gap: var(--uwu-space-3);
+  align-items: center;
+}
+
+.update-hint-title {
+  margin: 0;
+  font-weight: 700;
+}
+
+.update-hint-meta,
+.update-hint-notes,
+.update-hint-warning {
+  margin: 0;
+  font-size: var(--uwu-text-caption);
+  color: var(--uwu-muted);
+}
+
+.update-hint-notes {
+  max-height: 160px;
+  overflow-y: auto;
+  padding: var(--uwu-space-2) var(--uwu-space-3);
+  border-radius: var(--uwu-radius-control);
+  background: var(--uwu-canvas);
+  line-height: var(--uwu-leading);
+  white-space: pre-line;
+  user-select: text;
+}
+
+.update-hint-warning {
+  color: var(--uwu-warning-ink);
+}
+
+.update-hint-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--uwu-space-2);
+}
+
+/* ── Phones (html[data-platform]) ──────────────────────── */
+
+html[data-platform='android'],
+html[data-platform='ios'] {
+  /* Taps don't flash grey, and long presses don't select the UI's words. */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+/*
+ * iOS draws the page under the status bar and the home indicator, so the
+ * shell keeps out of them (viewport-fit=cover in index.html). Android's
+ * MainActivity already places the page between the bars; there the insets
+ * are 0.
+ */
+html[data-platform='ios'] .shell {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+  background: var(--uwu-surface);
+}
+
+/* iOS zooms into any field with text smaller than 16 px. */
+html[data-platform='ios'] :is(input, textarea, select) {
+  font-size: 16px;
 }

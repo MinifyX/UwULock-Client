@@ -1,5 +1,5 @@
+import { Icon, ICONS } from '@uwusuite/design';
 import { useEffect, useMemo, useState } from 'react';
-import { Icon } from '@desktop/components/Icon';
 import { NyuScene } from '@desktop/components/nyu/scenes';
 import { N_, t } from '../../shared/i18n';
 import { ItemIcon } from '../icons';
@@ -92,7 +92,7 @@ export function VaultView({ onOpen }: { onOpen: (id: string) => void }) {
     <div className="popup-scroll">
       <div className="vault-tools">
         <label className="search-box">
-          <Icon name="search" size={15} />
+          <Icon icon={ICONS.search} />
           <input
             className="search"
             type="search"
@@ -156,14 +156,18 @@ export function VaultView({ onOpen }: { onOpen: (id: string) => void }) {
               {item.subtitle && <span className="item-sub">{item.subtitle}</span>}
             </span>
             <span className="item-badges">
-              {item.hasTotp && <Icon name="clock" size={13} title={t('Einmal-Code')} />}
+              {item.hasTotp && <Icon icon={ICONS.oneTimeCode} size="xs" label={t('Einmal-Code')} />}
               {item.reprompt && (
-                <Icon name="shield" size={13} title={t('Fragt nach dem Master-Passwort')} />
+                <Icon
+                  icon={ICONS.masterPassword}
+                  size="xs"
+                  label={t('Fragt nach dem Master-Passwort')}
+                />
               )}
               {item.favorite && (
-                <Icon name="star" size={13} className="badge-star" title={t('Favorit')} />
+                <Icon icon={ICONS.favorite} size="xs" className="badge-star" label={t('Favorit')} />
               )}
-              {item.broken && <Icon name="warning" size={13} className="badge-warning" />}
+              {item.broken && <Icon icon={ICONS.warning} size="xs" className="badge-warning" />}
             </span>
           </li>
         ))}

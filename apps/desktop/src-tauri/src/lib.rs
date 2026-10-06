@@ -64,6 +64,18 @@ pub fn run() {
 
     builder
         .setup(|app| {
+            // macOS ends an app without asking the window; this asks the page
+            // first (`onMacQuit` in App.tsx, answered through `finish_quit`).
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::Emitter;
+                let handle = app.handle().clone();
+                if let Err(error) = uwu_macos::install_quit_guard(move || {
+                    handle.emit(uwu_macos::QUIT_EVENT, ()).is_ok()
+                }) {
+                    tracing::warn!(%error, "quit guard");
+                }
+            }
             #[cfg(desktop)]
             if updates::apply_pending_on_start(app.handle()) {
                 // The downloaded setup replaces this version and starts UwULock again.
@@ -97,6 +109,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            finish_quit,
             vault::vault_status,
             vault::login,
             vault::login_two_factor,
@@ -212,7 +225,27 @@ pub fn run() {
                     _ => {}
                 }
             }
-            #[cfg(desktop)]
+            // macOS: ⌘W only hid the window (App.tsx); a click on the Dock
+            // icon brings it back.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen {
+                has_visible_windows: false,
+                ..
+            } = event
+            {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+            #[cfg(all(desktop, not(target_os = "macos")))]
             let _ = (app, event);
         });
+}
+
+/// The page's answer to a quit from the Dock, ⌘Q or a logout (macOS): go ahead
+/// or stay. Does nothing elsewhere.
+#[tauri::command]
+fn finish_quit(proceed: bool) {
+    uwu_macos::reply_quit(proceed);
 }

@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Button, Hint, Icon, IconButton, ICONS, Segmented } from '@uwusuite/design';
 import { copyGenerated, type ItemDetail as Detail, type ItemSummary } from '../lib/api';
 import { errorText, toastError } from '../lib/errors';
 import { when } from '../lib/format';
@@ -33,7 +34,6 @@ import {
   type Version,
 } from '../lib/uwu';
 import { ContextMenu } from './ContextMenu';
-import { Icon } from './Icon';
 import { Modal } from './Modal';
 import { NyuBusy, playNyu } from './nyu/stage';
 
@@ -106,19 +106,18 @@ export function IconMenu({ summary, detail }: { summary: ItemSummary; detail: De
 
   return (
     <>
-      <button
-        className="icon-button tile-edit"
+      <IconButton
+        icon={ICONS.image}
+        label={t('Symbol ändern')}
+        size="sm"
+        className="tile-edit size-6! bg-surface hover:bg-elevated"
         disabled={busy}
-        title={t('Symbol ändern')}
-        aria-label={t('Symbol ändern')}
         aria-haspopup="menu"
         onClick={(event) => {
           const rect = event.currentTarget.getBoundingClientRect();
           setMenu({ x: rect.left, y: rect.bottom + 4 });
         }}
-      >
-        <Icon name="image" size={13} />
-      </button>
+      />
       <input
         ref={input}
         type="file"
@@ -143,14 +142,14 @@ export function IconMenu({ summary, detail }: { summary: ItemSummary; detail: De
           items={[
             {
               label: t('Bild wählen …'),
-              icon: 'upload',
+              icon: ICONS.upload,
               onSelect: () => input.current?.click(),
             },
             ...(local
               ? [
                   {
                     label: t('Symbol vom Gerät holen'),
-                    icon: 'network' as const,
+                    icon: ICONS.network,
                     onSelect: () =>
                       void run(() => fetchDeviceIcon(summary.id), t('Symbol vom Gerät geholt ✧')),
                   },
@@ -160,7 +159,7 @@ export function IconMenu({ summary, detail }: { summary: ItemSummary; detail: De
               ? [
                   {
                     label: t('Eigenes Symbol entfernen'),
-                    icon: 'trash' as const,
+                    icon: ICONS.delete,
                     danger: true,
                     onSelect: () =>
                       void run(() => deleteOwnIcon(summary.id), t('Eigenes Symbol entfernt.')),
@@ -184,6 +183,12 @@ function day(iso: string | null): string | null {
   if (Number.isNaN(date.getTime())) return iso;
   return date.toLocaleDateString(locale(), { dateStyle: 'medium', timeZone: 'UTC' });
 }
+
+/** The two ways to say when: every so many months, or on a date. */
+const whenOptions = (): { value: 'months' | 'date'; label: string }[] => [
+  { value: 'months', label: t('Regelmäßig') },
+  { value: 'date', label: t('An einem Datum') },
+];
 
 /** The reminder as the item editor holds it: switched on, and when. */
 export type ReminderDraft = { on: boolean; mode: 'months' | 'date'; months: number; date: string };
@@ -245,31 +250,20 @@ export function ReminderEditor({
           checked={value.on}
           onChange={(e) => set({ on: e.target.checked })}
         />
-        <span>
-          <Icon name="bell" size={13} className="icon-gap" />
+        <span className="inline-flex items-center gap-2">
+          <Icon icon={ICONS.reminder} size="xs" />
           {t('Ans Erneuern des Passworts erinnern')}
         </span>
       </label>
       {value.on && (
         <div className="extras-form">
-          <div className="segmented" role="radiogroup" aria-label={t('Wann')}>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={value.mode === 'months'}
-              onClick={() => set({ mode: 'months' })}
-            >
-              {t('Regelmäßig')}
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={value.mode === 'date'}
-              onClick={() => set({ mode: 'date' })}
-            >
-              {t('An einem Datum')}
-            </button>
-          </div>
+          <Segmented
+            className="justify-self-start"
+            label={t('Wann')}
+            value={value.mode}
+            onChange={(mode) => set({ mode })}
+            options={whenOptions()}
+          />
           {value.mode === 'months' ? (
             <label className="field">
               <span>{t('Alle')}</span>
@@ -355,7 +349,7 @@ export function ReminderCard({ summary }: { summary: ItemSummary }) {
     <Card
       title={
         <>
-          <Icon name="bell" size={13} />
+          <Icon icon={ICONS.reminder} size="xs" />
           {t('Passwort erneuern')}
         </>
       }
@@ -369,30 +363,27 @@ export function ReminderCard({ summary }: { summary: ItemSummary }) {
             </span>
           </div>
           <div className="detail-actions">
-            <button className="quiet" disabled={busy} onClick={open}>
+            <Button variant="ghost" size="sm" disabled={busy} onClick={open}>
               {t('Ändern')}
-            </button>
-            <button
-              className="icon-button"
+            </Button>
+            <IconButton
+              icon={ICONS.delete}
+              label={t('Erinnerung entfernen')}
+              size="sm"
               disabled={busy}
-              title={t('Erinnerung entfernen')}
-              aria-label={t('Erinnerung entfernen')}
               onClick={() => void run(() => deleteReminder(summary.id), t('Erinnerung entfernt.'))}
-            >
-              <Icon name="trash" size={15} />
-            </button>
+            />
           </div>
         </div>
       ) : (
         <div className="extras-form">
-          <div className="segmented" role="radiogroup" aria-label={t('Wann')}>
-            <button role="radio" aria-checked={mode === 'months'} onClick={() => setMode('months')}>
-              {t('Regelmäßig')}
-            </button>
-            <button role="radio" aria-checked={mode === 'date'} onClick={() => setMode('date')}>
-              {t('An einem Datum')}
-            </button>
-          </div>
+          <Segmented
+            className="justify-self-start"
+            label={t('Wann')}
+            value={mode}
+            onChange={setMode}
+            options={whenOptions()}
+          />
           {mode === 'months' ? (
             <label className="field">
               <span>{t('Alle')}</span>
@@ -416,12 +407,13 @@ export function ReminderCard({ summary }: { summary: ItemSummary }) {
             </label>
           )}
           <div className="form-actions">
-            <button className="quiet" onClick={() => setEditing(false)}>
+            <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
               {t('Abbrechen')}
-            </button>
+            </Button>
             <span className="spacer" />
-            <button
-              className="primary"
+            <Button
+              variant="primary"
+              size="sm"
               disabled={busy || (mode === 'date' && !date)}
               onClick={() =>
                 void run(
@@ -436,7 +428,7 @@ export function ReminderCard({ summary }: { summary: ItemSummary }) {
               }
             >
               {t('Speichern')}
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -458,10 +450,10 @@ function Hidden({ load }: { load: () => Promise<string> }) {
   return (
     <span className="version-secret">
       <span className="mono">{value ?? '••••••••'}</span>
-      <button
-        className="icon-button"
-        title={value === null ? t('Zeigen') : t('Verbergen')}
-        aria-label={value === null ? t('Zeigen') : t('Verbergen')}
+      <IconButton
+        icon={value === null ? ICONS.show : ICONS.hide}
+        label={value === null ? t('Zeigen') : t('Verbergen')}
+        size="sm"
         aria-pressed={value !== null}
         onClick={() =>
           value !== null
@@ -470,9 +462,7 @@ function Hidden({ load }: { load: () => Promise<string> }) {
                 .then(setValue)
                 .catch((e) => toastError(e))
         }
-      >
-        <Icon name={value === null ? 'eye' : 'eyeOff'} size={14} />
-      </button>
+      />
     </span>
   );
 }
@@ -500,7 +490,7 @@ function ChangeRow({ id, version, change }: { id: string; version: string; chang
     <div className="version-change">
       <span className="detail-label">{valueLabel(change.field, change.label)}</span>
       <span className="version-then">{before}</span>
-      <Icon name="chevron" size={12} />
+      <Icon icon={ICONS.next} size="xs" className="text-faint" />
       <span className="version-now">{after}</span>
     </div>
   );
@@ -554,15 +544,25 @@ export function VersionsCard({ summary }: { summary: ItemSummary }) {
 
   return (
     <Card>
-      <button className="history-toggle quiet" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <Icon name="layers" size={15} />
+      <Button
+        variant="ghost"
+        size="sm"
+        icon={ICONS.history}
+        className="history-toggle"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
         {versions && open
           ? versions.length === 1
             ? t('1 frühere Version')
             : t('{n} frühere Versionen', { n: versions.length })
           : t('Frühere Versionen')}
-        <Icon name="chevron" size={14} className={open ? 'turned' : undefined} />
-      </button>
+        <Icon
+          icon={ICONS.expand}
+          size="xs"
+          className={open ? 'transition-transform' : '-rotate-90 transition-transform'}
+        />
+      </Button>
       {open && versions === null && <NyuBusy label={t('Einen Moment …')} />}
       {open && versions?.length === 0 && (
         <p className="detail-empty-line">
@@ -573,7 +573,8 @@ export function VersionsCard({ summary }: { summary: ItemSummary }) {
         versions?.map((version) => (
           <div className="version" key={version.id}>
             <button
-              className="version-head quiet"
+              type="button"
+              className="version-head"
               aria-expanded={expanded === version.id}
               onClick={() => setExpanded(expanded === version.id ? null : version.id)}
             >
@@ -588,11 +589,15 @@ export function VersionsCard({ summary }: { summary: ItemSummary }) {
                       : t('{n} Unterschiede', { n: version.changes.length })}
                 </span>
               </span>
-              {version.broken && <Icon name="warning" size={13} className="badge-warning" />}
+              {version.broken && <Icon icon={ICONS.warning} size="xs" className="badge-warning" />}
               <Icon
-                name="chevron"
-                size={13}
-                className={expanded === version.id ? 'turned' : undefined}
+                icon={ICONS.expand}
+                size="xs"
+                className={
+                  expanded === version.id
+                    ? 'text-muted transition-transform'
+                    : 'text-muted -rotate-90 transition-transform'
+                }
               />
             </button>
             {expanded === version.id && (
@@ -609,23 +614,26 @@ export function VersionsCard({ summary }: { summary: ItemSummary }) {
                   <ChangeRow key={change.field} id={id} version={version.id} change={change} />
                 ))}
                 <div className="form-actions">
-                  <button
-                    className="quiet danger-text"
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={ICONS.delete}
+                    className="text-danger-ink! hover:bg-danger-tint!"
                     disabled={busy}
                     onClick={() => setAsking({ kind: 'delete', id: version.id })}
                   >
-                    <Icon name="trash" size={14} />
                     {t('Version löschen')}
-                  </button>
+                  </Button>
                   <span className="spacer" />
-                  <button
-                    className="primary"
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    icon={ICONS.restore}
                     disabled={busy || version.broken || summary.broken}
                     onClick={() => setAsking({ kind: 'restore', id: version.id })}
                   >
-                    <Icon name="history" size={14} />
                     {t('Wiederherstellen')}
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}
@@ -633,7 +641,12 @@ export function VersionsCard({ summary }: { summary: ItemSummary }) {
         ))}
       {open && versions && versions.length > 1 && (
         <p className="detail-empty-line">
-          <button className="link-button" disabled={busy} onClick={() => setAsking('all')}>
+          <button
+            type="button"
+            className="link-button"
+            disabled={busy}
+            onClick={() => setAsking('all')}
+          >
             {t('Alle Versionen löschen')}
           </button>
         </p>
@@ -649,12 +662,13 @@ export function VersionsCard({ summary }: { summary: ItemSummary }) {
                 : t('Version löschen?')
           }
           tone={asking !== 'all' && asking.kind === 'restore' ? 'default' : 'warning'}
+          size="small"
           onCancel={() => setAsking(null)}
           footer={
             <>
               <span className="spacer" />
-              <button
-                className={asking !== 'all' && asking.kind === 'restore' ? 'primary' : 'danger'}
+              <Button
+                variant={asking !== 'all' && asking.kind === 'restore' ? 'primary' : 'danger'}
                 data-secondary
                 onClick={() =>
                   asking === 'all'
@@ -672,10 +686,10 @@ export function VersionsCard({ summary }: { summary: ItemSummary }) {
                   : asking.kind === 'restore'
                     ? t('Wiederherstellen')
                     : t('Löschen')}
-              </button>
-              <button data-autofocus onClick={() => setAsking(null)}>
+              </Button>
+              <Button data-autofocus onClick={() => setAsking(null)}>
                 {t('Abbrechen')}
-              </button>
+              </Button>
             </>
           }
         >
@@ -856,28 +870,27 @@ export function ShareSendDialog({
         made ? (
           <>
             <span className="spacer" />
-            <button onClick={onClose}>{t('Fertig')}</button>
-            <button className="primary" data-autofocus onClick={copy}>
-              <Icon name="copy" size={15} />
+            <Button onClick={onClose}>{t('Fertig')}</Button>
+            <Button variant="primary" icon={ICONS.copy} data-autofocus onClick={copy}>
               {t('Link kopieren')}
-            </button>
+            </Button>
           </>
         ) : (
           <>
-            <button className="quiet" data-secondary onClick={onClose}>
+            <Button variant="ghost" data-secondary onClick={onClose}>
               {t('Abbrechen')}
-            </button>
+            </Button>
             <span className="spacer" />
-            <button
-              className="primary"
+            <Button
+              variant="primary"
+              icon={ICONS.send}
               disabled={
                 busy || !options || chosen.length === 0 || (onlyFor && addresses.length === 0)
               }
               onClick={() => void create()}
             >
-              <Icon name="send" size={15} />
               {busy ? t('Erstellt …') : t('Send erstellen')}
-            </button>
+            </Button>
           </>
         )
       }
@@ -917,34 +930,48 @@ export function ShareSendDialog({
                     else tick(field.field, e.target.checked);
                   }}
                 />
-                <span className={field.shown ? 'share-choice uri' : 'share-choice'}>
+                <span
+                  className={
+                    field.shown
+                      ? 'inline-flex min-w-0 items-center gap-1.5 uri'
+                      : 'inline-flex items-center gap-1.5'
+                  }
+                >
                   {field.shown ?? field.label}
-                  {field.secret && <Icon name="lock" size={12} className="icon-gap" />}
+                  {field.secret && (
+                    <Icon icon={ICONS.masterPassword} size="xs" className="text-muted" />
+                  )}
                 </span>
               </label>
             ))}
             {askTotp && (
-              <div className="field-hint share-totp-confirm" role="alert">
-                <p>
+              <Hint tone="warning" className="grid gap-2" role="alert">
+                <p className="m-0">
                   {t(
                     'Der Schlüssel des Einmal-Codes reist verschlüsselt im Send mit. Die Send-Seite zeigt nur die laufenden Codes – wer den Link hat, kann den Schlüssel aber auslesen und damit auch nach dem Löschen des Sends weiter Codes erzeugen.',
                   )}{' '}
                   {t('Teile ihn nur, wenn das okay ist.')}
                 </p>
-                <div className="editor-row">
-                  <button
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    size="sm"
                     onClick={() => {
                       tick('totp', true);
                       setAskTotp(false);
                     }}
                   >
                     {t('Schlüssel mitgeben')}
-                  </button>
-                  <button className="primary" data-autofocus onClick={() => setAskTotp(false)}>
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    data-autofocus
+                    onClick={() => setAskTotp(false)}
+                  >
                     {t('Lieber nicht')}
-                  </button>
+                  </Button>
                 </div>
-              </div>
+              </Hint>
             )}
             {!askTotp && fields.some((f) => f.field === 'totp' && f.checked) && (
               <p className="field-hint">

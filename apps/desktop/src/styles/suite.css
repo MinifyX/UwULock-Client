@@ -1,13 +1,13 @@
 /*
  * The sections "SSH (UwUSSH)" and "Remote Desktop (UwURDP)"
  * (components/SuitePane.tsx). They sit in the vault's own list and detail
- * columns, so the phone layout (phone.css) needs nothing of its own beyond
- * the tabs scrolling sideways.
+ * columns; the rest of their layout is Tailwind in the components.
  */
 
+/* The kinds of record, as pills that scroll sideways on a phone. */
 .suite-tabs {
   display: flex;
-  gap: 4px;
+  gap: var(--uwu-space-1);
   overflow-x: auto;
   scrollbar-width: none;
   padding: 2px 0;
@@ -22,12 +22,20 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 10px;
+  min-height: 32px;
+  padding: 0 var(--uwu-space-3);
   border: 1px solid var(--uwu-border);
   border-radius: var(--uwu-radius-pill);
   background: transparent;
   color: var(--uwu-muted);
-  font-size: 12.5px;
+  font-size: var(--uwu-text-caption);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--uwu-duration-fast) var(--uwu-ease-out);
+}
+
+.suite-tabs button:hover {
+  color: var(--uwu-ink);
 }
 
 .suite-tabs button[aria-selected='true'] {
@@ -36,40 +44,27 @@
   color: var(--uwu-pink-ink);
 }
 
-.suite-list ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.suite-ws + .suite-ws {
-  margin-top: 10px;
-}
-
-.suite-ws-title {
-  margin: 8px 10px 4px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--uwu-muted);
-}
-
+/* A host group: a row that opens the group, or the "Ohne Gruppe" label. */
 .suite-group {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 8px;
+  gap: var(--uwu-space-2);
   margin: 2px 0 0;
-  padding: 6px 10px;
+  padding: 6px var(--uwu-space-3);
   border: 0;
   border-radius: var(--uwu-radius-control);
   background: transparent;
   color: var(--uwu-ink);
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--uwu-text-meta);
   text-align: left;
+}
+
+button.suite-group {
+  min-height: 32px;
+  cursor: pointer;
 }
 
 button.suite-group:hover {
@@ -86,78 +81,13 @@ button.suite-group:hover {
   font-weight: 500;
 }
 
+/* Hosts in a group sit under it. */
 .item-row[data-indent] {
-  margin-left: 14px;
+  margin-left: var(--uwu-space-3);
 }
 
-.suite-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.suite-actions button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.suite-card-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.suite-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 10px;
-}
-
-.detail-tools .icon-button.turned svg {
-  rotate: 180deg;
-}
-
-.editor-heading {
-  margin: 8px 0 0;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.check-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 6px 16px;
-}
-
-.editor input.narrow {
-  max-width: 110px;
-}
-
-@media (max-width: 700px) {
+@media (max-width: 699px) {
   .item-row[data-indent] {
-    margin-left: 8px;
+    margin-left: var(--uwu-space-2);
   }
-
-  .check-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .suite-actions button {
-    flex: 1 1 auto;
-    justify-content: center;
-  }
-}
-
-.suite-drives {
-  display: grid;
-  gap: 8px;
-}
-
-.suite-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
 }

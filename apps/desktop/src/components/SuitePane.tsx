@@ -1,4 +1,6 @@
 import { listen } from '@tauri-apps/api/event';
+import { Button, Icon, IconButton, ICONS } from '@uwusuite/design';
+import type { LucideIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { copyGenerated, failure } from '../lib/api';
 import { errorText, toastError } from '../lib/errors';
@@ -44,7 +46,6 @@ import {
 } from '../lib/suiteModel';
 import { toast } from '../lib/toast';
 import { ContextMenu } from './ContextMenu';
-import { Icon, type IconName } from './Icon';
 import { Modal } from './Modal';
 import { NyuScene } from './nyu/scenes';
 import {
@@ -63,12 +64,12 @@ import {
 
 type Tab = 'host' | 'identity' | 'key' | 'snippet' | 'known_host';
 
-const TABS: { tab: Tab; label: string; icon: IconName }[] = [
-  { tab: 'host', label: N_('Hosts'), icon: 'monitor' },
-  { tab: 'identity', label: N_('Anmeldungen'), icon: 'user' },
-  { tab: 'key', label: N_('SSH-Schlüssel'), icon: 'key' },
-  { tab: 'snippet', label: N_('Snippets'), icon: 'terminal' },
-  { tab: 'known_host', label: N_('Bekannte Hosts'), icon: 'shield' },
+const TABS: { tab: Tab; label: string; icon: LucideIcon }[] = [
+  { tab: 'host', label: N_('Hosts'), icon: ICONS.computer },
+  { tab: 'identity', label: N_('Anmeldungen'), icon: ICONS.account },
+  { tab: 'key', label: N_('SSH-Schlüssel'), icon: ICONS.sshKey },
+  { tab: 'snippet', label: N_('Snippets'), icon: ICONS.terminal },
+  { tab: 'known_host', label: N_('Bekannte Hosts'), icon: ICONS.fingerprint },
 ];
 
 export const SPACE_TITLE: Record<SuiteSpace, string> = {
@@ -209,19 +210,19 @@ export function SuitePane({ space, phone, detailOpen, onDetail, onMenu, searchRe
     else if (kind !== 'known_host') setEditing({ kind, record: null });
   };
 
-  const newItems: { kind: Tab | 'group'; label: string; icon: IconName }[] = [
-    { kind: 'host', label: t('Host'), icon: 'monitor' },
-    { kind: 'group', label: t('Gruppe'), icon: 'folder' },
-    { kind: 'identity', label: t('Anmeldung'), icon: 'user' },
+  const newItems: { kind: Tab | 'group'; label: string; icon: LucideIcon }[] = [
+    { kind: 'host', label: t('Host'), icon: ICONS.computer },
+    { kind: 'group', label: t('Gruppe'), icon: ICONS.folder },
+    { kind: 'identity', label: t('Anmeldung'), icon: ICONS.account },
     ...(space === 'ssh'
       ? [
-          { kind: 'key' as const, label: t('Schlüssel'), icon: 'key' as const },
-          { kind: 'snippet' as const, label: t('Snippet'), icon: 'terminal' as const },
+          { kind: 'key' as const, label: t('Schlüssel'), icon: ICONS.sshKey },
+          { kind: 'snippet' as const, label: t('Snippet'), icon: ICONS.terminal },
         ]
       : []),
   ];
 
-  const row = (record: SuiteRecord, sub: ReactNode, icon: IconName, indent = false) => (
+  const row = (record: SuiteRecord, sub: ReactNode, icon: LucideIcon, indent = false) => (
     <li
       key={record.id}
       data-id={record.id}
@@ -232,7 +233,7 @@ export function SuitePane({ space, phone, detailOpen, onDetail, onMenu, searchRe
       onClick={() => show(record.id)}
     >
       <span className="item-tile" aria-hidden>
-        <Icon name={icon} size={16} />
+        <Icon icon={icon} size="sm" />
       </span>
       <span className="item-text">
         <span className="item-name">
@@ -242,7 +243,7 @@ export function SuitePane({ space, phone, detailOpen, onDetail, onMenu, searchRe
       </span>
       {record.broken && (
         <span className="item-badges">
-          <Icon name="warning" size={13} className="badge-warning" />
+          <Icon icon={ICONS.warning} size="xs" className="badge-warning" />
         </span>
       )}
     </li>
@@ -291,26 +292,29 @@ export function SuitePane({ space, phone, detailOpen, onDetail, onMenu, searchRe
           },
         )}
       </p>
-      <button className="primary" disabled={creating} onClick={() => void create()}>
+      <Button variant="primary" disabled={creating} onClick={() => void create()}>
         {creating ? t('Einen Moment …') : t('Bereich anlegen')}
-      </button>
+      </Button>
     </div>
   ) : tab === 'host' ? (
     grouped.length ? (
-      <ul className="item-list suite-list" role="listbox" aria-label={title}>
+      <ul className="item-list" role="listbox" aria-label={title}>
         {grouped.map((ws) => (
-          <li key={ws.workspace} className="suite-ws" role="presentation">
-            <h3 className="suite-ws-title">{workspaceLabel(ws.workspace)}</h3>
+          <li key={ws.workspace} className="not-first:mt-3" role="presentation">
+            <h3 className="mx-3 mt-2 mb-1 text-caption font-bold tracking-[0.06em] text-muted uppercase">
+              {workspaceLabel(ws.workspace)}
+            </h3>
             <ul role="presentation">
               {ws.groups.map((g) => (
                 <li key={g.group?.id ?? 'loose'} role="presentation">
                   {g.group ? (
                     <button
+                      type="button"
                       className="suite-group"
                       aria-current={g.group.id === selected || undefined}
                       onClick={() => show(g.group!.id)}
                     >
-                      <Icon name="folder" size={14} />
+                      <Icon icon={ICONS.folder} size="xs" />
                       <span className="nav-label">{titleOf(g.group) || t('(ohne Namen)')}</span>
                       <span className="nav-count">{g.hosts.length}</span>
                     </button>
@@ -324,7 +328,7 @@ export function SuitePane({ space, phone, detailOpen, onDetail, onMenu, searchRe
                       row(
                         h,
                         hostSub(h),
-                        space === 'rdp' ? 'monitor' : 'terminal',
+                        space === 'rdp' ? ICONS.computer : ICONS.terminal,
                         Boolean(g.group),
                       ),
                     )}
@@ -340,7 +344,7 @@ export function SuitePane({ space, phone, detailOpen, onDetail, onMenu, searchRe
     )
   ) : flat.length ? (
     <ul className="item-list" role="listbox" aria-label={title}>
-      {flat.map((r) => row(r, subOf(r), TABS.find((x) => x.tab === tab)?.icon ?? 'key'))}
+      {flat.map((r) => row(r, subOf(r), TABS.find((x) => x.tab === tab)?.icon ?? ICONS.sshKey))}
     </ul>
   ) : (
     <EmptyList query={query} empty={empty} />
@@ -352,16 +356,15 @@ export function SuitePane({ space, phone, detailOpen, onDetail, onMenu, searchRe
         <div className="list-head">
           <div className="search-row">
             {phone && (
-              <button
-                className="icon-button menu-button"
-                aria-label={t('Ordner und Typen')}
+              <IconButton
+                icon={ICONS.menu}
+                className="menu-button"
+                label={t('Ordner und Typen')}
                 onClick={onMenu}
-              >
-                <Icon name="menu" size={18} />
-              </button>
+              />
             )}
             <label className="search-box">
-              <Icon name="search" size={15} />
+              <Icon icon={ICONS.search} size="sm" className="icon" />
               <input
                 ref={searchRef}
                 className="search"
@@ -384,16 +387,16 @@ export function SuitePane({ space, phone, detailOpen, onDetail, onMenu, searchRe
           <p className="list-title">
             <span>{title}</span>
             <span className="spacer" />
-            <button
-              className="icon-button"
-              title={t('Neu laden')}
-              aria-label={t('Neu laden')}
+            <IconButton
+              icon={ICONS.refresh}
+              size="sm"
+              label={t('Neu laden')}
               onClick={() => void load()}
-            >
-              <Icon name="refresh" size={15} />
-            </button>
+            />
             {view?.exists && (
-              <button
+              <Button
+                size="sm"
+                icon={ICONS.add}
                 className="new-item"
                 aria-haspopup="menu"
                 aria-expanded={Boolean(newMenu)}
@@ -403,9 +406,8 @@ export function SuitePane({ space, phone, detailOpen, onDetail, onMenu, searchRe
                   setNewMenu({ x: rect.right - 180, y: rect.bottom + 4 });
                 }}
               >
-                <Icon name="plus" size={15} />
                 {t('Neu')}
-              </button>
+              </Button>
             )}
           </p>
           {view?.exists && (
@@ -413,6 +415,7 @@ export function SuitePane({ space, phone, detailOpen, onDetail, onMenu, searchRe
               {tabs.map((x) => (
                 <button
                   key={x.tab}
+                  type="button"
                   role="tab"
                   aria-selected={tab === x.tab}
                   onClick={() => setTab(x.tab)}
@@ -434,10 +437,9 @@ export function SuitePane({ space, phone, detailOpen, onDetail, onMenu, searchRe
       <section className="detail-pane">
         {phone && detailOpen && (
           <div className="detail-back">
-            <button className="quiet" onClick={() => onDetail(false)}>
-              <Icon name="back" size={16} />
+            <Button variant="ghost" size="sm" icon={ICONS.back} onClick={() => onDetail(false)}>
               {title}
-            </button>
+            </Button>
           </div>
         )}
         {current ? (
@@ -590,7 +592,7 @@ function Card({
   return (
     <section className="detail-card">
       {(title || tools) && (
-        <h3 className="detail-card-title suite-card-title">
+        <h3 className="detail-card-title flex items-center justify-between gap-2">
           <span>{title}</span>
           {tools}
         </h3>
@@ -612,14 +614,12 @@ async function copyText(text: string) {
 function CopyText({ text, label }: { text: string; label: string }) {
   useLanguage();
   return (
-    <button
-      className="icon-button"
+    <IconButton
+      icon={ICONS.copy}
+      size="sm"
       onClick={() => void copyText(text)}
-      aria-label={t('{label} kopieren', { label })}
-      title={t('Kopieren')}
-    >
-      <Icon name="copy" size={15} />
-    </button>
+      label={t('{label} kopieren', { label })}
+    />
   );
 }
 
@@ -668,25 +668,21 @@ function SecretRow({
       mono
       actions={
         <>
-          <button
-            className="icon-button"
+          <IconButton
+            icon={value === null ? ICONS.show : ICONS.hide}
+            size="sm"
             onClick={() => void toggle()}
-            aria-label={
+            label={
               value === null ? t('{label} zeigen', { label }) : t('{label} verbergen', { label })
             }
             aria-pressed={value !== null}
-            title={value === null ? t('Zeigen') : t('Verbergen')}
-          >
-            <Icon name={value === null ? 'eye' : 'eyeOff'} size={15} />
-          </button>
-          <button
-            className="icon-button"
+          />
+          <IconButton
+            icon={ICONS.copy}
+            size="sm"
             onClick={() => void copy()}
-            aria-label={t('{label} kopieren', { label })}
-            title={t('Kopieren')}
-          >
-            <Icon name="copy" size={15} />
-          </button>
+            label={t('{label} kopieren', { label })}
+          />
           {extra}
         </>
       }
@@ -743,28 +739,30 @@ function Delete({
             : t('„{name}“ wird gelöscht.', { name });
   return (
     <>
-      <button
-        className="icon-button"
+      <IconButton
+        icon={ICONS.delete}
+        size="sm"
         disabled={blocked}
+        label={t('Löschen')}
         title={
           blocked
             ? t('Wird noch verwendet von: {names}', { names: users.map(titleOf).join(', ') })
             : t('Löschen')
         }
-        aria-label={t('Löschen')}
         onClick={() => setAsking(true)}
-      >
-        <Icon name="trash" size={15} />
-      </button>
+      />
       {asking && (
         <Modal
           title={t('Löschen?')}
+          tone="warning"
+          size="small"
           onCancel={() => setAsking(false)}
           footer={
             <>
               <span className="spacer" />
-              <button
-                className="danger"
+              <Button
+                variant="danger"
+                size="sm"
                 data-secondary
                 onClick={() => {
                   setAsking(false);
@@ -774,10 +772,10 @@ function Delete({
                 }}
               >
                 {t('Löschen')}
-              </button>
-              <button className="primary" data-autofocus onClick={() => setAsking(false)}>
+              </Button>
+              <Button variant="primary" size="sm" data-autofocus onClick={() => setAsking(false)}>
                 {t('Abbrechen')}
-              </button>
+              </Button>
             </>
           }
         >
@@ -822,7 +820,7 @@ function RecordDetail({
     if (!id) return <span className="muted">—</span>;
     if (!target) return <span className="muted">{t('(nicht vorhanden)')}</span>;
     return (
-      <button className="link-button" onClick={() => onShow(target.id, target.kind)}>
+      <button type="button" className="link-button" onClick={() => onShow(target.id, target.kind)}>
         {titleOf(target) || t('(ohne Namen)')}
       </button>
     );
@@ -853,7 +851,7 @@ function RecordDetail({
             )}
             {record.kind === 'host' && ref(d, 'group_id') && index.get(ref(d, 'group_id')!) && (
               <span className="chip">
-                <Icon name="folder" size={12} />
+                <Icon icon={ICONS.folder} size="xs" />
                 {titleOf(index.get(ref(d, 'group_id')!)!)}
               </span>
             )}
@@ -862,30 +860,28 @@ function RecordDetail({
         <div className="detail-tools">
           {siblings.length > 1 && (
             <>
-              <button
-                className="icon-button"
+              <IconButton
+                icon={ICONS.moveUp}
+                size="sm"
                 disabled={place <= 0}
-                title={t('Nach oben')}
-                aria-label={t('Nach oben')}
+                label={t('Nach oben')}
                 onClick={() => move(-1)}
-              >
-                <Icon name="up" size={15} />
-              </button>
-              <button
-                className="icon-button turned"
+              />
+              <IconButton
+                icon={ICONS.moveDown}
+                size="sm"
                 disabled={place < 0 || place >= sorted.length - 1}
-                title={t('Nach unten')}
-                aria-label={t('Nach unten')}
+                label={t('Nach unten')}
                 onClick={() => move(1)}
-              >
-                <Icon name="up" size={15} />
-              </button>
+              />
             </>
           )}
           {record.kind !== 'secret' && <Delete ctx={ctx} record={record} onGone={onGone} />}
           {editable && (
-            <button
-              className="primary"
+            <Button
+              variant="primary"
+              size="sm"
+              icon={ICONS.edit}
               onClick={() =>
                 onEdit({
                   kind: record.kind as Exclude<SuiteKind, 'secret' | 'known_host' | 'port_forward'>,
@@ -893,9 +889,8 @@ function RecordDetail({
                 })
               }
             >
-              <Icon name="pencil" size={15} />
               {t('Bearbeiten')}
-            </button>
+            </Button>
           )}
         </div>
       </header>
@@ -1009,9 +1004,14 @@ function UsedBy({
   if (!users.length) return null;
   return (
     <Row label={t('Wird verwendet von')}>
-      <span className="suite-links">
+      <span className="flex flex-wrap gap-x-2.5 gap-y-1">
         {users.map((u) => (
-          <button key={u.id} className="link-button" onClick={() => onShow(u.id, u.kind)}>
+          <button
+            key={u.id}
+            type="button"
+            className="link-button"
+            onClick={() => onShow(u.id, u.kind)}
+          >
             {titleOf(u) || t('(ohne Namen)')}
           </button>
         ))}
@@ -1077,22 +1077,24 @@ function HostBody({
 
   return (
     <>
-      <div className="suite-actions">
-        <button className="quiet" onClick={() => void copyText(command)}>
-          <Icon name="copy" size={15} />
+      <div className="mb-3 flex flex-wrap gap-2 phone:[&>button]:flex-auto">
+        <Button variant="ghost" size="sm" icon={ICONS.copy} onClick={() => void copyText(command)}>
           {space === 'ssh' ? t('Befehl kopieren') : t('Adresse kopieren')}
-        </button>
+        </Button>
         {space === 'rdp' && (
-          <button className="quiet" onClick={() => void saveRdp()}>
-            <Icon name="download" size={15} />
+          <Button variant="ghost" size="sm" icon={ICONS.download} onClick={() => void saveRdp()}>
             {t('.rdp-Datei')}
-          </button>
+          </Button>
         )}
         {desktop && (
-          <button className="quiet" onClick={() => void openApp()}>
-            <Icon name="external" size={15} />
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={ICONS.openExternal}
+            onClick={() => void openApp()}
+          >
             {t('In {app} öffnen', { app: APP[space] })}
-          </button>
+          </Button>
         )}
       </div>
       <Card>
@@ -1152,7 +1154,7 @@ function HostBody({
                   : audio}
           </Row>
           <Row label={t('Optionen')}>
-            <span className="suite-options">
+            <span className="flex flex-wrap gap-1">
               {(
                 [
                   [t('Verkleinern statt scrollen'), bool(rdp, 'smartSizing', true)],
@@ -1178,7 +1180,7 @@ function HostBody({
               {gateway ? hostPort(str(gateway, 'address'), num(gateway, 'port', 443)) : t('Keins')}
             </span>
             {gateway && bool(gateway, 'bypassLocal') && (
-              <small className="field-hint">{t('Für lokale Adressen umgehen')}</small>
+              <small className="field-hint block">{t('Für lokale Adressen umgehen')}</small>
             )}
           </Row>
           {gateway && (
@@ -1196,14 +1198,12 @@ function HostBody({
         <Card
           title={t('Weiterleitungen')}
           tools={
-            <button
-              className="icon-button tiny"
-              title={t('Neue Weiterleitung')}
-              aria-label={t('Neue Weiterleitung')}
+            <IconButton
+              icon={ICONS.add}
+              size="sm"
+              label={t('Neue Weiterleitung')}
               onClick={() => onEdit({ kind: 'port_forward', record: null, hostId: host.id })}
-            >
-              <Icon name="plus" size={14} />
-            </button>
+            />
           }
         >
           {tunnels.length ? (
@@ -1214,16 +1214,14 @@ function HostBody({
                 mono
                 actions={
                   <>
-                    <button
-                      className="icon-button"
-                      title={t('Bearbeiten')}
-                      aria-label={t('Bearbeiten')}
+                    <IconButton
+                      icon={ICONS.edit}
+                      size="sm"
+                      label={t('Bearbeiten')}
                       onClick={() =>
                         onEdit({ kind: 'port_forward', record: tunnel, hostId: host.id })
                       }
-                    >
-                      <Icon name="pencil" size={15} />
-                    </button>
+                    />
                     <Delete ctx={ctx} record={tunnel} onGone={() => undefined} />
                   </>
                 }
@@ -1266,14 +1264,12 @@ function KeyBody({
     }
   };
   const download = (half: 'public' | 'private', label: string) => (
-    <button
-      className="icon-button"
-      title={t('Als Datei speichern')}
-      aria-label={t('{label} als Datei speichern', { label })}
+    <IconButton
+      icon={ICONS.download}
+      size="sm"
+      label={t('{label} als Datei speichern', { label })}
       onClick={() => void saveFile(half)}
-    >
-      <Icon name="download" size={15} />
-    </button>
+    />
   );
   return (
     <Card>

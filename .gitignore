@@ -7,6 +7,8 @@ target/
 *.tsbuildinfo
 apps/*/src-tauri/gen/schemas/
 apps/*/src-tauri/gen/apple/
+# uwu-icons' Android set: the launcher icons live in gen/android (adaptive, with a themed layer)
+apps/desktop/src-tauri/icons/android/
 # The extension's crypto, built by apps/extension/scripts/build-wasm.mjs
 apps/extension/src/wasm/pkg/
 

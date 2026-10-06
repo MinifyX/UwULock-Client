@@ -98,6 +98,8 @@ jobs:
           node scripts/mobile.mjs prepare
           config=$(jq -nc --arg v "$SHORT" --arg b "$BUILD" '{version: $v, bundle: {iOS: {bundleVersion: $b}}}')
           pnpm tauri ios init --ci --skip-targets-install --config "$config"
+          # The app icon (pnpm --filter @uwulock/desktop icons), over the template's.
+          cp apps/desktop/src-tauri/icons/ios/*.png apps/desktop/src-tauri/gen/apple/Assets.xcassets/AppIcon.appiconset/
           find apps/desktop/src-tauri/gen/apple -maxdepth 2 -not -path '*/build/*' | sort
 
       # A simulator takes minutes to boot; it does that while the app is built. Not earlier:

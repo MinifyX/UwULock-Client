@@ -7,18 +7,19 @@
  * on every change.
  */
 
+import {
+  FONT_CHOICES,
+  type ContrastSetting,
+  type FontChoice,
+  type MotionSetting,
+  type ThemeSetting,
+} from '@uwusuite/design';
 import { useSyncExternalStore } from 'react';
 import pkg from '../../package.json';
-import { setAppearance } from './api';
-import { applyFont, DEFAULT_FONT, FONT_CHOICES, type FontChoice } from './fonts';
-import { language } from './i18n';
-import { isMobile, platform } from './platform';
 
-export type ThemeSetting = 'system' | 'light' | 'dark';
+export type { ContrastSetting, FontChoice, MotionSetting, ThemeSetting };
 /** German or English; "system" follows the language the system prefers. */
 export type LanguageSetting = 'system' | 'de' | 'en';
-/** Animations: follow the system's reduced-motion setting, or override it. */
-export type MotionSetting = 'system' | 'on' | 'off';
 /** Beta gets pre-releases (tags like v0.1.0-beta.1) before everyone else. */
 export type UpdateChannel = 'stable' | 'beta';
 /** Minutes without activity before the vault locks; 0 = only by hand or on restart. */
@@ -28,9 +29,11 @@ export type ClipboardClear = 0 | 10 | 30 | 60 | 120;
 
 export type Settings = {
   language: LanguageSetting;
+  /** Theme, contrast and motion go onto <html> through @uwusuite/design's useAppearance (App.tsx). */
   theme: ThemeSetting;
+  contrast: ContrastSetting;
   motion: MotionSetting;
-  /** The interface font, on this device (lib/fonts.ts). */
+  /** The interface font, on this device (@uwusuite/design's applyUiFont). */
   font: FontChoice;
   updateChannel: UpdateChannel;
   autoLock: AutoLock;
@@ -50,8 +53,9 @@ export type Settings = {
 export const DEFAULT_SETTINGS: Settings = {
   language: 'system',
   theme: 'dark',
+  contrast: 'system',
   motion: 'system',
-  font: DEFAULT_FONT,
+  font: 'uwu',
   // Someone who installed a beta wants the next beta too.
   updateChannel: pkg.version.includes('-') ? 'beta' : 'stable',
   autoLock: 15,
@@ -79,7 +83,9 @@ export function sanitize(raw: unknown): Settings {
   return {
     language: oneOf(input.language, ['system', 'de', 'en'] as const, d.language),
     theme: oneOf(input.theme, ['system', 'light', 'dark'] as const, d.theme),
+    contrast: oneOf(input.contrast, ['system', 'normal', 'high'] as const, d.contrast),
     motion: oneOf(input.motion, ['system', 'on', 'off'] as const, d.motion),
+    // A font that is no longer offered falls back to UwU Sans.
     font: oneOf(input.font, FONT_CHOICES, d.font),
     updateChannel: oneOf(input.updateChannel, ['stable', 'beta'] as const, d.updateChannel),
     autoLock: oneOf(input.autoLock, [0, 1, 5, 15, 30, 60, 240] as const, d.autoLock),
@@ -130,40 +136,4 @@ export function subscribeSettings(listener: () => void): () => void {
 
 export function useSettings(): Settings {
   return useSyncExternalStore(subscribeSettings, getSettings);
-}
-
-const darkQuery = () => window.matchMedia('(prefers-color-scheme: dark)');
-const reducedQuery = () => window.matchMedia('(prefers-reduced-motion: reduce)');
-
-/** Whether animations should play right now, by setting and system. */
-export function motionAllowed(): boolean {
-  const { motion } = current;
-  return motion === 'on' || (motion === 'system' && !reducedQuery().matches);
-}
-
-/** Puts theme and motion on <html>, now and whenever the setting or the system changes. */
-export function applyAppearance() {
-  // Phones draw their status and navigation bars around the page: they take its colours.
-  const phone = isMobile();
-  document.documentElement.dataset.platform = phone ? platform() : 'desktop';
-  let bars: boolean | null = null;
-  const apply = () => {
-    const { theme } = current;
-    const dark = theme === 'dark' || (theme === 'system' && darkQuery().matches);
-    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-    if (phone && bars !== dark) {
-      bars = dark;
-      void setAppearance(dark).catch(() => undefined);
-    }
-    document.documentElement.lang = language(current);
-    applyFont(current.font);
-    // "on" also overrides the system's reduced motion in tokens.css.
-    if (!motionAllowed()) document.documentElement.dataset.motion = 'reduced';
-    else if (current.motion === 'on') document.documentElement.dataset.motion = 'on';
-    else delete document.documentElement.dataset.motion;
-  };
-  apply();
-  subscribeSettings(apply);
-  darkQuery().addEventListener('change', apply);
-  reducedQuery().addEventListener('change', apply);
 }

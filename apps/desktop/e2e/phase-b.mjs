@@ -58,7 +58,7 @@ const openEditor = async () =>
     what: 'the editor',
   });
 const save = async () => {
-  await page.click('.modal-footer button.primary', 'Speichern');
+  await page.click('dialog[open] footer button', 'Speichern');
   await page.waitFor(`!document.querySelector('#item-editor')`, {
     timeout: 20_000,
     what: 'the editor to close',
@@ -68,10 +68,10 @@ const save = async () => {
 
 /** The password of the item on screen, revealed. */
 async function shownPassword() {
-  await page.click('.icon-button[aria-label="Passwort zeigen"]');
+  await page.click('button[aria-label="Passwort zeigen"]');
   await sleep(250);
   const value = await page.text('.detail-row .colored');
-  await page.click('.icon-button[aria-label="Passwort verbergen"]');
+  await page.click('button[aria-label="Passwort verbergen"]');
   return value;
 }
 
@@ -90,7 +90,7 @@ async function logIn(server, { twoFactor }) {
       timeout: 30_000,
       what: 'two-step login',
     });
-    await page.click('.segmented button', 'E-Mail');
+    await page.click('[role=radiogroup] button', 'E-Mail');
     await page.fill('.code-input', '123456');
     await page.key('Enter');
   }
@@ -120,7 +120,7 @@ try {
   check('its password came through', (await shownPassword()) === 'erstes-Passwort!');
 
   // ── Editing without seeing the password ────────────────
-  await page.click('.detail-tools button.primary', 'Bearbeiten');
+  await page.click('.detail-tools button', 'Bearbeiten');
   await openEditor();
   const kept = await page.text('.field-hint');
   check('the editor leaves the password alone', kept.includes('Bleibt, wie es ist.'), kept);
@@ -130,11 +130,11 @@ try {
   check('the untouched password is unchanged', (await shownPassword()) === 'erstes-Passwort!');
 
   // ── The generator, into the field ──────────────────────
-  await page.click('.detail-tools button.primary', 'Bearbeiten');
+  await page.click('.detail-tools button', 'Bearbeiten');
   await openEditor();
-  await page.click('.field-actions .icon-button[aria-label="Passwort-Generator"]');
+  await page.click('.field-actions button[aria-label="Passwort-Generator"]');
   await page.waitFor(`document.querySelector('.generated')`, { what: 'the generator' });
-  await page.click('.modal-footer button.primary', 'Übernehmen');
+  await page.click('dialog[open] footer button', 'Übernehmen');
   await sleep(200);
   await save();
   const generated = await shownPassword();
@@ -145,7 +145,7 @@ try {
   );
 
   // ── A hidden field ─────────────────────────────────────
-  await page.click('.detail-tools button.primary', 'Bearbeiten');
+  await page.click('.detail-tools button', 'Bearbeiten');
   await openEditor();
   await page.click('.add-kinds button', 'Versteckt');
   await page.fill('.editor-list input[placeholder="Feldname"]', 'Notfall-PIN');
@@ -157,7 +157,7 @@ try {
       what: 'the new field',
     },
   );
-  await page.click('.icon-button[aria-label="Notfall-PIN zeigen"]');
+  await page.click('button[aria-label="Notfall-PIN zeigen"]');
   await sleep(250);
   check(
     'a hidden field keeps its value',
@@ -165,7 +165,7 @@ try {
   );
 
   // ── Favourite, folder ──────────────────────────────────
-  await page.click('.detail-tools .icon-button[aria-label="Zu Favoriten"]');
+  await page.click('.detail-tools button[aria-label="Zu Favoriten"]');
   await sleep(600);
   const favourites = await page.eval(
     `document.querySelector('.nav-list .nav-row:nth-child(1)')?.parentElement?.parentElement?.children?.length ?? 0`,
@@ -174,20 +174,20 @@ try {
   check(
     'it is a favourite now',
     await page.eval(
-      `!!document.querySelector('.detail-tools .icon-button[aria-label="Favorit entfernen"]')`,
+      `!!document.querySelector('.detail-tools button[aria-label="Favorit entfernen"]')`,
     ),
   );
 
-  await page.click('.nav-heading .icon-button');
-  await page.waitFor(`document.querySelector('.modal .field input')`, {
+  await page.click('.nav-heading button');
+  await page.waitFor(`document.querySelector('dialog[open] .field input')`, {
     what: 'the folder dialog',
   });
-  await page.fill('.modal .field input', 'Kater');
-  await page.click('.modal-footer button.primary', 'Anlegen');
+  await page.fill('dialog[open] .field input', 'Kater');
+  await page.click('dialog[open] footer button', 'Anlegen');
   await sleep(700);
   check('the folder is in the sidebar', (await page.text('.nav-label')).includes('Kater'));
 
-  await page.click('.detail-tools button.primary', 'Bearbeiten');
+  await page.click('.detail-tools button', 'Bearbeiten');
   await openEditor();
   const folderId = await page.eval(`(() => {
     const options = [...document.querySelectorAll('#item-editor select option')];
@@ -209,8 +209,8 @@ try {
   // ── Trash, back, and gone ──────────────────────────────
   await page.click('.item-row', 'Kater-Konto (privat)');
   await sleep(200);
-  await page.click('.detail-tools .icon-button[aria-label="In den Papierkorb"]');
-  await page.click('.modal button.danger', 'In den Papierkorb');
+  await page.click('.detail-tools button[aria-label="In den Papierkorb"]');
+  await page.click('dialog[open] button', 'In den Papierkorb');
   await sleep(800);
   check('the item left the list', !(await names()).includes('Kater-Konto (privat)'));
   await page.click('.nav-trash .nav-row');
@@ -272,15 +272,15 @@ try {
   // ── Gone for good ──────────────────────────────────────
   await page.click('.item-row', 'Kater-Konto (privat)');
   await sleep(200);
-  await page.click('.detail-tools .icon-button[aria-label="In den Papierkorb"]');
-  await page.click('.modal button.danger', 'In den Papierkorb');
+  await page.click('.detail-tools button[aria-label="In den Papierkorb"]');
+  await page.click('dialog[open] button', 'In den Papierkorb');
   await sleep(800);
   await page.click('.nav-trash .nav-row');
   await sleep(400);
   await page.click('.item-row', 'Kater-Konto (privat)');
   await sleep(300);
   await page.click('.detail-tools button', 'Endgültig löschen');
-  await page.click('.modal button.danger', 'Endgültig löschen');
+  await page.click('dialog[open] button', 'Endgültig löschen');
   await sleep(900);
   const trash = await names();
   check(

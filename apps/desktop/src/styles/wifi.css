@@ -1,0 +1,68 @@
+/* ── Wi-Fi: the network's buttons, and the network to share as a QR code ── */
+
+.wifi-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--uwu-space-2);
+  padding: var(--uwu-space-2) var(--uwu-space-3);
+  border-top: 1px solid var(--uwu-hairline);
+}
+
+.wifi-connect-problem {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--uwu-space-1);
+}
+
+.wifi-connect-problem p {
+  margin: 0;
+  color: var(--uwu-muted);
+  font-size: var(--uwu-text-meta);
+  line-height: 1.45;
+}
+
+/* White in both themes: cameras want dark on light. */
+.qr {
+  width: 200px;
+  max-width: 100%;
+  aspect-ratio: 1;
+  margin: var(--uwu-space-1) auto;
+  padding: var(--uwu-space-2);
+  border: 1px solid var(--uwu-hairline);
+  border-radius: var(--uwu-radius-card);
+  background: #ffffff;
+}
+
+.qr svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.wifi-share {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--uwu-space-2) var(--uwu-space-4);
+  margin: var(--uwu-space-4) 0 0;
+}
+
+.wifi-share dt {
+  font-size: var(--uwu-text-caption);
+  font-weight: 600;
+  color: var(--uwu-muted);
+}
+
+.wifi-share dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.wifi-share-password {
+  display: flex;
+  align-items: center;
+  gap: var(--uwu-space-2);
+}

@@ -6,10 +6,10 @@
  * so the person hears about it once, instead of finding things missing.
  */
 
+import { Button, Icon, ICONS } from '@uwusuite/design';
 import { toastError } from '../lib/errors';
 import { t, useLanguage } from '../lib/i18n';
 import { extrasKeySeen, openWebVaultAt, useUwu } from '../lib/uwu';
-import { Icon } from './Icon';
 import { Modal } from './Modal';
 
 export function ExtrasKeyNotice() {
@@ -24,17 +24,17 @@ export function ExtrasKeyNotice() {
       onCancel={seen}
       footer={
         <>
-          <button
-            className="quiet"
+          <Button
+            variant="ghost"
             onClick={() => void openWebVaultAt('keys').catch((e) => toastError(e))}
           >
             {t('Im Web-Tresor öffnen')}
-            <Icon name="external" size={13} />
-          </button>
+            <Icon icon={ICONS.openExternal} size="xs" />
+          </Button>
           <span className="spacer" />
-          <button className="primary" onClick={seen}>
+          <Button variant="primary" onClick={seen}>
             {t('Verstanden')}
-          </button>
+          </Button>
         </>
       }
     >
