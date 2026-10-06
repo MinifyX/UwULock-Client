@@ -1,3 +1,4 @@
+import { Button, Icon, ICONS, Segmented } from '@uwusuite/design';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   login,
@@ -13,7 +14,6 @@ import {
 import { errorText } from '../lib/errors';
 import { N_, t, useLanguage } from '../lib/i18n';
 import { updateSettings, useSettings } from '../lib/settings';
-import { Icon } from './Icon';
 import { NyuScene } from './nyu/scenes';
 import { PasswordInput } from './PasswordInput';
 
@@ -141,20 +141,16 @@ export function LoginScreen({ again, adding, onDone, onCancel }: Props) {
             <h1 className="card-title">{t('Anmelden')}</h1>
             <div className="field">
               <span>{t('Server')}</span>
-              <div className="segmented wide" role="radiogroup" aria-label={t('Server')}>
-                {serverOptions.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    role="radio"
-                    aria-checked={kind === option.value}
-                    onClick={() => setKind(option.value)}
-                    disabled={Boolean(busy) || Boolean(again)}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
+              {/* The package's Segmented has no `disabled`; the fieldset turns its buttons off. */}
+              <fieldset className="contents" disabled={Boolean(busy) || Boolean(again)}>
+                <Segmented
+                  label={t('Server')}
+                  value={kind}
+                  onChange={setKind}
+                  options={serverOptions}
+                  className="w-full [&>button]:h-auto [&>button]:min-h-8 [&>button]:flex-auto [&>button]:px-2 [&>button]:py-1 [&>button]:leading-tight [&>button:disabled]:opacity-55"
+                />
+              </fieldset>
             </div>
             {kind === 'self-hosted' && (
               <label className="field">
@@ -202,17 +198,17 @@ export function LoginScreen({ again, adding, onDone, onCancel }: Props) {
             )}
             <div className="form-actions">
               {onCancel && (
-                <button type="button" className="quiet" onClick={onCancel} disabled={Boolean(busy)}>
+                <Button variant="ghost" onClick={onCancel} disabled={Boolean(busy)}>
                   {t('Abbrechen')}
-                </button>
+                </Button>
               )}
               <span className="spacer" />
-              <button className="primary" type="submit" disabled={Boolean(busy) || !password}>
+              <Button variant="primary" type="submit" disabled={Boolean(busy) || !password}>
                 {busy ?? t('Anmelden')}
-              </button>
+              </Button>
             </div>
             <p className="welcome-beta">
-              <Icon name="sparkles" size={14} />
+              <Icon icon={ICONS.info} size="xs" className="mt-0.5 text-pink" />
               {t(
                 'Beta: Ansehen, Suchen, Bearbeiten, Einmal-Codes und mehrere Konten. Anhänge und Sends kommen noch.',
               )}
@@ -306,9 +302,7 @@ export function TwoFactor<S extends { step: string }>({
           )}
         </p>
         <div className="form-actions">
-          <button type="button" onClick={onBack}>
-            {t('Zurück')}
-          </button>
+          <Button onClick={onBack}>{t('Zurück')}</Button>
         </div>
       </div>
     );
@@ -318,23 +312,20 @@ export function TwoFactor<S extends { step: string }>({
     <form className="form" onSubmit={submit}>
       <h1 className="card-title">{t('Zweistufige Anmeldung')}</h1>
       {usable.length > 1 && (
-        <div className="segmented wide" role="radiogroup" aria-label={t('Methode')}>
-          {usable.map((m) => (
-            <button
-              key={m.provider}
-              type="button"
-              role="radio"
-              aria-checked={m.provider === provider}
-              onClick={() => {
-                setProvider(m.provider);
-                setCode('');
-                setError(null);
-              }}
-            >
-              {t(METHOD_LABEL[m.kind])}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          label={t('Methode')}
+          value={String(provider)}
+          onChange={(value) => {
+            setProvider(Number(value));
+            setCode('');
+            setError(null);
+          }}
+          options={usable.map((m) => ({
+            value: String(m.provider),
+            label: t(METHOD_LABEL[m.kind]),
+          }))}
+          className="w-full [&>button]:h-auto [&>button]:min-h-8 [&>button]:flex-auto [&>button]:px-2 [&>button]:py-1 [&>button]:leading-tight"
+        />
       )}
       <p className="dialog-lead">
         {method.kind === 'authenticator' &&
@@ -389,18 +380,18 @@ export function TwoFactor<S extends { step: string }>({
         </p>
       )}
       <div className="form-actions">
-        <button type="button" className="quiet" onClick={onBack} disabled={busy}>
+        <Button variant="ghost" onClick={onBack} disabled={busy}>
           {t('Zurück')}
-        </button>
+        </Button>
         <span className="spacer" />
         {method.kind === 'email' && (
-          <button type="button" onClick={() => void sendEmail()} disabled={busy}>
+          <Button onClick={() => void sendEmail()} disabled={busy}>
             {sent ? t('Nochmal senden') : t('Code senden')}
-          </button>
+          </Button>
         )}
-        <button className="primary" type="submit" disabled={busy || !code.trim()}>
+        <Button variant="primary" type="submit" disabled={busy || !code.trim()}>
           {busy ? t('Prüft …') : t('Weiter')}
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -459,13 +450,13 @@ export function NewDevice<S extends { step: string }>({
         </p>
       )}
       <div className="form-actions">
-        <button type="button" className="quiet" onClick={onBack} disabled={busy}>
+        <Button variant="ghost" onClick={onBack} disabled={busy}>
           {t('Zurück')}
-        </button>
+        </Button>
         <span className="spacer" />
-        <button className="primary" type="submit" disabled={busy || !code.trim()}>
+        <Button variant="primary" type="submit" disabled={busy || !code.trim()}>
           {busy ? t('Prüft …') : t('Weiter')}
-        </button>
+        </Button>
       </div>
     </form>
   );

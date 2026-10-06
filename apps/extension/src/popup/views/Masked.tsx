@@ -1,5 +1,5 @@
+import { Button, IconButton, ICONS } from '@uwusuite/design';
 import { useEffect, useState } from 'react';
-import { Icon } from '@desktop/components/Icon';
 import { t } from '../../shared/i18n';
 import type { MaskedAddress, MaskedConnection } from '../../shared/protocol';
 import { copyText, createMasked, maskedConnection } from '../api';
@@ -73,24 +73,26 @@ export function MaskedPanel() {
       {created && (
         <div className="masked-result">
           <div className="generated mono">{created.email}</div>
-          <button
-            type="button"
-            className="icon-button"
+          <IconButton
+            icon={ICONS.copy}
+            label={t('Kopieren')}
             onClick={() => void copy(created.email)}
-            aria-label={t('Kopieren')}
-            title={t('Kopieren')}
-          >
-            <Icon name="copy" size={15} />
-          </button>
+          />
         </div>
       )}
       {error && <p className="form-error">{error}</p>}
       {usable && (
         <div className="form-actions">
           <span className="spacer" />
-          <button type="button" className="primary" disabled={busy} onClick={() => void create()}>
+          <Button
+            variant="primary"
+            size="sm"
+            icon={ICONS.maskedAddress}
+            busy={busy}
+            onClick={() => void create()}
+          >
             {busy ? t('Legt an …') : t('Neue maskierte Adresse')}
-          </button>
+          </Button>
         </div>
       )}
     </div>

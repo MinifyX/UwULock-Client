@@ -1,0 +1,39 @@
+/*
+ * Every stylesheet of the window, in cascade order.
+ *
+ * The suite first: Tailwind and @uwusuite/design — tokens, UwU Sans, the base
+ * layer, motion, Nyu and the title bar — plus the font picker's fonts. Then
+ * UwULock's own sheets, in Tailwind's `components` layer: they are built from
+ * the package's tokens, and a utility class on an element always wins over
+ * them. phone.css comes last, so the phone layout overrides the others.
+ */
+@import 'tailwindcss';
+@import '@uwusuite/design/tailwind.css';
+@import '@uwusuite/design/font-picker.css';
+
+/* Tailwind looks for class names in the app's sources. */
+@source '../';
+
+@import './app.css' layer(components);
+@import './screens.css' layer(components);
+@import './vault.css' layer(components);
+@import './detail.css' layer(components);
+@import './generator.css' layer(components);
+@import './extras.css' layer(components);
+@import './wifi.css' layer(components);
+@import './passkeys.css' layer(components);
+@import './moving.css' layer(components);
+@import './health.css' layer(components);
+@import './suite.css' layer(components);
+@import '../components/nyu/nyu.css' layer(components);
+@import './phone.css' layer(components);
+
+/*
+ * Toasts sit at the top on a phone (the package's Toaster, 8 px from the
+ * edge); they keep clear of the notch and the status bar too. Outside the
+ * layers, so it wins over the Toaster's own `phone:top-2` utility. Android's
+ * insets are 0 (the page sits between the bars), iOS's are not.
+ */
+html:is([data-platform='ios'], [data-platform='android']) .shell > [aria-live='polite'].fixed {
+  top: calc(env(safe-area-inset-top) + var(--uwu-space-2));
+}

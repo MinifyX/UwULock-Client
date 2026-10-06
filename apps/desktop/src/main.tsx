@@ -1,24 +1,10 @@
-import '@fontsource-variable/dm-sans';
-import '@fontsource-variable/manrope';
-import '@fontsource-variable/rubik';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
-import './components/nyu/nyu.css';
-import { applyAppearance } from './lib/settings';
-import './styles/app.css';
-import './styles/vault.css';
-import './styles/extras.css';
-import './styles/health.css';
-import './styles/suite.css';
-import './styles/tokens.css';
-import './styles/fonts.css';
-import './styles/phone.css';
-import './styles/passkeys.css';
+import { prepareDocument } from './lib/appearance';
+import './styles/index.css';
 
-// Dark by default, like the other UwU apps; Settings → Appearance switches to
-// light or follows the system, and decides about animations.
-applyAppearance();
+prepareDocument();
 
 const root = document.getElementById('root');
 if (!root) throw new Error('#root missing from index.html');

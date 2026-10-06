@@ -25,6 +25,7 @@ import {
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateRawSync } from 'node:zlib';
+import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { build } from 'vite';
 import { manifest } from './manifest.mjs';
@@ -56,7 +57,9 @@ await build({
   root: join(app, 'src'),
   base: '/',
   publicDir: join(app, 'public'),
-  plugins: [react()],
+  // Tailwind and @uwusuite/design for the popup and the passkey window (popup/index.css). The
+  // content scripts' UI never gets it: its sheet lives in a closed shadow root (content/ui.ts).
+  plugins: [react(), tailwindcss()],
   build: {
     outDir: common,
     emptyOutDir: true,

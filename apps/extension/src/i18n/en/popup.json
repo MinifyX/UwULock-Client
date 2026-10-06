@@ -245,7 +245,6 @@
   "Sprache": "Language",
   "Wie der Browser": "Like the browser",
   "Design": "Theme",
-  "Wie das System": "Like the system",
   "Quellcode": "Source code",
   "PIN eingerichtet ✧": "PIN set up ✧",
   "Mindestens vier Zeichen": "At least four characters",
@@ -346,7 +345,6 @@
   "Nächster:": "Next:",
   "Passkey für {site} löschen": "Delete the passkey for {site}",
   "Passkey gelöscht.": "Passkey deleted.",
-  "Passkey löschen": "Delete passkey",
   "Passkeys": "Passkeys",
   "Schrift": "Font",
   "System": "System",
@@ -359,5 +357,11 @@
   "lässt sich nicht lesen – nur löschen": "can't be read – only deleted",
   "ohne Benutzernamen": "no user name",
   "„{name}“ als Link teilen. Die Send-Seite zeigt den Eintrag mit Kopier-Knöpfen.": "Share “{name}” as a link. The Send page shows the entry with copy buttons.",
-  "→ {n}, damit die Mindestanzahlen passen": "→ {n} so the minimums fit"
+  "→ {n}, damit die Mindestanzahlen passen": "→ {n} so the minimums fit",
+  "Kontrast": "Contrast",
+  "Normal": "Normal",
+  "Hoch": "High",
+  "Animationen": "Animations",
+  "An": "On",
+  "Aus": "Off"
 }

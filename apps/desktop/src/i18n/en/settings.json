@@ -38,5 +38,8 @@
   "Mit Windows Hello entsperren": "Unlock with Windows Hello",
   "Gesicht, Finger oder PIN statt des Master-Passworts. Nach einem Neustart von UwULock geht das auch.": "Face, finger or PIN instead of the master password. Works after restarting UwULock too.",
   "Windows Hello ist in dieser Version sicherer eingerichtet, die alte Einrichtung gilt nicht mehr. Entsperre einmal mit dem Master-Passwort und schalte Windows Hello in den Einstellungen wieder ein.": "Windows Hello is set up more safely in this version, and the old setup no longer counts. Unlock once with the master password and switch Windows Hello on again in Settings.",
-  "Der Schlüssel von Windows Hello hat sich geändert. Entsperre mit dem Master-Passwort und schalte Windows Hello wieder ein.": "Windows Hello's key has changed. Unlock with the master password and switch Windows Hello on again."
+  "Der Schlüssel von Windows Hello hat sich geändert. Entsperre mit dem Master-Passwort und schalte Windows Hello wieder ein.": "Windows Hello's key has changed. Unlock with the master password and switch Windows Hello on again.",
+  "Kontrast": "Contrast",
+  "Normal": "Normal",
+  "Hoch": "High"
 }

@@ -67,11 +67,15 @@ function publish(next: Cameo | null) {
   for (const listener of listeners) listener();
 }
 
-/** Whether animations are reduced right now: the app's data-motion, else the system's. */
+/**
+ * Whether animations are reduced right now: <html data-motion> ("reduced" or
+ * "full", the app's setting resolved by @uwusuite/design; the extension says
+ * "on" for always), else the system's.
+ */
 export function motionReduced(root: HTMLElement = document.documentElement): boolean {
   const set = root.dataset.motion;
   if (set === 'reduced') return true;
-  if (set === 'on') return false;
+  if (set === 'full' || set === 'on') return false;
   return typeof window.matchMedia === 'function'
     ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
     : false;
@@ -120,7 +124,7 @@ export function useCameo(): Cameo | null {
 // ── The scenes ────────────────────────────────────────────
 
 // The scenes' 320 × 220 canvas, Nyu at 0.5 scale; props with a 6 px outline.
-const S = { stroke: NYU.outline, strokeWidth: 6 } as const;
+const S = { stroke: NYU.ink, strokeWidth: 6 } as const;
 const EDGE = 16;
 const NYU_EDGE = 32;
 
@@ -225,7 +229,7 @@ function Shared() {
         className="nyu-c-trail"
         d="M176 118 Q226 96 248 58 T300 12"
         fill="none"
-        stroke={NYU.outline}
+        stroke={NYU.ink}
         strokeWidth={4}
         strokeDasharray="4 12"
         opacity="0.35"
@@ -313,7 +317,7 @@ function Generated() {
         <Sticker edge={EDGE}>
           <g transform="translate(236 140)">
             <rect x="-26" y="-26" width="52" height="52" rx="12" fill={NYU.paper} {...S} />
-            <g className="no-edge" fill={NYU.outline}>
+            <g className="no-edge" fill={NYU.ink}>
               <circle cx="-11" cy="-11" r="5" />
               <circle cx="0" cy="0" r="5" />
               <circle cx="11" cy="11" r="5" />

@@ -1,3 +1,4 @@
+import { Button, Icon, ICONS } from '@uwusuite/design';
 import { useState } from 'react';
 import { copyField, wifiConnect, wifiSettings, type WifiJoined } from '../lib/api';
 import { toastError } from '../lib/errors';
@@ -6,7 +7,6 @@ import { t, useLanguage } from '../lib/i18n';
 import { getSettings } from '../lib/settings';
 import { toast } from '../lib/toast';
 import type { WifiView } from '../lib/wifi';
-import { Icon } from './Icon';
 
 /** Why Android can't take a network (`reason` of an `unsupported` answer, docs/wifi.md). */
 function reasonText(reason: string | null): string {
@@ -122,26 +122,27 @@ export function WifiConnect({ id, wifi }: { id: string; wifi: WifiView }) {
 
   return (
     <>
-      <button
-        className="primary"
+      <Button
+        variant="primary"
+        size="sm"
+        icon={ICONS.wifi}
         onClick={connect}
         disabled={busy || !ssid}
         aria-busy={busy || undefined}
         data-wifi-connect
       >
-        <Icon name="wifi" size={15} />
         {t('Verbinden')}
-      </button>
+      </Button>
       {explanation && (
         <div className="wifi-connect-problem" role="status">
           <p>{explanation}</p>
           {problem?.reason !== 'no-ssid' && (
-            <button className="quiet" onClick={openSettings}>
-              <Icon name="external" size={15} />
+            <Button variant="ghost" size="sm" onClick={openSettings}>
               {hasPassword
                 ? t('Passwort kopieren & WLAN-Einstellungen öffnen')
                 : t('WLAN-Einstellungen öffnen')}
-            </button>
+              <Icon icon={ICONS.openExternal} size="xs" />
+            </Button>
           )}
         </div>
       )}

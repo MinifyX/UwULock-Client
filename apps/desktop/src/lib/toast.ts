@@ -1,34 +1,14 @@
 /**
- * Short notes at the bottom of the window: "Copied", "Synced". One at a time;
- * a new one replaces the old.
+ * Short notes: "Copied", "Synced". @uwusuite/design's toasts (`<Toaster>` in
+ * App.tsx, bottom centre, at the top on a phone), one at a time — a new one
+ * replaces the old — and quicker than the package's default, because most of
+ * them answer a click that was just made.
  */
 
-import { useSyncExternalStore } from 'react';
+import { createToasts } from '@uwusuite/design';
 
-export type Toast = { id: number; text: string; tone: 'info' | 'error' };
+export const toasts = createToasts({ infoMs: 2600, errorMs: 6000, max: 1 });
 
-let current: Toast | null = null;
-let counter = 0;
-let timer: number | undefined;
-const listeners = new Set<() => void>();
-
-function set(next: Toast | null) {
-  current = next;
-  for (const listener of listeners) listener();
-}
-
-export function toast(text: string, tone: Toast['tone'] = 'info') {
-  window.clearTimeout(timer);
-  set({ id: ++counter, text, tone });
-  timer = window.setTimeout(() => set(null), tone === 'error' ? 6000 : 2600);
-}
-
-export function useToast(): Toast | null {
-  return useSyncExternalStore(
-    (listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    () => current,
-  );
+export function toast(text: string, tone: 'info' | 'error' = 'info') {
+  toasts.show(text, { tone });
 }

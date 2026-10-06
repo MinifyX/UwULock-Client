@@ -4,6 +4,7 @@
  * made; connecting the account to UwUMail happens in the web vault.
  */
 
+import { Button, Icon, IconButton, ICONS } from '@uwusuite/design';
 import { useCallback, useEffect, useState } from 'react';
 import { copyGenerated, type ItemSummary } from '../lib/api';
 import { errorText, toastError } from '../lib/errors';
@@ -21,7 +22,6 @@ import {
   type MaskedAddress,
   type MaskedConnection,
 } from '../lib/uwu';
-import { Icon } from './Icon';
 import { Modal } from './Modal';
 import { NyuBusy } from './nyu/stage';
 
@@ -54,11 +54,12 @@ export function MaskedNotConnected({ connection }: { connection: MaskedConnectio
       </p>
       <p>
         <button
+          type="button"
           className="link-button"
           onClick={() => void openWebVaultAt('masked').catch((e) => toastError(e))}
         >
           {t('Im Web-Tresor verbinden')}
-          <Icon name="external" size={12} />
+          <Icon icon={ICONS.openExternal} size="xs" />
         </button>
       </p>
     </div>
@@ -133,7 +134,7 @@ export function MaskedDialog({
       footer={
         <>
           <span className="spacer" />
-          <button onClick={onClose}>{t('Schließen')}</button>
+          <Button onClick={onClose}>{t('Schließen')}</Button>
         </>
       }
     >
@@ -156,7 +157,7 @@ export function MaskedDialog({
                 ` ${t('UwUMail war zuletzt nicht erreichbar.')}`}
             </p>
             <form
-              className="editor-row"
+              className="editor-row phone:flex-col phone:items-stretch"
               onSubmit={(event) => {
                 event.preventDefault();
                 void act(async () => {
@@ -186,10 +187,9 @@ export function MaskedDialog({
                   onChange={(e) => setDescription(e.target.value)}
                 />
               </label>
-              <button type="submit" className="primary" disabled={busy}>
-                <Icon name="plus" size={15} />
+              <Button type="submit" variant="primary" icon={ICONS.add} disabled={busy}>
                 {t('Neue Adresse')}
-              </button>
+              </Button>
             </form>
             {(addresses?.length ?? 0) > 6 && (
               <input
@@ -209,9 +209,13 @@ export function MaskedDialog({
                   : undefined;
                 const on = address.state === 'enabled' || address.state === 'pending';
                 return (
-                  <li key={address.id} className="extras-row" data-off={!on || undefined}>
-                    <Icon name="mask" size={16} />
-                    <span className="extras-row-text">
+                  <li
+                    key={address.id}
+                    className="extras-row phone:flex-wrap"
+                    data-off={!on || undefined}
+                  >
+                    <Icon icon={ICONS.maskedAddress} size="sm" className="shrink-0 text-muted" />
+                    <span className="extras-row-text phone:basis-[calc(100%-2.5rem)]">
                       <span className="item-name mono">{address.email}</span>
                       <span className="item-sub">
                         {[
@@ -225,22 +229,26 @@ export function MaskedDialog({
                           .join(' · ')}
                       </span>
                       {item && (
-                        <button className="link-button small" onClick={() => onOpenItem(item.id)}>
-                          <Icon name="link" size={12} />
+                        <button
+                          type="button"
+                          className="link-button small"
+                          onClick={() => onOpenItem(item.id)}
+                        >
+                          <Icon icon={ICONS.link} size="xs" />
                           {item.name || t('(ohne Namen)')}
                         </button>
                       )}
                     </span>
-                    <button
-                      className="icon-button"
-                      title={t('Kopieren')}
-                      aria-label={t('{email} kopieren', { email: address.email })}
+                    <IconButton
+                      icon={ICONS.copy}
+                      label={t('{email} kopieren', { email: address.email })}
+                      size="sm"
+                      className="phone:ml-auto"
                       onClick={() => void copyAddress(address.email)}
-                    >
-                      <Icon name="copy" size={15} />
-                    </button>
-                    <button
-                      className="quiet"
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       disabled={busy}
                       onClick={() =>
                         void act(
@@ -250,16 +258,14 @@ export function MaskedDialog({
                       }
                     >
                       {on ? t('Abschalten') : t('Einschalten')}
-                    </button>
-                    <button
-                      className="icon-button"
+                    </Button>
+                    <IconButton
+                      icon={ICONS.delete}
+                      label={t('{email} löschen', { email: address.email })}
+                      size="sm"
                       disabled={busy}
-                      title={t('Löschen')}
-                      aria-label={t('{email} löschen', { email: address.email })}
                       onClick={() => setDeleting(address)}
-                    >
-                      <Icon name="trash" size={15} />
-                    </button>
+                    />
                   </li>
                 );
               })}
@@ -271,12 +277,13 @@ export function MaskedDialog({
         <Modal
           title={t('Adresse löschen?')}
           tone="warning"
+          size="small"
           onCancel={() => setDeleting(null)}
           footer={
             <>
               <span className="spacer" />
-              <button
-                className="danger"
+              <Button
+                variant="danger"
                 data-secondary
                 onClick={() => {
                   const id = deleting.id;
@@ -285,10 +292,10 @@ export function MaskedDialog({
                 }}
               >
                 {t('Löschen')}
-              </button>
-              <button className="primary" data-autofocus onClick={() => setDeleting(null)}>
+              </Button>
+              <Button variant="primary" data-autofocus onClick={() => setDeleting(null)}>
                 {t('Abbrechen')}
-              </button>
+              </Button>
             </>
           }
         >

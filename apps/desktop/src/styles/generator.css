@@ -1,0 +1,129 @@
+/* The password generator (GeneratorDialog). */
+
+.generator {
+  display: grid;
+  gap: var(--uwu-space-4);
+}
+
+/* The generated password (or masked address): big, mono, breakable anywhere. */
+.generated {
+  display: block;
+  min-height: 60px;
+  padding: var(--uwu-space-4);
+  border: 1px solid var(--uwu-hairline);
+  border-radius: var(--uwu-radius-control);
+  background: var(--uwu-canvas);
+  font-family: var(--uwu-mono);
+  font-size: var(--uwu-text-section);
+  text-align: center;
+  word-break: break-all;
+}
+
+.meter {
+  display: flex;
+  align-items: center;
+  gap: var(--uwu-space-3);
+  font-size: var(--uwu-text-caption);
+  color: var(--uwu-muted);
+}
+
+.meter-bar {
+  display: flex;
+  gap: var(--uwu-space-1);
+}
+
+.meter-bar span {
+  width: 32px;
+  height: 6px;
+  border-radius: var(--uwu-radius-pill);
+  background: var(--uwu-hairline);
+}
+
+.meter[data-level='1'] .meter-bar span:nth-child(-n + 1),
+.meter[data-level='2'] .meter-bar span:nth-child(-n + 2),
+.meter[data-level='3'] .meter-bar span:nth-child(-n + 3),
+.meter[data-level='4'] .meter-bar span:nth-child(-n + 4) {
+  background: var(--uwu-pink);
+}
+
+/* Weak asks for attention. */
+.meter[data-level='1'] .meter-bar span:first-child {
+  background: var(--uwu-warning);
+}
+
+.meter[data-level='1'] .meter-label {
+  color: var(--uwu-warning-ink);
+}
+
+.generator input[type='range'] {
+  width: 100%;
+  accent-color: var(--uwu-pink-solid);
+}
+
+.generator-sets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--uwu-space-2);
+}
+
+.chip-check {
+  min-height: 32px;
+  padding: var(--uwu-space-1) var(--uwu-space-3);
+  border: 1px solid var(--uwu-border);
+  border-radius: var(--uwu-radius-pill);
+  background: var(--uwu-canvas);
+}
+
+.chip-check:has(input:checked) {
+  border-color: var(--uwu-pink);
+  background: var(--uwu-pink-tint);
+  color: var(--uwu-pink-ink);
+}
+
+/* The minimum per set that is on. */
+.generator-mins {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--uwu-space-2) var(--uwu-space-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.generator-mins legend {
+  float: left;
+  margin-right: var(--uwu-space-1);
+  font-size: var(--uwu-text-caption);
+  font-weight: 600;
+  color: var(--uwu-muted);
+}
+
+.mini-field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--uwu-space-2);
+  font-size: var(--uwu-text-caption);
+}
+
+.mini-field input {
+  width: 60px;
+  height: 32px;
+  padding: 0 var(--uwu-space-2);
+  font: inherit;
+  text-align: center;
+  border: 1px solid var(--uwu-control);
+  border-radius: var(--uwu-radius-small);
+  background: var(--uwu-surface);
+  color: var(--uwu-ink);
+}
+
+.mini-field input:focus-visible {
+  outline: 2px solid var(--uwu-focus);
+  outline-offset: 1px;
+}
+
+.generator-raised {
+  font-weight: 500;
+  color: var(--uwu-pink-ink);
+}

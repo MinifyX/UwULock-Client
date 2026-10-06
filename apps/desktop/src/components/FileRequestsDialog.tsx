@@ -7,6 +7,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { Badge, Button, Icon, IconButton, ICONS, Tag } from '@uwusuite/design';
 import { copyGenerated } from '../lib/api';
 import { errorText, toastError } from '../lib/errors';
 import { when } from '../lib/format';
@@ -29,7 +30,6 @@ import {
   type FileRequestInput,
   type Submission,
 } from '../lib/uwu';
-import { Icon } from './Icon';
 import { Modal } from './Modal';
 import { NyuBusy } from './nyu/stage';
 
@@ -102,26 +102,28 @@ export function FileRequestsDialog({
       footer={
         view.kind === 'list' ? (
           <>
-            <button className="quiet" onClick={onClose}>
+            <Button variant="ghost" onClick={onClose}>
               {t('Schließen')}
-            </button>
+            </Button>
             <span className="spacer" />
-            <button className="primary" onClick={() => setView({ kind: 'form', id: null })}>
-              <Icon name="plus" size={15} />
+            <Button
+              variant="primary"
+              icon={ICONS.add}
+              onClick={() => setView({ kind: 'form', id: null })}
+            >
               {t('Neue Dateianfrage')}
-            </button>
+            </Button>
           </>
         ) : view.kind === 'request' ? (
           <>
-            <button className="quiet" onClick={() => setView({ kind: 'list' })}>
+            <Button variant="ghost" onClick={() => setView({ kind: 'list' })}>
               {t('Zurück')}
-            </button>
+            </Button>
             <span className="spacer" />
             {current && (
-              <button onClick={() => setView({ kind: 'form', id: current.id })}>
-                <Icon name="pencil" size={15} />
+              <Button icon={ICONS.edit} onClick={() => setView({ kind: 'form', id: current.id })}>
                 {t('Ändern')}
-              </button>
+              </Button>
             )}
           </>
         ) : undefined
@@ -192,8 +194,8 @@ function RequestList({
           : false;
         return (
           <li key={request.id}>
-            <button className="extras-row" onClick={() => onOpen(request.id)}>
-              <Icon name="inbox" size={16} />
+            <button type="button" className="extras-row" onClick={() => onOpen(request.id)}>
+              <Icon icon={ICONS.inbox} size="sm" className="text-muted" />
               <span className="extras-row-text">
                 <span className="item-name">
                   {request.label || request.title || t('(ohne Namen)')}
@@ -214,8 +216,8 @@ function RequestList({
                   ].join(' · ')}
                 </span>
               </span>
-              {request.unseen > 0 && <span className="nav-badge">{request.unseen}</span>}
-              <Icon name="chevron" size={14} />
+              <Badge count={request.unseen} />
+              <Icon icon={ICONS.next} size="xs" className="text-faint" />
             </button>
           </li>
         );
@@ -313,14 +315,12 @@ function RequestView({
           </div>
           {request.link && (
             <div className="detail-actions">
-              <button
-                className="icon-button"
-                title={t('Link kopieren')}
-                aria-label={t('Link kopieren')}
+              <IconButton
+                icon={ICONS.copy}
+                label={t('Link kopieren')}
+                size="sm"
                 onClick={() => void copyLink(request.link ?? '')}
-              >
-                <Icon name="copy" size={15} />
-              </button>
+              />
             </div>
           )}
         </div>
@@ -359,12 +359,18 @@ function RequestView({
           <div className="submission-head">
             <span>
               {when(submission.creationDate)}
-              {!submission.seen && <span className="nav-badge">{t('neu')}</span>}
+              {!submission.seen && (
+                <Tag tone="pink" className="ml-2">
+                  {t('neu')}
+                </Tag>
+              )}
             </span>
             <span className="spacer" />
             {!submission.seen && (
-              <button
-                className="quiet"
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={ICONS.done}
                 disabled={busy}
                 onClick={() =>
                   void act(async () => {
@@ -374,12 +380,13 @@ function RequestView({
                   })
                 }
               >
-                <Icon name="check" size={14} />
                 {t('Gesehen')}
-              </button>
+              </Button>
             )}
-            <button
-              className="quiet"
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={ICONS.import}
               disabled={busy || submission.broken}
               onClick={() => {
                 setItemName(
@@ -390,18 +397,15 @@ function RequestView({
                 setAsking({ kind: 'take-over', submission });
               }}
             >
-              <Icon name="import" size={14} />
               {t('Als Eintrag übernehmen')}
-            </button>
-            <button
-              className="icon-button"
+            </Button>
+            <IconButton
+              icon={ICONS.delete}
+              label={t('Upload löschen')}
+              size="sm"
               disabled={busy}
-              title={t('Löschen')}
-              aria-label={t('Upload löschen')}
               onClick={() => setAsking({ kind: 'delete', submission })}
-            >
-              <Icon name="trash" size={15} />
-            </button>
+            />
           </div>
           {submission.broken && (
             <p className="notice" data-tone="error">
@@ -410,7 +414,7 @@ function RequestView({
           )}
           {(submission.senderName || submission.senderEmail) && (
             <p className="submission-sender">
-              <Icon name="user" size={13} />
+              <Icon icon={ICONS.account} size="xs" className="text-muted" />
               {[submission.senderName, submission.senderEmail].filter(Boolean).join(' · ')}
               <span
                 className="chip chip-muted"
@@ -423,21 +427,20 @@ function RequestView({
           {submission.text && <pre className="submission-text">{submission.text}</pre>}
           {submission.files.map((file) => (
             <div className="detail-row" key={file.id}>
-              <Icon name="file" size={15} />
+              <Icon icon={ICONS.file} size="sm" className="text-muted" />
               <div className="detail-text">
                 <span className="detail-value">{file.name ?? t('(unlesbarer Name)')}</span>
                 <span className="detail-label">{size(file.size)}</span>
               </div>
               <div className="detail-actions">
-                <button
-                  className="icon-button"
-                  disabled={busy || !file.name}
+                <IconButton
+                  icon={ICONS.download}
+                  label={t('{name} speichern', { name: file.name ?? '' })}
+                  size="sm"
                   title={t('In „Downloads“ speichern')}
-                  aria-label={t('{name} speichern', { name: file.name ?? '' })}
+                  disabled={busy || !file.name}
                   onClick={() => setAsking({ kind: 'save', submission, file })}
-                >
-                  <Icon name="download" size={15} />
-                </button>
+                />
               </div>
             </div>
           ))}
@@ -446,6 +449,7 @@ function RequestView({
 
       <p>
         <button
+          type="button"
           className="link-button danger-text"
           disabled={busy}
           onClick={() => setAsking({ kind: 'delete-request' })}
@@ -460,12 +464,13 @@ function RequestView({
           onCancel={() => setAsking(null)}
           footer={
             <>
-              <button className="quiet" data-secondary onClick={() => setAsking(null)}>
+              <Button variant="ghost" data-secondary onClick={() => setAsking(null)}>
                 {t('Abbrechen')}
-              </button>
+              </Button>
               <span className="spacer" />
-              <button
-                className="primary"
+              <Button
+                variant="primary"
+                icon={ICONS.download}
                 data-autofocus
                 onClick={() =>
                   void act(async () => {
@@ -479,9 +484,8 @@ function RequestView({
                   })
                 }
               >
-                <Icon name="download" size={15} />
                 {t('Speichern')}
-              </button>
+              </Button>
             </>
           }
         >
@@ -507,12 +511,12 @@ function RequestView({
           onCancel={() => setAsking(null)}
           footer={
             <>
-              <button className="quiet" data-secondary onClick={() => setAsking(null)}>
+              <Button variant="ghost" data-secondary onClick={() => setAsking(null)}>
                 {t('Abbrechen')}
-              </button>
+              </Button>
               <span className="spacer" />
-              <button
-                className="primary"
+              <Button
+                variant="primary"
                 disabled={busy || !itemName.trim()}
                 onClick={() =>
                   void act(async () => {
@@ -529,7 +533,7 @@ function RequestView({
                 }
               >
                 {busy ? t('Übernimmt …') : t('Übernehmen')}
-              </button>
+              </Button>
             </>
           }
         >
@@ -555,12 +559,13 @@ function RequestView({
         <Modal
           title={asking.kind === 'delete' ? t('Upload löschen?') : t('Dateianfrage löschen?')}
           tone="warning"
+          size="small"
           onCancel={() => setAsking(null)}
           footer={
             <>
               <span className="spacer" />
-              <button
-                className="danger"
+              <Button
+                variant="danger"
                 data-secondary
                 onClick={() =>
                   asking.kind === 'delete'
@@ -577,10 +582,10 @@ function RequestView({
                 }
               >
                 {t('Löschen')}
-              </button>
-              <button className="primary" data-autofocus onClick={() => setAsking(null)}>
+              </Button>
+              <Button variant="primary" data-autofocus onClick={() => setAsking(null)}>
                 {t('Abbrechen')}
-              </button>
+              </Button>
             </>
           }
         >
@@ -832,17 +837,17 @@ function RequestForm({
         </>
       )}
       <div className="form-actions">
-        <button type="button" className="quiet" onClick={onCancel}>
+        <Button variant="ghost" onClick={onCancel}>
           {t('Abbrechen')}
-        </button>
+        </Button>
         <span className="spacer" />
-        <button
+        <Button
           type="submit"
-          className="primary"
+          variant="primary"
           disabled={busy || !form.title.trim() || (form.maxFiles === 0 && !form.textAllowed)}
         >
           {busy ? t('Speichert …') : request ? t('Speichern') : t('Anlegen')}
-        </button>
+        </Button>
       </div>
     </form>
   );

@@ -1,7 +1,5 @@
 {
-  "Passwort-Generator (Strg+G)": "Password generator (Ctrl+G)",
   "Passwort-Generator": "Password generator",
-  "Sperren (Strg+L)": "Lock (Ctrl+L)",
   "Sperren": "Lock",
   "schwach": "weak",
   "okay": "okay",
@@ -57,7 +55,6 @@
   "Website": "Website",
   "Websites": "Websites",
   "{uri} im Browser öffnen": "Open {uri} in the browser",
-  "Im Browser öffnen": "Open in the browser",
   "Karteninhaber": "Cardholder",
   "Marke": "Brand",
   "Kartennummer": "Card number",
@@ -131,7 +128,6 @@
   "Kopierte Werte verschwinden danach wieder – aber nur, wenn inzwischen nichts anderes kopiert wurde. Unter Windows landen sie nie im Zwischenablage-Verlauf.": "Copied values disappear again after that – but only if nothing else was copied meanwhile. On Windows they never end up in the clipboard history.",
   "nach {n} Sekunden": "after {n} seconds",
   "Nie": "Never",
-  "Auch mit Strg+L, von überall in UwULock.": "Also with Ctrl+L, from anywhere in UwULock.",
   "Angemeldet als": "Logged in as",
   "Synchronisieren": "Sync",
   "Zuletzt {when} – UwULock holt Änderungen beim Entsperren und danach alle fünf Minuten.": "Last {when} – UwULock fetches changes on unlock and every five minutes after that.",
@@ -152,7 +148,6 @@
   "Tresor": "Vault",
   "Typen": "Types",
   "Ordner": "Folders",
-  "Tresor durchsuchen (Strg+F)": "Search the vault (Ctrl+F)",
   "Tresor durchsuchen": "Search the vault",
   "Nicht alles ließ sich entschlüsseln": "Not everything could be decrypted",
   "Fragt nach dem Master-Passwort": "Asks for the master password",
@@ -207,7 +202,6 @@
   "Passkey": "Passkey",
   "Passkey für {site} löschen": "Delete the passkey for {site}",
   "Passkey gelöscht.": "Passkey deleted.",
-  "Passkey löschen": "Delete passkey",
   "Passkey löschen?": "Delete passkey?",
   "Passkeys": "Passkeys",
   "Schrift": "Font",
@@ -221,5 +215,6 @@
   "Der Schlüssel des Einmal-Codes reist verschlüsselt im Send mit. Die Send-Seite zeigt nur die laufenden Codes – wer den Link hat, kann den Schlüssel aber auslesen und damit auch nach dem Löschen des Sends weiter Codes erzeugen.": "The one-time code's key travels in the Send, encrypted. The Send page only shows the current codes – but whoever has the link can read out the key and keep making codes with it, even after the Send is deleted.",
   "Teile ihn nur, wenn das okay ist.": "Only share it if that's okay.",
   "Schlüssel mitgeben": "Include the key",
-  "Lieber nicht": "Better not"
+  "Lieber nicht": "Better not",
+  "Auch mit {keys}, von überall in UwULock.": "Also with {keys}, from anywhere in UwULock."
 }

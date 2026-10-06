@@ -1,41 +1,49 @@
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { Icon, ICONS, TitleBarAction, Toaster, UwuLabels } from '@uwusuite/design';
+import { hideWindowOnClose, onMacQuit, setMacMenu } from '@uwusuite/design/tauri';
 import { useEffect, useRef, useState } from 'react';
 import { ExtrasKeyNotice } from './components/ExtrasKeyNotice';
 import { GeneratorDialog } from './components/GeneratorDialog';
-import { Icon } from './components/Icon';
 import { LockScreen } from './components/LockScreen';
 import { LoginScreen } from './components/LoginScreen';
 import { NyuStage, playNyu } from './components/nyu/stage';
 import { PasskeyRequestDialog } from './components/PasskeyRequestDialog';
 import { SettingsDialog, type SettingsSection } from './components/SettingsDialog';
 import { TitleBar } from './components/TitleBar';
-import { TravelBadge } from './components/TravelBadge';
+import { TravelBadge, TravelDialog, travelLabel, useTravel } from './components/TravelBadge';
 import { UpdateHint } from './components/UpdateHint';
 import { VaultScreen } from './components/VaultScreen';
 import {
   installUpdate,
   lock,
+  openProjectPage,
   setSecurity,
   setUpdateChannel,
   touch,
   updateStatus,
   vaultStatus,
+  type ProjectPage,
   type Status,
   type UpdateInfo,
 } from './lib/api';
+import { useAppAppearance } from './lib/appearance';
 import { t, useLanguage } from './lib/i18n';
+import { isMobile } from './lib/platform';
 import { useSettings } from './lib/settings';
+import { desktop, withKeys } from './lib/shortcuts';
 import {
   onPasskeyProviderWarning,
   passkeyProviderStatus,
   warningText,
   type PasskeyProviderWarning,
 } from './lib/passkeys';
-import { toast, useToast } from './lib/toast';
+import { toast, toasts } from './lib/toast';
 
 export function App() {
-  useLanguage();
+  const language = useLanguage();
   const settings = useSettings();
+  useAppAppearance(settings);
   const [status, setStatus] = useState<Status | null>(null);
   const [settingsOpen, setSettingsOpen] = useState<SettingsSection | null>(null);
   const [generator, setGenerator] = useState(false);
@@ -44,8 +52,9 @@ export function App() {
   /** The login screen, for a second account next to the one already here. */
   const [adding, setAdding] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
-  const backgroundRef = useRef<HTMLDivElement>(null);
-  const current = useToast();
+  const travel = useTravel();
+  /** macOS: the travel mode dialog, opened from the menu bar. */
+  const [travelOpen, setTravelOpen] = useState(false);
 
   // ── Vault state ──────────────────────────────────────────
   useEffect(() => {
@@ -110,11 +119,88 @@ export function App() {
   }, []);
 
   const unlocked = status?.state === 'unlocked';
+  // The dialogs are native <dialog>s: the page behind them is inert while they are open.
   const modalOpen = Boolean(settingsOpen || generator);
 
+  const focusSearch = () => {
+    searchRef.current?.focus();
+    searchRef.current?.select();
+  };
+  const openSettings = () => setSettingsOpen((open) => open ?? 'appearance');
+
+  // ── macOS ────────────────────────────────────────────────
+  // ⌘W and the red light hide the window, a click on the Dock icon brings it
+  // back (RunEvent::Reopen in lib.rs); auto-lock keeps running meanwhile. ⌘Q,
+  // the Dock and logging out go through the quit guard (uwu-macos): there is
+  // nothing to save — every change is written as it is made — so it only lets
+  // the quit go ahead in order. Off macOS all three do nothing.
   useEffect(() => {
-    if (backgroundRef.current) backgroundRef.current.inert = modalOpen;
-  }, [modalOpen]);
+    if (desktop !== 'mac' || isMobile()) return;
+    const stops = [hideWindowOnClose(), onMacQuit(() => true)];
+    return () => void Promise.all(stops).then((list) => list.forEach((stop) => stop()));
+  }, []);
+
+  const help = (page: ProjectPage) => void openProjectPage(page).catch(() => undefined);
+
+  // The title bar's actions, in the menu bar. It is set again whenever an
+  // entry changes; the keyboard handler below stays for the other systems
+  // (on a Mac both may see a shortcut, and every action here is idempotent).
+  useEffect(() => {
+    if (desktop !== 'mac' || isMobile()) return;
+    void setMacMenu({
+      appName: 'UwULock',
+      lang: language,
+      onSettings: openSettings,
+      app: travel.enabled
+        ? [{ text: `${travelLabel(travel.hidden)} …`, action: () => setTravelOpen(true) }]
+        : [],
+      edit: [
+        {
+          text: t('Tresor durchsuchen'),
+          accelerator: 'CmdOrCtrl+F',
+          enabled: unlocked && !modalOpen,
+          action: focusSearch,
+        },
+      ],
+      menus: [
+        {
+          text: t('Tresor'),
+          items: [
+            {
+              text: `${t('Passwort-Generator')} …`,
+              accelerator: 'CmdOrCtrl+G',
+              enabled: !modalOpen,
+              action: () => setGenerator(true),
+            },
+            'separator',
+            {
+              text: t('Sperren'),
+              accelerator: 'CmdOrCtrl+L',
+              enabled: unlocked && !modalOpen,
+              action: () => void lock(),
+            },
+          ],
+        },
+      ],
+      help: [
+        { text: t('Versionen'), action: () => help('releases') },
+        { text: t('Quellcode auf GitHub'), action: () => help('source') },
+        { text: t('Problem melden'), action: () => help('issues') },
+        'separator',
+        { text: 'UwUSuite', action: () => help('suite') },
+      ],
+    }).catch(() => undefined);
+    // The handlers only use setters and the search field's ref.
+  }, [language, unlocked, modalOpen, travel.enabled, travel.hidden]);
+
+  // Travel mode on a Mac: the native title bar says it, where the pill would be.
+  useEffect(() => {
+    if (desktop !== 'mac' || isMobile()) return;
+    const title = travel.enabled ? `UwULock · ${travelLabel(travel.hidden)}` : 'UwULock';
+    void getCurrentWindow()
+      .setTitle(title)
+      .catch(() => undefined);
+  }, [language, travel.enabled, travel.hidden]);
 
   // ── Keyboard ─────────────────────────────────────────────
   useEffect(() => {
@@ -124,7 +210,7 @@ export function App() {
       const key = event.key.toLowerCase();
       if (key === ',') {
         event.preventDefault();
-        setSettingsOpen((open) => open ?? 'appearance');
+        openSettings();
       } else if (modalOpen) {
         return;
       } else if (key === 'l' && unlocked) {
@@ -132,8 +218,7 @@ export function App() {
         void lock();
       } else if (key === 'f' && unlocked) {
         event.preventDefault();
-        searchRef.current?.focus();
-        searchRef.current?.select();
+        focusSearch();
       } else if (key === 'g') {
         event.preventDefault();
         setGenerator(true);
@@ -147,101 +232,100 @@ export function App() {
   }, [modalOpen, unlocked]);
 
   return (
-    <div className="shell">
-      <div className="background" ref={backgroundRef}>
-        <TitleBar onSettings={() => setSettingsOpen('appearance')}>
-          {unlocked && <TravelBadge />}
-          {unlocked && <ExtrasKeyNotice />}
-          <button
-            className="titlebar-action"
-            onClick={() => setGenerator(true)}
-            title={t('Passwort-Generator (Strg+G)')}
-            aria-label={t('Passwort-Generator')}
-          >
-            <Icon name="dice" size={17} />
-          </button>
-          {unlocked && (
-            <button
-              className="titlebar-action"
-              onClick={() => void lock()}
-              title={t('Sperren (Strg+L)')}
-              aria-label={t('Sperren')}
+    <UwuLabels labels={language}>
+      <div className="shell">
+        <div className="background">
+          <TitleBar onSettings={() => setSettingsOpen('appearance')}>
+            {unlocked && <TravelBadge />}
+            <TitleBarAction
+              label={withKeys(t('Passwort-Generator'), 'CmdOrCtrl+G')}
+              onClick={() => setGenerator(true)}
             >
-              <Icon name="lock" size={17} />
-            </button>
-          )}
-        </TitleBar>
+              <Icon icon={ICONS.generate} size="md" />
+            </TitleBarAction>
+            {unlocked && (
+              <TitleBarAction
+                label={withKeys(t('Sperren'), 'CmdOrCtrl+L')}
+                onClick={() => void lock()}
+              >
+                <Icon icon={ICONS.locked} size="md" />
+              </TitleBarAction>
+            )}
+          </TitleBar>
 
-        <main className="stage">
-          {status === null ? null : status.state === 'logged-out' ? (
-            <LoginScreen onDone={setStatus} />
-          ) : adding ? (
-            <LoginScreen
-              adding
-              onDone={(next) => {
-                setAdding(false);
-                setStatus(next);
-              }}
-              onCancel={() => setAdding(false)}
-            />
-          ) : status.state === 'locked' ? (
-            <LockScreen
-              status={status}
-              onUnlocked={(next) => {
-                setStatus(next);
-                playNyu('unlocked');
-              }}
-              onLoggedOut={() => void vaultStatus().then(setStatus)}
-              onAddAccount={() => setAdding(true)}
-            />
-          ) : status.sessionExpired ? (
-            <LoginScreen again={status} onDone={setStatus} onCancel={() => void lock()} />
-          ) : (
-            <VaultScreen
-              status={status}
-              searchRef={searchRef}
-              onAddAccount={() => setAdding(true)}
-            />
-          )}
-        </main>
-      </div>
-
-      {current && (
-        <div className="toast" data-tone={current.tone} role="status" key={current.id}>
-          {current.text}
+          <main className="stage">
+            {status === null ? null : status.state === 'logged-out' ? (
+              <LoginScreen onDone={setStatus} />
+            ) : adding ? (
+              <LoginScreen
+                adding
+                onDone={(next) => {
+                  setAdding(false);
+                  setStatus(next);
+                }}
+                onCancel={() => setAdding(false)}
+              />
+            ) : status.state === 'locked' ? (
+              <LockScreen
+                status={status}
+                onUnlocked={(next) => {
+                  setStatus(next);
+                  playNyu('unlocked');
+                }}
+                onLoggedOut={() => void vaultStatus().then(setStatus)}
+                onAddAccount={() => setAdding(true)}
+              />
+            ) : status.sessionExpired ? (
+              <LoginScreen again={status} onDone={setStatus} onCancel={() => void lock()} />
+            ) : (
+              <VaultScreen
+                status={status}
+                searchRef={searchRef}
+                onAddAccount={() => setAdding(true)}
+              />
+            )}
+          </main>
         </div>
-      )}
 
-      <NyuStage />
+        <Toaster store={toasts} />
 
-      {update && !updateDismissed && !settingsOpen && (
-        <UpdateHint
-          update={update}
-          onLater={() => setUpdateDismissed(true)}
-          onRestart={installUpdate}
-        />
-      )}
+        <NyuStage />
 
-      {generator && <GeneratorDialog onClose={() => setGenerator(false)} />}
+        {update && !updateDismissed && !settingsOpen && (
+          <UpdateHint
+            update={update}
+            onLater={() => setUpdateDismissed(true)}
+            onRestart={installUpdate}
+          />
+        )}
 
-      {status && status.state !== 'logged-out' && <PasskeyRequestDialog />}
+        {generator && <GeneratorDialog onClose={() => setGenerator(false)} />}
 
-      {settingsOpen && status && (
-        <SettingsDialog
-          initial={settingsOpen}
-          status={status}
-          onClose={() => setSettingsOpen(null)}
-          update={update}
-          onUpdateFound={(found) => {
-            setUpdate(found);
-            setUpdateDismissed(false);
-          }}
-          onInstallUpdate={() => {
-            setSettingsOpen(null);
-            setUpdateDismissed(false);
-          }}
-        />
-      )}
-    </div>
+        {unlocked && <ExtrasKeyNotice />}
+
+        {unlocked && travelOpen && travel.enabled && (
+          <TravelDialog hidden={travel.hidden} onClose={() => setTravelOpen(false)} />
+        )}
+
+        {status && status.state !== 'logged-out' && <PasskeyRequestDialog />}
+
+        {settingsOpen && status && (
+          <SettingsDialog
+            initial={settingsOpen}
+            status={status}
+            onClose={() => setSettingsOpen(null)}
+            update={update}
+            onUpdateFound={(found) => {
+              setUpdate(found);
+              setUpdateDismissed(false);
+            }}
+            onInstallUpdate={() => {
+              setSettingsOpen(null);
+              setUpdateDismissed(false);
+            }}
+          />
+        )}
+      </div>
+    </UwuLabels>
   );
 }

@@ -1,4 +1,5 @@
 import { listen } from '@tauri-apps/api/event';
+import { Button, Icon, ICONS } from '@uwusuite/design';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ItemSummary } from '../lib/api';
 import { errorText, toastError } from '../lib/errors';
@@ -35,7 +36,6 @@ import {
 } from '../lib/review';
 import { toast } from '../lib/toast';
 import { GeneratorDialog } from './GeneratorDialog';
-import { Icon } from './Icon';
 import { ItemTile } from './ItemTile';
 import { NyuBusy, playNyu } from './nyu/stage';
 
@@ -106,15 +106,19 @@ export function HealthPane({ mode, onMode, items, onOpen, phone, onMenu }: Props
   const bar = phone && (
     <div className="detail-back report-bar">
       {mode === 'review' ? (
-        <button className="quiet" onClick={() => onMode('report')}>
-          <Icon name="back" size={16} />
+        <Button variant="ghost" size="sm" icon={ICONS.back} onClick={() => onMode('report')}>
           {t('Zum Bericht')}
-        </button>
+        </Button>
       ) : (
-        <button className="quiet" aria-label={t('Ordner und Typen')} onClick={onMenu}>
-          <Icon name="menu" size={16} />
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={ICONS.menu}
+          aria-label={t('Ordner und Typen')}
+          onClick={onMenu}
+        >
           {t('Passwortprüfung')}
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -214,9 +218,9 @@ function HealthReport({
               </span>
             </div>
             <div className="detail-actions">
-              <button className="quiet" onClick={() => onOpen(finding.id)}>
+              <Button variant="ghost" size="sm" onClick={() => onOpen(finding.id)}>
                 {t('Öffnen')}
-              </button>
+              </Button>
             </div>
           </div>
         ))}
@@ -227,7 +231,7 @@ function HealthReport({
     <article className="detail report">
       <header className="detail-head">
         <span className="item-tile" data-size="large" data-hue="4" aria-hidden>
-          <Icon name="shield" size={24} />
+          <Icon icon={ICONS.securityCheck} size="xl" />
         </span>
         <div className="detail-title">
           <h2>{t('Passwortprüfung')}</h2>
@@ -246,16 +250,26 @@ function HealthReport({
         </div>
         <div className="detail-tools">
           {view && view.cards.length > 0 && (
-            <button disabled={Boolean(busy)} onClick={onReview} data-testid="review-start">
-              <Icon name="layers" size={15} />
+            <Button
+              size="sm"
+              icon={ICONS.review}
+              disabled={Boolean(busy)}
+              onClick={onReview}
+              data-testid="review-start"
+            >
               {t('Durchgehen')}
-            </button>
+            </Button>
           )}
           {sources && (
-            <button className="primary" disabled={Boolean(busy)} onClick={onRun}>
-              <Icon name="refresh" size={15} />
+            <Button
+              variant="primary"
+              size="sm"
+              icon={ICONS.refresh}
+              disabled={Boolean(busy)}
+              onClick={onRun}
+            >
               {view?.checkedAt ? t('Nochmal prüfen') : t('Jetzt prüfen')}
-            </button>
+            </Button>
           )}
         </div>
       </header>
@@ -361,9 +375,9 @@ function HealthReport({
                 </span>
               </div>
               <div className="detail-actions">
-                <button className="quiet" onClick={() => onOpen(m.itemId)}>
+                <Button variant="ghost" size="sm" onClick={() => onOpen(m.itemId)}>
                   {t('Öffnen')}
-                </button>
+                </Button>
               </div>
             </div>
           ))}
@@ -393,12 +407,13 @@ function HealthReport({
                 <span className="detail-label">{problemTitle(entry.kind)}</span>
               </div>
               <div className="detail-actions">
-                <button
-                  className="quiet"
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => void onIgnore(entry.itemId, entry.kind, false)}
                 >
                   {t('Rückgängig')}
-                </button>
+                </Button>
               </div>
             </div>
           ))}
@@ -444,9 +459,9 @@ function EmailCheck({ view }: { view: HealthView }) {
       {opted && (
         <div className="detail-row">
           <span className="spacer" />
-          <button disabled={busy} onClick={() => void run()}>
+          <Button size="sm" disabled={busy} onClick={() => void run()}>
             {busy ? t('Prüft Adressen …') : t('Adressen prüfen')}
-          </button>
+          </Button>
         </div>
       )}
       {results?.map((result) => (
@@ -529,7 +544,7 @@ function HealthReview({
     const onKey = (event: KeyboardEvent) => {
       if (event.altKey || event.ctrlKey || event.metaKey || generating) return;
       const target = event.target as HTMLElement | null;
-      if (target?.closest('input, textarea, select, .modal')) return;
+      if (target?.closest('input, textarea, select, dialog')) return;
       const delta = keyStep(event.key);
       if (!delta) return;
       event.preventDefault();
@@ -597,7 +612,7 @@ function HealthReview({
     <article className="detail review">
       <header className="detail-head">
         <span className="item-tile" data-size="large" data-hue="4" aria-hidden>
-          <Icon name="layers" size={24} />
+          <Icon icon={ICONS.review} size="xl" />
         </span>
         <div className="detail-title">
           <h2>{t('Passwörter durchgehen')}</h2>
@@ -610,9 +625,9 @@ function HealthReview({
           </p>
         </div>
         <div className="detail-tools review-back">
-          <button className="quiet" onClick={onBack}>
+          <Button variant="ghost" size="sm" icon={ICONS.back} onClick={onBack}>
             {t('Zum Bericht')}
-          </button>
+          </Button>
         </div>
       </header>
       {total === 0 && (
@@ -650,7 +665,7 @@ function HealthReview({
                   <ItemTile item={summary} size="large" />
                 ) : (
                   <span className="item-tile" data-size="large" data-hue="1" aria-hidden>
-                    <Icon name="globe" size={22} />
+                    <Icon icon={ICONS.website} size="xl" />
                   </span>
                 )}
                 <div className="detail-title">
@@ -670,7 +685,10 @@ function HealthReview({
                       className="review-problem"
                       data-state={solved ? 'solved' : ignored ? 'ignored' : 'open'}
                     >
-                      <Icon name={solved ? 'check' : ignored ? 'eyeOff' : 'warning'} size={16} />
+                      <Icon
+                        icon={solved ? ICONS.done : ignored ? ICONS.hide : ICONS.warning}
+                        size="sm"
+                      />
                       <div className="detail-text">
                         <span className="detail-value">{problemTitle(problem.kind)}</span>
                         <span className="detail-label">
@@ -682,13 +700,15 @@ function HealthReview({
                         </span>
                       </div>
                       {!solved && view.ignored && (
-                        <button
-                          className="quiet small"
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="shrink-0"
                           onClick={() => void onIgnore(card.finding.id, problem.kind, !ignored)}
                         >
                           {ignored ? t('Rückgängig') : t('Ignorieren')}
                           <span className="sr-only">: {problemTitle(problem.kind)}</span>
-                        </button>
+                        </Button>
                       )}
                     </li>
                   );
@@ -701,35 +721,33 @@ function HealthReview({
               )}
               <div className="review-actions">
                 {(card.finding.host || card.finding.uri) && (
-                  <button
-                    className="primary"
+                  <Button
+                    variant="primary"
+                    icon={ICONS.openExternal}
                     onClick={() => void openChangePage(card.finding.id).catch(toastError)}
                   >
-                    <Icon name="external" size={15} />
                     {t('Seite öffnen & Passwort ändern')}
-                  </button>
+                  </Button>
                 )}
-                <button onClick={() => setGenerating(card.finding.id)}>
-                  <Icon name="key" size={15} />
+                <Button icon={ICONS.generate} onClick={() => setGenerating(card.finding.id)}>
                   {t('Neues Passwort erzeugen & speichern')}
-                </button>
-                <button className="quiet" onClick={later}>
-                  <Icon name="clock" size={15} />
+                </Button>
+                <Button variant="ghost" icon={ICONS.pending} onClick={later}>
                   {t('Später')}
-                </button>
-                <button className="quiet" onClick={() => onOpen(card.finding.id)}>
+                </Button>
+                <Button variant="ghost" onClick={() => onOpen(card.finding.id)}>
                   {t('Eintrag öffnen')}
-                </button>
+                </Button>
               </div>
             </section>
           </div>
           <nav className="review-nav" aria-label={t('Karten')}>
-            <button className="quiet" disabled={index === 0} onClick={() => go(-1)}>
+            <Button variant="ghost" size="sm" disabled={index === 0} onClick={() => go(-1)}>
               <span aria-hidden>‹</span> {t('Zurück')}
-            </button>
-            <button className="quiet" disabled={index + 1 >= total} onClick={() => go(1)}>
+            </Button>
+            <Button variant="ghost" size="sm" disabled={index + 1 >= total} onClick={() => go(1)}>
               {t('Weiter')} <span aria-hidden>›</span>
-            </button>
+            </Button>
           </nav>
         </>
       )}

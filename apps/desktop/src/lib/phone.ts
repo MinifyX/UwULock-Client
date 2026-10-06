@@ -3,9 +3,10 @@ import { useSyncExternalStore } from 'react';
 /**
  * Phone width: one pane at a time instead of the three side by side — the
  * list, the item over it, the folders in a drawer. Every phone gets it, and so
- * does a very narrow window (the desktop window can't get that narrow).
+ * does a very narrow window (the desktop window can't get that narrow). Below
+ * 700 px, the same as @uwusuite/design's `phone:` variant.
  */
-const QUERY = '(max-width: 700px)';
+const QUERY = '(max-width: 699px)';
 
 function query(): MediaQueryList | null {
   return typeof window !== 'undefined' && window.matchMedia ? window.matchMedia(QUERY) : null;

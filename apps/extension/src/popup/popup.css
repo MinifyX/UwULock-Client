@@ -1,6 +1,10 @@
 /*
- * The popup and the passkey window: the desktop app's tokens and components (tokens.css,
- * app.css, vault.css), laid out for a window 380 pixels wide. No raw colours in here either.
+ * The popup and the passkey window, 380 pixels wide: the popup's own layout.
+ * Buttons, switches, segmented controls, tags, toasts and icons are
+ * @uwusuite/design's components; fields, item rows, detail cards and the
+ * generator come from the desktop app's sheets (index.css). What is here is
+ * built from the package's tokens only: no raw colours, text sizes from its
+ * scale, spacing on its 4 px scale.
  */
 
 html,
@@ -33,25 +37,15 @@ html:has(.prompt) body {
     radial-gradient(circle at 50% 30%, var(--uwu-pink-tint) 0, transparent 50%), var(--uwu-canvas);
 }
 
+/* ── Bar, tabs, the scrolling middle ───────────────────── */
+
 .popup-bar {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 8px 10px 8px 14px;
+  padding: var(--uwu-space-2) var(--uwu-space-2) var(--uwu-space-2) var(--uwu-space-4);
   border-bottom: 1px solid var(--uwu-hairline);
   background: var(--uwu-surface);
-}
-
-.popup-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-.popup-brand .wordmark span {
-  color: var(--uwu-pink);
 }
 
 .popup-main {
@@ -65,15 +59,17 @@ html:has(.prompt) body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 12px 14px 18px;
+  padding: var(--uwu-space-3) var(--uwu-space-4) var(--uwu-space-5);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--uwu-space-3);
 }
 
 .popup-tabs {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
+  gap: var(--uwu-space-1);
+  padding: var(--uwu-space-1) var(--uwu-space-2);
   border-top: 1px solid var(--uwu-hairline);
   background: var(--uwu-surface);
 }
@@ -82,13 +78,19 @@ html:has(.prompt) body {
   display: grid;
   justify-items: center;
   gap: 2px;
-  padding: 7px 4px 6px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
+  padding: 6px var(--uwu-space-1) 5px;
+  border-radius: var(--uwu-radius-control);
   color: var(--uwu-muted);
-  font-size: 11px;
+  font-size: var(--uwu-text-badge);
   font-weight: 600;
+  transition:
+    background-color var(--uwu-duration-fast),
+    color var(--uwu-duration-fast);
+}
+
+.popup-tabs button:hover {
+  background: color-mix(in srgb, var(--uwu-pink-tint) 45%, transparent);
+  color: var(--uwu-ink);
 }
 
 .popup-tabs button[aria-current='page'] {
@@ -96,34 +98,47 @@ html:has(.prompt) body {
   background: var(--uwu-pink-tint);
 }
 
+/* High contrast: the chosen tab is a shape too, not only a colour. */
+html[data-contrast='high'] .popup-tabs button[aria-current='page'] {
+  outline: 2px solid var(--uwu-ink);
+  outline-offset: -2px;
+}
+
+/* Group titles: 12 px, bold, uppercase, muted (the package's rule). */
 .section-title {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: 6px 2px 0;
-  font-size: 11px;
+  gap: var(--uwu-space-2);
+  min-height: 22px;
+  margin: var(--uwu-space-1) 2px 0;
+  font-size: var(--uwu-text-caption);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--uwu-muted);
+  overflow-wrap: anywhere;
 }
 
-.chip-warning {
-  color: var(--uwu-alarm);
-  border-color: color-mix(in srgb, var(--uwu-alarm) 45%, transparent);
+.section-title > span {
   text-transform: none;
-  letter-spacing: 0;
+  letter-spacing: normal;
 }
+
+.card-title {
+  font-size: var(--uwu-text-section);
+}
+
+/* ── Lists in the popup ────────────────────────────────── */
 
 .item-list.plain {
   flex: none;
-  list-style: none;
-  margin: 0;
   padding: 0;
   overflow: visible;
-  display: grid;
-  align-content: start;
-  gap: 2px;
+}
+
+.item-list.plain .item-row {
+  gap: var(--uwu-space-2);
+  padding: 6px var(--uwu-space-2);
 }
 
 .row-actions {
@@ -132,49 +147,47 @@ html:has(.prompt) body {
   gap: 2px;
 }
 
-.row-actions .icon-button:hover:not(:disabled) {
-  color: var(--uwu-pink);
-  background: var(--uwu-pink-tint);
-}
-
 .fill-button {
-  padding: 5px 10px;
-  font-size: 12px;
-  border-color: var(--uwu-pink-solid);
-  background: var(--uwu-pink-solid);
-  color: var(--uwu-on-pink);
+  margin-left: var(--uwu-space-1);
 }
 
-.fill-button:hover:not(:disabled) {
-  background: var(--uwu-pink-solid);
-  filter: brightness(1.06);
-}
-
+/* "Neuer Login für diese Seite", "Konto hinzufügen" …: quiet, pink, as wide as their words. */
 .add-here,
 .add-line {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  align-self: flex-start;
   justify-self: start;
-  width: max-content;
   color: var(--uwu-pink-ink);
-  text-decoration: none;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.add-here {
-  border-style: dashed;
 }
 
 a.add-line {
-  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 var(--uwu-space-3);
+  border-radius: var(--uwu-radius-pill);
+  font-size: var(--uwu-text-meta);
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color var(--uwu-duration-fast);
+}
+
+a.add-line:hover {
+  background: color-mix(in srgb, var(--uwu-pink-tint) 60%, transparent);
+}
+
+.setting-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--uwu-space-1);
+  padding: var(--uwu-space-2) 0;
+  margin-left: calc(-1 * var(--uwu-space-2));
 }
 
 .empty-block {
   display: grid;
   justify-items: center;
-  gap: 4px;
+  gap: var(--uwu-space-1);
   padding: 6px 0;
 }
 
@@ -186,13 +199,14 @@ a.add-line {
   margin: 0;
   color: var(--uwu-muted);
   text-align: center;
-  font-size: 13px;
+  font-size: var(--uwu-text-meta);
 }
 
+/* A login sent while the vault was locked: save it now? */
 .pending-save {
   display: grid;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: var(--uwu-space-2);
+  padding: var(--uwu-space-3);
   border-radius: var(--uwu-radius-card);
   border: 1px solid var(--uwu-pink-tint-strong);
   background: var(--uwu-pink-tint);
@@ -203,14 +217,24 @@ a.add-line {
   font-weight: 600;
 }
 
+.pending-save .form-actions {
+  margin: 0;
+  gap: var(--uwu-space-1);
+}
+
 .vault-tools {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 8px;
+  gap: var(--uwu-space-2);
 }
 
 .vault-tools .select {
   max-width: 140px;
+}
+
+.notice {
+  margin: 0;
+  flex-wrap: wrap;
 }
 
 /* ── An item ───────────────────────────────────────────── */
@@ -218,75 +242,39 @@ a.add-line {
 .back-bar {
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin: -4px -4px 0;
-}
-
-.back {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding-left: 4px;
-}
-
-.flip {
-  transform: scaleX(-1);
-}
-
-.detail-view .detail-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.detail-view .detail-title {
-  display: grid;
   gap: 2px;
-  min-width: 0;
+  margin: calc(-1 * var(--uwu-space-1)) 0 0 calc(-1 * var(--uwu-space-2));
 }
 
 .detail-view .detail-title h2 {
-  margin: 0;
-  font-size: 18px;
-  overflow-wrap: anywhere;
+  font-size: var(--uwu-text-section);
 }
 
 .detail-cards {
   display: grid;
-  gap: 10px;
+  gap: var(--uwu-space-3);
 }
 
 .detail-view .detail-row {
   min-height: 48px;
-  padding: 7px 8px 7px 14px;
+  padding: 6px var(--uwu-space-2) 6px var(--uwu-space-4);
 }
 
+/* The popup has room for the buttons, and no hover on the way to them. */
 .detail-view .detail-actions {
   opacity: 1;
-}
-
-.fill-row {
-  justify-content: stretch;
-}
-
-button.wide {
-  width: 100%;
 }
 
 /* A Wi-Fi network's QR code, under its button. */
 .detail-view .wifi-qr-row {
   flex-direction: column;
   align-items: stretch;
-  gap: 8px;
-}
-
-.wifi-qr-row button {
-  gap: 8px;
+  gap: var(--uwu-space-2);
 }
 
 .wifi-qr-hint {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--uwu-text-caption);
   text-align: center;
 }
 
@@ -298,47 +286,25 @@ button.wide {
 
 .detail-foot {
   margin: 0;
-  font-size: 11.5px;
-}
-
-.history-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  justify-self: start;
-  margin: 4px 6px;
+  font-size: var(--uwu-text-badge);
 }
 
 /* ── Editing ───────────────────────────────────────────── */
 
-.editor .segmented.wide {
-  width: 100%;
-}
-
-.editor .segmented.wide button {
-  flex: 1;
-  padding: 6px 4px;
-}
-
 .editor textarea {
-  font: inherit;
-  width: 100%;
-  padding: 8px 10px;
-  border-radius: var(--uwu-radius-control);
-  border: 1px solid var(--uwu-border);
-  background: var(--uwu-canvas);
-  color: var(--uwu-ink);
-  resize: vertical;
+  min-height: 72px;
 }
 
 .inline-controls {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--uwu-space-1);
 }
 
+.inline-controls > input,
 .inline-controls .password-input {
   flex: 1;
+  min-width: 0;
 }
 
 .uri-row {
@@ -352,75 +318,178 @@ button.wide {
   max-width: 120px;
 }
 
-.uri-row input {
-  font: inherit;
+.uri-row > input {
+  min-height: 40px;
   width: 100%;
-  padding: 7px 9px;
+  min-width: 0;
+  padding: 0 var(--uwu-space-3);
   border-radius: var(--uwu-radius-control);
-  border: 1px solid var(--uwu-border);
-  background: var(--uwu-canvas);
+  border: 1px solid color-mix(in srgb, var(--uwu-control) 60%, transparent);
+  background: var(--uwu-surface);
   color: var(--uwu-ink);
+  font-size: var(--uwu-text-body);
+}
+
+.uri-row > input:focus {
+  outline: none;
+  border-color: var(--uwu-pink);
+  box-shadow: var(--uwu-focus);
+}
+
+.uri-row > input::placeholder {
+  color: var(--uwu-faint);
 }
 
 .add-field {
   display: flex;
   flex-wrap: wrap;
   gap: 2px;
+  margin-left: calc(-1 * var(--uwu-space-2));
 }
 
 .form-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  gap: var(--uwu-space-2);
+}
+
+/* Radio buttons in the suite's colours (the passkey window's choices). */
+input[type='radio'] {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-grid;
+  place-content: center;
+  flex: none;
+  margin: 0;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid var(--uwu-control);
+  border-radius: 50%;
+  background: var(--uwu-surface);
+  cursor: pointer;
+  transition: border-color var(--uwu-duration-fast);
+}
+
+input[type='radio']::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--uwu-pink-solid);
+  transform: scale(0);
+  transition: transform 180ms var(--uwu-ease-spring);
+}
+
+input[type='radio']:checked {
+  border-color: var(--uwu-pink-solid);
+}
+
+input[type='radio']:checked::before {
+  transform: scale(1);
+}
+
+input[type='radio']:hover:not(:disabled) {
+  border-color: var(--uwu-pink);
 }
 
 /* ── Generator and settings ────────────────────────────── */
 
-.generator .segmented.wide,
-.login .segmented.wide {
-  width: 100%;
-}
-
-.generator .segmented.wide button,
-.login .segmented.wide button {
-  flex: 1;
-}
-
 .generated {
-  font-size: 16px;
+  font-size: var(--uwu-text-reading);
 }
 
 .setting-list {
   display: grid;
-  gap: 0;
-  padding: 2px 12px;
+  padding: 2px var(--uwu-space-3);
   border-radius: var(--uwu-radius-card);
   border: 1px solid var(--uwu-hairline);
   background: var(--uwu-surface);
 }
 
-.setting-list .setting-row {
-  padding: 9px 0;
+/* One line of settings: words left, the control right (like the package's SettingRow). */
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: var(--uwu-space-3);
+  min-height: 48px;
+  padding: var(--uwu-space-2) 0;
+  border-bottom: 1px solid var(--uwu-hairline);
 }
 
-.setting-list .setting-row:last-child {
+.setting-row-block {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--uwu-space-2);
+}
+
+.setting-row-block > .setting-control {
+  max-width: none;
+}
+
+.setting-row:last-child {
   border-bottom: 0;
 }
 
 .setting-text {
+  flex: 1;
+  min-width: 0;
   display: grid;
+  gap: 2px;
 }
 
 .setting-row > .setting-label {
   flex: 1;
 }
 
-.setting-list .field {
-  padding: 8px 0;
+.setting-label {
+  font-size: var(--uwu-text-body);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.setting-description {
+  font-size: var(--uwu-text-caption);
+  line-height: var(--uwu-leading);
+  color: var(--uwu-muted);
+  overflow-wrap: anywhere;
+}
+
+.setting-control {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 62%;
+}
+
+.setting-list > .field {
+  padding: var(--uwu-space-3) 0;
+  border-bottom: 1px solid var(--uwu-hairline);
+}
+
+.setting-list > .field-hint {
+  padding: var(--uwu-space-2) 0;
 }
 
 .setting-list .select {
   max-width: 170px;
+}
+
+/* Settings → Look → Font: the picker below its words, full width. */
+.setting-block {
+  display: grid;
+  gap: 2px;
+  padding: var(--uwu-space-3) 0;
+}
+
+.setting-block .font-picker {
+  margin-top: var(--uwu-space-2);
+  min-width: 0;
+}
+
+.history-toggle {
+  align-self: flex-start;
+  margin: 0;
 }
 
 .history-list {
@@ -428,7 +497,7 @@ button.wide {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 4px;
+  gap: var(--uwu-space-1);
 }
 
 .history-list li {
@@ -444,22 +513,32 @@ button.wide {
   overflow-wrap: anywhere;
 }
 
-.pin-form {
-  padding: 8px 0;
+.history-text small {
+  font-size: var(--uwu-text-caption);
 }
 
-.pin-form .notice {
-  margin: 0;
+.pin-form {
+  padding: var(--uwu-space-2) 0 var(--uwu-space-3);
+  border-bottom: 1px solid var(--uwu-hairline);
 }
 
 .about-line {
-  margin: 4px 0 0;
-  font-size: 12px;
+  margin: var(--uwu-space-1) 0 0;
+  font-size: var(--uwu-text-caption);
   text-align: center;
 }
 
 .about-line a {
   color: inherit;
+}
+
+.generator .generator-mins {
+  padding: var(--uwu-space-2) 0;
+  border-bottom: 1px solid var(--uwu-hairline);
+}
+
+.generator .setting-list > .field {
+  gap: var(--uwu-space-2);
 }
 
 /* ── Login and lock ────────────────────────────────────── */
@@ -472,7 +551,7 @@ button.wide {
 
 .login-scene {
   width: 200px;
-  margin: -8px 0 -14px;
+  margin: calc(-1 * var(--uwu-space-2)) 0 calc(-1 * var(--uwu-space-3));
 }
 
 .lock-view {
@@ -486,8 +565,9 @@ button.wide {
 }
 
 .lock-account {
-  margin: -4px 0 0;
+  margin: calc(-1 * var(--uwu-space-1)) 0 0;
   display: block;
+  overflow-wrap: anywhere;
 }
 
 .lock-more {
@@ -499,20 +579,20 @@ button.wide {
 /* ── The passkey window ────────────────────────────────── */
 
 .prompt {
-  padding: 16px;
-  gap: 12px;
+  padding: var(--uwu-space-4);
+  gap: var(--uwu-space-3);
 }
 
 .prompt-head {
   display: flex;
-  gap: 12px;
+  gap: var(--uwu-space-3);
   align-items: flex-start;
-  color: var(--uwu-pink);
+  color: var(--uwu-pink-ink);
 }
 
 .prompt-head .card-title {
   color: var(--uwu-ink);
-  margin: 0 0 4px;
+  margin: 0 0 var(--uwu-space-1);
 }
 
 .prompt-head p {
@@ -520,8 +600,8 @@ button.wide {
 }
 
 .prompt-origin {
-  margin-top: 4px !important;
-  font-size: 12px;
+  margin-top: var(--uwu-space-1) !important;
+  font-size: var(--uwu-text-caption);
   color: var(--uwu-muted);
   overflow-wrap: anywhere;
 }
@@ -530,8 +610,13 @@ button.wide {
   margin-top: auto;
 }
 
-.toast {
-  bottom: 70px;
+.prompt .field .check {
+  align-items: flex-start;
+  padding: var(--uwu-space-1) 0;
+}
+
+.prompt .field .check > input {
+  margin-top: 1px;
 }
 
 /* ── UwULock Server's extras ─────────────────────────────── */
@@ -549,17 +634,42 @@ button.wide {
 }
 
 .item-tile.item-icon[data-size='large'] {
-  padding: 8px;
+  padding: var(--uwu-space-2);
 }
 
 .share-fields {
   display: grid;
   gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
 }
 
 .share-link {
   word-break: break-all;
   user-select: all;
+}
+
+/* Asking before the one-time code's key goes into a Send. */
+.share-totp-confirm {
+  display: grid;
+  gap: var(--uwu-space-2);
+  padding: var(--uwu-space-3);
+  border: 1px solid color-mix(in srgb, var(--uwu-warning) 40%, transparent);
+  border-radius: var(--uwu-radius-control);
+  background: var(--uwu-warning-tint);
+  color: var(--uwu-warning-ink);
+  font-size: var(--uwu-text-meta);
+  line-height: var(--uwu-leading);
+}
+
+.share-totp-confirm p {
+  margin: 0;
+}
+
+.share-totp-confirm .form-actions {
+  margin: 0;
 }
 
 .file-request-row .item-sub[data-tone='muted'] {
@@ -569,7 +679,8 @@ button.wide {
 .masked-result {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--uwu-space-2);
+  padding: var(--uwu-space-2) 0;
 }
 
 .masked-result .generated {
@@ -578,18 +689,17 @@ button.wide {
   word-break: break-all;
 }
 
-/* Settings → Look → Font: the picker below its words, full width. */
-.setting-block {
-  display: grid;
-  gap: 6px;
-  padding: 9px 0 12px;
+.setting-list > .dialog-lead,
+.setting-list > .notice {
+  margin: var(--uwu-space-3) 0;
 }
 
-.setting-block .font-picker {
-  min-width: 0;
+.setting-list > .form-actions {
+  margin: 0 0 var(--uwu-space-3);
 }
 
-/* The generator's minimums, as in the app. */
-.generator .generator-mins {
-  padding: 4px 0;
+/* Nyu's cameos sit above the tab bar. */
+.popup .nyu-stage {
+  bottom: 64px;
+  width: 120px;
 }

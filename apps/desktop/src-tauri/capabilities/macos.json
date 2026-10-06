@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "macos",
+  "description": "macOS only: ⌘W hiding the window instead of closing it, and the window title naming travel mode. The menu bar (setMacMenu) needs only core:default. The page draws no title bar there, so it doesn't get the title bar's window controls (desktop.json).",
+  "platforms": ["macOS"],
+  "windows": ["main"],
+  "permissions": ["core:window:allow-hide", "core:window:allow-show", "core:window:allow-set-title"]
+}

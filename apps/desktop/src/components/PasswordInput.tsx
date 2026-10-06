@@ -1,6 +1,6 @@
+import { IconButton, ICONS } from '@uwusuite/design';
 import { useState } from 'react';
 import { t, useLanguage } from '../lib/i18n';
-import { Icon } from './Icon';
 
 type Props = {
   value: string;
@@ -41,16 +41,14 @@ export function PasswordInput({
         spellCheck={false}
         aria-label={label}
       />
-      <button
-        type="button"
-        className="icon-button"
+      <IconButton
+        icon={visible ? ICONS.hide : ICONS.show}
+        label={visible ? t('Passwort verbergen') : t('Passwort zeigen')}
+        size="sm"
         onClick={() => setVisible(!visible)}
-        aria-label={visible ? t('Passwort verbergen') : t('Passwort zeigen')}
         aria-pressed={visible}
         tabIndex={-1}
-      >
-        <Icon name={visible ? 'eyeOff' : 'eye'} size={16} />
-      </button>
+      />
       {caps && <small className="caps-hint">{t('Feststelltaste ist an')}</small>}
     </span>
   );

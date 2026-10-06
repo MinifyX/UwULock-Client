@@ -15,7 +15,6 @@
   "Ohne Namen findest du den Eintrag später nicht wieder.": "Without a name you won't find this item again.",
   "Bleibt, wie es ist.": "Stays as it is.",
   "Wird beim Speichern geleert.": "Will be emptied when you save.",
-  "Unverändert lassen": "Leave unchanged",
   "{label} unverändert lassen": "Leave {label} unchanged",
   "Der Schlüssel aus der App: Base32 oder eine otpauth://-Adresse.": "The key from the app: base32 or an otpauth:// address.",
   "Website hinzufügen": "Add website",

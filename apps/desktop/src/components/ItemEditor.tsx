@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { Button, IconButton, ICONS, Switch } from '@uwusuite/design';
+import { useEffect, useId, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import {
   revealField,
   saveItem,
@@ -34,7 +35,6 @@ import {
 } from '../lib/wifi';
 import { useCloseGuard } from './CloseGuard';
 import { GeneratorDialog } from './GeneratorDialog';
-import { Icon } from './Icon';
 import { reminderDraft, ReminderEditor, saveReminder, type ReminderDraft } from './ItemExtras';
 import { Modal } from './Modal';
 import { NyuBusy, playNyu } from './nyu/stage';
@@ -297,6 +297,27 @@ function Field({ label, children, hint }: { label: string; children: ReactNode; 
   );
 }
 
+/** An on/off choice: its words, then the switch (clicking the words flips it too). */
+function SwitchRow({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  const id = useId();
+  return (
+    <div className="flex items-center gap-2 text-meta">
+      <label htmlFor={id} className="flex-1 cursor-pointer">
+        {label}
+      </label>
+      <Switch id={id} checked={checked} onChange={onChange} />
+    </div>
+  );
+}
+
 /**
  * A field for a value the editor may not have. It shows dots until someone
  * asks to see it; typing replaces it, the cross empties it, and an empty field
@@ -368,27 +389,21 @@ function SecretField({
         <span>{label}</span>
         <span className="field-actions">
           {kept && itemId && field && (
-            <button
-              type="button"
-              className="icon-button"
+            <IconButton
+              icon={ICONS.show}
+              size="sm"
               onClick={() => void reveal()}
-              title={t('Zeigen')}
-              aria-label={t('{label} zeigen', { label })}
-            >
-              <Icon name="eye" size={15} />
-            </button>
+              label={t('{label} zeigen', { label })}
+            />
           )}
           {children}
           {!kept && itemId && field && (
-            <button
-              type="button"
-              className="icon-button"
+            <IconButton
+              icon={ICONS.undo}
+              size="sm"
               onClick={() => onChange(keep(true))}
-              title={t('Unverändert lassen')}
-              aria-label={t('{label} unverändert lassen', { label })}
-            >
-              <Icon name="history" size={15} />
-            </button>
+              label={t('{label} unverändert lassen', { label })}
+            />
           )}
         </span>
       </span>
@@ -534,18 +549,18 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
         onCancel={guard.request}
         footer={
           <>
-            <button type="button" className="quiet" data-secondary onClick={guard.request}>
+            <Button variant="ghost" data-secondary onClick={guard.request}>
               {t('Abbrechen')}
-            </button>
+            </Button>
             <span className="spacer" />
-            <button
+            <Button
+              variant="primary"
               type="submit"
               form="item-editor"
-              className="primary"
               disabled={busy || loading || !form.name.trim()}
             >
               {busy ? t('Speichert …') : t('Speichern')}
-            </button>
+            </Button>
           </>
         }
       >
@@ -564,20 +579,18 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
                 <span className="field-label-row">
                   <label htmlFor="editor-name">{t('Name')}</label>
                   <span className="field-actions">
-                    <button
-                      type="button"
-                      className="icon-button star-toggle"
+                    <IconButton
+                      icon={ICONS.favorite}
+                      size="sm"
+                      className={
+                        form.favorite
+                          ? 'star-toggle text-pink! [&_svg]:fill-current'
+                          : 'star-toggle'
+                      }
                       aria-pressed={form.favorite}
-                      title={form.favorite ? t('Favorit entfernen') : t('Zu Favoriten')}
-                      aria-label={t('Favorit')}
+                      label={form.favorite ? t('Favorit entfernen') : t('Zu Favoriten')}
                       onClick={() => set({ favorite: !form.favorite })}
-                    >
-                      <Icon
-                        name="star"
-                        size={16}
-                        className={form.favorite ? 'badge-star' : undefined}
-                      />
-                    </button>
+                    />
                   </span>
                 </span>
                 <input
@@ -612,16 +625,13 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
                     <label htmlFor="editor-username">{t('Benutzername')}</label>
                     {has(uwu, 'masked-addresses') && (
                       <span className="field-actions">
-                        <button
-                          type="button"
-                          className="icon-button"
+                        <IconButton
+                          icon={ICONS.maskedAddress}
+                          size="sm"
                           disabled={masking}
                           onClick={() => void mask()}
-                          title={t('Neue maskierte Adresse')}
-                          aria-label={t('Neue maskierte Adresse')}
-                        >
-                          <Icon name="mask" size={15} />
-                        </button>
+                          label={t('Neue maskierte Adresse')}
+                        />
                       </span>
                     )}
                   </span>
@@ -640,15 +650,12 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
                   itemId={id}
                   field="password"
                 >
-                  <button
-                    type="button"
-                    className="icon-button"
+                  <IconButton
+                    icon={ICONS.generate}
+                    size="sm"
                     onClick={() => setGenerator('password')}
-                    title={t('Passwort-Generator')}
-                    aria-label={t('Passwort-Generator')}
-                  >
-                    <Icon name="dice" size={15} />
-                  </button>
+                    label={t('Passwort-Generator')}
+                  />
                 </SecretField>
                 <SecretField
                   label={t('Einmal-Code (TOTP)')}
@@ -700,29 +707,27 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
                           </option>
                         ))}
                       </select>
-                      <button
-                        type="button"
-                        className="icon-button"
-                        title={t('Entfernen')}
-                        aria-label={t('Adresse {n} entfernen', { n: index + 1 })}
+                      <IconButton
+                        icon={ICONS.delete}
+                        size="sm"
+                        label={t('Adresse {n} entfernen', { n: index + 1 })}
                         onClick={() =>
                           set({ uris: form.uris.filter((row) => row.key !== uri.key) })
                         }
-                      >
-                        <Icon name="trash" size={15} />
-                      </button>
+                      />
                     </div>
                   ))}
-                  <button
-                    type="button"
-                    className="quiet add-row"
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={ICONS.add}
+                    className="justify-self-start"
                     onClick={() =>
                       set({ uris: [...form.uris, { key: key(), uri: '', match: null }] })
                     }
                   >
-                    <Icon name="plus" size={14} />
                     {t('Website hinzufügen')}
-                  </button>
+                  </Button>
                 </fieldset>
               </>
             )}
@@ -901,26 +906,19 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
                         : `field:${form.wifi.from.password}`
                     }
                   >
-                    <button
-                      type="button"
-                      className="icon-button"
+                    <IconButton
+                      icon={ICONS.generate}
+                      size="sm"
                       onClick={() => setGenerator('wifi')}
-                      title={t('Passwort-Generator')}
-                      aria-label={t('Passwort-Generator')}
-                    >
-                      <Icon name="dice" size={15} />
-                    </button>
+                      label={t('Passwort-Generator')}
+                    />
                   </SecretField>
                 )}
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    role="switch"
-                    checked={form.wifi.hidden}
-                    onChange={(e) => setWifi({ hidden: e.target.checked })}
-                  />
-                  <span>{t('Verstecktes Netzwerk (sendet seinen Namen nicht)')}</span>
-                </label>
+                <SwitchRow
+                  label={t('Verstecktes Netzwerk (sendet seinen Namen nicht)')}
+                  checked={form.wifi.hidden}
+                  onChange={(hidden) => setWifi({ hidden })}
+                />
                 {isEnterprise(form.wifi.security) && (
                   <fieldset className="editor-list">
                     <legend>{t('Enterprise (802.1X)')}</legend>
@@ -1023,7 +1021,7 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
                     }
                   />
                   {field.kind === 'linked' ? (
-                    <span className="muted linked-note">
+                    <span className="muted flex-1 text-caption">
                       {t('verknüpft mit einem anderen Feld')}
                     </span>
                   ) : field.kind === 'boolean' ? (
@@ -1079,25 +1077,23 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
                       }
                     />
                   )}
-                  <button
-                    type="button"
-                    className="icon-button"
-                    title={t('Entfernen')}
-                    aria-label={t('Feld {n} entfernen', { n: index + 1 })}
+                  <IconButton
+                    icon={ICONS.delete}
+                    size="sm"
+                    label={t('Feld {n} entfernen', { n: index + 1 })}
                     onClick={() =>
                       set({ fields: form.fields.filter((row) => row.key !== field.key) })
                     }
-                  >
-                    <Icon name="trash" size={15} />
-                  </button>
+                  />
                 </div>
               ))}
-              <div className="add-kinds">
+              <div className="add-kinds flex flex-wrap gap-1">
                 {(['text', 'hidden', 'boolean'] as FieldKind[]).map((fieldKind) => (
-                  <button
+                  <Button
                     key={fieldKind}
-                    type="button"
-                    className="quiet add-row"
+                    variant="ghost"
+                    size="sm"
+                    icon={ICONS.add}
                     onClick={() =>
                       set({
                         fields: [
@@ -1113,24 +1109,19 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
                       })
                     }
                   >
-                    <Icon name="plus" size={14} />
                     {t(FIELD_KIND_LABEL[fieldKind])}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </fieldset>
 
-            <div className="editor-switches">
+            <div className="grid gap-2">
               {remindable && <ReminderEditor value={reminder} onChange={setReminder} />}
-              <label className="check">
-                <input
-                  type="checkbox"
-                  role="switch"
-                  checked={form.reprompt}
-                  onChange={(e) => set({ reprompt: e.target.checked })}
-                />
-                <span>{t('Vor dem Anzeigen nach dem Master-Passwort fragen')}</span>
-              </label>
+              <SwitchRow
+                label={t('Vor dem Anzeigen nach dem Master-Passwort fragen')}
+                checked={form.reprompt}
+                onChange={(reprompt) => set({ reprompt })}
+              />
             </div>
           </form>
         )}
