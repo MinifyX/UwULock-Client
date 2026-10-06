@@ -10,7 +10,13 @@
  * person saw what they clicked; see there.
  */
 
-/** The design's tokens and controls: in the page's shadow roots and in the menu's frame. */
+/**
+ * The design's tokens and controls: in the page's shadow roots and in the menu's frame. The
+ * values are @uwusuite/design's tokens (tokens.css, light and dark), written out: nothing of the
+ * package's CSS reaches a web page. UwU Sans is first in the font list; in a page's shadow root
+ * it isn't loaded (nothing there may fetch), so the system's font stands in. The menu's frame is
+ * an extension page and has it (menu/main.ts).
+ */
 export const BASE_CSS = `
 /* Custom properties are the one thing 'all: initial' doesn't reset. Without '!important' a
    page's rule for our host would win over ':host' and could make the menu see-through. */
@@ -26,9 +32,10 @@ export const BASE_CSS = `
   --uwu-on-pink: #ffffff !important;
   --uwu-pink-ink: #a3154f !important;
   --uwu-pink-tint: #ffe4ef !important;
-  --uwu-alarm: #8e5510 !important;
-  --uwu-shadow: 0 12px 32px rgba(28, 20, 32, 0.18), 0 2px 6px rgba(28, 20, 32, 0.08) !important;
-  --uwu-font: 'Manrope Variable', 'Manrope', 'Segoe UI', system-ui, -apple-system, sans-serif !important;
+  --uwu-warning-ink: #8e5510 !important;
+  --uwu-shadow: 0 12px 32px rgb(28 20 32 / 0.12), 0 2px 8px rgb(28 20 32 / 0.06) !important;
+  --uwu-font: 'UwU Sans', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
+    'Noto Sans', Arial, sans-serif !important;
   color-scheme: light !important;
 }
 @media (prefers-color-scheme: dark) {
@@ -44,8 +51,8 @@ export const BASE_CSS = `
     --uwu-on-pink: #1c1420 !important;
     --uwu-pink-ink: #ffa3c4 !important;
     --uwu-pink-tint: #3a1a2a !important;
-    --uwu-alarm: #d8a25c !important;
-    --uwu-shadow: 0 12px 32px rgba(0, 0, 0, 0.5) !important;
+    --uwu-warning-ink: #d8a25c !important;
+    --uwu-shadow: 0 12px 32px rgb(0 0 0 / 0.45), 0 2px 8px rgb(0 0 0 / 0.3) !important;
     color-scheme: dark !important;
   }
 }
@@ -66,9 +73,9 @@ button {
   cursor: pointer;
 }
 .primary, .secondary {
-  border-radius: 10px;
+  border-radius: 999px;
   padding: 7px 14px;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 13px;
   white-space: nowrap;
 }
@@ -87,7 +94,7 @@ button:disabled { opacity: 0.6; cursor: default; }
 :focus { outline: none; }
 :focus-visible { outline: 2px solid var(--uwu-pink); outline-offset: 2px; }
 .muted { color: var(--uwu-muted); font-size: 13px; }
-.alarm { color: var(--uwu-alarm); }
+.alarm { color: var(--uwu-warning-ink); }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; }
 `;
 

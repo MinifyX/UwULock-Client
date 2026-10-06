@@ -12,7 +12,7 @@
  * frame, as the page shows it, was uncovered too (ui.ts), before it offers anything.
  */
 
-import '@fontsource-variable/manrope';
+import './fonts.css';
 import { BASE_CSS, h, lockGlyph, MIN_SHOW_MS } from '../content/ui';
 import { ext } from '../shared/browser';
 import { setLanguage, t } from '../shared/i18n';
@@ -61,12 +61,12 @@ html, body {
   place-items: center;
   background: var(--uwu-pink-tint);
   color: var(--uwu-pink-ink);
-  font-weight: 800;
+  font-weight: 700;
   font-size: 13px;
 }
 .text { display: grid; min-width: 0; }
 .name, .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.name { font-weight: 700; }
+.name { font-weight: 600; }
 .sub { font-size: 12px; color: var(--uwu-muted); }
 .note { padding: 8px 10px 4px; }
 .message { display: grid; gap: 10px; padding: 8px 10px; }
