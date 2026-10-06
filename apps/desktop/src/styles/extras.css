@@ -19,6 +19,80 @@
   image-rendering: auto;
 }
 
+/* The item editor's icon: its tile, a hint, what can be done (OwnIconPicker). */
+.editor-icon {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--uwu-space-2) var(--uwu-space-3);
+  align-items: center;
+}
+
+.editor-icon > .flex,
+.editor-icon > .library-suggestions {
+  grid-column: 1 / -1;
+}
+
+/* Icons of the library to pick from: picture, name, variant. */
+.library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: var(--uwu-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.library-icon {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+}
+
+.library-icon > button {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: var(--uwu-space-2) 4px;
+  border: 1px solid var(--uwu-hairline);
+  border-radius: var(--uwu-radius-control);
+  background: var(--uwu-surface);
+  color: inherit;
+  cursor: pointer;
+}
+
+.library-icon > button:hover:not(:disabled),
+.library-icon > button:focus-visible {
+  border-color: var(--uwu-pink);
+}
+
+.library-picture {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  color: var(--uwu-muted);
+}
+
+.library-picture img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.library-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--uwu-text-caption);
+}
+
+.library-icon select {
+  width: 100%;
+  font-size: var(--uwu-text-caption);
+}
+
 .tile-wrap {
   position: relative;
   flex: none;

@@ -23,7 +23,14 @@ import {
   SECURITY_LABEL,
 } from '../lib/items';
 import { toast } from '../lib/toast';
-import { createMaskedAddress, has, linkMaskedAddress, useUwu } from '../lib/uwu';
+import {
+  applyIconChoice,
+  createMaskedAddress,
+  has,
+  linkMaskedAddress,
+  useUwu,
+  type IconChoice,
+} from '../lib/uwu';
 import {
   EAP_METHODS,
   isEnterprise,
@@ -38,6 +45,7 @@ import { GeneratorDialog } from './GeneratorDialog';
 import { reminderDraft, ReminderEditor, saveReminder, type ReminderDraft } from './ItemExtras';
 import { Modal } from './Modal';
 import { NyuBusy, playNyu } from './nyu/stage';
+import { OwnIconEditor } from './OwnIconPicker';
 
 /**
  * A value the editor may not have: a password, a card number, a hidden field.
@@ -450,6 +458,8 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
   const [reminderInitial, setReminderInitial] = useState(() =>
     JSON.stringify(reminderDraft(reminderBefore)),
   );
+  /** An own icon chosen here, set once the item is saved. */
+  const [icon, setIcon] = useState<IconChoice>(null);
 
   useEffect(() => {
     if (!summary) return;
@@ -483,8 +493,11 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
       wifi: { ...current.wifi, ssid },
     }));
   const dirty = useMemo(
-    () => JSON.stringify(form) !== initial || JSON.stringify(reminder) !== reminderInitial,
-    [form, initial, reminder, reminderInitial],
+    () =>
+      JSON.stringify(form) !== initial ||
+      JSON.stringify(reminder) !== reminderInitial ||
+      icon !== null,
+    [form, initial, reminder, reminderInitial, icon],
   );
   const guard = useCloseGuard(dirty && !busy, onClose);
 
@@ -502,6 +515,10 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
       // The item is saved either way; a reminder that didn't take says so.
       if (remindable)
         await saveReminder(saved, reminder, reminderBefore).catch((e) => toastError(e));
+      if (icon) {
+        await applyIconChoice(saved, icon).catch((e) => toastError(e));
+        setIcon(null);
+      }
       setInitial(JSON.stringify(form));
       setReminderInitial(JSON.stringify(reminder));
       toast(id ? t('Gespeichert ✧') : t('Angelegt ✧'));
@@ -1114,6 +1131,19 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
                 ))}
               </div>
             </fieldset>
+
+            {has(uwu, 'own-icons') && (
+              <fieldset className="editor-list">
+                <legend>{t('Symbol')}</legend>
+                <OwnIconEditor
+                  summary={summary}
+                  name={form.name}
+                  uris={form.uris.map((row) => row.uri)}
+                  value={icon}
+                  onChange={setIcon}
+                />
+              </fieldset>
+            )}
 
             <div className="grid gap-2">
               {remindable && <ReminderEditor value={reminder} onChange={setReminder} />}

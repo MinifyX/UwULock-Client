@@ -35,6 +35,7 @@ import {
 } from '../lib/uwu';
 import { ContextMenu } from './ContextMenu';
 import { Modal } from './Modal';
+import { LibraryDialog } from './OwnIconPicker';
 import { NyuBusy, playNyu } from './nyu/stage';
 
 // ── Names of values ────────────────────────────────────────
@@ -79,14 +80,16 @@ function Card({ title, children }: { title?: ReactNode; children: ReactNode }) {
 // ── Own icon ───────────────────────────────────────────────
 
 /**
- * The button on an item's tile: pick a picture, take the icon from a device
- * on the local network, or remove the own icon.
+ * The button on an item's tile: pick a picture, an icon from the server's
+ * library, take the icon from a device on the local network, or remove the
+ * own icon. The item editor offers the same (`OwnIconEditor`).
  */
 export function IconMenu({ summary, detail }: { summary: ItemSummary; detail: Detail | null }) {
   useLanguage();
   const uwu = useUwu();
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [library, setLibrary] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   if (!has(uwu, 'own-icons') || summary.deleted) return null;
   const hasOwn = summary.id in uwu.ownIcons;
@@ -145,6 +148,15 @@ export function IconMenu({ summary, detail }: { summary: ItemSummary; detail: De
               icon: ICONS.upload,
               onSelect: () => input.current?.click(),
             },
+            ...(has(uwu, 'icon-library')
+              ? [
+                  {
+                    label: t('Aus der Bibliothek …'),
+                    icon: ICONS.search,
+                    onSelect: () => setLibrary(true),
+                  },
+                ]
+              : []),
             ...(local
               ? [
                   {
@@ -167,6 +179,16 @@ export function IconMenu({ summary, detail }: { summary: ItemSummary; detail: De
                 ]
               : []),
           ]}
+        />
+      )}
+      {library && (
+        <LibraryDialog
+          initial={summary.name}
+          onCancel={() => setLibrary(false)}
+          onPick={(png) => {
+            setLibrary(false);
+            void run(() => setOwnIcon(summary.id, png), t('Symbol gespeichert ✧'));
+          }}
         />
       )}
     </>

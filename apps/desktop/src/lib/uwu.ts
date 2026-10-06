@@ -10,6 +10,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useSyncExternalStore } from 'react';
 import type { Organization, Status } from './api';
+import type { IconLibrary, LibraryIcon } from './iconLibrary';
 
 export type SendDomain = { id: string; url: string };
 
@@ -53,6 +54,7 @@ export const EMPTY_STATUS: UwuStatus = {
 export type Feature =
   | 'icons'
   | 'own-icons'
+  | 'icon-library'
   | 'versions'
   | 'travel-mode'
   | 'reminders'
@@ -90,7 +92,10 @@ function start() {
   // Locking, unlocking and switching accounts change whose status it is.
   // Locked, the page keeps no icon: own icons were encrypted.
   void listen<Status>('vault-status', ({ payload }) => {
-    if (payload.state !== 'unlocked') forgetIcons();
+    if (payload.state !== 'unlocked') {
+      forgetIcons();
+      library = null;
+    }
     refreshUwu();
   });
 }
@@ -159,9 +164,49 @@ export function useItemIcon(id: string): string | undefined {
   return icons.get(id);
 }
 
+/** Seals a PNG `data:` URL as the item's own icon (`iconFromFile`, {@link libraryIcon}, {@link deviceIcon}). */
 export const setOwnIcon = (id: string, png: string) => invoke<void>('set_own_icon', { id, png });
+/** The icon of the device at one of the item's local addresses, stored as its own icon. */
 export const fetchDeviceIcon = (id: string) => invoke<void>('fetch_device_icon', { id });
 export const deleteOwnIcon = (id: string) => invoke<void>('delete_own_icon', { id });
+
+/**
+ * What an editor chose for an item's own icon, applied once the item is
+ * saved (a new one has no id before): a PNG `data:` URL — from a file
+ * (`iconFromFile`), the library ({@link libraryIcon}) or a device
+ * ({@link deviceIcon}) — or `'remove'`. `null`: as it is.
+ */
+export type IconChoice = { png: string } | 'remove' | null;
+
+export async function applyIconChoice(id: string, choice: IconChoice): Promise<void> {
+  if (choice === 'remove') await deleteOwnIcon(id);
+  else if (choice) await setOwnIcon(id, choice.png);
+}
+
+/**
+ * The icon of a device on the local network at `uri`, as a PNG `data:` URL:
+ * fetched by this device, for an item that isn't saved yet too.
+ */
+export const deviceIcon = (uri: string) => invoke<string>('device_icon', { uri });
+
+let library: Promise<IconLibrary> | null = null;
+
+/**
+ * The icon library's index as the server mirrors it (feature `icon-library`);
+ * fetched once, again after a failure. Search it with `searchLibrary` and
+ * `suggestLibrary` (`iconLibrary.ts`).
+ */
+export function iconLibrary(): Promise<IconLibrary> {
+  library ??= invoke<IconLibrary>('icon_library').catch((error: unknown) => {
+    library = null;
+    throw error;
+  });
+  return library;
+}
+
+/** A library icon as a PNG `data:` URL, fetched through the server: for a preview, and as the own icon. */
+export const libraryIcon = (icon: LibraryIcon, variant = 'default') =>
+  invoke<string>('library_icon', { source: icon.source, iconId: icon.id, variant });
 
 /** Whether a host is on the local network: its icon comes from the device. */
 export function isLocalHost(host: string | null | undefined): boolean {
