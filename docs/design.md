@@ -66,8 +66,21 @@ their own `legacy/` folders until they move to the package too.
   700 px (the package's `phone:` breakpoint): the list, the item over it, the
   folders in a drawer. On a phone the title bar is an app bar without window
   buttons, and iOS keeps out of the notch and the home indicator.
-- **macOS** keeps the custom title bar for now; the native title bar, menu bar
-  (`setMacMenu()`), ⌘W and the quit guard come next (package `docs/macos.md`).
+- **macOS** (package `docs/macos.md`): the system's title bar with the
+  traffic lights (`tauri.macos.conf.json`), and the title bar's actions in
+  the menu bar (`setMacMenu()` in `App.tsx`): Einstellungen … on ⌘,, a
+  **Tresor** menu with the generator (⌘G) and Sperren (⌘L), search (⌘F)
+  under Bearbeiten. Travel mode, a pill in the title bar elsewhere, shows in
+  the window's title and opens from the app menu. ⌘W hides the window and a
+  click on the Dock icon brings it back; auto-lock keeps counting meanwhile.
+  ⌘Q, the Dock and logging out go through the `uwu-macos` quit guard. Tooltips
+  write shortcuts the platform's way (`lib/shortcuts.ts`, `withShortcut()`).
+- **App icons** come from `brand/` through the package's tool:
+  `pnpm --filter @uwulock/desktop icons` (`uwu-icons --mobile`), which sets
+  the Dock icon into Apple's grid and writes the iOS set (CI copies it into
+  the Xcode project). Android's adaptive launcher icon, with its themed layer,
+  is kept by hand in `gen/android`; the extension's icons are in
+  `apps/extension/public/icons`.
 
 ## Nyu, the padlock cat
 

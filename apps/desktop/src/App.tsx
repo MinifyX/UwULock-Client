@@ -17,11 +17,13 @@ import { VaultScreen } from './components/VaultScreen';
 import {
   installUpdate,
   lock,
+  openProjectPage,
   setSecurity,
   setUpdateChannel,
   touch,
   updateStatus,
   vaultStatus,
+  type ProjectPage,
   type Status,
   type UpdateInfo,
 } from './lib/api';
@@ -138,6 +140,8 @@ export function App() {
     return () => void Promise.all(stops).then((list) => list.forEach((stop) => stop()));
   }, []);
 
+  const help = (page: ProjectPage) => void openProjectPage(page).catch(() => undefined);
+
   // The title bar's actions, in the menu bar. It is set again whenever an
   // entry changes; the keyboard handler below stays for the other systems
   // (on a Mac both may see a shortcut, and every action here is idempotent).
@@ -177,6 +181,13 @@ export function App() {
             },
           ],
         },
+      ],
+      help: [
+        { text: t('Versionen'), action: () => help('releases') },
+        { text: t('Quellcode auf GitHub'), action: () => help('source') },
+        { text: t('Problem melden'), action: () => help('issues') },
+        'separator',
+        { text: 'UwUSuite', action: () => help('suite') },
       ],
     }).catch(() => undefined);
     // The handlers only use setters and the search field's ref.

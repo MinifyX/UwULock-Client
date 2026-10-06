@@ -643,11 +643,16 @@ input[type='checkbox'][role='switch']:checked::before {
   height: 100%;
 }
 
-/* Title bar and body. */
+/* Title bar and body. On macOS there is no title bar of the app's own (the
+   system draws it), so the stage is the only row. */
 .background {
   display: grid;
   grid-template-rows: auto 1fr;
   height: 100%;
+}
+
+.background > .stage:only-child {
+  grid-row: 1 / -1;
 }
 
 /* The screen under the title bar: login, lock or the vault. */
