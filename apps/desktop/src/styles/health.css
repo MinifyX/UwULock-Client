@@ -19,26 +19,17 @@
 .report-pane .detail-tools {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--uwu-space-2);
   margin-left: auto;
-}
-
-.report-pane .detail-tools button,
-.review-actions button,
-.review-nav button,
-.review-problem button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
 
 .report-lead {
   margin: 0;
-  padding: 2px 16px 8px;
+  padding: 2px var(--uwu-space-4) var(--uwu-space-2);
 }
 
 .report-source {
-  margin: -6px 4px 0;
+  margin: -6px var(--uwu-space-1) 0;
 }
 
 .report .detail-card .detail-row:first-of-type {
@@ -61,32 +52,32 @@
 .review-card {
   position: relative;
   display: grid;
-  gap: 16px;
-  padding: 20px;
-  border: 1px solid var(--uwu-border);
+  gap: var(--uwu-space-4);
+  padding: var(--uwu-space-5);
+  border: 1px solid var(--uwu-hairline);
   border-radius: var(--uwu-radius-card);
   background: var(--uwu-surface);
-  box-shadow: 0 16px 40px -20px rgba(20, 16, 22, 0.45);
-  transition: transform 180ms ease;
+  transition: transform var(--uwu-duration-base) var(--uwu-ease-out);
 }
 
+/* The next card peeks out below: the stack has more. */
 .review-card-behind {
   position: absolute;
-  inset: 8px 12px -8px;
-  box-shadow: none;
+  inset: var(--uwu-space-2) var(--uwu-space-3) calc(-1 * var(--uwu-space-2));
+  border-color: var(--uwu-border);
   opacity: 0.6;
 }
 
 .review-card-head {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--uwu-space-3);
   min-width: 0;
 }
 
 .review-card-head h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--uwu-text-section);
   font-weight: 700;
   overflow-wrap: anywhere;
 }
@@ -98,7 +89,7 @@
 
 .review-problems {
   display: grid;
-  gap: 8px;
+  gap: var(--uwu-space-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -107,8 +98,8 @@
 .review-problem {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
+  gap: var(--uwu-space-3);
+  padding: var(--uwu-space-2) var(--uwu-space-3);
   border-radius: var(--uwu-radius-control);
   background: var(--uwu-pink-tint);
 }
@@ -116,6 +107,10 @@
 .review-problem > svg {
   flex: none;
   color: var(--uwu-pink-ink);
+}
+
+.review-problem .detail-text {
+  flex: 1;
 }
 
 .review-problem .detail-label {
@@ -132,14 +127,18 @@
   text-decoration: line-through;
 }
 
+.review-problem[data-state='ignored'] > svg {
+  color: var(--uwu-muted);
+}
+
 .review-problem[data-state='solved'] > svg {
-  color: var(--uwu-online);
+  color: var(--uwu-success-ink);
 }
 
 .review-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--uwu-space-2);
 }
 
 .review-nav {
@@ -147,7 +146,7 @@
   justify-content: space-between;
 }
 
-@media (max-width: 700px) {
+@media (max-width: 699px) {
   .report-pane {
     grid-area: 1 / 1;
   }
@@ -158,13 +157,12 @@
   }
 
   .review-card {
-    padding: 16px;
+    padding: var(--uwu-space-4);
   }
 
   /* Each action a full-width row: easy to hit with a thumb. */
   .review-actions > * {
     flex: 1 1 100%;
-    justify-content: center;
     min-height: 44px;
   }
 

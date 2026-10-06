@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Button, ICONS, Segmented, Switch } from '@uwusuite/design';
+import { useCallback, useEffect, useId, useState } from 'react';
 import { copyGenerated, generatePassword, type Generated, type GeneratorOptions } from '../lib/api';
 import { toastError } from '../lib/errors';
 import { copiedText } from '../lib/format';
@@ -21,7 +22,6 @@ import {
   type MaskedAddress,
   type MaskedConnection,
 } from '../lib/uwu';
-import { Icon } from './Icon';
 import { Colored } from './ItemDetail';
 import { copyAddress, MaskedNotConnected } from './MaskedDialog';
 import { Modal } from './Modal';
@@ -83,6 +83,7 @@ export function GeneratorDialog({
   const [mode, setMode] = useState<'password' | 'masked'>('password');
   const [options, setOptions] = useState<GeneratorOptions>(loadOptions);
   const [result, setResult] = useState<Generated | null>(null);
+  const ambiguousId = useId();
 
   const roll = useCallback(async (next: GeneratorOptions) => {
     try {
@@ -134,7 +135,7 @@ export function GeneratorDialog({
         footer={
           <>
             <span className="spacer" />
-            <button onClick={onClose}>{t('Schließen')}</button>
+            <Button onClick={onClose}>{t('Schließen')}</Button>
           </>
         }
       >
@@ -149,34 +150,33 @@ export function GeneratorDialog({
       onCancel={onClose}
       footer={
         <>
-          <button className="quiet" onClick={onClose}>
+          <Button variant="ghost" onClick={onClose}>
             {t('Schließen')}
-          </button>
+          </Button>
           <span className="spacer" />
-          <button
+          <Button
+            icon={ICONS.generate}
             onClick={() => {
               void roll(options);
               playNyu('generated');
             }}
           >
-            <Icon name="dice" size={15} />
             {t('Neu würfeln')}
-          </button>
+          </Button>
           {onUse ? (
-            <button
-              className="primary"
+            <Button
+              variant="primary"
+              icon={ICONS.done}
               data-autofocus
               disabled={!result}
               onClick={() => result && onUse(result.password)}
             >
-              <Icon name="check" size={15} />
               {t('Übernehmen')}
-            </button>
+            </Button>
           ) : (
-            <button className="primary" data-autofocus onClick={() => void copy()}>
-              <Icon name="copy" size={15} />
+            <Button variant="primary" icon={ICONS.copy} data-autofocus onClick={() => void copy()}>
               {t('Kopieren')}
-            </button>
+            </Button>
           )}
         </>
       }
@@ -247,15 +247,16 @@ export function GeneratorDialog({
               </label>
             ))}
         </fieldset>
-        <label className="check">
-          <input
-            type="checkbox"
-            role="switch"
+        <div className="flex items-center justify-between gap-3 text-meta">
+          <label htmlFor={ambiguousId} className="cursor-pointer">
+            {t('Verwechselbare Zeichen weglassen (l, 1, I, O, 0)')}
+          </label>
+          <Switch
+            id={ambiguousId}
             checked={options.avoidAmbiguous}
-            onChange={(e) => set({ avoidAmbiguous: e.target.checked })}
+            onChange={(on) => set({ avoidAmbiguous: on })}
           />
-          <span>{t('Verwechselbare Zeichen weglassen (l, 1, I, O, 0)')}</span>
-        </label>
+        </div>
       </div>
     </Modal>
   );
@@ -270,14 +271,16 @@ function ModeSwitch({
 }) {
   useLanguage();
   return (
-    <div className="segmented" role="radiogroup" aria-label={t('Was erzeugt wird')}>
-      <button role="radio" aria-checked={mode === 'password'} onClick={() => onChange('password')}>
-        {t('Passwort')}
-      </button>
-      <button role="radio" aria-checked={mode === 'masked'} onClick={() => onChange('masked')}>
-        {t('Maskierte Adresse')}
-      </button>
-    </div>
+    <Segmented
+      label={t('Was erzeugt wird')}
+      value={mode}
+      onChange={onChange}
+      className="w-full [&>button]:flex-1"
+      options={[
+        { value: 'password', label: t('Passwort') },
+        { value: 'masked', label: t('Maskierte Adresse') },
+      ]}
+    />
   );
 }
 
@@ -349,16 +352,19 @@ function MaskedGenerator() {
       </label>
       <div className="form-actions">
         {made && (
-          <button onClick={() => void copyAddress(made.email)}>
-            <Icon name="copy" size={15} />
+          <Button icon={ICONS.copy} onClick={() => void copyAddress(made.email)}>
             {t('Kopieren')}
-          </button>
+          </Button>
         )}
         <span className="spacer" />
-        <button className="primary" disabled={busy} onClick={() => void create()}>
-          <Icon name="mask" size={15} />
+        <Button
+          variant="primary"
+          icon={ICONS.maskedAddress}
+          disabled={busy}
+          onClick={() => void create()}
+        >
           {made ? t('Noch eine') : t('Adresse erstellen')}
-        </button>
+        </Button>
       </div>
     </div>
   );
