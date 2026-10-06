@@ -1,6 +1,6 @@
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { Icon, ICONS, TitleBarAction, Toaster, UwuLabels } from '@uwusuite/design';
+import { Icon, ICONS, TitleBarAction, Toaster, useDeviceKind, UwuLabels } from '@uwusuite/design';
 import { hideWindowOnClose, onMacQuit, setMacMenu } from '@uwusuite/design/tauri';
 import { useEffect, useRef, useState } from 'react';
 import { ExtrasKeyNotice } from './components/ExtrasKeyNotice';
@@ -14,6 +14,7 @@ import { TitleBar } from './components/TitleBar';
 import { TravelBadge, TravelDialog, travelLabel, useTravel } from './components/TravelBadge';
 import { UpdateHint } from './components/UpdateHint';
 import { VaultScreen } from './components/VaultScreen';
+import { MobileApp } from './mobile/MobileApp';
 import {
   installUpdate,
   lock,
@@ -53,6 +54,9 @@ export function App() {
   const [adding, setAdding] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const travel = useTravel();
+  // Phones and iPads get their own layout once the vault is open (src/mobile);
+  // locking, logging in and the desktop keep the window's.
+  const touchLayout = useDeviceKind() !== 'desktop';
   /** macOS: the travel mode dialog, opened from the menu bar. */
   const [travelOpen, setTravelOpen] = useState(false);
 
@@ -119,6 +123,7 @@ export function App() {
   }, []);
 
   const unlocked = status?.state === 'unlocked';
+  const mobileVault = touchLayout && unlocked && !adding && !status.sessionExpired;
   // The dialogs are native <dialog>s: the page behind them is inert while they are open.
   const modalOpen = Boolean(settingsOpen || generator);
 
@@ -208,6 +213,8 @@ export function App() {
       const mod = event.ctrlKey || event.metaKey;
       if (!mod || event.altKey) return;
       const key = event.key.toLowerCase();
+      // The phone and iPad layout has its own keys (⌘F, ⌘N) and its settings tab.
+      if (mobileVault && key !== 'l') return;
       if (key === ',') {
         event.preventDefault();
         openSettings();
@@ -229,7 +236,19 @@ export function App() {
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [modalOpen, unlocked]);
+  }, [modalOpen, unlocked, mobileVault]);
+
+  if (mobileVault && status)
+    return (
+      <UwuLabels labels={language}>
+        <div className="m-root">
+          <MobileApp status={status} onAddAccount={() => setAdding(true)} />
+        </div>
+        <NyuStage />
+        <ExtrasKeyNotice />
+        <PasskeyRequestDialog />
+      </UwuLabels>
+    );
 
   return (
     <UwuLabels labels={language}>

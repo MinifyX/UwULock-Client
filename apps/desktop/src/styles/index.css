@@ -27,6 +27,9 @@
 @import './suite.css' layer(components);
 @import '../components/nyu/nyu.css' layer(components);
 @import './phone.css' layer(components);
+@import './mobile.css' layer(components);
+@import './mobile-extras.css' layer(components);
+@import './mobile-settings.css' layer(components);
 
 /*
  * Toasts sit at the top on a phone (the package's Toaster, 8 px from the

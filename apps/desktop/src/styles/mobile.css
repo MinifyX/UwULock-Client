@@ -1,0 +1,1305 @@
+/*
+ * UwULock's own parts of the phone and iPad layout (src/mobile/), on top of
+ * @uwusuite/design's mobile.css: item tiles in lists, the hero of an item,
+ * input rows, the switch, the generator card, the icon library, the account
+ * rows. Everything sits under `.m-app` (the MobileShell), so the desktop
+ * never sees it.
+ */
+
+/* ── Frame ───────────────────────────────────────────────── */
+
+.m-root {
+  position: fixed;
+  inset: 0;
+  height: 100dvh;
+}
+
+.m-app {
+  height: 100%;
+}
+
+.m-tabs,
+.m-tab {
+  position: absolute;
+  inset: 0;
+}
+
+.m-tab[hidden] {
+  display: none;
+}
+
+.m-layer {
+  position: absolute;
+  inset: 0;
+  /* Each page its own stack, so a Fab never shows over the page pushed on top. */
+  isolation: isolate;
+}
+
+/* Pages further down the stack stay mounted (their scroll position too) but
+   are not drawn; the one right below shows during the iOS edge swipe. */
+.m-layer[data-below='far'] {
+  visibility: hidden;
+}
+
+.m-tabs[data-searching] {
+  visibility: hidden;
+}
+
+/* ── Tiles in rows ───────────────────────────────────────── */
+
+.m-app .uwu-row .item-tile,
+.m-app .m-glyph-tile {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  font-size: 18px;
+}
+
+.m-app .uwu-row-icon:has(.item-tile, .m-glyph-tile) {
+  width: 40px;
+  height: 40px;
+  background: none;
+}
+
+.m-app .uwu-list-body > * + :has(.item-tile, .m-glyph-tile)::before {
+  left: 72px;
+}
+
+.m-glyph-tile {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: var(--uwu-pink-tint);
+  color: var(--uwu-pink-ink);
+}
+
+.m-glyph-tile svg {
+  width: 21px;
+  height: 21px;
+}
+
+.m-glyph-tile[data-size='large'] {
+  width: 76px;
+  height: 76px;
+  border-radius: 20px;
+}
+
+.m-glyph-tile[data-size='large'] svg {
+  width: 36px;
+  height: 36px;
+}
+
+.m-app[data-platform='android'] .uwu-row .item-tile,
+.m-app[data-platform='android'] .uwu-row .m-glyph-tile {
+  border-radius: 50%;
+}
+
+.m-row-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.m-row-title > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.m-row-title svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.m-row-title .m-star {
+  color: var(--uwu-warning-ink);
+  fill: currentColor;
+}
+
+.m-mark {
+  border-radius: 3px;
+  background: var(--uwu-pink-tint-strong);
+  color: inherit;
+}
+
+.m-count-badge {
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 11px;
+  background: var(--uwu-pink-solid);
+  color: var(--uwu-on-pink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.m-list-action {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 15px;
+  color: var(--uwu-pink-solid);
+}
+
+.m-list-action svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* ── Hero ────────────────────────────────────────────────── */
+
+.m-hero {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 4px 20px 6px;
+  text-align: center;
+}
+
+.m-hero h2 {
+  margin: 4px 0 0;
+  font-size: 26px;
+  font-weight: 750;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.m-hero-sub {
+  margin: 0;
+  color: var(--uwu-muted);
+  font-size: 15px;
+}
+
+.m-hero .item-tile {
+  width: 76px;
+  height: 76px;
+  border-radius: 20px;
+  font-size: 34px;
+}
+
+.m-hero .item-tile svg {
+  width: 36px;
+  height: 36px;
+}
+
+.m-app[data-platform='android'] .m-hero .item-tile,
+.m-app[data-platform='android'] .m-hero .m-glyph-tile {
+  border-radius: 24px;
+}
+
+.m-hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.m-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: var(--uwu-surface);
+  color: var(--uwu-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.m-app[data-platform='android'] .m-chip {
+  background: var(--uwu-m3-container);
+}
+
+.m-chip svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.m-chip[data-tone='fav'] {
+  background: var(--uwu-warning-tint);
+  color: var(--uwu-warning-ink);
+}
+
+.m-chip[data-tone='fav'] svg {
+  fill: currentColor;
+}
+
+.m-chip[data-tone='warn'] {
+  background: var(--uwu-warning-tint);
+  color: var(--uwu-warning-ink);
+}
+
+.m-state {
+  flex: none;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--uwu-success-tint);
+  color: var(--uwu-success-ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.m-state[data-state='off'] {
+  background: var(--uwu-elevated);
+  color: var(--uwu-muted);
+}
+
+.m-state[data-state='gone'] {
+  background: var(--uwu-danger-tint);
+  color: var(--uwu-danger-ink);
+}
+
+.m-state[data-state='new'] {
+  background: var(--uwu-pink-solid);
+  color: var(--uwu-on-pink);
+}
+
+/* ── Values, fields ──────────────────────────────────────── */
+
+.m-rowbtn {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 19px;
+  background: var(--uwu-pink-tint) !important;
+  color: var(--uwu-pink-ink) !important;
+}
+
+.m-rowbtn svg {
+  width: 19px;
+  height: 19px;
+}
+
+.m-rowbtn[aria-pressed='true'] {
+  background: var(--uwu-pink-solid) !important;
+  color: var(--uwu-on-pink) !important;
+}
+
+.m-rowbtn:disabled {
+  opacity: 0.4;
+}
+
+.m-masked {
+  letter-spacing: 0.08em;
+}
+
+.m-code {
+  font-family: var(--uwu-mono);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.m-ring {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--uwu-pink-solid) calc(var(--p, 1) * 1turn),
+    var(--uwu-pink-tint) 0
+  );
+  color: var(--uwu-pink-ink);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.m-ring::before {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--uwu-surface);
+}
+
+.m-app[data-platform='android'] .m-ring::before {
+  background: var(--uwu-m3-container);
+}
+
+.m-ring span {
+  position: relative;
+}
+
+.m-ring[data-soon] {
+  --uwu-pink-solid: var(--uwu-danger-ink);
+}
+
+.m-note {
+  padding: 14px 18px;
+  background: var(--uwu-surface);
+  font-size: 16px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.m-secret-block {
+  margin: 0;
+  font-family: var(--uwu-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.m-field {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  padding: 10px 18px;
+  background: var(--uwu-surface);
+}
+
+.m-field label {
+  color: var(--uwu-muted);
+  font-size: 13px;
+}
+
+.m-field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.m-field :is(input, textarea, select) {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--uwu-ink);
+  font: inherit;
+  font-size: 17px;
+  outline: none;
+}
+
+.m-field textarea {
+  resize: none;
+  line-height: 1.4;
+}
+
+.m-field[data-mono] :is(input, textarea) {
+  font-family: var(--uwu-mono);
+  font-size: 16px;
+}
+
+.m-field :is(input, textarea)::placeholder {
+  color: var(--uwu-faint);
+}
+
+.m-app[data-platform='android']
+  :is(.m-field, .m-note, .m-linkbox, .m-icon-head, .m-slider, .m-account) {
+  background: var(--uwu-m3-container);
+}
+
+/* Inside a sheet the cards sit one tone higher on Android. */
+.uwu-sheet[data-platform='android'] :is(.m-field, .m-note, .m-icon-head) {
+  background: var(--uwu-m3-container-high);
+}
+
+.m-error {
+  margin: 10px 32px 0;
+  color: var(--uwu-danger-ink);
+  font-size: 14px;
+}
+
+/* ── Switch ──────────────────────────────────────────────── */
+
+.m-switch {
+  position: relative;
+  flex: none;
+  width: 51px;
+  height: 31px;
+  border-radius: 16px !important;
+  background: var(--uwu-hairline) !important;
+  transition: background 0.2s;
+}
+
+.m-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.25);
+  transition: translate 0.2s;
+}
+
+.m-switch[aria-checked='true'] {
+  background: var(--uwu-pink-solid) !important;
+}
+
+.m-switch[aria-checked='true']::after {
+  translate: 20px 0;
+}
+
+.m-switch:disabled {
+  opacity: 0.45;
+}
+
+.m-switch:focus-visible {
+  outline: none;
+  box-shadow: var(--uwu-focus);
+}
+
+.m-app[data-platform='android'] .m-switch {
+  width: 52px;
+  height: 32px;
+  border: 2px solid var(--uwu-muted) !important;
+  background: var(--uwu-m3-container-high) !important;
+}
+
+.m-app[data-platform='android'] .m-switch::after {
+  top: 6px;
+  left: 6px;
+  width: 16px;
+  height: 16px;
+  background: var(--uwu-muted);
+  box-shadow: none;
+  transition: all 0.2s;
+}
+
+.m-app[data-platform='android'] .m-switch[aria-checked='true'] {
+  border-color: var(--uwu-pink-solid) !important;
+  background: var(--uwu-pink-solid) !important;
+}
+
+.m-app[data-platform='android'] .m-switch[aria-checked='true']::after {
+  top: 2px;
+  left: 2px;
+  width: 24px;
+  height: 24px;
+  translate: 20px 0;
+  background: var(--uwu-on-pink);
+}
+
+/* ── Buttons, link box, segmented ────────────────────────── */
+
+.m-bigbtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: calc(100% - 32px);
+  height: 52px;
+  margin: 0 16px;
+  border-radius: 26px !important;
+  background: var(--uwu-pink-solid) !important;
+  color: var(--uwu-on-pink) !important;
+  font-weight: 650;
+}
+
+.m-bigbtn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.m-bigbtn[data-soft] {
+  background: var(--uwu-surface) !important;
+  color: var(--uwu-pink-solid) !important;
+}
+
+.m-bigbtn[data-danger] {
+  background: var(--uwu-danger-ink) !important;
+  color: var(--uwu-surface) !important;
+}
+
+.m-bigbtn:disabled {
+  opacity: 0.5;
+}
+
+.m-app[data-platform='android'] .m-bigbtn[data-soft] {
+  background: var(--uwu-m3-container) !important;
+}
+
+.m-buttons {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.m-linkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 12px 12px 18px;
+  background: var(--uwu-surface);
+}
+
+.m-linkbox-url {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--uwu-pink-ink);
+  font-family: var(--uwu-mono);
+  font-size: 14px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.m-segmented {
+  display: flex;
+  margin: 18px 16px 0;
+  padding: 3px;
+  border-radius: 22px;
+  background: var(--uwu-glass-selected, var(--uwu-hairline));
+}
+
+.m-segmented button {
+  flex: 1;
+  height: 38px;
+  border-radius: 19px !important;
+  color: var(--uwu-muted) !important;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.m-segmented button[aria-pressed='true'] {
+  background: var(--uwu-surface) !important;
+  color: var(--uwu-ink) !important;
+  box-shadow: 0 2px 8px -2px var(--uwu-glass-shade);
+}
+
+.m-app[data-platform='android'] .m-segmented {
+  padding: 0;
+  border: 1px solid var(--uwu-muted);
+  background: none;
+}
+
+.m-app[data-platform='android'] .m-segmented button {
+  border-radius: 0 !important;
+}
+
+.m-app[data-platform='android'] .m-segmented button + button {
+  border-left: 1px solid var(--uwu-muted);
+}
+
+.m-app[data-platform='android'] .m-segmented button:first-child {
+  border-radius: 20px 0 0 20px !important;
+}
+
+.m-app[data-platform='android'] .m-segmented button:last-child {
+  border-radius: 0 20px 20px 0 !important;
+}
+
+.m-app[data-platform='android'] .m-segmented button[aria-pressed='true'] {
+  background: var(--uwu-m3-indicator) !important;
+  box-shadow: none;
+}
+
+.m-empty {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 40px 24px;
+  color: var(--uwu-muted);
+  text-align: center;
+  font-size: 15px;
+}
+
+.m-empty b {
+  color: var(--uwu-ink);
+  font-size: 19px;
+}
+
+.m-footnote {
+  padding: 22px 32px 0;
+  color: var(--uwu-muted);
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.m-gap {
+  height: 22px;
+}
+
+.m-check {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--uwu-pink-solid);
+}
+
+.m-confirm-text {
+  margin: 4px 24px 18px;
+  color: var(--uwu-muted);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.m-confirm-actions {
+  display: grid;
+  gap: 10px;
+  padding-bottom: 20px;
+}
+
+/* ── Accounts ────────────────────────────────────────────── */
+
+.m-account {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px 18px;
+  background: var(--uwu-surface);
+  text-align: left;
+}
+
+.m-avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: linear-gradient(140deg, #ff6aa2, #c8165f);
+  color: #fff;
+  font-size: 22px;
+  font-weight: 750;
+}
+
+.m-avatar[data-size='small'] {
+  width: 44px;
+  height: 44px;
+  font-size: 17px;
+}
+
+.m-avatar[data-alt] {
+  background: linear-gradient(140deg, #8b7cf6, #4c3bb8);
+}
+
+.m-avatar-button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(140deg, #ff6aa2, #c8165f) !important;
+  color: #fff !important;
+  font-size: 16px;
+  font-weight: 750;
+}
+
+.m-app[data-platform='android'] .m-avatar-button {
+  width: 38px;
+  height: 38px;
+  font-size: 14px;
+}
+
+/* ── Edit sheet ──────────────────────────────────────────── */
+
+.m-icon-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+  background: var(--uwu-surface);
+}
+
+.m-icon-head .item-tile,
+.m-icon-head .m-glyph-tile {
+  width: 60px;
+  height: 60px;
+  border-radius: 16px;
+  font-size: 26px;
+}
+
+.m-icon-head .item-tile svg,
+.m-icon-head .m-glyph-tile svg {
+  width: 30px;
+  height: 30px;
+}
+
+.m-icon-head-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.m-icon-head-text b {
+  font-weight: 650;
+}
+
+.m-icon-head-text span {
+  color: var(--uwu-muted);
+  font-size: 15px;
+}
+
+.m-pill {
+  flex: none;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 17px !important;
+  background: var(--uwu-pink-tint) !important;
+  color: var(--uwu-pink-ink) !important;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.m-pill:disabled {
+  opacity: 0.5;
+}
+
+/* The icon library: five tiles per row. */
+.m-library {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
+  gap: 14px 8px;
+  padding: 16px;
+  background: var(--uwu-surface);
+}
+
+.m-app[data-platform='android'] .m-library {
+  background: var(--uwu-m3-container);
+}
+
+.m-library button {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--uwu-muted);
+  font-size: 11px;
+}
+
+.m-library button span {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.m-library img {
+  width: 54px;
+  height: 54px;
+  border-radius: 15px;
+  object-fit: cover;
+}
+
+.m-library button[aria-pressed='true'] img {
+  outline: 3px solid var(--uwu-pink-solid);
+  outline-offset: 2px;
+}
+
+.m-search-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  margin: 12px 16px 0;
+  padding: 0 14px;
+  border-radius: 20px;
+  background: var(--uwu-glass-selected, var(--uwu-hairline));
+  color: var(--uwu-muted);
+}
+
+.m-search-field svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
+.m-search-field input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--uwu-ink);
+  font-size: 16px;
+  outline: none;
+}
+
+/* ── Generator ───────────────────────────────────────────── */
+
+.m-gen-card {
+  display: grid;
+  gap: 16px;
+  margin: 16px 16px 0;
+  padding: 22px 20px 18px;
+  border-radius: 26px;
+  background: var(--uwu-surface);
+}
+
+.m-app[data-platform='android'] .m-gen-card {
+  background: var(--uwu-m3-container);
+}
+
+.m-gen-value {
+  min-height: 62px;
+  font-family: var(--uwu-mono);
+  font-size: 23px;
+  font-weight: 600;
+  line-height: 1.35;
+  word-break: break-all;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.m-strength {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+}
+
+.m-strength i {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--uwu-hairline);
+}
+
+.m-strength i[data-on] {
+  background: var(--uwu-success-ink);
+}
+
+.m-strength-label {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  color: var(--uwu-muted);
+  font-size: 14px;
+}
+
+.m-gen-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.m-gen-buttons button {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 46px;
+  border-radius: 23px !important;
+  background: var(--uwu-pink-tint) !important;
+  color: var(--uwu-pink-ink) !important;
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.m-gen-buttons button[data-primary] {
+  background: var(--uwu-pink-solid) !important;
+  color: var(--uwu-on-pink) !important;
+}
+
+.m-gen-buttons svg {
+  width: 19px;
+  height: 19px;
+}
+
+.m-slider {
+  display: grid;
+  gap: 10px;
+  padding: 14px 18px;
+  background: var(--uwu-surface);
+}
+
+.m-slider-top {
+  display: flex;
+  justify-content: space-between;
+}
+
+.m-slider-top b {
+  color: var(--uwu-pink-solid);
+  font-variant-numeric: tabular-nums;
+}
+
+.m-slider input[type='range'] {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background:
+    linear-gradient(var(--uwu-pink-solid), var(--uwu-pink-solid)) 0 / var(--fill, 50%) 100%
+      no-repeat,
+    var(--uwu-hairline);
+  outline: none;
+  appearance: none;
+}
+
+.m-slider input[type='range']::-webkit-slider-thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow:
+    0 2px 8px rgb(0 0 0 / 0.25),
+    0 0 0 0.5px rgb(0 0 0 / 0.08);
+  appearance: none;
+}
+
+.m-slider input[type='range']::-moz-range-thumb {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.25);
+}
+
+.m-len-note {
+  color: var(--uwu-warning-ink);
+  font-size: 13px;
+}
+
+.m-set {
+  font-family: var(--uwu-mono);
+}
+
+/* ── Score (Prüfung) ─────────────────────────────────────── */
+
+.m-score {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 20px;
+  background: var(--uwu-surface);
+}
+
+.m-app[data-platform='android'] .m-score {
+  background: var(--uwu-m3-container);
+}
+
+.m-score-ring {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--m-score-tone, var(--uwu-success-ink)) calc(var(--v, 0) * 1turn),
+    var(--uwu-hairline) 0
+  );
+}
+
+.m-score-ring::before {
+  content: '';
+  position: absolute;
+  inset: 9px;
+  border-radius: 50%;
+  background: var(--uwu-surface);
+}
+
+.m-app[data-platform='android'] .m-score-ring::before {
+  background: var(--uwu-m3-container);
+}
+
+.m-score-ring b {
+  position: relative;
+  font-size: 28px;
+  font-variant-numeric: tabular-nums;
+}
+
+.m-score h3 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.m-score p {
+  margin: 3px 0 0;
+  color: var(--uwu-muted);
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+/* ── Masked address preview ──────────────────────────────── */
+
+.m-preview-address {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 16px 0;
+  padding: 16px 18px;
+  border-radius: 22px;
+  background: var(--uwu-pink-tint);
+  color: var(--uwu-pink-ink);
+}
+
+.m-preview-address span {
+  flex: 1;
+  font-family: var(--uwu-mono);
+  font-size: 15px;
+  word-break: break-all;
+}
+
+/* ── Search ──────────────────────────────────────────────── */
+
+.m-search {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  animation: uwu-fade-in 180ms ease-out;
+}
+
+@keyframes uwu-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.m-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 16px;
+}
+
+.m-chips button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 18px !important;
+  background: var(--uwu-surface) !important;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.m-app[data-platform='android'] .m-chips button {
+  border: 1px solid var(--uwu-muted) !important;
+  border-radius: 8px !important;
+  background: none !important;
+}
+
+.m-chips svg {
+  width: 16px;
+  height: 16px;
+  color: var(--uwu-pink-solid);
+}
+
+/* ── iPad ────────────────────────────────────────────────── */
+
+.m-ipad-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 6px;
+  color: var(--uwu-muted);
+  text-align: center;
+}
+
+.m-ipad-empty svg {
+  width: 46px;
+  height: 46px;
+  margin-bottom: 6px;
+  color: var(--uwu-faint);
+}
+
+.m-ipad-empty b {
+  color: var(--uwu-ink);
+  font-size: 19px;
+}
+
+.m-ipad-sidebar-button {
+  position: absolute;
+  top: calc(var(--uwu-safe-top) + 12px);
+  left: calc(var(--uwu-safe-left) + 14px);
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 22px !important;
+}
+
+.m-ipad-sidebar-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+.m-ipad-single .uwu-screen-scroll > * {
+  max-width: 640px;
+  margin-inline: auto;
+}
+
+.m-sidebar-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 14px 6px;
+}
+
+.m-sidebar-head b {
+  flex: 1;
+  font-size: 22px;
+  font-weight: 750;
+}
+
+.m-ipad-search {
+  margin: 12px 12px 4px;
+}
+
+/* An iPad detail column reads better narrower than the whole width. */
+.uwu-split-detail .uwu-screen-scroll > * {
+  max-width: 720px;
+  margin-inline: auto;
+}
+
+/* ── Embedded desktop panes (UwU-Apps) ───────────────────── */
+
+.m-embed {
+  position: absolute;
+  inset: calc(var(--uwu-safe-top) + 56px) 0 calc(var(--uwu-safe-bottom) + 96px);
+  display: flex;
+  overflow: hidden;
+  font-size: var(--uwu-text-body);
+  user-select: text;
+}
+
+.m-app[data-platform='ipad'] .m-embed {
+  top: calc(var(--uwu-safe-top) + 120px);
+  bottom: calc(var(--uwu-safe-bottom) + 12px);
+}
+
+.m-embed > .vault {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Context menu preview ────────────────────────────────── */
+
+.m-menu-preview {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 18px;
+}
+
+.m-menu-preview > span {
+  display: grid;
+  min-width: 0;
+}
+
+.m-menu-preview b {
+  overflow: hidden;
+  font-weight: 650;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.m-menu-preview > span > span {
+  overflow: hidden;
+  color: var(--uwu-muted);
+  font-size: 15px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ── Small pieces ────────────────────────────────────────── */
+
+.m-field select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 24px;
+}
+
+.m-select-chevron {
+  position: absolute;
+  right: 18px;
+  bottom: 14px;
+  width: 16px;
+  height: 16px;
+  color: var(--uwu-faint);
+  pointer-events: none;
+}
+
+.m-edit-form {
+  display: contents;
+}
+
+/* One custom field: its name, then its value, as one card. */
+.m-custom-field + .m-custom-field {
+  border-top: 8px solid transparent;
+}
+
+/* Room below the last section, so the keyboard never covers it. */
+.m-sheet-end {
+  height: calc(40px + env(safe-area-inset-bottom));
+}
+
+.m-error-inline {
+  color: var(--uwu-danger-ink);
+  font-size: 13px;
+}
+
+.m-muted-row .uwu-row-title {
+  color: var(--uwu-muted);
+}
+
+.m-note-row .uwu-row-title {
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+.m-library-blank {
+  display: block;
+  width: 54px;
+  height: 54px;
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--uwu-ink) 6%, transparent);
+  color: var(--uwu-faint);
+  font-size: 20px;
+  line-height: 54px;
+  text-align: center;
+}
+
+/* Desktop parts (reminder, versions, Wi-Fi connect) inside a phone page. */
+.m-desktop-block,
+.m-embed-block {
+  margin: 18px 16px 0;
+}
+
+.m-app[data-platform='ios'] .m-desktop-block,
+.m-app[data-platform='ios'] .m-embed-block {
+  margin-inline: 20px;
+}
+
+/* "Einstellungen" fits the iPhone tab without an ellipsis. */
+.m-app[data-platform='ios'] .uwu-tab-label {
+  letter-spacing: -0.02em;
+}
+
+/* The package keeps 80 px either side of the centred title, too little next to
+   a text button such as "Bearbeiten"; the title gets out of its way. */
+.m-app .uwu-navbar:has(.uwu-nav-button[data-label]) .uwu-navbar-title {
+  right: 128px;
+  left: 128px;
+}
+
+/* iPad portrait: while the sidebar lies over the page the floating tab bar
+   steps aside, as on iPadOS, instead of covering the sidebar's head. */
+.m-app .uwu-tabbar {
+  transition: opacity 200ms ease;
+}
+
+.m-app:has(.uwu-split[data-overlay] .uwu-split-sidebar) .uwu-tabbar {
+  opacity: 0;
+  pointer-events: none;
+}
