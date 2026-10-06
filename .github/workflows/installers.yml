@@ -94,6 +94,8 @@ jobs:
             os: macos-latest
             target: universal-apple-darwin
             rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+            # Its own cache since the Intel half builds in target/x86_64-build.
+            cache-key: macos-universal-split
           # The oldest supported Ubuntu, so the packages and the portable
           # folder run on anything as new or newer.
           - name: linux-x64
@@ -142,7 +144,7 @@ jobs:
       # only ever seen by that tag, and the space for caches is shared with every workflow.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          key: ${{ matrix.name }}
+          key: ${{ matrix.cache-key || matrix.name }}
           save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ci-speed' || github.head_ref == 'ci-speed' }}
 
       - name: Build the setup
