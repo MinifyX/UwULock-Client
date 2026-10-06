@@ -51,7 +51,8 @@ test -f "$app/PrivacyInfo.xcprivacy" || cp "$src/apple/PrivacyInfo.xcprivacy" "$
 
 # The entitlements: what the profiles allow, each named in full. The app has its own Keychain
 # group first (the default for its own items, as the unsigned app had) and the extension's
-# second; only the extension is an AutoFill provider.
+# second. Both carry the AutoFill entitlement: App Store Connect refuses an app whose AutoFill
+# extension's container lacks it (ITMS-90729), so the App ID app.uwulock has the capability too.
 entitlements() { # <file> <bundle id> <autofill: yes|no> <keychain groups...>
   local file="$1" id="$2" autofill="$3"
   shift 3
@@ -74,7 +75,7 @@ entitlements() { # <file> <bundle id> <autofill: yes|no> <keychain groups...>
   } >"$file"
   plutil -lint "$file" >/dev/null
 }
-entitlements "$work/app.plist" app.uwulock no "$team.app.uwulock" "$keychain"
+entitlements "$work/app.plist" app.uwulock yes "$team.app.uwulock" "$keychain"
 entitlements "$work/appex.plist" app.uwulock.passkeys yes "$keychain"
 
 cp "$profiles/app.uwulock.mobileprovision" "$app/embedded.mobileprovision"

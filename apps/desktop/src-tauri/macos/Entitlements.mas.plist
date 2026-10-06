@@ -14,6 +14,8 @@
   - application-groups: the folder shared with the AutoFill extension (passkeys/apple.rs).
   - keychain-access-groups: the app's own group first (the default for its items), then the
     one it shares with the extension for the provider key.
+  - autofill-credential-provider: the container of an AutoFill extension needs it as well
+    (App Store Connect refuses it otherwise, ITMS-90729); the extension is the provider.
 
   Deliberately absent: network.server (nothing listens), and everything that runs or controls
   other programs — no updater, no setup in this build (docs/app-store.md).
@@ -27,6 +29,8 @@
 	<key>com.apple.security.files.user-selected.read-write</key>
 	<true/>
 	<key>com.apple.security.files.downloads.read-write</key>
+	<true/>
+	<key>com.apple.developer.authentication-services.autofill-credential-provider</key>
 	<true/>
 	<key>com.apple.security.application-groups</key>
 	<array>
