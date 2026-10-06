@@ -278,8 +278,8 @@ GitHub builds don't, and there the setting says so:
   (`app.uwulock.passkeys`, iOS 17) to the generated Xcode project and embeds it in the app's
   PlugIns, unsigned like the app. For TestFlight, `scripts/ios-sign.sh` signs both with the App
   Store profiles: App Group `group.app.uwulock`, Keychain groups `TEAMID.app.uwulock` (the app's
-  own) and `TEAMID.app.uwulock.passkeys` (shared), the AutoFill entitlement on both (App Store Connect wants it on the container too);
-  it also writes the team into `UwULockKeychainGroup`, which the unsigned build leaves without
+  own) and `TEAMID.app.uwulock.passkeys` (shared), the AutoFill entitlement on both (App Store
+  Connect wants it on the container too); it also writes the team into `UwULockKeychainGroup`, which the unsigned build leaves without
   prefix.
 - **macOS**: `scripts/macos-passkeys.sh` compiles it into `UwULockPasskeys.appex` (universal,
   ad-hoc signed) on every macOS build, so the Swift can't rot. The Mac App Store build
