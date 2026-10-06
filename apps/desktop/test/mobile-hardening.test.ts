@@ -92,16 +92,23 @@ test('iOS: Face ID key on this device only, cover in the app switcher, no backup
 
 test('the phone plugin is reachable from Rust only, and window controls only on computers', () => {
   assert.match(read(`${PLUGIN}/build.rs`), /const COMMANDS: &\[&str\] = &\[\];/);
-  const caps = ['default.json', 'desktop.json'].map((name) =>
+  const caps = ['default.json', 'desktop.json', 'macos.json'].map((name) =>
     JSON.parse(read(`apps/desktop/src-tauri/capabilities/${name}`)),
   );
   for (const cap of caps) {
     for (const permission of cap.permissions as string[])
       assert.ok(!permission.startsWith('uwulock-mobile:'), permission);
   }
-  const [all, desktop] = caps;
+  const [all, desktop, mac] = caps;
   assert.deepEqual(all.permissions, ['core:default']);
   assert.equal(all.platforms, undefined);
-  assert.deepEqual(desktop.platforms, ['linux', 'macOS', 'windows']);
+  // The app's own title bar on Windows and Linux; macOS draws its own and gets the menu bar.
+  assert.deepEqual(desktop.platforms, ['linux', 'windows']);
   assert.ok((desktop.permissions as string[]).every((p) => p.startsWith('core:window:')));
+  assert.deepEqual(mac.platforms, ['macOS']);
+  assert.ok(
+    (mac.permissions as string[]).every(
+      (p) => p.startsWith('core:window:') || p === 'core:menu:default',
+    ),
+  );
 });
