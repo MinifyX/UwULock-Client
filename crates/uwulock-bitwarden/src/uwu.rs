@@ -393,6 +393,8 @@ pub const OWN_ICONS_PER_CALL: usize = 500;
 
 /// The most an automatic icon may weigh (the server makes them far smaller).
 pub const MAX_AUTOMATIC_ICON: usize = 256 * 1024;
+/// A library icon is at most 128 × 128 pixels (§7.2); a larger answer isn't one.
+pub const MAX_LIBRARY_ICON: u64 = 1024 * 1024;
 
 /// An entry version (§8.4). `cipher` has the shape of a cipher in `/api/sync`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -651,6 +653,41 @@ impl Client {
         self.uwu_delete(access_token, &format!("/icons/own/{}", uwu_path(cipher_id)))
             .await
             .map(drop)
+    }
+
+    /// The icon library's index (§7.2): its sources with their licences, and
+    /// every icon with its variants. Kept as the server sends it; the page
+    /// searches it.
+    pub async fn icon_library(&self, access_token: &str) -> UwuResult<Value> {
+        self.uwu_get(access_token, "/icons/library").await
+    }
+
+    /// One icon of the library as PNG, fetched by the server from the
+    /// library's own host. The server never learns which item takes it: the
+    /// app seals it as an own icon like any other picture.
+    pub async fn library_icon(
+        &self,
+        access_token: &str,
+        source: &str,
+        id: &str,
+        variant: &str,
+    ) -> UwuResult<Vec<u8>> {
+        let path = format!(
+            "/icons/library/{}/{}.png?variant={}",
+            uwu_path(source),
+            uwu_path(id),
+            uwu_path(variant)
+        );
+        let png = self
+            .uwu_download(access_token, &path, MAX_LIBRARY_ICON)
+            .await?;
+        if extras::png_size(&png).is_none() {
+            return Err(UwuError::Core(Error::Server {
+                status: 200,
+                message: "the library's icon isn't a PNG".into(),
+            }));
+        }
+        Ok(png)
     }
 
     /// An automatic icon (§7.1): `<icons_url>/<host>/icon.png`, no session.

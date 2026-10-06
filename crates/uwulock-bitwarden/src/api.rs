@@ -927,6 +927,51 @@ impl Client {
         Ok(upload)
     }
 
+    /// A change to a Send (`PUT /api/sends/{id}`, the same `SendRequestModel`
+    /// with its `id`; a file Send's file stays).
+    pub async fn update_send(
+        &self,
+        access_token: &str,
+        id: &str,
+        send: &Value,
+    ) -> Result<Value, Error> {
+        self.write(
+            self.request(
+                reqwest::Method::PUT,
+                format!("{}/sends/{}", self.server.api(), escape(id)),
+            )
+            .bearer_auth(access_token)
+            .json(send),
+        )
+        .await
+    }
+
+    /// Anybody with the link may open the Send again: its password goes
+    /// (`PUT /api/sends/{id}/remove-password`, which every server has), or
+    /// with `emails` its list of addresses (`remove-auth`, Bitwarden's newer
+    /// name for both; UwULock Server takes either).
+    pub async fn remove_send_auth(
+        &self,
+        access_token: &str,
+        id: &str,
+        emails: bool,
+    ) -> Result<Value, Error> {
+        let what = if emails {
+            "remove-auth"
+        } else {
+            "remove-password"
+        };
+        self.write(
+            self.request(
+                reqwest::Method::PUT,
+                format!("{}/sends/{}/{what}", self.server.api(), escape(id)),
+            )
+            .bearer_auth(access_token)
+            .json(&serde_json::json!({})),
+        )
+        .await
+    }
+
     pub async fn delete_send(&self, access_token: &str, id: &str) -> Result<(), Error> {
         self.write(
             self.request(

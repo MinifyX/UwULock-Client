@@ -1,4 +1,5 @@
-//! Making a text Send, and sharing an item as one.
+//! Sends: making a text Send, sharing an item as one, and the account's own
+//! Sends — opened for the list, sealed again when they are changed.
 //!
 //! A Send's values are under its own key, which comes from a 16-byte seed
 //! ([`crate::crypto::send_key`]); the seed itself is kept under the user key
@@ -11,13 +12,15 @@
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64_URL;
 use base64::Engine as _;
+use serde::Deserialize;
 use serde_json::{json, Value};
 use zeroize::Zeroizing;
 
 pub use crate::crypto::generate_send_seed;
-use crate::crypto::{send_key, send_password_hash, EncString, SymmetricKey};
+use crate::crypto::{encrypt_file, send_key, send_password_hash, EncString, SymmetricKey};
 use crate::vault::{FieldKind, Item, Secret};
 use crate::Error;
+use crate::{entry_send, wire};
 
 /// Bitwarden's `authType`: who may open a Send.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,6 +59,26 @@ pub struct SealedSend {
 impl std::fmt::Debug for SealedSend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("SealedSend(…)")
+    }
+}
+
+impl SendAuth {
+    /// Bitwarden's number for it.
+    pub fn to_wire(self) -> u8 {
+        match self {
+            SendAuth::Emails => 0,
+            SendAuth::Password => 1,
+            SendAuth::None => 2,
+        }
+    }
+
+    pub fn from_wire(value: u8) -> Option<SendAuth> {
+        match value {
+            0 => Some(SendAuth::Emails),
+            1 => Some(SendAuth::Password),
+            2 => Some(SendAuth::None),
+            _ => None,
+        }
     }
 }
 
@@ -111,7 +134,7 @@ impl TextSend {
             "file": null,
             "password": password.map(|p| send_password_hash(p, seed.as_ref())),
             "emails": (!emails.is_empty()).then(|| emails.join(",")),
-            "authType": match auth { SendAuth::Emails => 0, SendAuth::Password => 1, SendAuth::None => 2 },
+            "authType": auth.to_wire(),
             "disabled": false,
             "hideEmail": self.hide_email,
         });
@@ -154,6 +177,296 @@ pub fn open_seed(key: &str, user_key: &SymmetricKey) -> Result<Zeroizing<Vec<u8>
         return Err(Error::Crypto("a Send's seed has 16 bytes".into()));
     }
     Ok(seed)
+}
+
+// ── The account's Sends ────────────────────────────────────
+
+/// One of the account's Sends, opened: what the list and the editor show.
+#[derive(Clone)]
+pub struct OpenSend {
+    pub id: String,
+    pub access_id: String,
+    /// 0 a text, 1 a file.
+    pub kind: u8,
+    pub name: String,
+    /// Only for the owner; the recipient never sees them.
+    pub notes: Option<String>,
+    pub text: Option<Zeroizing<String>>,
+    /// The text shows only after a click on the recipient's page.
+    pub hidden: bool,
+    pub file_name: Option<String>,
+    /// Of the encrypted file, in bytes.
+    pub size: Option<u64>,
+    pub max_access_count: Option<u32>,
+    pub access_count: u32,
+    pub has_password: bool,
+    pub auth: SendAuth,
+    /// The addresses of [`SendAuth::Emails`].
+    pub emails: Vec<String>,
+    pub disabled: bool,
+    pub hide_email: bool,
+    pub revision_date: Option<String>,
+    pub expiration_date: Option<String>,
+    pub deletion_date: Option<String>,
+    /// An entry Send ([`crate::entry_send`]): its marker is tagged with this
+    /// Send's seed. Its text isn't edited — the entry is in it a second time.
+    pub entry: bool,
+    /// The 16-byte seed of the Send's key: for its link, and a change.
+    pub seed: Zeroizing<Vec<u8>>,
+}
+
+impl std::fmt::Debug for OpenSend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OpenSend")
+            .field("id", &self.id)
+            .field("kind", &self.kind)
+            .finish_non_exhaustive()
+    }
+}
+
+impl OpenSend {
+    /// The text without an entry Send's marker line; the text itself for a
+    /// plain one.
+    pub fn readable(&self) -> Option<&str> {
+        self.text
+            .as_deref()
+            .map(|text| entry_send::readable_part(text, &self.seed))
+    }
+}
+
+/// Opens one of the account's Sends from the sync with the user key.
+pub fn open(send: &wire::Send, user_key: &SymmetricKey) -> Result<OpenSend, Error> {
+    let seed = open_seed(
+        send.key
+            .as_deref()
+            .ok_or_else(|| Error::Crypto("a Send without its key".into()))?,
+        user_key,
+    )?;
+    let key = send_key(&seed)?;
+    let open_text = |value: &Option<String>| -> Result<Option<Zeroizing<String>>, Error> {
+        match value.as_deref() {
+            None | Some("") => Ok(None),
+            Some(text) => text.parse::<EncString>()?.decrypt_string(&key).map(Some),
+        }
+    };
+    let text = match &send.text {
+        Some(text) => open_text(&text.text)?,
+        None => None,
+    };
+    let emails: Vec<String> = send
+        .emails
+        .as_deref()
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|e| !e.is_empty())
+        .map(str::to_string)
+        .collect();
+    let auth = match send.auth_type.and_then(SendAuth::from_wire) {
+        Some(auth) => auth,
+        None if !emails.is_empty() => SendAuth::Emails,
+        None if send.password.is_some() => SendAuth::Password,
+        None => SendAuth::None,
+    };
+    let entry = text
+        .as_deref()
+        .is_some_and(|text| entry_send::decode(text, &seed).is_some());
+    Ok(OpenSend {
+        id: send.id.clone(),
+        access_id: send.access_id.clone().unwrap_or_default(),
+        kind: send.kind,
+        name: open_text(&send.name)?
+            .map(|n| n.to_string())
+            .unwrap_or_default(),
+        notes: open_text(&send.notes)?.map(|n| n.to_string()),
+        text,
+        hidden: send.text.as_ref().and_then(|t| t.hidden).unwrap_or(false),
+        file_name: match &send.file {
+            Some(file) => open_text(&file.file_name)?.map(|n| n.to_string()),
+            None => None,
+        },
+        size: send
+            .file
+            .as_ref()
+            .and_then(|f| f.size.as_deref())
+            .and_then(|s| s.parse().ok()),
+        max_access_count: send.max_access_count,
+        access_count: send.access_count.unwrap_or(0),
+        has_password: send.password.is_some(),
+        auth,
+        emails,
+        disabled: send.disabled.unwrap_or(false),
+        hide_email: send.hide_email.unwrap_or(false),
+        revision_date: send.revision_date.clone(),
+        expiration_date: send.expiration_date.clone(),
+        deletion_date: send.deletion_date.clone(),
+        entry,
+        seed,
+    })
+}
+
+/// What the Send editor gives — the web vault's `SendDraft`, field for field.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SendDraft {
+    /// 0 a text, 1 a file.
+    pub kind: u8,
+    pub name: String,
+    #[serde(default)]
+    pub notes: Option<String>,
+    #[serde(default)]
+    pub text: Option<Zeroizing<String>>,
+    #[serde(default)]
+    pub hidden: bool,
+    #[serde(default)]
+    pub file_name: Option<String>,
+    /// A new password; none keeps the one there is.
+    #[serde(default)]
+    pub password: Option<Zeroizing<String>>,
+    #[serde(default)]
+    pub max_access_count: Option<u32>,
+    /// RFC 3339.
+    #[serde(default)]
+    pub expiration_date: Option<String>,
+    /// RFC 3339.
+    pub deletion_date: String,
+    #[serde(default)]
+    pub disabled: bool,
+    #[serde(default)]
+    pub hide_email: bool,
+    /// 0 only `emails`, 1 a password (the new one, or the one there is),
+    /// 2 anybody. None: as the server has it.
+    #[serde(default)]
+    pub auth_type: Option<u8>,
+    #[serde(default)]
+    pub emails: Vec<String>,
+}
+
+/// A Send sealed for `POST /api/sends` (a text), `POST /api/sends/file/v2`
+/// (a new file, then `file` is uploaded) or `PUT /api/sends/{id}` (a change).
+pub struct SealedDraft {
+    pub request: Value,
+    pub seed: Zeroizing<Vec<u8>>,
+    /// The file, encrypted; empty unless a new file Send.
+    pub file: Vec<u8>,
+}
+
+impl std::fmt::Debug for SealedDraft {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("SealedDraft(…)")
+    }
+}
+
+/// Seals what the editor gives, as the web vault does: a new Send (`existing`
+/// none, a fresh seed) or a change to one of the account's Sends, under its
+/// own seed. A new file Send brings its file (`file`), which is encrypted
+/// here. An entry Send keeps its text whatever the draft says: its entry is
+/// tagged with its seed, and a changed text would no longer match it.
+pub fn seal_draft(
+    draft: &SendDraft,
+    existing: Option<&OpenSend>,
+    user_key: &SymmetricKey,
+    file: Option<&[u8]>,
+) -> Result<SealedDraft, Error> {
+    if draft.kind > 1 {
+        return Err(Error::Crypto("a Send is a text or a file".into()));
+    }
+    if let Some(send) = existing {
+        if send.kind != draft.kind {
+            return Err(Error::Crypto("a Send stays a text or a file".into()));
+        }
+    }
+    if draft.name.trim().is_empty() {
+        return Err(Error::Crypto("a Send needs a name".into()));
+    }
+    let seed: Zeroizing<Vec<u8>> = match existing {
+        Some(send) => send.seed.clone(),
+        None => Zeroizing::new(generate_send_seed().to_vec()),
+    };
+    let key = send_key(&seed)?;
+    let seal = |text: &str| EncString::encrypt(text.as_bytes(), &key).to_string();
+    let mut request = json!({
+        "type": draft.kind,
+        "key": EncString::encrypt(&seed, user_key).to_string(),
+        "name": seal(&draft.name),
+        "notes": draft.notes.as_deref().filter(|n| !n.is_empty()).map(seal),
+        "maxAccessCount": draft.max_access_count.filter(|n| *n > 0),
+        "expirationDate": draft.expiration_date,
+        "deletionDate": draft.deletion_date,
+        "disabled": draft.disabled,
+        "hideEmail": draft.hide_email,
+        "password": draft
+            .password
+            .as_deref()
+            .filter(|p| !p.is_empty())
+            .map(|p| send_password_hash(p, &seed)),
+    });
+    if let Some(auth) = draft.auth_type {
+        let auth = SendAuth::from_wire(auth)
+            .ok_or_else(|| Error::Crypto("no such way to open a Send".into()))?;
+        request["authType"] = json!(auth.to_wire());
+        match auth {
+            SendAuth::Emails => {
+                let emails: Vec<String> = draft
+                    .emails
+                    .iter()
+                    .map(|e| e.trim().to_lowercase())
+                    .filter(|e| !e.is_empty())
+                    .collect();
+                if emails.is_empty() {
+                    return Err(Error::Crypto("name at least one address".into()));
+                }
+                if emails.iter().any(|e| !looks_like_address(e)) {
+                    return Err(Error::Crypto("an address isn't one".into()));
+                }
+                request["emails"] = json!(emails.join(","));
+                request["password"] = Value::Null;
+            }
+            SendAuth::Password => {
+                let keeps = existing.is_some_and(|s| s.has_password);
+                if request["password"].is_null() && !keeps {
+                    return Err(Error::Crypto("a Send with a password needs one".into()));
+                }
+            }
+            SendAuth::None => request["password"] = Value::Null,
+        }
+    }
+    let mut encrypted = Vec::new();
+    if draft.kind == 0 {
+        let text = match existing.filter(|s| s.entry) {
+            Some(send) => send.text.clone().unwrap_or_default(),
+            None => draft.text.clone().unwrap_or_default(),
+        };
+        if text.trim().is_empty() {
+            return Err(Error::Crypto("a text Send needs its text".into()));
+        }
+        request["text"] = json!({ "text": seal(&text), "hidden": draft.hidden });
+    } else {
+        let name = draft
+            .file_name
+            .as_deref()
+            .filter(|n| !n.is_empty())
+            .or(existing.and_then(|s| s.file_name.as_deref()))
+            .unwrap_or("file");
+        request["file"] = json!({ "fileName": seal(name) });
+        match (existing, file) {
+            (None, Some(data)) => {
+                encrypted = encrypt_file(data, &key);
+                request["fileLength"] = json!(encrypted.len());
+            }
+            (None, None) => return Err(Error::Crypto("a file Send needs its file".into())),
+            // A Send's file stays as it is.
+            (Some(_), _) => {}
+        }
+    }
+    if let Some(send) = existing {
+        request["id"] = json!(send.id);
+    }
+    Ok(SealedDraft {
+        request,
+        seed,
+        file: encrypted,
+    })
 }
 
 /// One value of an item by its name — the names the desktop app and the
@@ -452,5 +765,162 @@ mod tests {
         send.password = None;
         send.emails = vec!["nope".into()];
         assert!(send.seal(&user).is_err());
+    }
+
+    /// What a server's sync gives back for a sealed request: its keys in
+    /// lower case (as `parse_sync` reads them), with an id and access id.
+    fn synced(request: &Value, id: &str) -> wire::Send {
+        fn lower(value: &Value) -> Value {
+            match value {
+                Value::Object(map) => Value::Object(
+                    map.iter()
+                        .map(|(k, v)| (k.to_lowercase(), lower(v)))
+                        .collect(),
+                ),
+                other => other.clone(),
+            }
+        }
+        let mut value = lower(request);
+        value["id"] = json!(id);
+        value["accessid"] = json!(format!("access-{id}"));
+        value["accesscount"] = json!(2);
+        serde_json::from_value(value).unwrap()
+    }
+
+    fn draft(kind: u8) -> SendDraft {
+        SendDraft {
+            kind,
+            name: "Plan".into(),
+            notes: Some("only mine".into()),
+            text: Some(Zeroizing::new("the text".into())),
+            file_name: Some("plan.pdf".into()),
+            deletion_date: "2026-10-13T12:00:00.000Z".into(),
+            ..SendDraft::default()
+        }
+    }
+
+    #[test]
+    fn a_text_send_opens_and_changes_under_its_own_seed() {
+        let user = SymmetricKey::generate();
+        let mut new = draft(0);
+        new.hidden = true;
+        new.max_access_count = Some(3);
+        new.auth_type = Some(1);
+        new.password = Some(Zeroizing::new("pw".into()));
+        let sealed = seal_draft(&new, None, &user, None).unwrap();
+        assert!(sealed.request.get("id").is_none());
+        let opened = open(&synced(&sealed.request, "s1"), &user).unwrap();
+        assert_eq!(opened.name, "Plan");
+        assert_eq!(opened.notes.as_deref(), Some("only mine"));
+        assert_eq!(opened.text.as_deref().map(|t| t.as_str()), Some("the text"));
+        assert_eq!(opened.readable(), Some("the text"));
+        assert!(opened.hidden && opened.has_password && !opened.entry);
+        assert_eq!(opened.auth, SendAuth::Password);
+        assert_eq!((opened.max_access_count, opened.access_count), (Some(3), 2));
+        assert_eq!(opened.seed.as_slice(), sealed.seed.as_slice());
+
+        // A change keeps the seed (the link stays) and, without a new one, the password.
+        let mut change = draft(0);
+        change.text = Some(Zeroizing::new("new text".into()));
+        change.auth_type = Some(1);
+        change.disabled = true;
+        let changed = seal_draft(&change, Some(&opened), &user, None).unwrap();
+        assert_eq!(changed.request["id"], "s1");
+        assert!(changed.request["password"].is_null());
+        assert_eq!(changed.seed.as_slice(), opened.seed.as_slice());
+        let again = open(&synced(&changed.request, "s1"), &user).unwrap();
+        assert_eq!(again.text.as_deref().map(|t| t.as_str()), Some("new text"));
+        assert!(again.disabled);
+
+        // A password Send without any password, and anybody: no password.
+        let mut none = draft(0);
+        none.auth_type = Some(1);
+        assert!(seal_draft(&none, None, &user, None).is_err());
+        none.auth_type = Some(2);
+        none.password = Some(Zeroizing::new("ignored".into()));
+        let open_to_all = seal_draft(&none, Some(&opened), &user, None).unwrap();
+        assert!(open_to_all.request["password"].is_null());
+        assert_eq!(open_to_all.request["authType"], 2);
+    }
+
+    #[test]
+    fn addresses_and_the_auth_type_come_back_from_the_sync() {
+        let user = SymmetricKey::generate();
+        let mut only = draft(0);
+        only.auth_type = Some(0);
+        only.emails = vec![" A@Example.com".into(), "b@example.org ".into()];
+        let sealed = seal_draft(&only, None, &user, None).unwrap();
+        assert_eq!(sealed.request["emails"], "a@example.com,b@example.org");
+        let opened = open(&synced(&sealed.request, "s2"), &user).unwrap();
+        assert_eq!(opened.auth, SendAuth::Emails);
+        assert_eq!(opened.emails, ["a@example.com", "b@example.org"]);
+        only.emails = vec!["nope".into()];
+        assert!(seal_draft(&only, None, &user, None).is_err());
+        only.emails.clear();
+        assert!(seal_draft(&only, None, &user, None).is_err());
+    }
+
+    #[test]
+    fn a_file_send_carries_its_file_encrypted_once() {
+        let user = SymmetricKey::generate();
+        assert!(seal_draft(&draft(1), None, &user, None).is_err());
+        let sealed = seal_draft(&draft(1), None, &user, Some(b"%PDF-1.7")).unwrap();
+        assert_eq!(sealed.request["fileLength"], sealed.file.len());
+        assert!(sealed.request.get("text").is_none());
+        let key = send_key(&sealed.seed).unwrap();
+        assert_eq!(
+            crate::crypto::decrypt_file(&sealed.file, &key)
+                .unwrap()
+                .as_slice(),
+            b"%PDF-1.7"
+        );
+        let opened = open(&synced(&sealed.request, "s3"), &user).unwrap();
+        assert_eq!(opened.file_name.as_deref(), Some("plan.pdf"));
+        // Changed: the file stays, nothing to upload; a text it can't become.
+        let mut change = draft(1);
+        change.file_name = None;
+        let changed = seal_draft(&change, Some(&opened), &user, Some(b"other")).unwrap();
+        assert!(changed.file.is_empty() && changed.request.get("fileLength").is_none());
+        let again = open(&synced(&changed.request, "s3"), &user).unwrap();
+        assert_eq!(again.file_name.as_deref(), Some("plan.pdf"));
+        assert!(seal_draft(&draft(0), Some(&opened), &user, None).is_err());
+    }
+
+    #[test]
+    fn an_entry_send_keeps_its_text() {
+        let user = SymmetricKey::generate();
+        let item = login();
+        let fields = vec![("username".to_string(), "Username".to_string())];
+        let seed = generate_send_seed();
+        let text = entry_send::share_entry_text(&item, &fields, seed.as_ref());
+        let sealed = TextSend {
+            name: "Shop".into(),
+            notes: None,
+            text,
+            hidden: false,
+            max_access_count: None,
+            deletion_date: "2026-10-13T12:00:00.000Z".into(),
+            expiration_date: None,
+            password: None,
+            emails: vec![],
+            hide_email: false,
+        }
+        .seal_with_seed(&user, seed)
+        .unwrap();
+        let opened = open(&synced(&sealed.request, "s4"), &user).unwrap();
+        assert!(opened.entry);
+        assert_eq!(opened.readable(), Some("Shop\nUsername: nyu"));
+        let mut change = draft(0);
+        change.text = Some(Zeroizing::new("replaced".into()));
+        let changed = seal_draft(&change, Some(&opened), &user, None).unwrap();
+        let again = open(&synced(&changed.request, "s4"), &user).unwrap();
+        assert!(again.entry);
+        assert_eq!(again.text, opened.text);
+    }
+
+    #[test]
+    fn a_send_under_another_key_does_not_open() {
+        let sealed = seal_draft(&draft(0), None, &SymmetricKey::generate(), None).unwrap();
+        assert!(open(&synced(&sealed.request, "s5"), &SymmetricKey::generate()).is_err());
     }
 }
