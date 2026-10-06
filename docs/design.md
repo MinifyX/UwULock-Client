@@ -34,8 +34,15 @@ for exactly that.
   `applyUiFont()`, per device. A stored font that is no longer offered falls
   back to UwU Sans.
 
-The browser extension and the installer still use the app's old styles from
-their own `legacy/` folders until they move to the package too.
+The browser extension's popup and passkey window take the same package and
+the desktop's sheets for what they share (`apps/extension/src/popup/index.css`,
+then `popup.css` for the popup's own layout, 380 px wide, without the
+package's phone layout). The UI the extension shows inside web pages (the
+field button, the save bar, the inline menu) gets none of it: a small sheet on
+the suite's colours in a closed shadow root (`content/ui.ts`), so nothing leaks
+into a page. Fonts are bundled, nothing is loaded from the network. The
+installer (`apps/setup`) is always light, on the tile gradient (package
+`docs/window.md`, Installers).
 
 ## What is UwULock's own
 
