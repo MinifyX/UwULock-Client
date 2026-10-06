@@ -22,7 +22,8 @@
 //!
 //! The same app runs on Android and iOS (docs/mobile.md); what only a
 //! desktop has — the updater, Windows Hello, the screen lock — is left out
-//! there by `#[cfg(desktop)]`/`#[cfg(mobile)]`.
+//! there by `#[cfg(desktop)]`/`#[cfg(mobile)]`. The updater is `#[cfg(self_update)]`
+//! (build.rs): the Mac App Store build has none either (docs/app-store.md).
 
 mod account;
 mod clipboard;
@@ -37,7 +38,7 @@ mod phone;
 mod session_lock;
 mod suite;
 mod system;
-#[cfg(desktop)]
+#[cfg(self_update)]
 mod updates;
 mod vault;
 mod wifi;
@@ -57,7 +58,7 @@ pub fn run() {
         .init();
 
     let builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
-    #[cfg(desktop)]
+    #[cfg(self_update)]
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     #[cfg(mobile)]
     let builder = builder.plugin(tauri_plugin_uwulock_mobile::init());
@@ -76,7 +77,7 @@ pub fn run() {
                     tracing::warn!(%error, "quit guard");
                 }
             }
-            #[cfg(desktop)]
+            #[cfg(self_update)]
             if updates::apply_pending_on_start(app.handle()) {
                 // The downloaded setup replaces this version and starts UwULock again.
                 std::process::exit(0);
@@ -104,7 +105,7 @@ pub fn run() {
             // On a phone the plugin answers once the page is there (`vault_status`).
             #[cfg(desktop)]
             hello::probe(app.handle());
-            #[cfg(desktop)]
+            #[cfg(self_update)]
             updates::start(app.handle());
             Ok(())
         })
@@ -199,6 +200,7 @@ pub fn run() {
             suite::suite_save_key,
             suite::suite_save_rdp,
             suite::suite_open_in_app,
+            system::distribution,
             system::set_update_channel,
             system::update_status,
             system::check_for_updates,

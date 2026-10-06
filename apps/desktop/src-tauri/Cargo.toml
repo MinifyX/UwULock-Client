@@ -14,6 +14,15 @@ name = "uwulock_desktop_lib"
 # the mobile builds (CI and `pnpm mobile:prepare` before a local one).
 crate-type = ["rlib"]
 
+[features]
+# What every download from GitHub is: a copy that looks for its own updates and installs them
+# (updates.rs). The App Store builds go without — `--no-default-features --features store` for the
+# Mac App Store (scripts/build-mas.mjs): no updater plugin, no feed, no setup. See docs/app-store.md.
+default = ["self-update"]
+self-update = ["dep:minisign-verify", "dep:semver", "dep:tauri-plugin-updater"]
+# A build for the App Store or TestFlight: the page says new versions come from there.
+store = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -44,9 +53,9 @@ uwu-macos = { git = "https://github.com/MinifyX/UwUSuite-Design", tag = "v1.4.1"
 # get new versions from the release page (docs/mobile.md).
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
-minisign-verify = "0.2"
-semver = "1"
-tauri-plugin-updater = "2"
+minisign-verify = { version = "0.2", optional = true }
+semver = { version = "1", optional = true }
+tauri-plugin-updater = { version = "2", optional = true }
 
 # Unlocking with a fingerprint or face (Android Keystore, iOS Keychain), copying secrets.
 [target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]

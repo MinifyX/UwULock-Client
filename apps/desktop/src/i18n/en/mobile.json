@@ -16,5 +16,6 @@
   "Abgebrochen.": "Cancelled.",
   "Zu viele Versuche: Das Handy lässt Fingerabdruck und Gesicht gerade nicht zu. Entsperre mit dem Master-Passwort.": "Too many attempts: the phone doesn't accept fingerprint or face right now. Unlock with the master password.",
   "Auf diesem Gerät ist ein Fingerabdruck oder Gesicht dazugekommen, deshalb gilt das Entsperren damit nicht mehr. Entsperre mit dem Master-Passwort und schalte es in den Einstellungen wieder ein.": "A fingerprint or face was added on this device, so unlocking with it no longer works. Unlock with the master password and switch it on again in the settings.",
-  "Ordner und Typen": "Folders and types"
+  "Ordner und Typen": "Folders and types",
+  "Diese Ausgabe kommt aus dem App Store und bekommt neue Versionen von dort.": "This copy comes from the App Store and gets new versions from there."
 }

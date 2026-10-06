@@ -11,6 +11,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import pkg from '../../package.json';
 import {
   checkForUpdates,
+  distribution,
   failure,
   lock,
   logout,
@@ -469,6 +470,13 @@ function Updates({
   const settings = useSettings();
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<{ tone: 'info' | 'error'; text: string } | null>(null);
+  const [store, setStore] = useState(false);
+  useEffect(() => {
+    if (isMobile()) return;
+    void distribution()
+      .then((from) => setStore(from === 'store'))
+      .catch(() => undefined);
+  }, []);
 
   // A phone has no updater: a new APK or IPA comes from the release page.
   if (isMobile())
@@ -482,6 +490,21 @@ function Updates({
         <Button size="sm" onClick={() => void openProjectPage('releases').catch(() => undefined)}>
           {t('Versionen')}
         </Button>
+      </Row>
+    );
+
+  // The Mac App Store build has none either: the store updates it.
+  if (store)
+    return (
+      <Row
+        label={t('Neue Versionen')}
+        description={t(
+          'Diese Ausgabe kommt aus dem App Store und bekommt neue Versionen von dort.',
+        )}
+      >
+        <span className="text-caption text-muted">
+          {t('Version {version}', { version: pkg.version })}
+        </span>
       </Row>
     );
 

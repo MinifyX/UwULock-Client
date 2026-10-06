@@ -1,34 +1,46 @@
 //! App-level commands: updates and links out of the app.
 //!
-//! The updater is the desktop's: a phone gets new versions as a new APK or
-//! IPA from the release page (docs/mobile.md). There the update commands
-//! answer that nothing is waiting, so the page needs no second code path.
+//! The updater is the desktop's own (`self_update`, build.rs): a phone gets new
+//! versions as a new APK or IPA from the release page (docs/mobile.md), an App
+//! Store build from the store. There the update commands answer that nothing
+//! is waiting, so the page needs no second code path.
 
-#[cfg(desktop)]
+#[cfg(self_update)]
 use crate::updates::{self, Channel, UpdateInfo};
 use crate::vault::VaultState;
 use tauri::{AppHandle, State};
 use tauri_plugin_opener::OpenerExt;
 
-#[cfg(mobile)]
+#[cfg(not(self_update))]
 type Channel = serde_json::Value;
-#[cfg(mobile)]
+#[cfg(not(self_update))]
 type UpdateInfo = serde_json::Value;
+
+/// Where this copy came from, for the page's words about updates: `"store"` for
+/// an App Store build (feature `store`), `"direct"` for everything else.
+#[tauri::command]
+pub(crate) fn distribution() -> &'static str {
+    if cfg!(feature = "store") {
+        "store"
+    } else {
+        "direct"
+    }
+}
 
 #[tauri::command]
 pub(crate) fn set_update_channel(app: AppHandle, channel: Channel) {
-    #[cfg(desktop)]
+    #[cfg(self_update)]
     updates::set_channel(&app, channel);
-    #[cfg(mobile)]
+    #[cfg(not(self_update))]
     let _ = (app, channel);
 }
 
 /// A downloaded update waiting for a restart, if any.
 #[tauri::command]
 pub(crate) fn update_status(app: AppHandle) -> Option<UpdateInfo> {
-    #[cfg(desktop)]
+    #[cfg(self_update)]
     return updates::ready(&app);
-    #[cfg(mobile)]
+    #[cfg(not(self_update))]
     {
         let _ = app;
         None
@@ -37,9 +49,9 @@ pub(crate) fn update_status(app: AppHandle) -> Option<UpdateInfo> {
 
 #[tauri::command]
 pub(crate) async fn check_for_updates(app: AppHandle) -> Result<Option<UpdateInfo>, String> {
-    #[cfg(desktop)]
+    #[cfg(self_update)]
     return updates::check(&app).await;
-    #[cfg(mobile)]
+    #[cfg(not(self_update))]
     {
         let _ = app;
         Ok(None)
@@ -50,12 +62,16 @@ pub(crate) async fn check_for_updates(app: AppHandle) -> Result<Option<UpdateInf
 /// manager, which must not hold up the main thread.
 #[tauri::command]
 pub(crate) async fn install_update(app: AppHandle) -> Result<(), String> {
-    #[cfg(desktop)]
+    #[cfg(self_update)]
     return updates::install_now(&app).await;
-    #[cfg(mobile)]
+    #[cfg(not(self_update))]
     {
         let _ = app;
-        Err("A phone gets new versions from the release page.".into())
+        Err(if cfg!(feature = "store") {
+            "This copy gets new versions from the App Store.".into()
+        } else {
+            "A phone gets new versions from the release page.".into()
+        })
     }
 }
 

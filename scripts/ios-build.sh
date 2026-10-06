@@ -157,6 +157,9 @@ if [ -z "$app" ]; then
   exit 1
 fi
 echo "iPhone app: $app"
+# The privacy manifest (apple/PrivacyInfo.xcprivacy) at the app's top, where iOS and App Store
+# Connect look for it. The extension's own comes in as a resource of its target.
+cp apps/desktop/src-tauri/apple/PrivacyInfo.xcprivacy "$app/"
 rm -rf "$RUNNER_TEMP/Payload"
 mkdir -p "$RUNNER_TEMP/Payload"
 cp -R "$app" "$RUNNER_TEMP/Payload/"

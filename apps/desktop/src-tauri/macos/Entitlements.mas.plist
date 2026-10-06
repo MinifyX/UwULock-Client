@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The Mac App Store build's entitlements (scripts/build-mas.mjs signs with them). TEAMID is
+  replaced with the team's id at signing time, and com.apple.application-identifier and
+  com.apple.developer.team-identifier are added there; the provisioning profile allows all of it.
+
+  - app-sandbox: required for the store.
+  - network.client: the vault's server, the icons, live updates.
+  - files.user-selected.read-write: a Bitwarden export to move in, an SSH key to import — what
+    the user picks in the open panel.
+  - files.downloads.read-write: a file request's files and saved keys go to Downloads, as in
+    every other build (extras.rs, suite.rs).
+  - application-groups: the folder shared with the AutoFill extension (passkeys/apple.rs).
+  - keychain-access-groups: the app's own group first (the default for its items), then the
+    one it shares with the extension for the provider key.
+
+  Deliberately absent: network.server (nothing listens), and everything that runs or controls
+  other programs — no updater, no setup in this build (docs/app-store.md).
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<key>com.apple.security.files.downloads.read-write</key>
+	<true/>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>TEAMID.app.uwulock</string>
+	</array>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>TEAMID.app.uwulock</string>
+		<string>TEAMID.app.uwulock.passkeys</string>
+	</array>
+</dict>
+</plist>

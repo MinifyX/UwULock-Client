@@ -306,6 +306,8 @@ export const openItemUri = (id: string, index: number) =>
   invoke<void>('open_item_uri', { id, index });
 export const openWebVault = () => invoke<void>('open_web_vault');
 
+/** `store`: an App Store build, which gets new versions from there and has no updater. */
+export const distribution = () => invoke<'store' | 'direct'>('distribution');
 export const setUpdateChannel = (channel: 'stable' | 'beta') =>
   invoke<void>('set_update_channel', { channel });
 export const updateStatus = () => invoke<UpdateInfo | null>('update_status');

@@ -557,11 +557,41 @@ mod native {
     }
 
     fn folder() -> Result<PathBuf, String> {
-        let home = std::env::var_os("HOME").ok_or("no home folder")?;
-        Ok(PathBuf::from(home)
+        Ok(home()?
             .join("Library/Group Containers")
             .join(format!("{}.app.uwulock", team()?))
             .join("Passkeys"))
+    }
+
+    /// The user's real home folder. In the Mac App Store build `HOME` is the
+    /// app's own sandbox container, and the group's folder isn't in there.
+    fn home() -> Result<PathBuf, String> {
+        use std::ffi::{CStr, OsStr};
+        use std::os::unix::ffi::OsStrExt;
+
+        let mut buffer = vec![0 as libc::c_char; 4096];
+        // SAFETY: an all-zero passwd is a valid value to be overwritten.
+        let mut entry: libc::passwd = unsafe { std::mem::zeroed() };
+        let mut found = std::ptr::null_mut();
+        // SAFETY: every pointer is to memory of the size given, alive for the call;
+        // `entry`'s strings point into `buffer`, read before it goes.
+        let status = unsafe {
+            libc::getpwuid_r(
+                libc::getuid(),
+                &mut entry,
+                buffer.as_mut_ptr(),
+                buffer.len(),
+                &mut found,
+            )
+        };
+        if status == 0 && !found.is_null() && !entry.pw_dir.is_null() {
+            // SAFETY: getpwuid_r succeeded, so pw_dir is a NUL-terminated string in `buffer`.
+            let dir = unsafe { CStr::from_ptr(entry.pw_dir) };
+            return Ok(PathBuf::from(OsStr::from_bytes(dir.to_bytes())));
+        }
+        std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .ok_or_else(|| "no home folder".to_string())
     }
 
     fn group() -> Result<String, String> {
