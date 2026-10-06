@@ -705,9 +705,12 @@ whenSessionEnds((ended) => {
   void (async () => {
     if (ended.id === unlockedId) await lock();
     // A token still kept in the account (before 0.5.0-beta.2) moves out before the account goes.
+    // Read from storage, not from `ended`: a logout in the meantime already forgot it, and must
+    // not see it come back.
     const identity = endpoints(ended.server).identity;
-    if (ended.rememberToken && !(await rememberToken(identity, ended.email))) {
-      await setRememberToken(identity, ended.email, ended.rememberToken);
+    const legacy = (await account(ended.id))?.rememberToken;
+    if (legacy && !(await rememberToken(identity, ended.email))) {
+      await setRememberToken(identity, ended.email, legacy);
     }
     await removeAccount(ended.id);
     if ((await local('activeAccount')) === ended.id) {

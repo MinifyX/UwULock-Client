@@ -147,6 +147,29 @@ describe('remember this device', () => {
     expect(await store.deviceId()).toBe(device);
   });
 
+  it('logging out of one account keeps the token of another', async () => {
+    const OTHER = { kind: 'self-hosted', url: 'https://other.example.org' } as const;
+    const OTHER_IDENTITY = 'https://other.example.org/identity';
+    await loginWithCode(true);
+    expect(await session.login(OTHER, EMAIL, 'pw')).toMatchObject({ step: 'two-factor' });
+    expect(await session.loginTwoFactor(0, '123456', true)).toMatchObject({ step: 'done' });
+    expect(await store.rememberToken(OTHER_IDENTITY, EMAIL)).toBe('remember-2');
+    await session.logout(ID);
+    expect(await store.rememberToken(IDENTITY, EMAIL)).toBeNull();
+    expect(await store.rememberToken(OTHER_IDENTITY, EMAIL)).toBe('remember-2');
+  });
+
+  it('a session ending after a logout brings no old token back', async () => {
+    await loginWithCode(true);
+    await store.forgetRememberToken(IDENTITY, EMAIL);
+    await store.updateAccount(ID, { rememberToken: 'remember-1' });
+    const ended = (await store.account(ID))!;
+    await session.logout(ID);
+    sessionEnds(ended);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(await store.rememberToken(IDENTITY, EMAIL)).toBeNull();
+  });
+
   it('asks again when the server no longer takes the token, and keeps the new one', async () => {
     await loginWithCode(true);
     server.taken.clear();
