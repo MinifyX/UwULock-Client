@@ -32,7 +32,7 @@ try {
     what: 'two-step login',
   });
   check('two-step login is asked for', true);
-  await page.click('.segmented button', 'E-Mail');
+  await page.click('[role=radiogroup] button', 'E-Mail');
   await page.click('button', 'Code senden');
   await sleep(300);
   await page.fill('.code-input', '000000');
@@ -58,13 +58,13 @@ try {
     },
   );
   check('the one-time code shows', true);
-  await page.click('.icon-button[aria-label="Passwort zeigen"]');
+  await page.click('button[aria-label="Passwort zeigen"]');
   await sleep(300);
   check(
     'the password reveals',
     (await page.text('.detail-row .colored')).includes('hunter2-but-longer!'),
   );
-  await page.click('.icon-button[aria-label="Passwort kopieren"]');
+  await page.click('button[aria-label="Passwort kopieren"]');
   await sleep(400);
   check('the password is on the clipboard', clipboard() === 'hunter2-but-longer!');
   await shot('a3-item');
@@ -88,7 +88,7 @@ try {
   check('a re-prompted item opens with the master password', true);
 
   // ── Lock and unlock ────────────────────────────────────
-  await page.click('.titlebar-action[aria-label="Sperren"]');
+  await page.click('.uwu-titlebar-action[aria-label^="Sperren"]');
   await page.waitFor(`document.querySelector('.lock')`, { what: 'lock screen' });
   check('locking shows the lock screen', true);
   await page.fill('.lock .password-input input', 'not-the-password');
@@ -105,10 +105,10 @@ try {
   check('unlocking opens the vault again', true);
 
   // ── Log out ────────────────────────────────────────────
-  await page.click('.titlebar-action[aria-label="Sperren"]');
+  await page.click('.uwu-titlebar-action[aria-label^="Sperren"]');
   await page.waitFor(`document.querySelector('.lock')`, { what: 'lock screen' });
   await page.click('.link-button', 'Abmelden');
-  await page.click('.modal button.danger', 'Abmelden');
+  await page.click('dialog[open] button', 'Abmelden');
   await page.waitFor(`document.querySelector('.welcome')`, { what: 'login screen after logout' });
   check('logging out goes back to the login', true);
 } catch (error) {

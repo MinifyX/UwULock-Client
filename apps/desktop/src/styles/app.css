@@ -963,4 +963,23 @@ html[data-platform='ios'] :is(input, textarea, select) {
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
   }
+
+  /* Footer buttons share the width; a third one gets a line of its own, not half a row. */
+  dialog.uwu-modal > div > footer {
+    padding-inline: var(--uwu-space-4);
+  }
+
+  dialog.uwu-modal > div > footer > button {
+    flex: 1 1 auto;
+  }
+}
+
+/*
+ * High contrast: the package's Segmented marks its choice only by colour where
+ * canvas and surface are both black (dark). An outline makes it a shape.
+ * Remove once @uwusuite/design draws it itself.
+ */
+html[data-contrast='high'] [role='radiogroup'] > button[role='radio'][aria-checked='true'] {
+  outline: 2px solid var(--uwu-ink);
+  outline-offset: -2px;
 }
