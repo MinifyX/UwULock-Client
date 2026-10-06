@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "node --test \"test/*.test.ts\"",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "icons": "uwu-icons --brand ../../brand --name uwulock --mobile"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
