@@ -111,8 +111,10 @@ off and merges `Info.ios.plist` into it.
   separate job (release key only for a `v*` tag, otherwise the CI key; the
   release certificate's fingerprint above is checked in both directions), and
   starts it in an emulator (`scripts/android-smoke.sh`).
-- `.github/workflows/ios.yml` builds for the simulator and the iPhone, packs the
-  unsigned IPA and starts the simulator build (`scripts/ios-smoke.sh`).
+- `.github/workflows/ios.yml` builds for the simulator and starts that build
+  (`scripts/ios-smoke.sh`), and in a second job side by side builds for the
+  iPhone and packs the unsigned IPA (artifact `UwULock-iOS-<sha>`). Pull
+  requests only get the simulator job.
 - Both run for pull requests that touch the app, for main and for tags.
   `pnpm release` takes the APK and the IPA of the tag's runs, checks the APK's
   certificate (`scripts/apk-cert.mjs`) and publishes them as

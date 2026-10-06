@@ -88,6 +88,20 @@ jobs:
       # The checked-in wrapper jar runs first in the build; it must be an official Gradle release.
       - uses: gradle/actions/wrapper-validation@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
 
+      # Gradle itself, the plugins and libraries it downloads and its compiled build scripts —
+      # a minute of every build. Not its transforms or build cache: large, and they gained
+      # nothing measurable. Restored for every run, saved only by main, like the Rust cache.
+      - name: Gradle cache
+        id: gradle-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.gradle/wrapper
+            ~/.gradle/caches/modules-2
+            ~/.gradle/caches/[0-9]*
+          key: gradle-v2-${{ hashFiles('apps/desktop/src-tauri/gen/android/**/*.gradle*', 'apps/desktop/src-tauri/gen/android/gradle/wrapper/gradle-wrapper.properties', 'apps/desktop/src-tauri/gen/android/buildSrc/**', 'Cargo.lock') }}
+          restore-keys: gradle-v2-
+
       # Built without the signing key: thousands of third-party build scripts run here.
       - name: Build
         env:
@@ -96,6 +110,16 @@ jobs:
           node scripts/mobile.mjs prepare
           export NDK_HOME="$ANDROID_NDK_LATEST_HOME"
           pnpm tauri android build --apk --target aarch64 --ci
+
+      - name: Save the Gradle cache
+        if: github.ref == 'refs/heads/main' && steps.gradle-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.gradle/wrapper
+            ~/.gradle/caches/modules-2
+            ~/.gradle/caches/[0-9]*
+          key: ${{ steps.gradle-cache.outputs.cache-primary-key }}
 
       - name: Find the APK
         run: |
