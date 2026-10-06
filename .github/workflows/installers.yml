@@ -97,10 +97,21 @@ jobs:
             # Its own cache since the Intel half builds in target/x86_64-build.
             cache-key: macos-universal-split
           # The oldest supported Ubuntu, so the packages and the portable
-          # folder run on anything as new or newer.
+          # folder run on anything as new or newer. Two machines at once: the
+          # .deb and .rpm need the app built once more (as package `uwulock`),
+          # the setup needs the AppImage first; `merge-linux-x64` below joins
+          # what both left into the artifact installers-linux-x64.
           - name: linux-x64
             os: ubuntu-22.04
             target: ''
+            part: setup
+            artifact: part-linux-x64-setup
+          - name: linux-x64-packages
+            os: ubuntu-22.04
+            target: ''
+            part: packages
+            artifact: part-linux-x64-packages
+            cache-key: linux-x64
           # Natively on ARM, same Ubuntu: nothing has to be cross-linked.
           - name: linux-arm64
             os: ubuntu-22.04-arm
@@ -151,12 +162,12 @@ jobs:
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
+          PART: ${{ matrix.part }}
         run: |
-          if [ -n "$TARGET" ]; then
-            node scripts/build-setup.mjs --target "$TARGET"
-          else
-            node scripts/build-setup.mjs
-          fi
+          args=()
+          if [ -n "$TARGET" ]; then args+=(--target "$TARGET"); fi
+          if [ -n "$PART" ]; then args+=(--part "$PART"); fi
+          node scripts/build-setup.mjs "${args[@]}"
           ls -la target/installers
 
       # The setup unpacks what it carries into a scratch folder and checks the
@@ -194,9 +205,13 @@ jobs:
         shell: bash
         env:
           ARCH: ${{ matrix.name == 'linux-arm64' && 'arm64' || 'x64' }}
+          PART: ${{ matrix.part }}
         run: |
           set -e
           arch="$ARCH"
+          # Each half checks what it built (--part in build-setup.mjs); left unindented below,
+          # as the Python in between must start at the line's beginning.
+          if [ "$PART" != setup ]; then
           sudo apt-get install -y ./target/installers/UwULock-linux-$arch.deb
           test -f /var/lib/dpkg/info/uwulock.list
           grep -qx /usr/bin/uwulock-desktop /var/lib/dpkg/info/uwulock.list
@@ -238,7 +253,9 @@ jobs:
           rpm -qpl target/installers/UwULock-linux-$arch.rpm | grep -qx /usr/lib/uwulock/uwulock-uhid-broker
           # systemd runs it: it has to be executable in the .rpm too.
           rpm -qplv target/installers/UwULock-linux-$arch.rpm | grep -qE '^-rwxr-xr-x .* /usr/lib/uwulock/uwulock-uhid-broker$'
+          fi
 
+          if [ "$PART" != packages ]; then
           portable="$RUNNER_TEMP/portable"
           mkdir -p "$portable"
           tar -xzf target/installers/UwULock-linux-$arch-portable.tar.gz -C "$portable"
@@ -247,10 +264,24 @@ jobs:
           test -f "$portable/UwULock/README.txt"
           LD_LIBRARY_PATH="$portable/UwULock/usr/lib" ldd "$portable/UwULock/usr/bin/uwulock-desktop" \
             | grep "not found" && exit 1 || echo "every library found"
+          fi
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: installers-${{ matrix.name }}
+          name: ${{ matrix.artifact || format('installers-{0}', matrix.name) }}
           path: target/installers/*
           if-no-files-found: error
+          retention-days: 14
+
+  # The two halves of Linux x64 as one artifact, installers-linux-x64, as `pnpm release` takes it.
+  merge-linux-x64:
+    name: Setup (linux-x64, joined)
+    needs: installers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/upload-artifact/merge@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: installers-linux-x64
+          pattern: part-linux-x64-*
+          delete-merged: true
           retention-days: 14

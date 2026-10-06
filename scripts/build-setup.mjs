@@ -71,6 +71,12 @@ const fail = (message) => {
   process.exit(1);
 };
 
+// Linux only: `--part packages` builds just the .deb and .rpm, `--part setup`
+// everything else (AppImage, portable folder, setup), so CI can build the two
+// on separate machines at the same time. Without it, everything.
+const partIndex = process.argv.indexOf('--part');
+const part = partIndex > 0 ? process.argv[partIndex + 1] : 'all';
+if (!['all', 'packages', 'setup'].includes(part)) fail(`Unknown --part ${part}`);
 const targetIndex = process.argv.indexOf('--target');
 const target = targetIndex > 0 ? process.argv[targetIndex + 1] : undefined;
 const targetArg = target ? ` --target ${target}` : '';
@@ -238,14 +244,16 @@ if (process.platform === 'win32') {
     rmSync(work, { recursive: true, force: true });
   };
 
-  console.log(`\n▸ Building UwULock ${version}`);
-  run(`pnpm --filter @uwulock/desktop tauri build --bundles appimage${targetArg}`);
-  unpackAppImage(
-    only(join(bundles, 'appimage'), (name) => name.endsWith('.AppImage'), 'AppImage of UwULock'),
-    'UwULock',
-  );
-  // The next build bundles into the same folders.
-  rmSync(join(bundles, 'appimage'), { recursive: true, force: true });
+  if (part !== 'packages') {
+    console.log(`\n▸ Building UwULock ${version}`);
+    run(`pnpm --filter @uwulock/desktop tauri build --bundles appimage${targetArg}`);
+    unpackAppImage(
+      only(join(bundles, 'appimage'), (name) => name.endsWith('.AppImage'), 'AppImage of UwULock'),
+      'UwULock',
+    );
+    // The next build bundles into the same folders.
+    rmSync(join(bundles, 'appimage'), { recursive: true, force: true });
+  }
 
   // The packages install system-wide, to /usr, as package `uwulock`. Tauri
   // names the package after productName in kebab case, which would make
@@ -256,95 +264,99 @@ if (process.platform === 'win32') {
   // The packages also bring the root helper for the virtual security key
   // (crates/uwulock-uhid-broker, docs/passkeys.md), built here: Tauri bundles
   // only the app's own binary.
-  console.log('\n▸ Building the security key helper');
-  run(`cargo build --release --locked -p uwulock-uhid-broker${targetArg}`);
-  const broker = join(release, 'uwulock-uhid-broker');
-  if (!existsSync(broker)) fail(`Missing ${broker}`);
-  const brokerFiles = { files: { '/usr/lib/uwulock/uwulock-uhid-broker': broker } };
-  console.log(`\n▸ Packaging UwULock ${version} as .deb and .rpm`);
-  run(
-    `pnpm --filter @uwulock/desktop tauri build --bundles deb,rpm${targetArg} --config "${configFile(
-      'packages',
-      {
-        productName: 'uwulock',
-        bundle: { linux: { deb: brokerFiles, rpm: brokerFiles } },
-      },
-    )}"`,
-  );
-  const deb = join(out, `UwULock-linux-${arch()}.deb`);
-  copyFileSync(
-    only(join(bundles, 'deb'), (name) => name.endsWith('.deb'), 'deb'),
-    deb,
-  );
-  const rpm = join(out, `UwULock-linux-${arch()}.rpm`);
-  copyFileSync(
-    only(join(bundles, 'rpm'), (name) => name.endsWith('.rpm'), 'rpm'),
-    rpm,
-  );
-  produced.push(deb, rpm);
-
-  // One folder, UwULock/, that runs where it lands. tar, not zip: the AppDir
-  // needs its modes and symlinks.
-  console.log('\n▸ Packing the portable folder');
-  const staging = mkdtempSync(join(tmpdir(), 'uwulock-portable-'));
-  const folder = join(staging, 'UwULock');
-  execFileSync('cp', ['-a', join(apps, 'UwULock'), folder]);
-  const launcher = join(folder, 'uwulock');
-  writeFileSync(
-    launcher,
-    '#!/bin/sh\n# Starts UwULock from this folder.\nhere=$(dirname "$(readlink -f "$0")")\nexec "$here/AppRun" "$@"\n',
-  );
-  chmodSync(launcher, 0o755);
-  writeFileSync(
-    join(folder, 'README.txt'),
-    [
-      `UwULock ${version}, portable`,
-      '',
-      'Start it with ./uwulock (or ./AppRun) in this folder. Nothing is installed:',
-      'the folder can live anywhere and be deleted when you are done.',
-      '',
-      'This copy does not update itself. For updates, install the .deb or .rpm',
-      '(or the AUR package uwulock-bin) instead, or fetch the newest',
-      'UwULock-linux-<arch>-portable.tar.gz from',
-      'https://github.com/MinifyX/UwULock-Client/releases/latest',
-      '',
-    ].join('\n'),
-  );
-  const portable = join(out, `UwULock-linux-${arch()}-portable.tar.gz`);
-  execFileSync('tar', [
-    '--owner=0',
-    '--group=0',
-    '--numeric-owner',
-    '-czf',
-    portable,
-    '-C',
-    staging,
-    'UwULock',
-  ]);
-  rmSync(staging, { recursive: true, force: true });
-  produced.push(portable);
-
-  // Copies the setup installed (~/.local/share/uwulock) update by running the
-  // next setup. UwUSSH only ever shipped a Linux setup for x64, and UwULock
-  // keeps the same shape.
-  if (arch() === 'x64') {
-    console.log('\n▸ Packing it into the setup, for the updater');
-    const setupConfig = configFile('setup', { bundle: { active: true, targets: ['appimage'] } });
+  if (part !== 'setup') {
+    console.log('\n▸ Building the security key helper');
+    run(`cargo build --release --locked -p uwulock-uhid-broker${targetArg}`);
+    const broker = join(release, 'uwulock-uhid-broker');
+    if (!existsSync(broker)) fail(`Missing ${broker}`);
+    const brokerFiles = { files: { '/usr/lib/uwulock/uwulock-uhid-broker': broker } };
+    console.log(`\n▸ Packaging UwULock ${version} as .deb and .rpm`);
     run(
-      `pnpm --filter @uwulock/setup tauri build --bundles appimage${targetArg} --config "${setupConfig}"`,
-      { UWULOCK_SETUP_PAYLOAD: apps },
+      `pnpm --filter @uwulock/desktop tauri build --bundles deb,rpm${targetArg} --config "${configFile(
+        'packages',
+        {
+          productName: 'uwulock',
+          bundle: { linux: { deb: brokerFiles, rpm: brokerFiles } },
+        },
+      )}"`,
     );
-    const image = join(out, `UwULock-update-linux-${arch()}.AppImage`);
+    const deb = join(out, `UwULock-linux-${arch()}.deb`);
     copyFileSync(
-      only(
-        join(bundles, 'appimage'),
-        (name) => name.endsWith('.AppImage'),
-        'AppImage of the setup',
-      ),
-      image,
+      only(join(bundles, 'deb'), (name) => name.endsWith('.deb'), 'deb'),
+      deb,
     );
-    execFileSync('chmod', ['+x', image]);
-    produced.push(image);
+    const rpm = join(out, `UwULock-linux-${arch()}.rpm`);
+    copyFileSync(
+      only(join(bundles, 'rpm'), (name) => name.endsWith('.rpm'), 'rpm'),
+      rpm,
+    );
+    produced.push(deb, rpm);
+  }
+
+  if (part !== 'packages') {
+    // One folder, UwULock/, that runs where it lands. tar, not zip: the AppDir
+    // needs its modes and symlinks.
+    console.log('\n▸ Packing the portable folder');
+    const staging = mkdtempSync(join(tmpdir(), 'uwulock-portable-'));
+    const folder = join(staging, 'UwULock');
+    execFileSync('cp', ['-a', join(apps, 'UwULock'), folder]);
+    const launcher = join(folder, 'uwulock');
+    writeFileSync(
+      launcher,
+      '#!/bin/sh\n# Starts UwULock from this folder.\nhere=$(dirname "$(readlink -f "$0")")\nexec "$here/AppRun" "$@"\n',
+    );
+    chmodSync(launcher, 0o755);
+    writeFileSync(
+      join(folder, 'README.txt'),
+      [
+        `UwULock ${version}, portable`,
+        '',
+        'Start it with ./uwulock (or ./AppRun) in this folder. Nothing is installed:',
+        'the folder can live anywhere and be deleted when you are done.',
+        '',
+        'This copy does not update itself. For updates, install the .deb or .rpm',
+        '(or the AUR package uwulock-bin) instead, or fetch the newest',
+        'UwULock-linux-<arch>-portable.tar.gz from',
+        'https://github.com/MinifyX/UwULock-Client/releases/latest',
+        '',
+      ].join('\n'),
+    );
+    const portable = join(out, `UwULock-linux-${arch()}-portable.tar.gz`);
+    execFileSync('tar', [
+      '--owner=0',
+      '--group=0',
+      '--numeric-owner',
+      '-czf',
+      portable,
+      '-C',
+      staging,
+      'UwULock',
+    ]);
+    rmSync(staging, { recursive: true, force: true });
+    produced.push(portable);
+
+    // Copies the setup installed (~/.local/share/uwulock) update by running the
+    // next setup. UwUSSH only ever shipped a Linux setup for x64, and UwULock
+    // keeps the same shape.
+    if (arch() === 'x64') {
+      console.log('\n▸ Packing it into the setup, for the updater');
+      const setupConfig = configFile('setup', { bundle: { active: true, targets: ['appimage'] } });
+      run(
+        `pnpm --filter @uwulock/setup tauri build --bundles appimage${targetArg} --config "${setupConfig}"`,
+        { UWULOCK_SETUP_PAYLOAD: apps },
+      );
+      const image = join(out, `UwULock-update-linux-${arch()}.AppImage`);
+      copyFileSync(
+        only(
+          join(bundles, 'appimage'),
+          (name) => name.endsWith('.AppImage'),
+          'AppImage of the setup',
+        ),
+        image,
+      );
+      execFileSync('chmod', ['+x', image]);
+      produced.push(image);
+    }
   }
   rmSync(apps, { recursive: true, force: true });
 }
