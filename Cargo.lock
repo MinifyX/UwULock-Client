@@ -5802,8 +5802,8 @@ dependencies = [
 
 [[package]]
 name = "uwu-macos"
-version = "1.4.0"
-source = "git+https://github.com/MinifyX/UwUSuite-Design?tag=v1.4.0#16de592bc913a8d58224f2f403945dab1a180288"
+version = "1.4.1"
+source = "git+https://github.com/MinifyX/UwUSuite-Design?tag=v1.4.1#8ad61ae0a22c9c5c083147dd1b01dcf19f9e91ef"
 dependencies = [
  "objc2",
 ]

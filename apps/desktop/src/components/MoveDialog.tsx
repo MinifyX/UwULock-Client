@@ -328,15 +328,14 @@ function SourceLogin({
       </p>
       <div className="field">
         <span>{t('Server')}</span>
-        <fieldset disabled={busy} className="m-0 min-w-0 border-0 p-0">
-          <Segmented
-            value={kind}
-            onChange={setKind}
-            options={servers}
-            label={t('Server')}
-            className="w-full [&>button]:flex-1 phone:[&>button]:h-auto phone:[&>button]:min-h-8 phone:[&>button]:px-2 phone:[&>button]:py-1"
-          />
-        </fieldset>
+        <Segmented
+          value={kind}
+          onChange={setKind}
+          options={servers}
+          label={t('Server')}
+          disabled={busy}
+          className="w-full [&>button]:flex-1 phone:[&>button]:h-auto phone:[&>button]:min-h-8 phone:[&>button]:px-2 phone:[&>button]:py-1"
+        />
       </div>
       {kind === 'self-hosted' && (
         <label className="field">
