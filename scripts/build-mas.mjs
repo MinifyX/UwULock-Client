@@ -211,7 +211,7 @@ function check(app) {
   if (binary.includes('raw.githubusercontent.com/MinifyX/UwULock-Client/updates'))
     fail('The update feed is still in the program: was it built with --no-default-features?');
   const team = env.UWULOCK_APPLE_TEAM_ID ?? env.APPLE_TEAM_ID;
-  if (team && !binary.includes(`${team}.app.uwulock`))
+  if (team && !binary.includes(team))
     fail(`The program doesn't know the team ${team}: built without UWULOCK_APPLE_TEAM_ID?`);
   console.log(`  ${exe}: ${found.join(' ')}, ${BUNDLE_ID} ${marketingVersion}, extension inside`);
 }

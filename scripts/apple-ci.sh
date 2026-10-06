@@ -45,10 +45,10 @@ keychain)
 
   identities="$(security find-identity -v "$keychain")"
   echo "$identities" | grep -E '^ +[0-9]+\)' | sed -E 's/^ +[0-9]+\) [0-9A-F]+ /  /'
-  app=$(echo "$identities" | grep '"Apple Distribution: ' | head -n 1 | awk '{print $2}')
+  app=$(echo "$identities" | grep '"Apple Distribution: ' | head -n 1 | awk '{print $2}' || true)
   [ -n "$app" ] || { echo "::error::No Apple Distribution certificate in APPLE_DISTRIBUTION_P12"; exit 1; }
   installer=$(echo "$identities" | grep -E '"(3rd Party Mac Developer Installer|Mac Installer Distribution): ' |
-    head -n 1 | sed -E 's/.*"(.*)".*/\1/')
+    head -n 1 | sed -E 's/.*"(.*)".*/\1/' || true)
   security find-certificate -c "Apple Distribution: " -p "$keychain" >"$RUNNER_TEMP/distribution.pem"
   grep -q 'BEGIN CERTIFICATE' "$RUNNER_TEMP/distribution.pem" || { echo "::error::Couldn't export the certificate"; exit 1; }
   {
