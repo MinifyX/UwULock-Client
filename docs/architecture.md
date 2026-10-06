@@ -128,11 +128,15 @@ Keys and decrypted values are `Zeroizing` and wiped when dropped.
   leaves a secret copied just before in the clipboard.
 - **Disk** (`account.rs`): one folder per account under `accounts/<id>/`, with
   `account.json` — server, email, KDF settings, the user key as the server
-  wraps it, and the refresh token and remember-device token sealed under the
-  user key — and `vault.json`, the last sync as the server sent it. Beside
-  them `accounts.json` (which accounts there are and which was open last,
-  nothing secret) and `device-id`, shared by all of them. Nothing in there
-  opens anything without the master password.
+  wraps it, and the refresh token sealed under the user key — `vault.json`,
+  the last sync as the server sent it, and `remember-token`, the
+  remember-device token of two-step login. That one is not under the user
+  key, so a login after a restart, a lock or an ended session can send it
+  (DPAPI on Windows, a 0600 file in the app's own folder elsewhere); only
+  logging out removes it. Beside them `accounts.json` (which accounts there
+  are and which was open last, nothing secret) and `device-id`, shared by all
+  of them and kept across logouts. Nothing in there opens anything without
+  the master password.
 
 Auto-lock counts what the user does (keys, clicks, the wheel, reveal, copy),
 not what the page polls: the one-time code refreshes every second and must

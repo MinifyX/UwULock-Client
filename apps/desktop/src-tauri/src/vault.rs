@@ -633,8 +633,11 @@ async fn login_step(
             pending.hash.clone(),
         )
     };
-    // A device remembered at an earlier two-step login skips the code.
-    let remember_token = remembered_token(state, &client, &email);
+    // A device remembered at an earlier two-step login skips the code — after
+    // a restart, a lock or an ended session too: the token doesn't need the
+    // user key. A code typed in goes instead of it.
+    let remember_token = state.remembered_token(client.server(), &email);
+    let sent_remembered = two_factor.is_none() && remember_token.is_some();
     let outcome = client
         .login(PasswordLogin {
             email: &email,
@@ -657,26 +660,16 @@ async fn login_step(
             })
         }
         LoginOutcome::TwoFactor { methods, message } => {
+            // The server didn't take the remembered token (it ran out, or the
+            // device was forgotten there): the code is asked once more, and
+            // "remember this device" brings a new token.
+            if sent_remembered {
+                state.drop_remember_token(client.server(), &email);
+            }
             Ok(LoginStep::TwoFactor { methods, message })
         }
         LoginOutcome::NewDeviceCode => Ok(LoginStep::NewDevice),
     }
-}
-
-/// The remember token this device already has for that account, if any. It is
-/// sealed under the user key, which a fresh login doesn't have yet — so it
-/// only helps while that account is unlocked (logging in again after the
-/// session expired).
-fn remembered_token(state: &VaultState, client: &Client, email: &str) -> Option<Zeroizing<String>> {
-    let stored = state.accounts.lock().iter().find_map(|stored| {
-        (stored.account.email == email && &stored.account.server == client.server())
-            .then(|| stored.clone())
-    })?;
-    let unlocked = state.unlocked.read();
-    Account::unseal(
-        &stored.account.protected_remember_token,
-        &unlocked.get(&stored.id)?.user_key,
-    )
 }
 
 async fn finish_login(
@@ -702,14 +695,14 @@ async fn finish_login(
     // the session expired keeps its folder, its label and its remember token.
     let id = state.storage.id_for(&pending.server, &pending.email);
     let previous = state.account(&id).ok();
-    let previous_remember = previous.as_ref().and_then(|account| {
-        let unlocked = state.unlocked.read();
-        Account::unseal(
-            &account.protected_remember_token,
-            &unlocked.get(&id)?.user_key,
-        )
-    });
-    let remember = session.remember_token.clone().or(previous_remember);
+    // A new token from the server replaces the old one; without one the old
+    // one stays (its own file, or — from before 0.5.0-beta.2 — sealed in the
+    // account, which the user key just opened).
+    let previous_remember = previous
+        .as_ref()
+        .filter(|_| state.storage.load_remember_token(&id).is_none())
+        .and_then(|account| Account::unseal(&account.protected_remember_token, &user_key));
+    let new_remember = session.remember_token.clone().or(previous_remember);
     let previous_hello = previous
         .as_ref()
         .and_then(|account| account.hello_user_key.clone());
@@ -731,7 +724,7 @@ async fn finish_login(
             .refresh_token
             .as_ref()
             .map(|t| Account::seal(t, &user_key)),
-        protected_remember_token: remember.as_ref().map(|t| Account::seal(t, &user_key)),
+        protected_remember_token: None,
         last_sync: None,
         hello_user_key: previous_hello,
         extras_key_id: previous_extras,
@@ -749,6 +742,11 @@ async fn finish_login(
         .storage
         .save_account(&id, &account)
         .map_err(|e| Failure::new("io", format!("Couldn't save the account: {e}")))?;
+    if let Some(token) = &new_remember {
+        if let Err(error) = state.storage.save_remember_token(&id, token) {
+            tracing::warn!(%error, "couldn't keep the remember token");
+        }
+    }
     if let Err(error) = state.storage.save_cache(&id, &text) {
         tracing::warn!(%error, "couldn't cache the vault");
     }
@@ -831,6 +829,7 @@ pub(crate) async fn unlock(
 /// The user key is open: the vault comes from the copy on this device, the
 /// sync follows in the back.
 fn open_unlocked(app: &AppHandle, state: &VaultState, id: String, user_key: SymmetricKey) {
+    state.adopt_sealed_remember_token(&id, &user_key);
     let cached = state.storage.load_cache(&id);
     let vault = match &cached {
         Some(text) => match parse_sync(text).and_then(|sync| Vault::open(&sync, &user_key)) {
@@ -991,6 +990,65 @@ pub(crate) fn logout(
 }
 
 impl VaultState {
+    /// The remember token this device has for that account, if any — open
+    /// or locked, after a restart or an ended session alike. Logging out is
+    /// the only thing that forgets it on purpose. A token from before
+    /// 0.5.0-beta.2, still sealed under the user key, only while unlocked.
+    fn remembered_token(&self, server: &Server, email: &str) -> Option<Zeroizing<String>> {
+        let stored = self.accounts.lock().iter().find_map(|stored| {
+            (stored.account.email == email && &stored.account.server == server)
+                .then(|| stored.clone())
+        })?;
+        if let Some(token) = self.storage.load_remember_token(&stored.id) {
+            return Some(token);
+        }
+        let unlocked = self.unlocked.read();
+        Account::unseal(
+            &stored.account.protected_remember_token,
+            &unlocked.get(&stored.id)?.user_key,
+        )
+    }
+
+    /// The server no longer takes the account's remember token.
+    fn drop_remember_token(&self, server: &Server, email: &str) {
+        let id = self.accounts.lock().iter().find_map(|stored| {
+            (stored.account.email == email && &stored.account.server == server)
+                .then(|| stored.id.clone())
+        });
+        let Some(id) = id else { return };
+        if let Err(error) = self.storage.forget_remember_token(&id) {
+            tracing::warn!(%error, "couldn't remove the remember token");
+        }
+        if self
+            .account(&id)
+            .is_ok_and(|a| a.protected_remember_token.is_some())
+        {
+            self.update_account(&id, |account| account.protected_remember_token = None);
+        }
+    }
+
+    /// A remember token from before 0.5.0-beta.2, sealed under the user key,
+    /// moves into its own file once the user key is open — so the next login
+    /// finds it even while the vault is locked.
+    fn adopt_sealed_remember_token(&self, id: &str, user_key: &SymmetricKey) {
+        let Ok(account) = self.account(id) else {
+            return;
+        };
+        if account.protected_remember_token.is_none() {
+            return;
+        }
+        if self.storage.load_remember_token(id).is_none() {
+            let Some(token) = Account::unseal(&account.protected_remember_token, user_key) else {
+                return;
+            };
+            if let Err(error) = self.storage.save_remember_token(id, &token) {
+                tracing::warn!(%error, "couldn't move the remember token");
+                return;
+            }
+        }
+        self.update_account(id, |account| account.protected_remember_token = None);
+    }
+
     /// Logging in again to an account this device knows: the server doesn't
     /// get to ask for a cheaper key derivation than the one stored from the
     /// last login, or the hash sent next would be that much easier to guess
@@ -2793,6 +2851,154 @@ mod tests {
         state
             .refuse_weaker_kdf(&other, "nyu@example.org", pbkdf2(100_000))
             .unwrap();
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    fn remembering(dir: &std::path::Path) -> (VaultState, String, Server) {
+        let storage = Storage::new(dir.to_path_buf()).unwrap();
+        let server = Server::self_hosted("vault.example.org").unwrap();
+        let account = Account {
+            version: 1,
+            server: server.clone(),
+            email: "nyu@example.org".into(),
+            name: None,
+            label: None,
+            kdf: Kdf::Pbkdf2 {
+                iterations: 600_000,
+            },
+            protected_user_key: "2.x|y|z".into(),
+            protected_refresh_token: None,
+            protected_remember_token: None,
+            last_sync: None,
+            hello_user_key: None,
+            extras_key_id: None,
+            suite_device: None,
+        };
+        let id = storage.id_for(&account.server, &account.email);
+        storage.save_account(&id, &account).unwrap();
+        (VaultState::new(storage), id, server)
+    }
+
+    fn open(state: &VaultState, id: &str, key: &SymmetricKey) {
+        state.unlocked.write().insert(
+            id.to_string(),
+            Unlocked::new(key.clone(), Vault::default(), None),
+        );
+    }
+
+    #[test]
+    fn a_remembered_device_stays_remembered_until_logout() {
+        let dir = std::env::temp_dir().join(format!("uwulock-test-{}", uuid::Uuid::new_v4()));
+        let (state, id, server) = remembering(&dir);
+        let device = state.storage.device_id();
+        let email = "nyu@example.org";
+        assert!(state.remembered_token(&server, email).is_none());
+        state
+            .storage
+            .save_remember_token(&id, "remember-1")
+            .unwrap();
+
+        // Open, locked, after the server ended the session, after a restart:
+        // the token is there every time, with no user key in sight.
+        let key = SymmetricKey::generate();
+        open(&state, &id, &key);
+        assert_eq!(
+            state.remembered_token(&server, email).unwrap().as_str(),
+            "remember-1"
+        );
+        state.lock_now();
+        assert_eq!(
+            state.remembered_token(&server, email).unwrap().as_str(),
+            "remember-1"
+        );
+        open(&state, &id, &key);
+        state.session_ended(&id);
+        assert!(state.unlocked.read().is_empty());
+        assert_eq!(
+            state.remembered_token(&server, email).unwrap().as_str(),
+            "remember-1"
+        );
+        let state = VaultState::new(Storage::new(dir.clone()).unwrap());
+        assert_eq!(
+            state.remembered_token(&server, email).unwrap().as_str(),
+            "remember-1"
+        );
+        // Only for that server and address.
+        assert!(state
+            .remembered_token(&server, "other@example.org")
+            .is_none());
+        let other = Server::self_hosted("other.example.org").unwrap();
+        assert!(state.remembered_token(&other, email).is_none());
+
+        // The server no longer takes it: gone, the code is asked again.
+        state.drop_remember_token(&server, email);
+        assert!(state.remembered_token(&server, email).is_none());
+        state
+            .storage
+            .save_remember_token(&id, "remember-2")
+            .unwrap();
+
+        // Logging out forgets it; the device stays the same device.
+        state.log_out(&id).unwrap();
+        assert!(state.storage.load_remember_token(&id).is_none());
+        assert!(state.remembered_token(&server, email).is_none());
+        assert_eq!(state.storage.device_id(), device);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_sealed_remember_token_moves_out_at_the_next_unlock() {
+        let dir = std::env::temp_dir().join(format!("uwulock-test-{}", uuid::Uuid::new_v4()));
+        let (state, id, server) = remembering(&dir);
+        let email = "nyu@example.org";
+        let key = SymmetricKey::generate();
+        // As 0.5.0-beta.1 kept it: under the user key, in account.json.
+        state.update_account(&id, |account| {
+            account.protected_remember_token = Some(Account::seal("old-token", &key));
+        });
+        // Locked, it doesn't open (that was the bug) …
+        assert!(state.remembered_token(&server, email).is_none());
+        // … open, it does, even before it moved.
+        open(&state, &id, &key);
+        assert_eq!(
+            state.remembered_token(&server, email).unwrap().as_str(),
+            "old-token"
+        );
+
+        // Unlocking moves it into its own file, and the sealed copy goes.
+        state.adopt_sealed_remember_token(&id, &key);
+        assert!(state
+            .account(&id)
+            .unwrap()
+            .protected_remember_token
+            .is_none());
+        assert!(state
+            .storage
+            .load_account(&id)
+            .unwrap()
+            .protected_remember_token
+            .is_none());
+        state.lock_now();
+        assert_eq!(
+            state.remembered_token(&server, email).unwrap().as_str(),
+            "old-token"
+        );
+
+        // A newer token in the file wins over an old sealed one.
+        state.storage.save_remember_token(&id, "newer").unwrap();
+        state.update_account(&id, |account| {
+            account.protected_remember_token = Some(Account::seal("older", &key));
+        });
+        state.adopt_sealed_remember_token(&id, &key);
+        assert_eq!(
+            state.remembered_token(&server, email).unwrap().as_str(),
+            "newer"
+        );
+        assert!(state
+            .account(&id)
+            .unwrap()
+            .protected_remember_token
+            .is_none());
         std::fs::remove_dir_all(dir).unwrap();
     }
 
