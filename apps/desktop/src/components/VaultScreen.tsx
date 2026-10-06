@@ -35,6 +35,7 @@ import { MaskedDialog } from './MaskedDialog';
 import { Modal } from './Modal';
 import { NyuScene } from './nyu/scenes';
 import { SPACE_TITLE, SuitePane } from './SuitePane';
+import { withKeys } from '../lib/shortcuts';
 import type { SuiteSpace } from '../lib/suiteModel';
 
 export type Filter =
@@ -100,7 +101,7 @@ function same(a: Filter, b: Filter) {
 
 type Props = {
   status: Status;
-  /** The search field, for Ctrl+F from the app. */
+  /** The search field, for Ctrl+F (⌘F) from the app. */
   searchRef: React.RefObject<HTMLInputElement>;
   onAddAccount: () => void;
 };
@@ -610,7 +611,11 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
                     className="search"
                     type="search"
                     value={query}
-                    placeholder={phone ? t('Tresor durchsuchen') : t('Tresor durchsuchen (Strg+F)')}
+                    placeholder={
+                      phone
+                        ? t('Tresor durchsuchen')
+                        : withKeys(t('Tresor durchsuchen'), 'CmdOrCtrl+F')
+                    }
                     aria-label={t('Tresor durchsuchen')}
                     spellCheck={false}
                     onChange={(e) => setQuery(e.target.value)}

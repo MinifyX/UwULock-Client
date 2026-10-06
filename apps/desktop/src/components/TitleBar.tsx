@@ -1,15 +1,9 @@
-import {
-  detectPlatform,
-  Icon,
-  ICONS,
-  TitleBar as SuiteTitleBar,
-  TitleBarAction,
-  Wordmark,
-} from '@uwusuite/design';
+import { Icon, ICONS, TitleBar as SuiteTitleBar, TitleBarAction, Wordmark } from '@uwusuite/design';
 import { useTauriWindow } from '@uwusuite/design/tauri';
 import type { MouseEvent, ReactNode } from 'react';
 import { t, useLanguage } from '../lib/i18n';
 import { isMobile } from '../lib/platform';
+import { desktop, withKeys } from '../lib/shortcuts';
 
 type Props = {
   onSettings: () => void;
@@ -35,29 +29,24 @@ function Brand() {
 
 function SettingsAction({ onSettings }: { onSettings: () => void }) {
   return (
-    <TitleBarAction label={t('Einstellungen (Strg+,)')} onClick={onSettings}>
+    <TitleBarAction label={withKeys(t('Einstellungen'), 'CmdOrCtrl+,')} onClick={onSettings}>
       <Icon icon={ICONS.settings} size="md" />
     </TitleBarAction>
   );
 }
 
 /**
- * The window's own title bar (@uwusuite/design's TitleBar): the window has no
- * system frame (tauri.conf.json), so moving, minimizing, maximizing and
- * closing all happen here. Double-clicking the empty bar maximizes, as
- * everywhere on Windows.
- *
- * macOS keeps this bar for now, with the package's Windows controls: its
- * native title bar and menu bar come with the macOS menu (setMacMenu), which
- * is still to do.
+ * The window's own title bar on Windows and Linux (@uwusuite/design's
+ * TitleBar): the window has no system frame there (tauri.conf.json), so
+ * moving, minimizing, maximizing and closing all happen here. Double-clicking
+ * the empty bar maximizes, as everywhere on Windows.
  */
 function WindowTitleBar({ onSettings, children }: Props) {
   const controls = useTauriWindow();
-  const platform = detectPlatform();
   return (
     <div onDoubleClickCapture={leaveDoubleClickToTauri}>
       <SuiteTitleBar
-        platform={platform === 'mac' ? 'windows' : platform}
+        platform={desktop}
         controls={controls}
         brand={<Brand />}
         actions={
@@ -87,7 +76,14 @@ function AppBar({ onSettings, children }: Props) {
   );
 }
 
+/**
+ * macOS draws the window's title bar itself (tauri.macos.conf.json), with the
+ * traffic lights, and the actions live in the menu bar (App.tsx, setMacMenu),
+ * so there is nothing to draw here.
+ */
 export function TitleBar(props: Props) {
   useLanguage();
-  return isMobile() ? <AppBar {...props} /> : <WindowTitleBar {...props} />;
+  if (isMobile()) return <AppBar {...props} />;
+  if (desktop === 'mac') return null;
+  return <WindowTitleBar {...props} />;
 }

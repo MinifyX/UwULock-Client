@@ -27,6 +27,7 @@ import { ago } from '../lib/format';
 import { emailOptIn, setEmailOptIn, type EmailOptIn } from '../lib/health';
 import { N_, t, useLanguage } from '../lib/i18n';
 import { isMobile, systemName } from '../lib/platform';
+import { keys } from '../lib/shortcuts';
 import { updateSettings, useSettings, type AutoLock, type ClipboardClear } from '../lib/settings';
 import { unlockDescription, unlockLabel, unlockPrompt } from '../lib/unlock';
 import { FontPicker } from './FontPicker';
@@ -277,7 +278,11 @@ function Security({ status, onClose }: { status: Status; onClose: () => void }) 
       <PasskeySettings Row={Row} Toggle={Toggle} />
       <Row
         label={t('Jetzt sperren')}
-        description={isMobile() ? undefined : t('Auch mit Strg+L, von überall in UwULock.')}
+        description={
+          isMobile()
+            ? undefined
+            : t('Auch mit {keys}, von überall in UwULock.', { keys: keys('CmdOrCtrl+L') })
+        }
       >
         <Button
           size="sm"
