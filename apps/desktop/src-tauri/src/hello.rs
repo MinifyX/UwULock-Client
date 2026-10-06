@@ -243,6 +243,19 @@ pub struct Prompt {
     pub cancel: String,
 }
 
+/// Seals `data` with DPAPI for this Windows user: what `account.rs` keeps
+/// the remember token of two-step login under.
+#[cfg(windows)]
+pub(crate) fn protect_at_rest(data: &[u8]) -> Result<Vec<u8>, String> {
+    platform::protect(data)
+}
+
+/// Opens what [`protect_at_rest`] sealed.
+#[cfg(windows)]
+pub(crate) fn unprotect_at_rest(data: &[u8]) -> Result<Zeroizing<Vec<u8>>, String> {
+    platform::unprotect(data)
+}
+
 /// Whether this device can unlock without the master password. `false`
 /// until [`probe`] has an answer (it can take a moment).
 pub(crate) fn available() -> bool {

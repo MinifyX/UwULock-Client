@@ -100,10 +100,16 @@ describe('accounts by server and user id', () => {
     expect(a).toMatchObject({
       userId: SUB,
       protectedKey: 'protected-key-a',
-      rememberToken: 'remember-a',
       refreshToken: 'refresh-a',
     });
-    expect(b).toMatchObject({ userId: SUB, protectedKey: null, rememberToken: null });
+    expect(b).toMatchObject({ userId: SUB, protectedKey: null });
+    // The remember token is kept by server and address: B's server never sees A's.
+    expect(await store.rememberToken('https://lock.example.com/identity', 'nyu@example.com')).toBe(
+      'remember-a',
+    );
+    expect(
+      await store.rememberToken('https://evil.example.net/identity', 'nyu@example.com'),
+    ).toBeNull();
     expect(a!.id).not.toBe(b!.id);
     expect(b!.id).toBe(store.accountKey('https://evil.example.net/identity', SUB));
   });
@@ -120,7 +126,10 @@ describe('accounts by server and user id', () => {
     await session.login(A, 'nyu@example.com', 'password');
     const list = await store.accounts();
     expect(list).toHaveLength(1);
-    expect(list[0]).toMatchObject({ protectedKey: 'protected-key-a', rememberToken: 'remember-a' });
+    expect(list[0]).toMatchObject({ protectedKey: 'protected-key-a' });
+    expect(await store.rememberToken('https://lock.example.com/identity', 'nyu@example.com')).toBe(
+      'remember-a',
+    );
   });
 });
 

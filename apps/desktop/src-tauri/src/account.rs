@@ -6,10 +6,20 @@
 //! file:
 //!
 //! - `accounts/<id>/account.json` — the server, the email, how the master key
-//!   is derived, and three encrypted values: the user key (wrapped by the
-//!   server, under the master password), and the refresh token and the
-//!   "remember this device" token, both sealed here under the user key.
-//!   Without that account's master password, nothing in it opens a session.
+//!   is derived, and two encrypted values: the user key (wrapped by the
+//!   server, under the master password), and the refresh token, sealed here
+//!   under the user key. Without that account's master password, nothing in
+//!   it opens a session.
+//! - `accounts/<id>/remember-token` — the "remember this device" token of
+//!   two-step login. Not under the user key: a login after the session ended,
+//!   the app restarted or the vault locked has no user key yet, and is exactly
+//!   when the token is needed. Under DPAPI on Windows (this Windows user
+//!   only); elsewhere readable only by this user (0600), inside the app's own
+//!   data folder (on phones its sandbox) — as Bitwarden's own apps keep it.
+//!   It only skips the second step: the master password is still needed.
+//!   Logging out removes it with the folder; nothing else does. (Up to
+//!   0.5.0-beta.1 it was sealed under the user key in `account.json`; the
+//!   first unlock moves it here.)
 //! - `accounts/<id>/vault.json` — the last sync, exactly as the server sent
 //!   it. Every name, username, password and note in it is still encrypted by
 //!   Bitwarden; that is what lets the vault open offline.
@@ -45,6 +55,10 @@ const DEVICE: &str = "device-id";
 const INDEX: &str = "accounts.json";
 const ACCOUNTS: &str = "accounts";
 const MOVE_JOURNAL: &str = "move-journal.json";
+const REMEMBER: &str = "remember-token";
+/// How the remember token is kept: under DPAPI, or as it is.
+const REMEMBER_DPAPI: &str = "dpapi:";
+const REMEMBER_PLAIN: &str = "plain:";
 /// The key of UwULock's part in the cached sync.
 const UWU: &str = "uwuLock";
 
@@ -109,7 +123,9 @@ pub struct Account {
     /// Sealed under the user key.
     #[serde(default)]
     pub protected_refresh_token: Option<String>,
-    /// Sealed under the user key.
+    /// Up to 0.5.0-beta.1: the remember token, sealed under the user key.
+    /// Now in `remember-token` ([`Storage::load_remember_token`]); an old
+    /// one is moved there at the next unlock and this stays empty.
     #[serde(default)]
     pub protected_remember_token: Option<String>,
     /// Unix seconds of the last successful sync.
@@ -334,8 +350,44 @@ impl Storage {
         write_atomic(&home.join(MOVE_JOURNAL), sealed.as_bytes())
     }
 
-    /// Logging out of one account: its folder goes, the device id and the
-    /// other accounts stay.
+    /// The "remember this device" token of two-step login for this account,
+    /// readable without its user key (see the top of this file).
+    pub fn load_remember_token(&self, id: &str) -> Option<Zeroizing<String>> {
+        let text =
+            Zeroizing::new(std::fs::read_to_string(self.home(id).ok()?.join(REMEMBER)).ok()?);
+        let token = if let Some(plain) = text.strip_prefix(REMEMBER_PLAIN) {
+            Zeroizing::new(plain.to_string())
+        } else {
+            let sealed = text.strip_prefix(REMEMBER_DPAPI)?;
+            match unprotect(sealed.trim()) {
+                Ok(token) => token,
+                Err(error) => {
+                    tracing::warn!(%error, "the remember token didn't open");
+                    return None;
+                }
+            }
+        };
+        (!token.is_empty()).then_some(token)
+    }
+
+    /// Keeps a new remember token, replacing the old one.
+    pub fn save_remember_token(&self, id: &str, token: &str) -> std::io::Result<()> {
+        let home = self.home(id)?;
+        std::fs::create_dir_all(&home)?;
+        let text = Zeroizing::new(protect(token)?);
+        write_private(&home.join(REMEMBER), text.as_bytes())
+    }
+
+    /// The server no longer takes it: the next login asks for the code again.
+    pub fn forget_remember_token(&self, id: &str) -> std::io::Result<()> {
+        match std::fs::remove_file(self.home(id)?.join(REMEMBER)) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        }
+    }
+
+    /// Logging out of one account: its folder goes (its remember token with
+    /// it), the device id and the other accounts stay.
     pub fn forget(&self, id: &str) -> std::io::Result<()> {
         match std::fs::remove_dir_all(self.home(id)?) {
             Ok(()) => {}
@@ -374,6 +426,52 @@ fn new_id() -> String {
 /// nothing a path could be built from.
 fn is_account_id(id: &str) -> bool {
     id.len() == 36 && uuid::Uuid::try_parse(id).is_ok()
+}
+
+/// What `remember-token` holds for `token`: under DPAPI on Windows.
+#[cfg(windows)]
+fn protect(token: &str) -> std::io::Result<String> {
+    use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
+    let sealed = crate::hello::protect_at_rest(token.as_bytes()).map_err(std::io::Error::other)?;
+    Ok(format!("{REMEMBER_DPAPI}{}", B64.encode(sealed)))
+}
+
+/// Elsewhere the file itself is the protection (0600, the app's own folder).
+#[cfg(not(windows))]
+fn protect(token: &str) -> std::io::Result<String> {
+    Ok(format!("{REMEMBER_PLAIN}{token}"))
+}
+
+#[cfg(windows)]
+fn unprotect(sealed: &str) -> Result<Zeroizing<String>, String> {
+    use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
+    let bytes = B64.decode(sealed).map_err(|e| e.to_string())?;
+    let opened = crate::hello::unprotect_at_rest(&bytes)?;
+    String::from_utf8(opened.to_vec())
+        .map(Zeroizing::new)
+        .map_err(|e| e.to_string())
+}
+
+/// A DPAPI file brought over from Windows doesn't open anywhere else.
+#[cfg(not(windows))]
+fn unprotect(_sealed: &str) -> Result<Zeroizing<String>, String> {
+    Err("DPAPI is only on Windows".into())
+}
+
+/// Like [`write_atomic`], readable by this user only where files have modes.
+fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write as _;
+    let tmp = path.with_extension("tmp");
+    let _ = std::fs::remove_file(&tmp);
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let mut file = options.open(&tmp)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    drop(file);
+    std::fs::rename(&tmp, path)
 }
 
 /// Written next to the target, then renamed over it: a crash in between
@@ -427,6 +525,48 @@ mod tests {
             .is_err());
         storage.forget(&id).unwrap();
         assert!(storage.load_move_journal(&id).is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_remember_token_is_kept_privately_and_goes_with_its_account() {
+        let dir = scratch();
+        let storage = Storage::new(dir.clone()).unwrap();
+        let account = sample("nyu@example.org");
+        let id = storage.id_for(&account.server, &account.email);
+        storage.save_account(&id, &account).unwrap();
+        assert!(storage.load_remember_token(&id).is_none());
+        storage.save_remember_token(&id, "remember-1").unwrap();
+        storage.save_remember_token(&id, "remember-2").unwrap();
+        assert_eq!(
+            storage.load_remember_token(&id).unwrap().as_str(),
+            "remember-2"
+        );
+        // Not in account.json, and only this user may read the file.
+        let path = dir.join(ACCOUNTS).join(&id).join(REMEMBER);
+        assert!(
+            !std::fs::read_to_string(dir.join(ACCOUNTS).join(&id).join(ACCOUNT))
+                .unwrap()
+                .contains("remember-2")
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+        // Something this build can't read is no token, not an error.
+        std::fs::write(&path, "garbage").unwrap();
+        assert!(storage.load_remember_token(&id).is_none());
+        storage.save_remember_token(&id, "remember-3").unwrap();
+        storage.forget_remember_token(&id).unwrap();
+        storage.forget_remember_token(&id).unwrap();
+        assert!(storage.load_remember_token(&id).is_none());
+        assert!(storage.save_remember_token("../elsewhere", "x").is_err());
+        // Logging out takes it along with the folder.
+        storage.save_remember_token(&id, "remember-4").unwrap();
+        storage.forget(&id).unwrap();
+        assert!(storage.load_remember_token(&id).is_none());
         let _ = std::fs::remove_dir_all(dir);
     }
 
