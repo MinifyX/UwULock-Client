@@ -47,6 +47,8 @@ sed -e "s/\$(EXECUTABLE_NAME)/$name/" \
   "$src/Info.plist" >"$appex/Contents/Info.plist"
 plutil -insert LSMinimumSystemVersion -string 14.0 "$appex/Contents/Info.plist"
 plutil -lint "$appex/Contents/Info.plist"
+mkdir -p "$appex/Contents/Resources"
+cp "$src/PrivacyInfo.xcprivacy" "$appex/Contents/Resources/"
 
 if [ -n "$team" ] && [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
   sed "s/TEAMID/$team/g" "$src/$name-macOS.entitlements" >"$work/entitlements.plist"

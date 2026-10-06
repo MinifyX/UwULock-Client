@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "app.uwulock",
+  "bundle": {
+    "targets": ["app"],
+    "createUpdaterArtifacts": false,
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "files": {
+        "Resources/PrivacyInfo.xcprivacy": "apple/PrivacyInfo.xcprivacy"
+      }
+    }
+  },
+  "plugins": {
+    "updater": null
+  }
+}

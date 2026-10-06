@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  UwULock's privacy manifest: in the iPhone app (scripts/ios-build.sh) and in the Mac App Store
+  build (Contents/Resources, tauri.mas.conf.json). The AutoFill extension has its own
+  (PasskeyProvider/PrivacyInfo.xcprivacy).
+
+  No tracking, no tracking domains, nothing collected: the vault goes only to the server the user
+  signs in to — their own Vaultwarden, Bitwarden or UwULock Server — end-to-end encrypted, and
+  nothing reaches the developer. That isn't "collection" in Apple's sense (data the developer or
+  its partners receive).
+
+  The required-reason APIs it uses, and why:
+  - File timestamps: Rust's file functions ask the file system (stat) about UwULock's own files —
+    the account, the offline copy, the passkey list — in its own container (C617.1) and in the App Group folder it shares with
+    the AutoFill extension (1C8F.1).
+  - System boot time: Rust's `Instant` is mach_absolute_time, for timeouts, the auto-lock and the
+    clipboard clearing (35F9.1).
+  - User defaults: the system's own frameworks (UIKit/AppKit, WebKit) keep the app's own state
+    there (CA92.1).
+  Nothing asks for free disk space or the active keyboards.
+-->
+<plist version="1.0">
+<dict>
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
+				<string>1C8F.1</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>35F9.1</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

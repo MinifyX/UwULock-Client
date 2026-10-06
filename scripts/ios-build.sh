@@ -2,11 +2,11 @@
 # Builds UwULock for the simulator and/or for the iPhone, and packs the iPhone
 # app into an .ipa.
 #
-# Nothing here is signed: UwULock has no Apple developer account, and Xcode
-# refuses to build for a real iPhone without one ("requires a development
-# team"). So signing is switched off in the generated project before the build.
-# A sideloading tool signs the .ipa with your own Apple ID on the way to the
-# phone, see docs/mobile.md.
+# Nothing here is signed, and the build holds no secret: signing is switched off
+# in the generated project before the build. A sideloading tool signs the .ipa
+# with your own Apple ID on the way to the phone (docs/mobile.md); for TestFlight
+# scripts/ios-sign.sh signs the same .ipa afterwards on another runner
+# (docs/app-store.md).
 #
 # Both builds go through Tauri. They have to: the "Build Rust Code" phase in the
 # Xcode project asks the surrounding `tauri ios build` process for its options
@@ -157,6 +157,9 @@ if [ -z "$app" ]; then
   exit 1
 fi
 echo "iPhone app: $app"
+# The privacy manifest (apple/PrivacyInfo.xcprivacy) at the app's top, where iOS and App Store
+# Connect look for it. The extension's own comes in as a resource of its target.
+cp apps/desktop/src-tauri/apple/PrivacyInfo.xcprivacy "$app/"
 rm -rf "$RUNNER_TEMP/Payload"
 mkdir -p "$RUNNER_TEMP/Payload"
 cp -R "$app" "$RUNNER_TEMP/Payload/"

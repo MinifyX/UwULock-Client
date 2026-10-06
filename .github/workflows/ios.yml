@@ -5,9 +5,13 @@ name: iOS
 # build for the simulator — the iPhone build is the same Rust and Swift for another target, and
 # main and every tag still build it.
 #
-# The IPA is unsigned: UwULock has no Apple developer account, so nothing here carries a
-# certificate. A sideloading tool signs it with your own Apple ID on the way to the phone — see
-# docs/mobile.md. scripts/release.mjs takes the IPA of the tag's run into the release.
+# The IPA is unsigned and the build holds no secret. A sideloading tool signs it with your own
+# Apple ID on the way to the phone — see docs/mobile.md. scripts/release.mjs takes the IPA of the
+# tag's run into the release.
+#
+# On a tag and when started by hand (Actions → iOS → Run workflow), `testflight` then signs that
+# same IPA for the App Store on a fresh runner and uploads it to TestFlight — never for review
+# (docs/app-store.md).
 #
 # The Xcode project isn't in the repository; `tauri ios init` writes a fresh one on the runner
 # every time, so nothing generated has to be kept in sync by hand. (Modelled on UwUMail.)
@@ -29,6 +33,8 @@ on:
       - 'pnpm-lock.yaml'
       - 'scripts/mobile.mjs'
       - 'scripts/ios-*.sh'
+      - 'scripts/apple-ci.sh'
+      - 'scripts/asc.mjs'
       - '.github/workflows/ios.yml'
   workflow_dispatch:
 
@@ -149,3 +155,69 @@ jobs:
             apps/desktop/src-tauri/gen/apple
             !apps/desktop/src-tauri/gen/apple/build
             !apps/desktop/src-tauri/gen/apple/Externals
+
+  # The iPhone build of this run, signed for the App Store and uploaded to TestFlight. A runner of
+  # its own that builds nothing: the certificate and the App Store Connect key never share a
+  # machine with the build scripts. Signing needs no Xcode project, only the app (scripts/ios-sign.sh).
+  testflight:
+    name: TestFlight (iOS)
+    needs: app
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/apple-ci.sh
+            scripts/asc.mjs
+            scripts/ios-sign.sh
+            apps/desktop/src-tauri/apple/PrivacyInfo.xcprivacy
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: UwULock-iOS-${{ github.sha }}
+          path: unsigned
+
+      - name: Certificate and the App Store Connect key
+        env:
+          APPLE_DISTRIBUTION_P12: ${{ secrets.APPLE_DISTRIBUTION_P12 }}
+          APPLE_P12_PASSWORD: ${{ secrets.APPLE_P12_PASSWORD }}
+          APPLE_ASC_KEY_P8: ${{ secrets.APPLE_ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.APPLE_ASC_KEY_ID }}
+        run: |
+          bash scripts/apple-ci.sh keychain
+          bash scripts/apple-ci.sh api-key
+
+      # Made or renewed on the way when Apple invalidated them (scripts/asc.mjs).
+      - name: Provisioning profiles
+        env:
+          ASC_KEY_ID: ${{ secrets.APPLE_ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APPLE_ASC_ISSUER_ID }}
+        run: node scripts/asc.mjs profiles ios "$DISTRIBUTION_CERT" "$RUNNER_TEMP/profiles"
+
+      # The run number and attempt: grows with every run, and a re-run is a new build too.
+      - name: Sign
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          BUILD_NUMBER: ${{ github.run_number }}.${{ github.run_attempt }}
+        run: |
+          ipa=$(ls unsigned/UwULock-*-unsigned.ipa)
+          bash scripts/ios-sign.sh "$ipa" "$RUNNER_TEMP/profiles" "signed/UwULock-$BUILD_NUMBER.ipa"
+
+      - name: Upload to App Store Connect
+        env:
+          ASC_KEY_ID: ${{ secrets.APPLE_ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APPLE_ASC_ISSUER_ID }}
+        run: bash scripts/apple-ci.sh upload signed/UwULock-*.ipa ios
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: UwULock-iOS-appstore-${{ github.sha }}
+          retention-days: 14
+          path: signed/*.ipa
+          if-no-files-found: error
+
+      - name: Remove the keychain and the key
+        if: always()
+        run: bash scripts/apple-ci.sh cleanup

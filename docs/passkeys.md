@@ -268,36 +268,29 @@ On macOS the app writes the list from Rust (`passkeys/apple.rs`, Keychain via
 `security-framework`), and the extension fills the system's identity list when it runs (and when
 switched on in System Settings → Passwords → Password Options).
 
-### Signing it (once the Apple developer account exists)
+### Signing it
 
 Nothing of this works unsigned: the App Group, the Keychain group and the AutoFill entitlement
-come from a developer team. Until then the setting says so, and the builds are:
+come from a developer team. The App Store builds have them ([app-store.md](app-store.md)); the
+GitHub builds don't, and there the setting says so:
 
 - **iOS**: `scripts/ios-build.sh` adds the extension as target `UwULockPasskeys`
   (`app.uwulock.passkeys`, iOS 17) to the generated Xcode project and embeds it in the app's
-  PlugIns; signing is off like the app's.
+  PlugIns, unsigned like the app. For TestFlight, `scripts/ios-sign.sh` signs both with the App
+  Store profiles: App Group `group.app.uwulock`, Keychain groups `TEAMID.app.uwulock` (the app's
+  own) and `TEAMID.app.uwulock.passkeys` (shared), the AutoFill entitlement on both (App Store
+  Connect wants it on the container too); it also writes the team into `UwULockKeychainGroup`, which the unsigned build leaves without
+  prefix.
 - **macOS**: `scripts/macos-passkeys.sh` compiles it into `UwULockPasskeys.appex` (universal,
-  ad-hoc signed) on every macOS build, so the Swift can't rot; it goes into UwULock.app only when
-  `UWULOCK_APPLE_TEAM_ID` is set.
+  ad-hoc signed) on every macOS build, so the Swift can't rot. The Mac App Store build
+  (`scripts/build-mas.mjs`, bundle ID `app.uwulock`) carries it, built with
+  `UWULOCK_APPLE_TEAM_ID` (Rust reads it at build time for the group paths) and signed with
+  `apple/PasskeyProvider/UwULockPasskeys-macOS.entitlements` (App Group `TEAMID.app.uwulock`). The
+  DMG (`app.uwulock.desktop`) leaves it out: an extension's ID has to extend its app's, and the
+  DMG has no developer signature anyway.
 
-Steps with an account (team id `TEAMID`):
-
-1. Identifiers in the developer portal: `app.uwulock` and `app.uwulock.passkeys`, both with
-   _App Groups_ (`group.app.uwulock` for iOS) and the extension with _AutoFill Credential
-   Provider_. On macOS the group is `TEAMID.app.uwulock`.
-2. Entitlements. Extension: `apple/PasskeyProvider/UwULockPasskeys-iOS.entitlements` and
-   `…-macOS.entitlements` (the script fills in `TEAMID`). App: the same App Group and
-   `keychain-access-groups = TEAMID.app.uwulock.passkeys`, without the AutoFill entitlement — on
-   iOS in the generated `uwulock-desktop_iOS.entitlements`, on macOS through Tauri's
-   `bundle.macOS.entitlements`.
-3. iOS: drop the `CODE_SIGNING_ALLOWED: NO` lines from `scripts/ios-build.sh` for both targets
-   and set `DEVELOPMENT_TEAM`. `Info.ios.plist` already carries `UwULockAppGroup` and
-   `UwULockKeychainGroup` (`$(AppIdentifierPrefix)` is filled in by Xcode).
-4. macOS: build with `UWULOCK_APPLE_TEAM_ID=TEAMID` (Rust reads it at build time for the group
-   paths) and `APPLE_SIGNING_IDENTITY="Developer ID Application: …"`; the script signs the
-   extension with its entitlements and the hardened runtime before Tauri signs the app.
-5. Turn it on: iOS Settings → General → AutoFill & Passwords, macOS System Settings → General →
-   AutoFill & Passwords; then UwULock's own setting.
+Turning it on: iOS Settings → General → AutoFill & Passwords, macOS System Settings → General →
+AutoFill & Passwords; then UwULock's own setting.
 
 ## Threat model
 
