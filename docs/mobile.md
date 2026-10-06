@@ -33,8 +33,9 @@ fd:63:23:ae:a8:32:99:6e:d5:6a:55:d1:1c:fc:d2:6a:61:ec:b1:59:b3:f9:b9:80:f1:42:9b
 unreleased commits from CI carry a different key and don't install over a
 released UwULock.
 
-**iPhone.** UwULock has no Apple developer account, so the IPA is unsigned and
-doesn't come from the App Store. A sideloading tool such as
+**iPhone.** The IPA on the release page is unsigned. Signed builds for iPhone,
+iPad and Mac go to TestFlight for now, not yet to the App Store
+([app-store.md](app-store.md)). For the IPA, a sideloading tool such as
 [AltStore](https://altstore.io) or [Sideloadly](https://sideloadly.io) signs it
 with your own Apple ID on the way to the phone. With a free Apple ID the app has
 to be signed again every 7 days (AltStore does that by itself while the phone is
@@ -115,6 +116,8 @@ off and merges `Info.ios.plist` into it.
   (`scripts/ios-smoke.sh`), and in a second job side by side builds for the
   iPhone and packs the unsigned IPA (artifact `UwULock-iOS-<sha>`). Pull
   requests only get the simulator job.
+- On a tag and by hand, `ios.yml`'s job `testflight` signs that same IPA for the
+  App Store and uploads it to TestFlight ([app-store.md](app-store.md)).
 - Both run for pull requests that touch the app, for main and for tags.
   `pnpm release` takes the APK and the IPA of the tag's runs, checks the APK's
   certificate (`scripts/apk-cert.mjs`) and publishes them as
@@ -218,8 +221,9 @@ dem Browser oder Dateimanager erlauben, aus dem sie kommt. Neue Versionen
 genauso darüber installieren; die Anmeldung bleibt. Jede veröffentlichte APK ist
 mit demselben Schlüssel signiert (SHA-256-Fingerabdruck oben).
 
-**iPhone.** UwULock hat kein Apple-Entwicklerkonto, die IPA ist also unsigniert
-und nicht aus dem App Store. Ein Sideloading-Werkzeug wie AltStore oder
+**iPhone.** Die IPA auf der Release-Seite ist unsigniert. Signierte Builds für
+iPhone, iPad und Mac gehen vorerst nach TestFlight, noch nicht in den App Store
+([app-store.md](app-store.md)). Für die IPA gilt: Ein Sideloading-Werkzeug wie AltStore oder
 Sideloadly signiert sie auf dem Weg aufs Handy mit deiner eigenen Apple-ID. Mit
 einer kostenlosen Apple-ID muss die App alle 7 Tage neu signiert werden
 (AltStore macht das selbst, solange das Handy im selben Netz ist). Danach unter

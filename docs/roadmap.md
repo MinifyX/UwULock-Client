@@ -83,7 +83,7 @@ Still to come:
 - [x] Passkey providers ([passkeys.md](passkeys.md)): a virtual security
       key on Linux, a plugin passkey manager on Windows 11 (experimental),
       Credential Manager on Android 14+, an AutoFill extension on iOS 17+ and
-      macOS 14+ (works once the app is signed with an Apple developer team).
+      macOS 14+ (works in the App Store builds, signed with the developer team).
       Not yet tried on real devices
 - [x] Security review of everything new in 0.5, with re-checks
       ([security-review-0.5.md](security-review-0.5.md))
@@ -133,6 +133,10 @@ Later on phones:
   the AutoFill entitlement)
 - [x] Passkeys on the phone (0.5, see above)
 - [x] The suite's design package everywhere, two-step login once per device (0.5.0-beta.2)
+- [x] Signed builds for iPhone, iPad and the Mac App Store, uploaded to TestFlight by CI
+      (tags and by hand), passkey extension included ([app-store.md](app-store.md)).
+      Not tried on devices yet; not submitted for review
+- [ ] App Store: store pages, demo account for App Review, screenshots, then the first review
 
 ## Later · A server of its own
 
