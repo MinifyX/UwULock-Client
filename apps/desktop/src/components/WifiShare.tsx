@@ -1,10 +1,10 @@
+import { Button, IconButton, ICONS } from '@uwusuite/design';
 import { useEffect, useState } from 'react';
 import { revealField } from '../lib/api';
 import { errorText } from '../lib/errors';
 import { t, useLanguage } from '../lib/i18n';
 import { SECURITY_LABEL } from '../lib/items';
 import { wifiQr, type WifiView } from '../lib/wifi';
-import { Icon } from './Icon';
 import { Modal } from './Modal';
 import { QrCode } from './QrCode';
 
@@ -63,9 +63,9 @@ export function WifiShare({
       footer={
         <>
           <span className="spacer" />
-          <button className="primary" data-autofocus onClick={onClose}>
+          <Button variant="primary" data-autofocus onClick={onClose}>
             {t('Fertig')}
-          </button>
+          </Button>
         </>
       }
     >
@@ -100,16 +100,13 @@ export function WifiShare({
             <dd className="mono wifi-share-password">
               <span>{password === null ? '…' : shown ? password || '—' : '••••••••••••'}</span>
               {password && (
-                <button
-                  type="button"
-                  className="icon-button"
+                <IconButton
+                  icon={shown ? ICONS.hide : ICONS.show}
+                  label={shown ? t('Passwort verbergen') : t('Passwort zeigen')}
+                  size="sm"
                   aria-pressed={shown}
-                  aria-label={shown ? t('Passwort verbergen') : t('Passwort zeigen')}
-                  title={shown ? t('Verbergen') : t('Zeigen')}
                   onClick={() => setShown(!shown)}
-                >
-                  <Icon name={shown ? 'eyeOff' : 'eye'} size={15} />
-                </button>
+                />
               )}
             </dd>
           </>

@@ -6,16 +6,18 @@
   padding: 0;
   list-style: none;
   display: grid;
-  gap: 6px;
+  gap: var(--uwu-space-2);
 }
 
 .move-counts li {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
-  padding: 6px 10px;
+  gap: var(--uwu-space-3);
+  padding: var(--uwu-space-2) var(--uwu-space-3);
+  border: 1px solid var(--uwu-hairline);
   border-radius: var(--uwu-radius-control);
   background: var(--uwu-canvas);
+  font-size: var(--uwu-text-body);
 }
 
 .move-count {
@@ -24,13 +26,14 @@
 }
 
 .move-count small {
-  margin-left: 6px;
+  margin-left: var(--uwu-space-2);
+  font-size: var(--uwu-text-caption);
   font-weight: 400;
   color: var(--uwu-muted);
 }
 
 .move-notices li {
-  font-size: 13px;
+  font-size: var(--uwu-text-meta);
   line-height: 1.45;
   color: var(--uwu-muted);
 }
@@ -41,6 +44,6 @@
 
 .move-progress {
   width: 100%;
-  height: 8px;
+  height: var(--uwu-space-2);
   accent-color: var(--uwu-pink-solid);
 }

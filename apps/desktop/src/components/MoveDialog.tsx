@@ -1,4 +1,5 @@
 import { listen } from '@tauri-apps/api/event';
+import { Button, Segmented, SettingRow } from '@uwusuite/design';
 import { useEffect, useState, type FormEvent } from 'react';
 import type { ServerKind, TwoFactorMethod } from '../lib/api';
 import { errorText } from '../lib/errors';
@@ -21,7 +22,6 @@ import {
   type MoveStep,
   type MoveTarget,
 } from '../lib/moving';
-import '../styles/moving.css';
 import { NewDevice, TwoFactor, type CodeActions } from './LoginScreen';
 import { Modal } from './Modal';
 import { PasswordInput } from './PasswordInput';
@@ -179,9 +179,9 @@ export function MoveDialog({ onClose }: { onClose: () => void }) {
           </p>
           <div className="form-actions">
             <span className="spacer" />
-            <button className="primary" onClick={close}>
+            <Button variant="primary" onClick={close}>
               {t('Schließen')}
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -233,7 +233,7 @@ export function MoveDialog({ onClose }: { onClose: () => void }) {
           </p>
           <div className="form-actions">
             <span className="spacer" />
-            <button onClick={() => void moveCancel()}>{t('Anhalten')}</button>
+            <Button onClick={() => void moveCancel()}>{t('Anhalten')}</Button>
           </div>
         </div>
       )}
@@ -257,13 +257,13 @@ export function MoveDialog({ onClose }: { onClose: () => void }) {
             )}
           </p>
           <div className="form-actions">
-            <button className="quiet" onClick={close}>
+            <Button variant="ghost" onClick={close}>
               {t('Schließen')}
-            </button>
+            </Button>
             <span className="spacer" />
-            <button className="primary" onClick={() => void start(phase.preview)}>
+            <Button variant="primary" onClick={() => void start(phase.preview)}>
               {t('Weitermachen')}
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -328,20 +328,15 @@ function SourceLogin({
       </p>
       <div className="field">
         <span>{t('Server')}</span>
-        <div className="segmented wide" role="radiogroup" aria-label={t('Server')}>
-          {servers.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              role="radio"
-              aria-checked={kind === option.value}
-              onClick={() => setKind(option.value)}
-              disabled={busy}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+        <fieldset disabled={busy} className="m-0 min-w-0 border-0 p-0">
+          <Segmented
+            value={kind}
+            onChange={setKind}
+            options={servers}
+            label={t('Server')}
+            className="w-full [&>button]:flex-1 phone:[&>button]:h-auto phone:[&>button]:min-h-8 phone:[&>button]:px-2 phone:[&>button]:py-1"
+          />
+        </fieldset>
       </div>
       {kind === 'self-hosted' && (
         <label className="field">
@@ -378,13 +373,13 @@ function SourceLogin({
         </p>
       )}
       <div className="form-actions">
-        <button type="button" className="quiet" onClick={onCancel} disabled={busy}>
+        <Button variant="ghost" onClick={onCancel} disabled={busy}>
           {t('Abbrechen')}
-        </button>
+        </Button>
         <span className="spacer" />
-        <button className="primary" type="submit" disabled={busy || !password}>
+        <Button variant="primary" type="submit" disabled={busy || !password}>
           {busy ? t('Liest beide Tresore …') : t('Anmelden')}
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -463,13 +458,13 @@ function PreviewView({
         )}
       </p>
       <div className="form-actions">
-        <button className="quiet" onClick={onCancel}>
+        <Button variant="ghost" onClick={onCancel}>
           {t('Abbrechen')}
-        </button>
+        </Button>
         <span className="spacer" />
-        <button className="primary" onClick={onStart} disabled={nothing}>
+        <Button variant="primary" onClick={onStart} disabled={nothing}>
           {nothing ? t('Alles schon umgezogen ✧') : t('Umziehen')}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -536,19 +531,19 @@ function FinishedView({
       )}
       <div className="form-actions">
         {finished.cancelled && (
-          <button className="quiet" onClick={onClose}>
+          <Button variant="ghost" onClick={onClose}>
             {t('Schließen')}
-          </button>
+          </Button>
         )}
         <span className="spacer" />
         {finished.cancelled ? (
-          <button className="primary" onClick={onContinue}>
+          <Button variant="primary" onClick={onContinue}>
             {t('Weitermachen')}
-          </button>
+          </Button>
         ) : (
-          <button className="primary" onClick={onClose}>
+          <Button variant="primary" onClick={onClose}>
             {t('Fertig')}
-          </button>
+          </Button>
         )}
       </div>
     </div>
@@ -561,19 +556,16 @@ export function MoveSetting() {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <div className="setting-row">
-        <div className="setting-text">
-          <p className="setting-label">{t('Von Bitwarden umziehen')}</p>
-          <p className="setting-description">
-            {t(
-              'Einträge, Ordner, Anhänge, Sends und Organisationen aus Bitwarden oder Vaultwarden in dieses UwULock-Konto holen. Entschlüsselt wird nur auf diesem Gerät.',
-            )}
-          </p>
-        </div>
-        <div className="setting-control">
-          <button onClick={() => setOpen(true)}>{t('Umziehen …')}</button>
-        </div>
-      </div>
+      <SettingRow
+        label={t('Von Bitwarden umziehen')}
+        description={t(
+          'Einträge, Ordner, Anhänge, Sends und Organisationen aus Bitwarden oder Vaultwarden in dieses UwULock-Konto holen. Entschlüsselt wird nur auf diesem Gerät.',
+        )}
+      >
+        <Button size="sm" onClick={() => setOpen(true)}>
+          {t('Umziehen …')}
+        </Button>
+      </SettingRow>
       {open && <MoveDialog onClose={() => setOpen(false)} />}
     </>
   );

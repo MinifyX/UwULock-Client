@@ -4,11 +4,11 @@
  * again — in the web vault, with the second factor.
  */
 
+import { Button, Icon, ICONS } from '@uwusuite/design';
 import { useEffect, useState } from 'react';
 import { toastError } from '../lib/errors';
 import { t, useLanguage } from '../lib/i18n';
 import { openWebVaultAt, useUwu, uwuTravel } from '../lib/uwu';
-import { Icon } from './Icon';
 import { Modal } from './Modal';
 
 export function TravelBadge() {
@@ -27,11 +27,12 @@ export function TravelBadge() {
   return (
     <>
       <button
+        type="button"
         className="titlebar-travel"
         onClick={() => setOpen(true)}
         title={t('Reisemodus ist an')}
       >
-        <Icon name="plane" size={14} />
+        <Icon icon={ICONS.travelMode} size="xs" />
         {hidden === null
           ? t('Reisemodus')
           : hidden === 1
@@ -44,17 +45,17 @@ export function TravelBadge() {
           onCancel={() => setOpen(false)}
           footer={
             <>
-              <button className="quiet" onClick={() => setOpen(false)}>
+              <Button variant="ghost" onClick={() => setOpen(false)}>
                 {t('Schließen')}
-              </button>
+              </Button>
               <span className="spacer" />
-              <button
-                className="primary"
+              <Button
+                variant="primary"
                 onClick={() => void openWebVaultAt('travel').catch((e) => toastError(e))}
               >
                 {t('Im Web-Tresor ausschalten')}
-                <Icon name="external" size={13} />
-              </button>
+                <Icon icon={ICONS.openExternal} size="xs" />
+              </Button>
             </>
           }
         >

@@ -1,4 +1,5 @@
 import { listen } from '@tauri-apps/api/event';
+import { Button } from '@uwusuite/design';
 import { useEffect, useState, type FormEvent } from 'react';
 import { errorText } from '../lib/errors';
 import { t, useLanguage } from '../lib/i18n';
@@ -83,7 +84,9 @@ export function PasskeyRequestDialog() {
             client,
           })}
         </span>
-        <button onClick={decline}>{t('Ablehnen')}</button>
+        <Button size="sm" onClick={decline}>
+          {t('Ablehnen')}
+        </Button>
       </div>
     );
   }
@@ -126,16 +129,16 @@ export function PasskeyRequestDialog() {
       footer={
         <>
           <span className="spacer" />
-          <button data-secondary data-autofocus onClick={decline} disabled={busy}>
+          <Button data-secondary data-autofocus onClick={decline} disabled={busy}>
             {t('Ablehnen')}
-          </button>
-          <button className="primary" onClick={() => void submit()} disabled={blocked}>
+          </Button>
+          <Button variant="primary" onClick={() => void submit()} disabled={blocked}>
             {request.kind === 'create'
               ? t('Sichern')
               : request.kind === 'get'
                 ? t('Anmelden')
                 : t('Diesen nehmen')}
-          </button>
+          </Button>
         </>
       }
     >
@@ -172,7 +175,7 @@ export function PasskeyRequestDialog() {
 
         {request.trusted && (
           // Who asks is what the system says: a hint, not proof (docs/passkeys.md).
-          <p className="setting-description">
+          <p className="text-caption text-muted">
             {t(
               'Wer fragt, sagt dein System. Das ist ein Hinweis, kein Beweis: Lehne ab, wenn du nicht gerade selbst eine Anmeldung gestartet hast.',
             )}
@@ -180,7 +183,7 @@ export function PasskeyRequestDialog() {
         )}
 
         {request.kind === 'create' && (request.userName || request.userDisplayName) && (
-          <p className="setting-description">
+          <p className="text-caption text-muted">
             {t('Konto: {name}', { name: request.userName ?? request.userDisplayName ?? '' })}
           </p>
         )}

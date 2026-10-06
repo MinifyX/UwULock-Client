@@ -3,13 +3,9 @@
 .wifi-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  padding: 6px 10px 8px;
+  gap: var(--uwu-space-2);
+  padding: var(--uwu-space-2) var(--uwu-space-3);
   border-top: 1px solid var(--uwu-hairline);
-}
-
-.wifi-actions button {
-  gap: 8px;
 }
 
 .wifi-connect-problem {
@@ -17,13 +13,13 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
+  gap: var(--uwu-space-1);
 }
 
 .wifi-connect-problem p {
   margin: 0;
   color: var(--uwu-muted);
-  font-size: 13px;
+  font-size: var(--uwu-text-meta);
   line-height: 1.45;
 }
 
@@ -32,8 +28,9 @@
   width: 200px;
   max-width: 100%;
   aspect-ratio: 1;
-  margin: 4px auto;
-  padding: 8px;
+  margin: var(--uwu-space-1) auto;
+  padding: var(--uwu-space-2);
+  border: 1px solid var(--uwu-hairline);
   border-radius: var(--uwu-radius-card);
   background: #ffffff;
 }
@@ -47,12 +44,13 @@
 .wifi-share {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 8px 16px;
-  margin: 16px 0 0;
+  align-items: center;
+  gap: var(--uwu-space-2) var(--uwu-space-4);
+  margin: var(--uwu-space-4) 0 0;
 }
 
 .wifi-share dt {
-  font-size: 12px;
+  font-size: var(--uwu-text-caption);
   font-weight: 600;
   color: var(--uwu-muted);
 }
@@ -66,5 +64,5 @@
 .wifi-share-password {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--uwu-space-2);
 }
