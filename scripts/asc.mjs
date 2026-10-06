@@ -104,6 +104,8 @@ async function profiles(platform, certificatePem, folder) {
       'GET',
       `/v1/profiles?${query({ 'filter[name]': name, include: 'certificates', limit: '50' })}`,
     );
+    // The name filter matches parts of names too ("… app.uwulock" finds "… app.uwulock.passkeys").
+    found.data = found.data.filter((p) => p.attributes.name === name);
     let profile = found.data.find(
       (p) =>
         p.attributes.profileState === 'ACTIVE' &&
