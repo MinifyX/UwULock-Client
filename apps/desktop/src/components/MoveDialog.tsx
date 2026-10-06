@@ -108,6 +108,10 @@ export function MoveDialog({ onClose }: { onClose: () => void }) {
         ),
       )
       .catch((e) => setPhase({ name: 'no-target', target: null, error: errorText(e) }));
+    // However the dialog goes (its own buttons, or Settings closing around
+    // it), the source account's session is dropped; a running move stops
+    // after its current step. Calling it twice is harmless.
+    return () => void moveClose().catch(() => undefined);
   }, []);
 
   useEffect(() => {

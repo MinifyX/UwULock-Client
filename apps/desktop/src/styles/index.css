@@ -27,3 +27,13 @@
 @import './suite.css' layer(components);
 @import '../components/nyu/nyu.css' layer(components);
 @import './phone.css' layer(components);
+
+/*
+ * Toasts sit at the top on a phone (the package's Toaster, 8 px from the
+ * edge); they keep clear of the notch and the status bar too. Outside the
+ * layers, so it wins over the Toaster's own `phone:top-2` utility. Android's
+ * insets are 0 (the page sits between the bars), iOS's are not.
+ */
+html:is([data-platform='ios'], [data-platform='android']) .shell > [aria-live='polite'].fixed {
+  top: calc(env(safe-area-inset-top) + var(--uwu-space-2));
+}

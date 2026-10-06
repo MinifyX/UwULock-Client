@@ -84,7 +84,8 @@ installer (`apps/setup`) is always light, on the tile gradient (package
   write shortcuts the platform's way (`lib/shortcuts.ts`, `withShortcut()`).
 - **App icons** come from `brand/` through the package's tool:
   `pnpm --filter @uwulock/desktop icons` (`uwu-icons --mobile`), which sets
-  the Dock icon into Apple's grid and writes the iOS set (CI copies it into
+  the Dock icon into Apple's grid and writes the iOS set (flattened onto white
+  afterwards, the App Store takes no transparency; CI copies it into
   the Xcode project). Android's adaptive launcher icon, with its themed layer,
   is kept by hand in `gen/android`; the extension's icons are in
   `apps/extension/public/icons`.

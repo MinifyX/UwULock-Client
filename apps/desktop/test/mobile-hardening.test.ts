@@ -106,9 +106,9 @@ test('the phone plugin is reachable from Rust only, and window controls only on 
   assert.deepEqual(desktop.platforms, ['linux', 'windows']);
   assert.ok((desktop.permissions as string[]).every((p) => p.startsWith('core:window:')));
   assert.deepEqual(mac.platforms, ['macOS']);
-  assert.ok(
-    (mac.permissions as string[]).every(
-      (p) => p.startsWith('core:window:') || p === 'core:menu:default',
-    ),
-  );
+  assert.deepEqual(mac.permissions, [
+    'core:window:allow-hide',
+    'core:window:allow-show',
+    'core:window:allow-set-title',
+  ]);
 });

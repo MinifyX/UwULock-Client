@@ -1,5 +1,5 @@
 import { Dialog } from '@uwusuite/design';
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode, type SyntheticEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useBackLayer } from '../lib/backStack';
 
@@ -18,6 +18,9 @@ type ModalProps = {
 };
 
 const WIDTH = { small: 'sm', default: 'md', wide: 'lg' } as const;
+
+/** `onCancel` on a plain element: React's types only know it on <dialog>. */
+const stopCancel = { onCancel: (event: SyntheticEvent) => event.stopPropagation() };
 
 /**
  * A dialog: @uwusuite/design's `Dialog` (a native <dialog>, so the page behind
@@ -73,26 +76,48 @@ export function Modal({
       dialog.tabIndex = -1;
       dialog.focus();
     }
+    // Chromium's close watcher (WebView2, the extension) can close a <dialog>
+    // itself on a repeated Escape, without a cancel the page could refuse.
+    // While React still shows it, it opens again and the close goes the
+    // normal way, so an unsaved-input question is never skipped.
+    let mounted = true;
+    const closedByBrowser = () => {
+      if (!mounted || !dialog.isConnected) return;
+      try {
+        dialog.showModal();
+      } catch {
+        // Already gone: nothing to show again.
+      }
+      cancelRef.current();
+    };
+    dialog.addEventListener('close', closedByBrowser);
     return () => {
+      mounted = false;
+      dialog.removeEventListener('close', closedByBrowser);
       if (previous?.isConnected) previous.focus();
     };
   }, []);
 
+  // React passes a dialog's `cancel` (Escape) up its own tree, through the
+  // portal, into the dialog this one was opened from, which would close too.
+  // The boundary stops it: only the dialog on top reacts.
   return createPortal(
-    <Dialog
-      open
-      onClose={() => cancelRef.current()}
-      title={title}
-      tone={tone}
-      width={WIDTH[size]}
-      footer={footer}
-      closeOnOutsideClick={false}
-      className="uwu-modal"
-    >
-      <div ref={bodyRef} className="grid gap-3 px-6 pt-1 pb-5 phone:px-4">
-        {children}
-      </div>
-    </Dialog>,
+    <div className="contents" {...stopCancel}>
+      <Dialog
+        open
+        onClose={() => cancelRef.current()}
+        title={title}
+        tone={tone}
+        width={WIDTH[size]}
+        footer={footer}
+        closeOnOutsideClick={false}
+        className="uwu-modal"
+      >
+        <div ref={bodyRef} className="grid gap-3 px-6 pt-1 pb-5 phone:px-4">
+          {children}
+        </div>
+      </Dialog>
+    </div>,
     document.body,
   );
 }

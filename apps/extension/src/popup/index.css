@@ -33,5 +33,6 @@
 @import '../../../desktop/src/styles/vault.css' layer(components);
 @import '../../../desktop/src/styles/detail.css' layer(components);
 @import '../../../desktop/src/styles/generator.css' layer(components);
+@import '../../../desktop/src/styles/wifi.css' layer(components);
 @import '../../../desktop/src/components/nyu/nyu.css' layer(components);
 @import './popup.css' layer(components);
