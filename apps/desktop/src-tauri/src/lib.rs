@@ -62,7 +62,9 @@ pub fn run() {
     #[cfg(self_update)]
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     #[cfg(mobile)]
-    let builder = builder.plugin(tauri_plugin_uwulock_mobile::init());
+    let builder = builder
+        .plugin(tauri_plugin_uwulock_mobile::init())
+        .plugin(tauri_plugin_haptics::init());
 
     builder
         .setup(|app| {

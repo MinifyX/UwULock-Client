@@ -47,7 +47,7 @@ zeroize.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # macOS: ⌘Q, the Dock and logging out quit through the page (lib.rs). Nothing
 # off macOS; the tag matches the @uwusuite/design version in package.json.
-uwu-macos = { git = "https://github.com/MinifyX/UwUSuite-Design", tag = "v1.4.1" }
+uwu-macos = { git = "https://github.com/MinifyX/UwUSuite-Design", tag = "v1.7.0" }
 
 # The desktop's clipboard and its own updater. Phones copy through the plugin below, and
 # get new versions from the release page (docs/mobile.md).
@@ -58,8 +58,11 @@ semver = { version = "1", optional = true }
 tauri-plugin-updater = { version = "2", optional = true }
 
 # Unlocking with a fingerprint or face (Android Keystore, iOS Keychain), copying secrets.
+# Haptics: the page's taps and ticks (@uwusuite/design's `haptic()` calls the plugin directly).
+# 2.4 wants Tauri 2.12; it moves together with Tauri and @tauri-apps/api.
 [target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
 tauri-plugin-uwulock-mobile = { path = "../../../crates/tauri-plugin-uwulock-mobile" }
+tauri-plugin-haptics = "~2.3.3"
 
 # Credential Manager's provider calls into the app over JNI (passkeys/android.rs), and a
 # site's Digital Asset Links are fetched for an app that asks. Both crates (and their

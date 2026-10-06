@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "mobile",
+  "description": "Phones and iPads only: haptic feedback for taps, copies, swipes and steppers (@uwusuite/design's haptic(), which calls the haptics plugin straight from the page). The plugin has no default set, so the three feedback kinds are listed; vibrating for a set time is not needed.",
+  "platforms": ["iOS", "android"],
+  "windows": ["main"],
+  "permissions": [
+    "haptics:allow-impact-feedback",
+    "haptics:allow-notification-feedback",
+    "haptics:allow-selection-feedback"
+  ]
+}

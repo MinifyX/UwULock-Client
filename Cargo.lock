@@ -5034,6 +5034,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "tauri-plugin-haptics"
+version = "2.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67ab59e8202362fb5fec1158bdb497466983ddac2483e606e4d5c1bf9b118c6c"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "tauri-plugin-opener"
 version = "2.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5802,8 +5816,8 @@ dependencies = [
 
 [[package]]
 name = "uwu-macos"
-version = "1.4.1"
-source = "git+https://github.com/MinifyX/UwUSuite-Design?tag=v1.4.1#8ad61ae0a22c9c5c083147dd1b01dcf19f9e91ef"
+version = "1.7.0"
+source = "git+https://github.com/MinifyX/UwUSuite-Design?tag=v1.7.0#a354f85749aaf7d35a6f212b8ff9af56f486cb1a"
 dependencies = [
  "objc2",
 ]
@@ -5897,6 +5911,7 @@ dependencies = [
  "sha2",
  "tauri",
  "tauri-build",
+ "tauri-plugin-haptics",
  "tauri-plugin-opener",
  "tauri-plugin-updater",
  "tauri-plugin-uwulock-mobile",
