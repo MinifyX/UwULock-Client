@@ -69,7 +69,7 @@ jobs:
           # One cache per job, as each builds for one target: the simulator keeps the cache the
           # single job had before (`ios`), the iPhone build has its own.
           shared-key: ${{ matrix.build == 'simulator' && 'ios' || 'ios-iphone' }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ci-speed' || github.head_ref == 'ci-speed' }}
       # A simulator takes minutes to boot; it does that while the app is built.
       - name: Boot the simulator
         if: matrix.build == 'simulator'
