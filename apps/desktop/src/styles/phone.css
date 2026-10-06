@@ -34,30 +34,37 @@
     z-index: 6;
     width: min(320px, 86vw);
     border-right: 1px solid var(--uwu-hairline);
-    box-shadow: 0 0 40px -12px rgba(20, 16, 22, 0.5);
+    border-radius: 0 var(--uwu-radius-dialog) var(--uwu-radius-dialog) 0;
+    box-shadow: var(--uwu-shadow-float);
     translate: -105% 0;
     visibility: hidden;
     transition:
-      translate 180ms ease,
-      visibility 0s linear 180ms;
+      translate var(--uwu-duration-enter) var(--uwu-ease-out),
+      visibility 0s linear var(--uwu-duration-enter);
   }
 
   .vault[data-drawer='open'] .sidebar {
     translate: 0 0;
     visibility: visible;
-    transition: translate 180ms ease;
+    transition: translate var(--uwu-duration-enter) var(--uwu-ease-out);
   }
 
   .drawer-backdrop {
     position: absolute;
     inset: 0;
     z-index: 5;
-    background: color-mix(in srgb, #141016 45%, transparent);
+    background: var(--uwu-backdrop);
+    animation: uwu-fade var(--uwu-duration-base) ease-out;
+  }
+
+  /* Touch: a little more room per row. */
+  .nav-row {
+    min-height: 40px;
   }
 
   .search-row {
     display: flex;
-    gap: 8px;
+    gap: var(--uwu-space-2);
     align-items: center;
   }
 
@@ -68,34 +75,33 @@
 
   .menu-button {
     flex: none;
-    width: 40px;
-    height: 40px;
   }
 
   .item-row {
     min-height: 56px;
   }
 
-  .list-title {
-    gap: 8px;
-  }
-
   /* ── Sign-in and lock ──────────────────────────────────── */
 
   .welcome {
-    padding: 20px 16px;
-    gap: 16px;
+    padding: var(--uwu-space-5) var(--uwu-space-4);
+    gap: var(--uwu-space-4);
     align-items: start;
     overflow-y: auto;
   }
 
   .lock {
-    padding: 16px;
+    padding: var(--uwu-space-4);
     place-items: start center;
   }
 
+  .welcome-card {
+    padding: var(--uwu-space-5) var(--uwu-space-4);
+    box-shadow: none;
+  }
+
   .lock-card {
-    padding: 18px 16px;
+    padding: var(--uwu-space-5) var(--uwu-space-4);
   }
 
   .lock-scene {

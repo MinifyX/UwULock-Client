@@ -1,3 +1,4 @@
+import { Avatar, avatarColor, Button, Icon, IconButton, ICONS } from '@uwusuite/design';
 import { useEffect, useState } from 'react';
 import {
   lock,
@@ -13,7 +14,6 @@ import { ago } from '../lib/format';
 import { t, useLanguage } from '../lib/i18n';
 import { toast } from '../lib/toast';
 import { ContextMenu, type MenuItem } from './ContextMenu';
-import { Icon } from './Icon';
 import { Modal } from './Modal';
 
 export function initialOf(account: { name?: string | null; label?: string; email: string }) {
@@ -55,18 +55,18 @@ export function AccountCard({
   const items: MenuItem[] = [
     ...others.map((account): MenuItem => ({
       label: account.unlocked ? account.label : t('{label} (gesperrt)', { label: account.label }),
-      icon: account.unlocked ? 'unlock' : 'lock',
+      icon: account.unlocked ? ICONS.unlocked : ICONS.locked,
       onSelect: () => void switchAccount(account.id).catch((e) => toastError(e)),
     })),
     ...(others.length ? (['separator'] as MenuItem[]) : []),
-    { label: t('Konto hinzufügen'), icon: 'plus', onSelect: onAddAccount },
+    { label: t('Konto hinzufügen'), icon: ICONS.add, onSelect: onAddAccount },
     ...(current
       ? ([
-          { label: t('Konto umbenennen'), icon: 'pencil', onSelect: () => setRenaming(current) },
-          { label: t('Sperren'), icon: 'lock', onSelect: () => void lock() },
+          { label: t('Konto umbenennen'), icon: ICONS.edit, onSelect: () => setRenaming(current) },
+          { label: t('Sperren'), icon: ICONS.locked, onSelect: () => void lock() },
           {
             label: t('Abmelden'),
-            icon: 'logout',
+            icon: ICONS.signOut,
             danger: true,
             onSelect: () => setLeaving(current),
           },
@@ -78,15 +78,23 @@ export function AccountCard({
     <>
       <div className="account-card">
         <button
+          type="button"
           className="account-switch"
           aria-haspopup="menu"
           aria-expanded={Boolean(menu)}
           title={t('Konto wechseln')}
           onClick={open}
         >
-          <span className="avatar" aria-hidden>
-            {initialOf({ name: status.name, label: status.label ?? '', email: status.email ?? '' })}
-          </span>
+          <Avatar
+            name={initialOf({
+              name: status.name,
+              label: status.label ?? '',
+              email: status.email ?? '',
+            })}
+            color={avatarColor(status.email ?? status.label ?? '')}
+            size="sm"
+            className="size-8"
+          />
           <span className="account-text">
             <span className="account-email" title={status.email ?? ''}>
               {status.label}
@@ -105,21 +113,25 @@ export function AccountCard({
                     : t('Synchronisiert {when}', { when: ago(status.lastSync) })}
             </span>
           </span>
-          <Icon name="chevron" size={14} className="account-chevron" />
+          <Icon
+            icon={ICONS.expand}
+            size="xs"
+            className={menu ? 'account-chevron rotate-180' : 'account-chevron'}
+          />
         </button>
-        <button
-          className="icon-button"
+        <IconButton
+          icon={ICONS.refresh}
+          label={t('Jetzt synchronisieren')}
+          size="sm"
+          className={status.syncing ? '[&>svg]:animate-spin' : undefined}
           disabled={status.syncing}
-          aria-label={t('Jetzt synchronisieren')}
           title={status.syncError ?? t('Jetzt synchronisieren')}
           onClick={() =>
             void syncNow()
               .then(() => toast(t('Synchronisiert ✧')))
               .catch((e) => toastError(e))
           }
-        >
-          <Icon name="refresh" size={15} className={status.syncing ? 'spin' : undefined} />
-        </button>
+        />
       </div>
 
       {menu && (
@@ -138,12 +150,13 @@ export function AccountCard({
         <Modal
           title={t('Abmelden?')}
           tone="warning"
+          size="small"
           onCancel={() => setLeaving(null)}
           footer={
             <>
               <span className="spacer" />
-              <button
-                className="danger"
+              <Button
+                variant="danger"
                 data-secondary
                 onClick={() => {
                   const id = leaving.id;
@@ -154,10 +167,10 @@ export function AccountCard({
                 }}
               >
                 {t('Abmelden')}
-              </button>
-              <button className="primary" data-autofocus onClick={() => setLeaving(null)}>
+              </Button>
+              <Button variant="primary" data-autofocus onClick={() => setLeaving(null)}>
                 {t('Bleiben')}
-              </button>
+              </Button>
             </>
           }
         >
@@ -186,13 +199,13 @@ function RenameAccount({ account, onClose }: { account: AccountBrief; onClose: (
       onCancel={onClose}
       footer={
         <>
-          <button className="quiet" data-secondary onClick={onClose}>
+          <Button variant="ghost" data-secondary onClick={onClose}>
             {t('Abbrechen')}
-          </button>
+          </Button>
           <span className="spacer" />
-          <button className="primary" onClick={save}>
+          <Button variant="primary" onClick={save}>
             {t('Übernehmen')}
-          </button>
+          </Button>
         </>
       }
     >

@@ -1,4 +1,6 @@
 import { listen } from '@tauri-apps/api/event';
+import { Button, Icon, IconButton, ICONS } from '@uwusuite/design';
+import type { LucideIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   copyField,
@@ -25,7 +27,6 @@ import { AccountCard } from './AccountCard';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { FileRequestsDialog } from './FileRequestsDialog';
 import { HealthPane } from './HealthPane';
-import { Icon, type IconName } from './Icon';
 import { ItemDetail } from './ItemDetail';
 import { ItemEditor } from './ItemEditor';
 import { ItemTile } from './ItemTile';
@@ -46,14 +47,31 @@ export type Filter =
   | { kind: 'due' }
   | { kind: 'trash' };
 
-const TYPES: { type: ItemKind; label: string; icon: IconName }[] = [
-  { type: 'login', label: N_('Logins'), icon: 'globe' },
-  { type: 'card', label: N_('Karten'), icon: 'card' },
-  { type: 'identity', label: N_('Identitäten'), icon: 'id' },
-  { type: 'note', label: N_('Notizen'), icon: 'note' },
-  { type: 'ssh-key', label: N_('SSH-Schlüssel'), icon: 'key' },
-  { type: 'wifi', label: N_('WLAN'), icon: 'wifi' },
+const TYPES: { type: ItemKind; label: string; icon: LucideIcon }[] = [
+  { type: 'login', label: N_('Logins'), icon: ICONS.website },
+  { type: 'card', label: N_('Karten'), icon: ICONS.card },
+  { type: 'identity', label: N_('Identitäten'), icon: ICONS.identity },
+  { type: 'note', label: N_('Notizen'), icon: ICONS.note },
+  { type: 'ssh-key', label: N_('SSH-Schlüssel'), icon: ICONS.sshKey },
+  { type: 'wifi', label: N_('WLAN'), icon: ICONS.wifi },
 ];
+
+/** A small mark in an item row; its name shows on hover. */
+function RowBadge({
+  icon,
+  label,
+  className,
+}: {
+  icon: LucideIcon;
+  label: string;
+  className?: string;
+}) {
+  return (
+    <span title={label} className="inline-flex">
+      <Icon icon={icon} size="xs" label={label} className={className} />
+    </span>
+  );
+}
 
 function matches(filter: Filter, item: ItemSummary, due: Set<string>): boolean {
   if (filter.kind === 'trash') return item.deleted;
@@ -252,7 +270,7 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
-      if (document.querySelector('.modal')) return;
+      if (document.querySelector('dialog[open]')) return;
       const field = { u: 'username', p: 'password', t: 'totp' }[event.key.toLowerCase()];
       if (!field || !current || current.kind !== 'login') return;
       event.preventDefault();
@@ -293,16 +311,17 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
     setSuite(null);
   };
 
-  const nav = (target: Filter, icon: IconName, label: string, count: number) => (
+  const nav = (target: Filter, icon: LucideIcon, label: string, count: number) => (
     <li key={JSON.stringify(target)}>
       <button
+        type="button"
         className="nav-row"
         aria-current={
           !health && !suite && !query.trim() && same(filter, target) ? 'true' : undefined
         }
         onClick={() => pick(target)}
       >
-        <Icon name={icon} size={16} />
+        <Icon icon={icon} />
         <span className="nav-label">{label}</span>
         {count > 0 && <span className="nav-count">{count}</span>}
       </button>
@@ -315,12 +334,12 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
     return [
       {
         label: t('Umbenennen'),
-        icon: 'pencil',
+        icon: ICONS.edit,
         onSelect: () => setFolderDialog({ id, name: folder.name }),
       },
       {
         label: t('Löschen'),
-        icon: 'trash',
+        icon: ICONS.delete,
         danger: true,
         onSelect: () => setFolderToDelete({ id, name: folder.name }),
       },
@@ -357,13 +376,14 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
         }}
       >
         <ul className="nav-list">
-          {nav({ kind: 'all' }, 'layers', t('Alle Einträge'), counts.all)}
-          {nav({ kind: 'favorites' }, 'star', t('Favoriten'), counts.favorites)}
+          {nav({ kind: 'all' }, ICONS.vault, t('Alle Einträge'), counts.all)}
+          {nav({ kind: 'favorites' }, ICONS.favorite, t('Favoriten'), counts.favorites)}
           {has(uwu, 'reminders') &&
             (counts.due > 0 || filter.kind === 'due') &&
-            nav({ kind: 'due' }, 'bell', t('Neues Passwort fällig'), counts.due)}
+            nav({ kind: 'due' }, ICONS.reminder, t('Neues Passwort fällig'), counts.due)}
           <li>
             <button
+              type="button"
               className="nav-row"
               aria-current={health ? 'true' : undefined}
               data-testid="nav-health"
@@ -372,7 +392,7 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
                 setHealth('report');
               }}
             >
-              <Icon name="shield" size={16} />
+              <Icon icon={ICONS.securityCheck} />
               <span className="nav-label">{t('Passwortprüfung')}</span>
             </button>
           </li>
@@ -389,14 +409,13 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
           <>
             <h2 className="nav-heading">
               {t('Ordner')}
-              <button
-                className="icon-button tiny"
-                title={t('Neuer Ordner')}
-                aria-label={t('Neuer Ordner')}
+              <IconButton
+                icon={ICONS.newFolder}
+                label={t('Neuer Ordner')}
+                size="sm"
+                className="nav-action"
                 onClick={() => setFolderDialog({ id: null, name: '' })}
-              >
-                <Icon name="folderPlus" size={14} />
-              </button>
+              />
             </h2>
             <ul className="nav-list">
               {[...overview.folders]
@@ -410,6 +429,7 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
                     }}
                   >
                     <button
+                      type="button"
                       className="nav-row"
                       aria-current={
                         !query.trim() && same(filter, { kind: 'folder', id: f.id })
@@ -418,7 +438,7 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
                       }
                       onClick={() => pick({ kind: 'folder', id: f.id })}
                     >
-                      <Icon name="folder" size={16} />
+                      <Icon icon={ICONS.folder} />
                       <span className="nav-label">{f.name}</span>
                       {counts.folder(f.id) > 0 && (
                         <span className="nav-count">{counts.folder(f.id)}</span>
@@ -428,7 +448,7 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
                 ))}
               {overview.folders.length > 0 &&
                 noFolder > 0 &&
-                nav({ kind: 'folder', id: null }, 'folder', t('Ohne Ordner'), noFolder)}
+                nav({ kind: 'folder', id: null }, ICONS.folder, t('Ohne Ordner'), noFolder)}
             </ul>
           </>
         )}
@@ -436,23 +456,23 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
         {overview?.organizations.map((org) => (
           <div key={org.id}>
             <h2 className="nav-heading org-heading">
-              <Icon name="building" size={13} />
+              <Icon icon={ICONS.organization} size="xs" />
               <span className="nav-label">{org.name}</span>
-              <button
-                className="icon-button tiny"
+              <IconButton
+                icon={ICONS.openExternal}
+                label={t('{name} im Web-Tresor verwalten', { name: org.name })}
                 title={t('Im Web-Tresor verwalten')}
-                aria-label={t('{name} im Web-Tresor verwalten', { name: org.name })}
+                size="sm"
+                className="nav-action"
                 onClick={() =>
                   void openWebVaultAt('organization', org.id).catch((e) => toastError(e))
                 }
-              >
-                <Icon name="external" size={13} />
-              </button>
+              />
             </h2>
             <ul className="nav-list">
               {nav(
                 { kind: 'organization', id: org.id },
-                'layers',
+                ICONS.vault,
                 t('Alle Einträge'),
                 counts.organization(org.id),
               )}
@@ -460,7 +480,12 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
                 .filter((c) => c.organizationId === org.id)
                 .sort((a, b) => a.name.localeCompare(b.name))
                 .map((c) =>
-                  nav({ kind: 'collection', id: c.id }, 'grid', c.name, counts.collection(c.id)),
+                  nav(
+                    { kind: 'collection', id: c.id },
+                    ICONS.collection,
+                    c.name,
+                    counts.collection(c.id),
+                  ),
                 )}
             </ul>
           </div>
@@ -473,6 +498,7 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
               {(['ssh', 'rdp'] as const).map((space) => (
                 <li key={space}>
                   <button
+                    type="button"
                     className="nav-row"
                     aria-current={suite === space && !health ? 'true' : undefined}
                     data-testid={`nav-suite-${space}`}
@@ -482,7 +508,7 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
                       setSuite(space);
                     }}
                   >
-                    <Icon name={space === 'ssh' ? 'terminal' : 'monitor'} size={16} />
+                    <Icon icon={space === 'ssh' ? ICONS.terminal : ICONS.computer} />
                     <span className="nav-label">{t(SPACE_TITLE[space])}</span>
                   </button>
                 </li>
@@ -497,8 +523,12 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
             <ul className="nav-list">
               {has(uwu, 'file-requests') && (
                 <li>
-                  <button className="nav-row" onClick={() => setExtrasDialog('file-requests')}>
-                    <Icon name="inbox" size={16} />
+                  <button
+                    type="button"
+                    className="nav-row"
+                    onClick={() => setExtrasDialog('file-requests')}
+                  >
+                    <Icon icon={ICONS.inbox} />
                     <span className="nav-label">{t('Dateianfragen')}</span>
                     {uwu.unseen.fileRequestSubmissions > 0 && (
                       <span
@@ -513,8 +543,12 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
               )}
               {has(uwu, 'masked-addresses') && (
                 <li>
-                  <button className="nav-row" onClick={() => setExtrasDialog('masked')}>
-                    <Icon name="mask" size={16} />
+                  <button
+                    type="button"
+                    className="nav-row"
+                    onClick={() => setExtrasDialog('masked')}
+                  >
+                    <Icon icon={ICONS.maskedAddress} />
                     <span className="nav-label">{t('Maskierte Adressen')}</span>
                   </button>
                 </li>
@@ -525,7 +559,7 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
 
         {settings.showTrash && counts.trash > 0 && (
           <ul className="nav-list nav-trash">
-            {nav({ kind: 'trash' }, 'trash', t('Papierkorb'), counts.trash)}
+            {nav({ kind: 'trash' }, ICONS.delete, t('Papierkorb'), counts.trash)}
           </ul>
         )}
 
@@ -561,17 +595,16 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
             <div className="list-head">
               <div className="search-row">
                 {phone && (
-                  <button
-                    className="icon-button menu-button"
-                    aria-label={t('Ordner und Typen')}
+                  <IconButton
+                    icon={ICONS.menu}
+                    label={t('Ordner und Typen')}
+                    className="menu-button"
                     aria-expanded={drawer}
                     onClick={() => setDrawer(true)}
-                  >
-                    <Icon name="menu" size={18} />
-                  </button>
+                  />
                 )}
                 <label className="search-box">
-                  <Icon name="search" size={15} />
+                  <Icon icon={ICONS.search} />
                   <input
                     ref={searchRef}
                     className="search"
@@ -598,19 +631,20 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
                 <span>{title}</span>
                 <span className="list-count">{visible.length}</span>
                 <span className="spacer" />
-                <button
+                <Button
+                  size="sm"
+                  icon={ICONS.add}
                   className="new-item"
                   aria-haspopup="menu"
                   aria-expanded={Boolean(newMenu)}
                   title={t('Neuer Eintrag')}
                   onClick={(event) => {
                     const rect = event.currentTarget.getBoundingClientRect();
-                    setNewMenu({ x: rect.right - 180, y: rect.bottom + 4 });
+                    setNewMenu({ x: rect.right - 210, y: rect.bottom + 6 });
                   }}
                 >
-                  <Icon name="plus" size={15} />
                   {t('Neu')}
-                </button>
+                </Button>
               </p>
             </div>
 
@@ -649,30 +683,40 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
                     </span>
                     <span className="item-badges">
                       {item.broken && (
-                        <span title={t('Nicht alles ließ sich entschlüsseln')}>
-                          <Icon name="warning" size={13} className="badge-warning" />
-                        </span>
+                        <RowBadge
+                          icon={ICONS.warning}
+                          label={t('Nicht alles ließ sich entschlüsseln')}
+                          className="badge-warning"
+                        />
                       )}
                       {item.reprompt && (
-                        <Icon name="lock" size={13} title={t('Fragt nach dem Master-Passwort')} />
+                        <RowBadge
+                          icon={ICONS.masterPassword}
+                          label={t('Fragt nach dem Master-Passwort')}
+                        />
                       )}
                       {due.has(item.id) && !item.deleted && (
-                        <Icon
-                          name="bell"
-                          size={13}
+                        <RowBadge
+                          icon={ICONS.reminder}
+                          label={t('Neues Passwort fällig')}
                           className="badge-due"
-                          title={t('Neues Passwort fällig')}
                         />
                       )}
                       {uwu.masked[item.id] && (
-                        <Icon name="mask" size={13} title={t('Mit maskierter Adresse')} />
+                        <RowBadge icon={ICONS.maskedAddress} label={t('Mit maskierter Adresse')} />
                       )}
-                      {item.hasTotp && <Icon name="clock" size={13} title={t('Mit Einmal-Code')} />}
+                      {item.hasTotp && (
+                        <RowBadge icon={ICONS.oneTimeCode} label={t('Mit Einmal-Code')} />
+                      )}
                       {item.organizationId && (
-                        <Icon name="building" size={13} title={t('Organisation')} />
+                        <RowBadge icon={ICONS.organization} label={t('Organisation')} />
                       )}
                       {item.favorite && (
-                        <Icon name="star" size={13} className="badge-star" title={t('Favorit')} />
+                        <RowBadge
+                          icon={ICONS.favorite}
+                          label={t('Favorit')}
+                          className="badge-star"
+                        />
                       )}
                     </span>
                   </li>
@@ -702,10 +746,14 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
           <section className="detail-pane">
             {detailOpen && (
               <div className="detail-back">
-                <button className="quiet" onClick={() => setOpened(false)}>
-                  <Icon name="back" size={16} />
-                  {title}
-                </button>
+                <Button
+                  variant="ghost"
+                  icon={ICONS.back}
+                  className="max-w-full"
+                  onClick={() => setOpened(false)}
+                >
+                  <span className="truncate">{title}</span>
+                </Button>
               </div>
             )}
             {current ? (
@@ -769,12 +817,13 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
       {folderToDelete && (
         <Modal
           title={t('Ordner löschen?')}
+          size="small"
           onCancel={() => setFolderToDelete(null)}
           footer={
             <>
               <span className="spacer" />
-              <button
-                className="danger"
+              <Button
+                variant="danger"
                 data-secondary
                 onClick={() => {
                   const id = folderToDelete.id;
@@ -788,10 +837,10 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
                 }}
               >
                 {t('Löschen')}
-              </button>
-              <button className="primary" data-autofocus onClick={() => setFolderToDelete(null)}>
+              </Button>
+              <Button variant="primary" data-autofocus onClick={() => setFolderToDelete(null)}>
                 {t('Abbrechen')}
-              </button>
+              </Button>
             </>
           }
         >
@@ -873,13 +922,13 @@ function FolderDialog({
       onCancel={onClose}
       footer={
         <>
-          <button className="quiet" data-secondary onClick={onClose}>
+          <Button variant="ghost" data-secondary onClick={onClose}>
             {t('Abbrechen')}
-          </button>
+          </Button>
           <span className="spacer" />
-          <button className="primary" disabled={!name.trim() || busy} onClick={() => void save()}>
+          <Button variant="primary" disabled={!name.trim() || busy} onClick={() => void save()}>
             {folder.id ? t('Übernehmen') : t('Anlegen')}
-          </button>
+          </Button>
         </>
       }
     >
