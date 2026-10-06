@@ -26,6 +26,18 @@ describe('the font', () => {
   });
 });
 
+describe('contrast and motion', () => {
+  it('follow the system until set, and take only known values', async () => {
+    expect(await settings()).toMatchObject({ contrast: 'system', motion: 'system' });
+    expect(await updateSettings({ contrast: 'high', motion: 'off' })).toMatchObject({
+      contrast: 'high',
+      motion: 'off',
+    });
+    const odd = { contrast: 'max', motion: 'fast' } as unknown as Partial<typeof DEFAULT_SETTINGS>;
+    expect(await updateSettings(odd)).toMatchObject({ contrast: 'high', motion: 'off' });
+  });
+});
+
 describe('the generator’s minimums', () => {
   const base = DEFAULT_SETTINGS.generator.password;
 

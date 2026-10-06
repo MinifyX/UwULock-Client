@@ -1,14 +1,6 @@
-import '@fontsource-variable/dm-sans';
-import '@fontsource-variable/manrope';
-import '@fontsource-variable/rubik';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import '../legacy/tokens.css';
-import '../legacy/fonts.css';
-import '../legacy/app.css';
-import '../legacy/vault.css';
-import '../legacy/nyu.css';
-import '../popup/popup.css';
+import '../popup/index.css';
 import { loadSettings } from '../popup/lib';
 import { Prompt } from './Prompt';
 

@@ -1,6 +1,6 @@
+import { Button, Icon, IconButton, ICONS, isFontChoice, Segmented, Switch } from '@uwusuite/design';
 import { useState, type ReactNode } from 'react';
-import { FontPicker } from '../../legacy/FontPicker';
-import { Icon } from '../../legacy/Icon';
+import { FontPicker } from '@desktop/components/FontPicker';
 import { ext } from '../../shared/browser';
 import { N_, t } from '../../shared/i18n';
 import type { LockTimeout, Settings, Status } from '../../shared/protocol';
@@ -12,9 +12,9 @@ import {
   publishSettings,
   toast,
   toastError,
-  Toggle,
   useSettings,
   uwuFeature,
+  WIDE_SEGMENTED,
 } from '../lib';
 
 const TIMEOUTS: { value: LockTimeout; label: string }[] = [
@@ -48,13 +48,16 @@ function Row({
   label,
   description,
   children,
+  block,
 }: {
   label: string;
   description?: string;
   children: ReactNode;
+  /** The control under the words, across the width (a Segmented control). */
+  block?: boolean;
 }) {
   return (
-    <div className="setting-row">
+    <div className={block ? 'setting-row setting-row-block' : 'setting-row'}>
       <span className="setting-text">
         <span className="setting-label">{label}</span>
         {description && <span className="setting-description">{description}</span>}
@@ -105,32 +108,30 @@ export function SettingsView({
             </span>
             <span className="setting-control">
               {!account.active && (
-                <button
-                  type="button"
+                <Button
+                  size="sm"
                   onClick={() => void switchAccount(account.id).catch((e) => toastError(e))}
                 >
                   {t('Wechseln')}
-                </button>
+                </Button>
               )}
               {account.active && (
-                <button
-                  type="button"
-                  className="icon-button"
+                <IconButton
+                  icon={ICONS.refresh}
+                  size="sm"
+                  label={t('Jetzt synchronisieren')}
                   onClick={() =>
                     void syncNow().then(
                       () => toast(t('Synchronisiert ✧')),
                       (e) => toastError(e),
                     )
                   }
-                  aria-label={t('Jetzt synchronisieren')}
-                  title={t('Jetzt synchronisieren')}
-                >
-                  <Icon name="refresh" size={15} />
-                </button>
+                />
               )}
-              <button
-                type="button"
-                className="icon-button"
+              <IconButton
+                icon={ICONS.signOut}
+                size="sm"
+                label={t('Abmelden')}
                 onClick={() => {
                   if (
                     window.confirm(
@@ -139,22 +140,26 @@ export function SettingsView({
                   )
                     void logout(account.id).catch((e) => toastError(e));
                 }}
-                aria-label={t('Abmelden')}
-                title={t('Abmelden')}
-              >
-                <Icon name="logout" size={15} />
-              </button>
+              />
             </span>
           </div>
         ))}
-        <button type="button" className="quiet add-line" onClick={onAddAccount}>
-          <Icon name="plus" size={13} /> {t('Konto hinzufügen')}
-        </button>
-        {status.webVault && (
-          <a className="add-line" href={status.webVault} target="_blank" rel="noreferrer">
-            <Icon name="external" size={13} /> {t('Web-Tresor öffnen')}
-          </a>
-        )}
+        <div className="setting-links">
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={ICONS.add}
+            className="text-pink-ink!"
+            onClick={onAddAccount}
+          >
+            {t('Konto hinzufügen')}
+          </Button>
+          {status.webVault && (
+            <a className="add-line" href={status.webVault} target="_blank" rel="noreferrer">
+              <Icon icon={ICONS.openExternal} size="xs" /> {t('Web-Tresor öffnen')}
+            </a>
+          )}
+        </div>
       </div>
 
       <h2 className="section-title">{t('Sperren')}</h2>
@@ -176,7 +181,7 @@ export function SettingsView({
           label={t('Mit dem Computer sperren')}
           description={t('Sperrt UwULock, sobald der Bildschirm gesperrt wird.')}
         >
-          <Toggle
+          <Switch
             checked={settings.lockWithSystem}
             label={t('Mit dem Computer sperren')}
             onChange={(v) => void change({ lockWithSystem: v })}
@@ -191,16 +196,13 @@ export function SettingsView({
           }
         >
           {status.pinSet ? (
-            <button
-              type="button"
-              onClick={() => void setPin(null, false).catch((e) => toastError(e))}
-            >
+            <Button size="sm" onClick={() => void setPin(null, false).catch((e) => toastError(e))}>
               {t('Entfernen')}
-            </button>
+            </Button>
           ) : (
-            <button type="button" onClick={() => setPinOpen(!pinOpen)}>
+            <Button size="sm" aria-expanded={pinOpen} onClick={() => setPinOpen(!pinOpen)}>
               {t('Einrichten')}
-            </button>
+            </Button>
           )}
         </Row>
         {pinOpen && !status.pinSet && <PinForm onDone={() => setPinOpen(false)} />}
@@ -225,21 +227,21 @@ export function SettingsView({
           label={t('Menü in Anmeldefeldern')}
           description={t('Ein kleiner Knopf in Feldern, die UwULock ausfüllen kann.')}
         >
-          <Toggle
+          <Switch
             checked={settings.inlineMenu}
             label={t('Menü in Anmeldefeldern')}
             onChange={(v) => void change({ inlineMenu: v })}
           />
         </Row>
         <Row label={t('Anbieten, Logins zu speichern')}>
-          <Toggle
+          <Switch
             checked={settings.savePrompt}
             label={t('Anbieten, Logins zu speichern')}
             onChange={(v) => void change({ savePrompt: v })}
           />
         </Row>
         <Row label={t('Einmal-Code nach dem Ausfüllen kopieren')}>
-          <Toggle
+          <Switch
             checked={settings.copyTotp}
             label={t('Einmal-Code nach dem Ausfüllen kopieren')}
             onChange={(v) => void change({ copyTotp: v })}
@@ -249,7 +251,7 @@ export function SettingsView({
           label={t('Passkeys in UwULock speichern')}
           description={t('Aus: Der Browser fragt wie sonst.')}
         >
-          <Toggle
+          <Switch
             checked={settings.passkeys}
             label={t('Passkeys in UwULock speichern')}
             onChange={(v) => void change({ passkeys: v })}
@@ -270,9 +272,9 @@ export function SettingsView({
         </Row>
         {settings.neverSave.length > 0 && (
           <Row label={t('Nie speichern für')} description={settings.neverSave.join(', ')}>
-            <button type="button" onClick={() => void change({ neverSave: [] })}>
+            <Button size="sm" onClick={() => void change({ neverSave: [] })}>
               {t('Zurücksetzen')}
-            </button>
+            </Button>
           </Row>
         )}
         <p className="field-hint">
@@ -289,7 +291,7 @@ export function SettingsView({
                 label={t('Icons in der Liste')}
                 description={t('Eigene Icons deiner Einträge und die Icons, die dein Server lädt')}
               >
-                <Toggle
+                <Switch
                   checked={settings.showIcons}
                   label={t('Icons in der Liste')}
                   onChange={(checked) => void change({ showIcons: checked })}
@@ -301,9 +303,9 @@ export function SettingsView({
                 label={t('Dateianfragen')}
                 description={t('Deine Links, über die dir jemand Dateien schickt')}
               >
-                <button type="button" className="quiet" onClick={onFileRequests}>
+                <Button size="sm" onClick={onFileRequests}>
                   {t('Anzeigen')}
-                </button>
+                </Button>
               </Row>
             )}
           </div>
@@ -323,23 +325,51 @@ export function SettingsView({
             <option value="en">English</option>
           </select>
         </Row>
-        <Row label={t('Design')}>
-          <select
-            className="select"
+        <Row label={t('Design')} block>
+          <Segmented
+            className={WIDE_SEGMENTED}
+            label={t('Design')}
             value={settings.theme}
-            onChange={(e) => void change({ theme: e.target.value as Settings['theme'] })}
-          >
-            <option value="system">{t('Wie das System')}</option>
-            <option value="light">{t('Hell')}</option>
-            <option value="dark">{t('Dunkel')}</option>
-          </select>
+            onChange={(theme) => void change({ theme })}
+            options={[
+              { value: 'system', label: t('System') },
+              { value: 'light', label: t('Hell') },
+              { value: 'dark', label: t('Dunkel') },
+            ]}
+          />
+        </Row>
+        <Row label={t('Kontrast')} block>
+          <Segmented
+            className={WIDE_SEGMENTED}
+            label={t('Kontrast')}
+            value={settings.contrast ?? 'system'}
+            onChange={(contrast) => void change({ contrast })}
+            options={[
+              { value: 'system', label: t('System') },
+              { value: 'normal', label: t('Normal') },
+              { value: 'high', label: t('Hoch') },
+            ]}
+          />
+        </Row>
+        <Row label={t('Animationen')} block>
+          <Segmented
+            className={WIDE_SEGMENTED}
+            label={t('Animationen')}
+            value={settings.motion ?? 'system'}
+            onChange={(motion) => void change({ motion })}
+            options={[
+              { value: 'system', label: t('System') },
+              { value: 'on', label: t('An') },
+              { value: 'off', label: t('Aus') },
+            ]}
+          />
         </Row>
         <div className="setting-block">
           <span className="setting-label">{t('Schrift')}</span>
           <span className="setting-description">{t('Nur in diesem Browser.')}</span>
           <FontPicker
             label={t('Schrift')}
-            value={settings.font}
+            value={isFontChoice(settings.font) ? settings.font : 'uwu'}
             onChange={(font) => void change({ font })}
             systemName={t('System')}
             sample={t('Tresor 0123 Il1 O0')}
@@ -405,9 +435,9 @@ function PinForm({ onDone }: { onDone: () => void }) {
       {error && <p className="form-error">{error}</p>}
       <div className="form-actions">
         <span className="spacer" />
-        <button className="primary" type="submit" disabled={[...pin].length < min}>
+        <Button variant="primary" size="sm" type="submit" disabled={[...pin].length < min}>
           {t('Speichern')}
-        </button>
+        </Button>
       </div>
     </form>
   );

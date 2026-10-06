@@ -1,5 +1,5 @@
+import { Button, Icon, IconButton, ICONS } from '@uwusuite/design';
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { Icon } from '../../legacy/Icon';
 import { playNyu } from '@desktop/components/nyu/stage';
 import { QrCode } from '@desktop/components/QrCode';
 import { ENTERPRISE_KEYS, isEnterprise, readWifi, wifiQr, type WifiView } from '@desktop/lib/wifi';
@@ -145,45 +145,35 @@ export function Detail({
       <BackBar onBack={onBack}>
         {!summary.deleted && !item.locked && (
           <>
-            <button
-              type="button"
-              className="icon-button"
+            <IconButton
+              icon={ICONS.favorite}
+              className={summary.favorite ? 'star-toggle [&>svg]:fill-pink' : 'star-toggle'}
               onClick={() => void toggleFavorite()}
-              aria-pressed={summary.favorite}
-              aria-label={summary.favorite ? t('Aus Favoriten entfernen') : t('Zu Favoriten')}
-              title={summary.favorite ? t('Aus Favoriten entfernen') : t('Zu Favoriten')}
-            >
-              <Icon name="star" size={16} className={summary.favorite ? 'badge-star' : undefined} />
-            </button>
+              active={summary.favorite}
+              label={summary.favorite ? t('Aus Favoriten entfernen') : t('Zu Favoriten')}
+            />
             {!summary.broken && (
-              <button
-                type="button"
-                className="icon-button"
+              <IconButton
+                icon={ICONS.send}
+                label={t('Als Send teilen')}
                 onClick={() => onShare(id)}
-                aria-label={t('Als Send teilen')}
-                title={t('Als Send teilen')}
-              >
-                <Icon name="export" size={16} />
-              </button>
+              />
             )}
             {/* SSH keys and Wi-Fi networks are edited in the app or the web vault. */}
             {!summary.broken && summary.kind !== 'ssh-key' && summary.kind !== 'wifi' && (
-              <button
-                type="button"
-                className="icon-button"
+              <IconButton
+                icon={ICONS.edit}
+                label={t('Bearbeiten')}
                 onClick={() => onEdit(id, summary.kind)}
-                aria-label={t('Bearbeiten')}
-                title={t('Bearbeiten')}
-              >
-                <Icon name="pencil" size={16} />
-              </button>
+              />
             )}
           </>
         )}
         {summary.deleted && (
-          <button
-            type="button"
-            className="quiet"
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={ICONS.restore}
             onClick={() =>
               void restoreItem(id)
                 .then(() => {
@@ -194,17 +184,13 @@ export function Detail({
             }
           >
             {t('Wiederherstellen')}
-          </button>
+          </Button>
         )}
-        <button
-          type="button"
-          className="icon-button"
+        <IconButton
+          icon={ICONS.delete}
+          label={summary.deleted ? t('Endgültig löschen') : t('Löschen')}
           onClick={() => void remove()}
-          aria-label={summary.deleted ? t('Endgültig löschen') : t('Löschen')}
-          title={summary.deleted ? t('Endgültig löschen') : t('Löschen')}
-        >
-          <Icon name="trash" size={16} />
-        </button>
+        />
       </BackBar>
 
       <div className="detail-head">
@@ -231,9 +217,9 @@ export function Detail({
 export function BackBar({ onBack, children }: { onBack: () => void; children?: ReactNode }) {
   return (
     <div className="back-bar">
-      <button type="button" className="quiet back" onClick={onBack}>
-        <Icon name="chevron" size={14} className="flip" /> {t('Zurück')}
-      </button>
+      <Button variant="ghost" size="sm" icon={ICONS.back} className="back" onClick={onBack}>
+        {t('Zurück')}
+      </Button>
       <span className="spacer" />
       {children}
     </div>
@@ -261,7 +247,7 @@ function Reprompt({ id, onDone }: { id: string; onDone: () => void }) {
   return (
     <form className="detail-card reprompt form" onSubmit={submit}>
       <h3 className="detail-card-title">
-        <Icon name="shield" size={13} /> {t('Master-Passwort bestätigen')}
+        <Icon icon={ICONS.masterPassword} size="xs" /> {t('Master-Passwort bestätigen')}
       </h3>
       <p className="dialog-lead">
         {t('Dieser Eintrag ist geschützt. Gib dein Master-Passwort ein, um ihn zu sehen.')}
@@ -270,9 +256,9 @@ function Reprompt({ id, onDone }: { id: string; onDone: () => void }) {
       {error && <p className="form-error">{error}</p>}
       <div className="form-actions">
         <span className="spacer" />
-        <button className="primary" type="submit" disabled={busy || !password}>
+        <Button variant="primary" size="sm" type="submit" busy={busy} disabled={!password}>
           {t('Bestätigen')}
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -302,9 +288,9 @@ function Body({ item }: { item: ItemDetail }) {
         <section className="detail-card">
           {item.summary.deleted === false && (login.hasPassword || login.username) && (
             <div className="detail-row fill-row">
-              <button
-                type="button"
-                className="primary wide"
+              <Button
+                variant="primary"
+                className="w-full"
                 onClick={() =>
                   item.summary.reprompt
                     ? setAsking(true)
@@ -314,7 +300,7 @@ function Body({ item }: { item: ItemDetail }) {
                 }
               >
                 {t('Auf dieser Seite ausfüllen')}
-              </button>
+              </Button>
             </div>
           )}
           {login.username && (
@@ -539,17 +525,18 @@ function WifiCard({ id, wifi }: { id: string; wifi: WifiView }) {
         )}
       {wifi.ssid.trim() ? (
         <div className="detail-row wifi-qr-row">
-          <button
-            type="button"
-            className="quiet wide"
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={ICONS.qrCode}
+            className="w-full"
             onClick={() => void toggle()}
             aria-expanded={code !== null}
-            disabled={busy}
+            busy={busy}
             data-wifi-share
           >
-            <Icon name="qr" size={15} />
             {code === null ? t('QR-Code zeigen') : t('QR-Code verbergen')}
-          </button>
+          </Button>
           {code !== null && (
             <>
               <QrCode text={code} label={t('QR-Code für das WLAN {ssid}', { ssid: wifi.ssid })} />
@@ -572,9 +559,10 @@ function WifiCard({ id, wifi }: { id: string; wifi: WifiView }) {
 function CopyButton({ id, field }: { id: string; field: string }) {
   const settings = useSettings();
   return (
-    <button
-      type="button"
-      className="icon-button"
+    <IconButton
+      icon={ICONS.copy}
+      size="sm"
+      label={t('Kopieren')}
       onClick={() =>
         void copyField(id, field)
           .then(() => {
@@ -583,11 +571,7 @@ function CopyButton({ id, field }: { id: string; field: string }) {
           })
           .catch((e) => toastError(e))
       }
-      aria-label={t('Kopieren')}
-      title={t('Kopieren')}
-    >
-      <Icon name="copy" size={15} />
-    </button>
+    />
   );
 }
 
@@ -659,16 +643,13 @@ function SecretRow({
         </span>
       </span>
       <span className="detail-actions">
-        <button
-          type="button"
-          className="icon-button"
+        <IconButton
+          icon={value === null ? ICONS.show : ICONS.hide}
+          size="sm"
+          label={value === null ? t('Zeigen') : t('Verbergen')}
           onClick={() => void reveal()}
           aria-pressed={value !== null}
-          aria-label={value === null ? t('Zeigen') : t('Verbergen')}
-          title={value === null ? t('Zeigen') : t('Verbergen')}
-        >
-          <Icon name={value === null ? 'eye' : 'eyeOff'} size={15} />
-        </button>
+        />
         <CopyButton id={id} field={field} />
       </span>
     </div>
@@ -737,14 +718,21 @@ function History({
   const [open, setOpen] = useState(false);
   return (
     <section className="detail-card">
-      <button
-        type="button"
-        className="history-toggle quiet"
+      <Button
+        variant="ghost"
+        size="sm"
+        icon={ICONS.history}
+        className="history-toggle text-muted!"
         onClick={() => setOpen(!open)}
         aria-expanded={open}
       >
-        <Icon name="history" size={13} /> {t('Frühere Passwörter ({n})', { n: entries.length })}
-      </button>
+        {t('Frühere Passwörter ({n})', { n: entries.length })}
+        <Icon
+          icon={ICONS.expand}
+          size="xs"
+          className={open ? 'transition-transform' : '-rotate-90 transition-transform'}
+        />
+      </Button>
       {open &&
         entries.map((entry) => (
           <SecretRow
@@ -773,15 +761,12 @@ function Websites({ id, uris }: { id: string; uris: NonNullable<ItemDetail['logi
           </span>
           <span className="detail-actions">
             {uri.openable && (
-              <button
-                type="button"
-                className="icon-button"
+              <IconButton
+                icon={ICONS.openExternal}
+                size="sm"
+                label={t('Öffnen')}
                 onClick={() => void openItemUri(id, index)}
-                aria-label={t('Öffnen')}
-                title={t('Öffnen')}
-              >
-                <Icon name="external" size={15} />
-              </button>
+              />
             )}
             <CopyButton id={id} field={`uri:${index}`} />
           </span>
@@ -808,7 +793,11 @@ function Websites({ id, uris }: { id: string; uris: NonNullable<ItemDetail['logi
                 .join(', ') + (more > 3 ? ', …' : '')}
             </span>
           )}
-          <Icon name="chevron" size={12} className={all ? 'turned' : undefined} />
+          <Icon
+            icon={ICONS.expand}
+            size="xs"
+            className={all ? 'rotate-180 transition-transform' : 'transition-transform'}
+          />
         </button>
       )}
     </section>
@@ -895,16 +884,13 @@ function Passkeys({
             </span>
             {!deleted && (
               <span className="detail-actions">
-                <button
-                  type="button"
-                  className="icon-button"
+                <IconButton
+                  icon={ICONS.delete}
+                  size="sm"
+                  label={t('Passkey für {site} löschen', { site })}
                   disabled={busy || (!key.credentialId && !key.fingerprint)}
                   onClick={() => void remove(key)}
-                  aria-label={t('Passkey für {site} löschen', { site })}
-                  title={t('Passkey löschen')}
-                >
-                  <Icon name="trash" size={15} />
-                </button>
+                />
               </span>
             )}
           </div>

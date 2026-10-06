@@ -3,8 +3,9 @@
  * the generator and the settings, in a window 380 pixels wide.
  */
 
+import { Icon, IconButton, ICONS, Wordmark } from '@uwusuite/design';
+import type { LucideIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Icon } from '../legacy/Icon';
 import { playNyu } from '@desktop/components/nyu/stage';
 import { t } from '../shared/i18n';
 import { lock, syncNow } from './api';
@@ -98,51 +99,35 @@ export function App() {
     }
   };
 
-  const tabs: { id: Tab; label: string; icon: Parameters<typeof Icon>[0]['name'] }[] = [
-    { id: 'page', label: t('Diese Seite'), icon: 'globe' },
-    { id: 'vault', label: t('Tresor'), icon: 'layers' },
-    { id: 'generator', label: t('Generator'), icon: 'dice' },
-    { id: 'settings', label: t('Einstellungen'), icon: 'more' },
+  const tabs: { id: Tab; label: string; icon: LucideIcon }[] = [
+    { id: 'page', label: t('Diese Seite'), icon: ICONS.website },
+    { id: 'vault', label: t('Tresor'), icon: ICONS.vault },
+    { id: 'generator', label: t('Generator'), icon: ICONS.generate },
+    { id: 'settings', label: t('Einstellungen'), icon: ICONS.settings },
   ];
 
   return (
     <div className="popup">
       <header className="popup-bar">
-        <span className="popup-brand">
-          <img src="/icons/icon-32.png" alt="" width="20" height="20" />
-          <span className="wordmark">
-            UwU<span>Lock</span>
-          </span>
-        </span>
+        <Wordmark product="Lock" shell="lock" className="text-body" />
         <span className="spacer" />
-        <button
-          type="button"
-          className="icon-button"
+        <IconButton
+          icon={ICONS.add}
+          label={t('Neuer Eintrag')}
           onClick={() => setLayer({ kind: 'edit', target: { id: null, kind: 'login' } })}
-          aria-label={t('Neuer Eintrag')}
-          title={t('Neuer Eintrag')}
-        >
-          <Icon name="plus" size={17} />
-        </button>
-        <button
-          type="button"
-          className="icon-button"
+        />
+        <IconButton
+          icon={ICONS.refresh}
+          label={t('Jetzt synchronisieren')}
+          className={status.syncing ? '[&>svg]:animate-spin' : undefined}
           onClick={() => void sync()}
           disabled={status.syncing}
-          aria-label={t('Jetzt synchronisieren')}
-          title={t('Jetzt synchronisieren')}
-        >
-          <Icon name="refresh" size={16} className={status.syncing ? 'spin' : undefined} />
-        </button>
-        <button
-          type="button"
-          className="icon-button"
+        />
+        <IconButton
+          icon={ICONS.locked}
+          label={t('Sperren')}
           onClick={() => void lock().then(refresh)}
-          aria-label={t('Sperren')}
-          title={t('Sperren')}
-        >
-          <Icon name="lock" size={16} />
-        </button>
+        />
       </header>
 
       <main className="popup-main">
@@ -198,13 +183,13 @@ export function App() {
               aria-current={tab === entry.id ? 'page' : undefined}
               onClick={() => setTab(entry.id)}
             >
-              <Icon name={entry.icon} size={18} />
+              <Icon icon={entry.icon} size="md" />
               <span>{entry.label}</span>
             </button>
           ))}
         </nav>
       )}
-      <ToastView />
+      <ToastView raised={!layer} />
     </div>
   );
 }

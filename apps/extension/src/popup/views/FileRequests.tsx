@@ -1,5 +1,5 @@
+import { Icon, IconButton, ICONS } from '@uwusuite/design';
 import { useEffect, useState } from 'react';
-import { Icon } from '../../legacy/Icon';
 import { t } from '../../shared/i18n';
 import type { FileRequestEntry, FileRequests } from '../../shared/protocol';
 import { copyFileRequestLink, fileRequests } from '../api';
@@ -47,8 +47,8 @@ export function FileRequestsView({ onBack }: { onBack: () => void }) {
     <div className="popup-scroll">
       <BackBar onBack={onBack}>
         {found && (
-          <a className="quiet" href={found.webUrl} target="_blank" rel="noreferrer">
-            {t('Im Web-Tresor verwalten')} <Icon name="external" size={13} />
+          <a className="add-line" href={found.webUrl} target="_blank" rel="noreferrer">
+            {t('Im Web-Tresor verwalten')} <Icon icon={ICONS.openExternal} size="xs" />
           </a>
         )}
       </BackBar>
@@ -84,24 +84,21 @@ export function FileRequestsView({ onBack }: { onBack: () => void }) {
                 </span>
               </span>
               <span className="detail-actions">
-                <button
-                  type="button"
-                  className="icon-button"
+                <IconButton
+                  icon={ICONS.copy}
+                  size="sm"
+                  label={t('Link kopieren')}
                   onClick={() => void copy(request.id)}
-                  aria-label={t('Link kopieren')}
-                  title={t('Link kopieren')}
-                >
-                  <Icon name="copy" size={15} />
-                </button>
+                />
                 <a
-                  className="icon-button"
+                  className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-pink-tint/60 hover:text-ink"
                   href={request.manageUrl}
                   target="_blank"
                   rel="noreferrer"
                   aria-label={t('Im Web-Tresor öffnen')}
                   title={t('Im Web-Tresor öffnen')}
                 >
-                  <Icon name="external" size={15} />
+                  <Icon icon={ICONS.openExternal} />
                 </a>
               </span>
             </li>

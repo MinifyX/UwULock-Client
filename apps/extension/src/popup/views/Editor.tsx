@@ -1,5 +1,5 @@
+import { Button, ICONS, IconButton, Segmented } from '@uwusuite/design';
 import { useEffect, useState, type FormEvent } from 'react';
-import { Icon } from '../../legacy/Icon';
 import { playNyu } from '@desktop/components/nyu/stage';
 import { N_, t } from '../../shared/i18n';
 import type {
@@ -11,7 +11,15 @@ import type {
   Status,
 } from '../../shared/protocol';
 import { createMasked, generate, revealField, saveItem, vaultItem, vaultOverview } from '../api';
-import { errorText, PasswordInput, toast, toastError, useSettings, uwuFeature } from '../lib';
+import {
+  errorText,
+  PasswordInput,
+  toast,
+  toastError,
+  useSettings,
+  uwuFeature,
+  WIDE_SEGMENTED,
+} from '../lib';
 import { BackBar, IDENTITY_LABEL, KIND_LABEL } from './Detail';
 
 export type EditorTarget = { id: string | null; kind: ItemKind; name?: string; uri?: string };
@@ -225,41 +233,39 @@ export function Editor({
   return (
     <form className="popup-scroll editor form" onSubmit={submit}>
       <BackBar onBack={onCancel}>
-        <button className="primary" type="submit" disabled={busy || Boolean(target.id && !loaded)}>
+        <Button
+          variant="primary"
+          size="sm"
+          type="submit"
+          busy={busy}
+          disabled={Boolean(target.id && !loaded)}
+        >
           {busy ? t('Speichert …') : t('Speichern')}
-        </button>
+        </Button>
       </BackBar>
       <h2 className="card-title">{creating ? t('Neuer Eintrag') : t('Bearbeiten')}</h2>
 
       {creating && (
-        <div className="segmented wide" role="radiogroup" aria-label={t('Art')}>
-          {EDITABLE.map((k) => (
-            <button
-              key={k}
-              type="button"
-              role="radio"
-              aria-checked={kind === k}
-              onClick={() => setKind(k)}
-            >
-              {t(KIND_LABEL[k])}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          className={WIDE_SEGMENTED}
+          label={t('Art')}
+          value={kind}
+          onChange={setKind}
+          options={EDITABLE.map((k) => ({ value: k, label: t(KIND_LABEL[k]) }))}
+        />
       )}
 
       <div className="field">
         <span className="field-label-row">
           <label htmlFor="editor-name">{t('Name')}</label>
-          <button
-            type="button"
-            className="icon-button star-toggle"
-            aria-pressed={favorite}
-            aria-label={t('Favorit')}
-            title={favorite ? t('Aus Favoriten entfernen') : t('Zu Favoriten')}
+          <IconButton
+            icon={ICONS.favorite}
+            size="sm"
+            className={favorite ? 'star-toggle [&>svg]:fill-pink' : 'star-toggle'}
+            active={favorite}
+            label={favorite ? t('Aus Favoriten entfernen') : t('Zu Favoriten')}
             onClick={() => setFavoriteState(!favorite)}
-          >
-            <Icon name="star" size={16} className={favorite ? 'badge-star' : undefined} />
-          </button>
+          />
         </span>
         <input
           id="editor-name"
@@ -283,16 +289,12 @@ export function Editor({
                 aria-label={t('Benutzername')}
               />
               {uwuFeature(status, 'masked-addresses') && (
-                <button
-                  type="button"
-                  className="icon-button"
+                <IconButton
+                  icon={ICONS.maskedAddress}
+                  label={t('Neue maskierte Adresse')}
                   onClick={() => void masked()}
                   disabled={masking}
-                  title={t('Neue maskierte Adresse')}
-                  aria-label={t('Neue maskierte Adresse')}
-                >
-                  @
-                </button>
+                />
               )}
             </div>
           </div>
@@ -306,25 +308,17 @@ export function Editor({
                 placeholder={password === null && loaded?.login?.hasPassword ? keep : undefined}
               />
               {password === null && loaded?.login?.hasPassword && (
-                <button
-                  type="button"
-                  className="icon-button"
+                <IconButton
+                  icon={ICONS.show}
+                  label={t('Zeigen')}
                   onClick={() => void showPassword()}
-                  title={t('Zeigen')}
-                  aria-label={t('Zeigen')}
-                >
-                  <Icon name="eye" size={15} />
-                </button>
+                />
               )}
-              <button
-                type="button"
-                className="icon-button"
+              <IconButton
+                icon={ICONS.generate}
+                label={t('Passwort generieren')}
                 onClick={() => void generated()}
-                title={t('Passwort generieren')}
-                aria-label={t('Passwort generieren')}
-              >
-                <Icon name="dice" size={15} />
-              </button>
+              />
             </div>
           </div>
           <label className="field">
@@ -366,24 +360,23 @@ export function Editor({
                     </option>
                   ))}
                 </select>
-                <button
-                  type="button"
-                  className="icon-button"
+                <IconButton
+                  icon={ICONS.close}
+                  size="sm"
+                  label={t('Entfernen')}
                   onClick={() => setUris(uris.filter((_, i) => i !== index))}
-                  aria-label={t('Entfernen')}
-                  title={t('Entfernen')}
-                >
-                  <Icon name="close" size={14} />
-                </button>
+                />
               </div>
             ))}
-            <button
-              type="button"
-              className="quiet add-line"
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={ICONS.add}
+              className="add-line text-pink-ink!"
               onClick={() => setUris([...uris, { uri: '', match: '' }])}
             >
-              <Icon name="plus" size={13} /> {t('Website hinzufügen')}
-            </button>
+              {t('Website hinzufügen')}
+            </Button>
           </div>
         </>
       )}
@@ -528,23 +521,22 @@ export function Editor({
                 autoComplete="off"
               />
             )}
-            <button
-              type="button"
-              className="icon-button"
+            <IconButton
+              icon={ICONS.close}
+              size="sm"
+              label={t('Entfernen')}
               onClick={() => setFields(fields.filter((_, i) => i !== index))}
-              aria-label={t('Entfernen')}
-              title={t('Entfernen')}
-            >
-              <Icon name="close" size={14} />
-            </button>
+            />
           </div>
         ))}
         <div className="add-field">
           {FIELD_KINDS.map((option) => (
-            <button
+            <Button
               key={option.value}
-              type="button"
-              className="quiet add-line"
+              variant="ghost"
+              size="sm"
+              icon={ICONS.add}
+              className="add-line text-pink-ink!"
               onClick={() =>
                 setFields([
                   ...fields,
@@ -558,8 +550,8 @@ export function Editor({
                 ])
               }
             >
-              <Icon name="plus" size={13} /> {t(option.label)}
-            </button>
+              {t(option.label)}
+            </Button>
           ))}
         </div>
       </div>

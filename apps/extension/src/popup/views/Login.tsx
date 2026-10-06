@@ -1,5 +1,5 @@
+import { Button, ICONS, Segmented } from '@uwusuite/design';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Icon } from '../../legacy/Icon';
 import { NyuScene } from '@desktop/components/nyu/scenes';
 import { normalizeServerUrl } from '../../background/server';
 import { N_, t } from '../../shared/i18n';
@@ -22,7 +22,7 @@ import {
   requestServerPermission,
 } from '../api';
 import { RequestFailed } from '../../shared/messages';
-import { errorText, PasswordInput, serverUrlError } from '../lib';
+import { errorText, PasswordInput, serverUrlError, WIDE_SEGMENTED } from '../lib';
 
 const METHOD_LABEL: Record<TwoFactorMethod['kind'], string> = {
   authenticator: N_('Authenticator-App'),
@@ -168,20 +168,14 @@ export function LoginView({
           <h1 className="card-title">{adding ? t('Noch ein Konto ✧') : t('Anmelden')}</h1>
           <div className="field">
             <span>{t('Server')}</span>
-            <div className="segmented wide" role="radiogroup" aria-label={t('Server')}>
-              {serverOptions.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={kind === option.value}
-                  onClick={() => setKind(option.value)}
-                  disabled={Boolean(busy)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
+            <Segmented
+              className={WIDE_SEGMENTED}
+              label={t('Server')}
+              value={kind}
+              onChange={setKind}
+              options={serverOptions}
+              disabled={Boolean(busy)}
+            />
           </div>
           {kind === 'self-hosted' && (
             <label className="field">
@@ -227,20 +221,32 @@ export function LoginView({
             </p>
           )}
           {weaker && (
-            <button type="button" className="quiet" onClick={forget} disabled={Boolean(busy)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="self-start"
+              onClick={forget}
+              disabled={Boolean(busy)}
+            >
               {t('Ich habe sie selbst gesenkt: gespeicherte Einstellung vergessen')}
-            </button>
+            </Button>
           )}
           <div className="form-actions">
             {onCancel && (
-              <button type="button" className="quiet" onClick={onCancel} disabled={Boolean(busy)}>
+              <Button variant="ghost" onClick={onCancel} disabled={Boolean(busy)}>
                 {t('Abbrechen')}
-              </button>
+              </Button>
             )}
             <span className="spacer" />
-            <button className="primary" type="submit" disabled={Boolean(busy) || !password}>
+            <Button
+              variant="primary"
+              type="submit"
+              busy={Boolean(busy)}
+              disabled={!password}
+              className="login-submit"
+            >
               {busy ?? t('Anmelden')}
-            </button>
+            </Button>
           </div>
           <p className="field-hint">
             {t(
@@ -342,32 +348,26 @@ function TwoFactor({
         </p>
         {recovery}
         <div className="form-actions">
-          <button type="button" onClick={onBack}>
+          <Button size="sm" icon={ICONS.back} onClick={onBack}>
             {t('Zurück')}
-          </button>
+          </Button>
         </div>
       </div>
     );
   }
 
   const picker = usable.length > 1 && (
-    <div className="segmented wide" role="radiogroup" aria-label={t('Methode')}>
-      {usable.map((m) => (
-        <button
-          key={m.provider}
-          type="button"
-          role="radio"
-          aria-checked={m.provider === provider}
-          onClick={() => {
-            setProvider(m.provider);
-            setCode('');
-            setError(null);
-          }}
-        >
-          {t(METHOD_LABEL[m.kind])}
-        </button>
-      ))}
-    </div>
+    <Segmented
+      className={WIDE_SEGMENTED}
+      label={t('Methode')}
+      value={String(provider)}
+      onChange={(value) => {
+        setProvider(Number(value));
+        setCode('');
+        setError(null);
+      }}
+      options={usable.map((m) => ({ value: String(m.provider), label: t(METHOD_LABEL[m.kind]) }))}
+    />
   );
 
   if (method.kind === 'webauthn') {
@@ -395,17 +395,17 @@ function TwoFactor({
         )}
         {recovery}
         <div className="form-actions">
-          <button type="button" className="quiet" onClick={onBack}>
+          <Button variant="ghost" onClick={onBack}>
             {t('Zurück')}
-          </button>
+          </Button>
           <span className="spacer" />
-          <button
-            type="button"
-            className="primary"
+          <Button
+            variant="primary"
+            icon={ICONS.securityKey}
             onClick={() => void loginWebAuthn(remember).catch((e) => setError(errorText(e)))}
           >
-            <Icon name="key" size={14} /> {t('Sicherheitsschlüssel verwenden')}
-          </button>
+            {t('Sicherheitsschlüssel verwenden')}
+          </Button>
         </div>
       </div>
     );
@@ -453,18 +453,18 @@ function TwoFactor({
       )}
       {recovery}
       <div className="form-actions">
-        <button type="button" className="quiet" onClick={onBack} disabled={busy}>
+        <Button variant="ghost" onClick={onBack} disabled={busy}>
           {t('Zurück')}
-        </button>
+        </Button>
         <span className="spacer" />
         {method.kind === 'email' && (
-          <button type="button" onClick={() => void sendEmail()} disabled={busy}>
+          <Button onClick={() => void sendEmail()} disabled={busy}>
             {sent ? t('Nochmal senden') : t('Code senden')}
-          </button>
+          </Button>
         )}
-        <button className="primary" type="submit" disabled={busy || !code.trim()}>
+        <Button variant="primary" type="submit" busy={busy} disabled={!code.trim()}>
           {busy ? t('Prüft …') : t('Weiter')}
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -517,12 +517,11 @@ function NewDevice({ onBack, onDone }: { onBack: () => void; onDone: (step: Logi
         </p>
       )}
       <div className="form-actions">
-        <button type="button" className="quiet" onClick={onBack} disabled={busy}>
+        <Button variant="ghost" onClick={onBack} disabled={busy}>
           {t('Zurück')}
-        </button>
+        </Button>
         <span className="spacer" />
-        <button
-          type="button"
+        <Button
           onClick={() =>
             void loginSendEmail()
               .then(() => setSent(true))
@@ -531,10 +530,10 @@ function NewDevice({ onBack, onDone }: { onBack: () => void; onDone: (step: Logi
           disabled={busy}
         >
           {sent ? t('Gesendet ✧') : t('Nochmal senden')}
-        </button>
-        <button className="primary" type="submit" disabled={busy || !code.trim()}>
+        </Button>
+        <Button variant="primary" type="submit" busy={busy} disabled={!code.trim()}>
           {busy ? t('Prüft …') : t('Weiter')}
-        </button>
+        </Button>
       </div>
     </form>
   );

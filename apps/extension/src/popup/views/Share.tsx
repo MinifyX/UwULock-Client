@@ -1,5 +1,5 @@
+import { Button, IconButton, ICONS } from '@uwusuite/design';
 import { useEffect, useState, type FormEvent } from 'react';
-import { Icon } from '../../legacy/Icon';
 import { playNyu } from '@desktop/components/nyu/stage';
 import { N_, t, locale } from '../../shared/i18n';
 import type { ItemDetail, ShareableField, SharedSend } from '../../shared/protocol';
@@ -178,23 +178,20 @@ export function ShareView({
               <span className="detail-value mono share-link">{shared.link}</span>
             </span>
             <span className="detail-actions">
-              <button
-                type="button"
-                className="icon-button"
+              <IconButton
+                icon={ICONS.copy}
+                size="sm"
+                label={t('Kopieren')}
                 onClick={() => void copy(shared.link)}
-                aria-label={t('Kopieren')}
-                title={t('Kopieren')}
-              >
-                <Icon name="copy" size={15} />
-              </button>
+              />
             </span>
           </div>
         </div>
         <div className="form-actions">
           <span className="spacer" />
-          <button type="button" className="primary" onClick={() => void copy(shared.link)}>
-            <Icon name="copy" size={14} /> {t('Link kopieren')}
-          </button>
+          <Button variant="primary" icon={ICONS.copy} onClick={() => void copy(shared.link)}>
+            {t('Link kopieren')}
+          </Button>
         </div>
       </div>
     );
@@ -246,23 +243,18 @@ export function ShareView({
                 {t('Teile ihn nur, wenn das okay ist.')}
               </p>
               <div className="form-actions">
-                <button
-                  type="button"
+                <Button
+                  size="sm"
                   onClick={() => {
                     toggle('totp', true);
                     setAskTotp(false);
                   }}
                 >
                   {t('Schlüssel mitgeben')}
-                </button>
-                <button
-                  type="button"
-                  className="primary"
-                  autoFocus
-                  onClick={() => setAskTotp(false)}
-                >
+                </Button>
+                <Button variant="primary" size="sm" autoFocus onClick={() => setAskTotp(false)}>
                   {t('Lieber nicht')}
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -311,9 +303,9 @@ export function ShareView({
       {error && <p className="form-error">{error}</p>}
       <div className="form-actions">
         <span className="spacer" />
-        <button className="primary" type="submit" disabled={busy || !fields || chosen.size === 0}>
+        <Button variant="primary" type="submit" busy={busy} disabled={!fields || chosen.size === 0}>
           {busy ? t('Erstellt …') : t('Link erstellen')}
-        </button>
+        </Button>
       </div>
     </form>
   );

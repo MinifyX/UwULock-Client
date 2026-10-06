@@ -1,5 +1,5 @@
+import { Button, Icon, ICONS } from '@uwusuite/design';
 import { useState, type FormEvent } from 'react';
-import { Icon } from '../../legacy/Icon';
 import { t } from '../../shared/i18n';
 import { errorText, PasswordInput } from '../lib';
 
@@ -34,7 +34,7 @@ export function FillReprompt({
   return (
     <form className="detail-card reprompt form fill-reprompt" onSubmit={submit}>
       <h3 className="detail-card-title">
-        <Icon name="shield" size={13} /> {t('Master-Passwort bestätigen')}
+        <Icon icon={ICONS.masterPassword} size="xs" /> {t('Master-Passwort bestätigen')}
       </h3>
       <p className="dialog-lead">
         {t(
@@ -47,13 +47,13 @@ export function FillReprompt({
       <PasswordInput value={password} onChange={setPassword} autoFocus disabled={busy} />
       {error && <p className="form-error">{error}</p>}
       <div className="form-actions">
-        <button type="button" className="quiet" onClick={onCancel} disabled={busy}>
+        <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
           {t('Abbrechen')}
-        </button>
+        </Button>
         <span className="spacer" />
-        <button className="primary" type="submit" disabled={busy || !password}>
+        <Button variant="primary" size="sm" type="submit" busy={busy} disabled={!password}>
           {t('Ausfüllen')}
-        </button>
+        </Button>
       </div>
     </form>
   );

@@ -1,3 +1,4 @@
+import { Button } from '@uwusuite/design';
 import { useState, type FormEvent } from 'react';
 import { NyuScene } from '@desktop/components/nyu/scenes';
 import { t } from '../../shared/i18n';
@@ -72,9 +73,9 @@ export function LockView({
         )}
         <div className="form-actions">
           {status.pinSet && (
-            <button
-              type="button"
-              className="quiet"
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 setUsePin(!usePin);
                 setSecret('');
@@ -82,40 +83,40 @@ export function LockView({
               }}
             >
               {usePin ? t('Master-Passwort verwenden') : t('PIN verwenden')}
-            </button>
+            </Button>
           )}
           <span className="spacer" />
-          <button className="primary" type="submit" disabled={busy || !secret}>
+          <Button variant="primary" type="submit" busy={busy} disabled={!secret}>
             {busy ? t('Entsperrt …') : t('Entsperren')}
-          </button>
+          </Button>
         </div>
       </form>
       {!compact && (
         <div className="lock-more">
           {others.map((account) => (
-            <button
+            <Button
               key={account.id}
-              type="button"
-              className="quiet"
+              variant="ghost"
+              size="sm"
               onClick={() =>
                 void switchAccount(account.id).then(onDone, (e) => setError(errorText(e)))
               }
             >
               {t('Zu {email} wechseln', { email: account.email })}
-            </button>
+            </Button>
           ))}
           {onAddAccount && (
-            <button type="button" className="quiet" onClick={onAddAccount}>
+            <Button variant="ghost" size="sm" onClick={onAddAccount}>
               {t('Anderes Konto hinzufügen')}
-            </button>
+            </Button>
           )}
-          <button
-            type="button"
-            className="quiet"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => void logout().then(onDone, (e) => setError(errorText(e)))}
           >
             {t('Abmelden')}
-          </button>
+          </Button>
         </div>
       )}
     </div>

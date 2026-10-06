@@ -595,7 +595,11 @@ export type LockTimeout = 0 | 1 | 5 | 15 | 30 | 60 | 240 | -1;
 export type Settings = {
   language: 'system' | 'de' | 'en';
   theme: 'system' | 'light' | 'dark';
-  /** The popup's font, in this browser (the desktop app's `lib/fonts.ts`). */
+  /** High contrast: black on white (or white on black), as in the app; "system" follows the OS. */
+  contrast: 'system' | 'normal' | 'high';
+  /** Animations; "system" follows the OS's reduced-motion setting. */
+  motion: 'system' | 'on' | 'off';
+  /** The popup's font, in this browser (@uwusuite/design's FONT_CHOICES). */
   font: 'uwu' | 'manrope' | 'rubik' | 'dmsans' | 'system';
   /** Minutes without use. 0: as soon as the popup closes; -1: only when the browser restarts. */
   lockTimeout: LockTimeout;

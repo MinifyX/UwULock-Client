@@ -1,5 +1,5 @@
+import { Button, Icon, IconButton, ICONS, Segmented, Switch } from '@uwusuite/design';
 import { useCallback, useEffect, useState } from 'react';
-import { Icon } from '../../legacy/Icon';
 import { playNyu } from '@desktop/components/nyu/stage';
 import { MAX_LENGTH, minimumOf, withMinimum, type CharSet } from '@desktop/lib/generator';
 import { t } from '../../shared/i18n';
@@ -11,10 +11,10 @@ import {
   publishSettings,
   toast,
   toastError,
-  Toggle,
   useSettings,
   uwuFeature,
   when,
+  WIDE_SEGMENTED,
 } from '../lib';
 import { MaskedPanel } from './Masked';
 
@@ -83,35 +83,24 @@ export function Generator({ status }: { status: Status }) {
 
   return (
     <div className="popup-scroll generator">
-      <div className="segmented wide" role="radiogroup" aria-label={t('Art')}>
-        <button
-          type="button"
-          role="radio"
-          aria-checked={!masked && options.mode === 'password'}
-          onClick={() => {
-            setMasked(false);
-            change({ ...options, mode: 'password' });
-          }}
-        >
-          {t('Passwort')}
-        </button>
-        <button
-          type="button"
-          role="radio"
-          aria-checked={!masked && options.mode === 'passphrase'}
-          onClick={() => {
-            setMasked(false);
-            change({ ...options, mode: 'passphrase' });
-          }}
-        >
-          {t('Passphrase')}
-        </button>
-        {maskable && (
-          <button type="button" role="radio" aria-checked={masked} onClick={() => setMasked(true)}>
-            {t('Maskierte Adresse')}
-          </button>
-        )}
-      </div>
+      <Segmented
+        className={WIDE_SEGMENTED}
+        label={t('Art')}
+        value={masked ? 'masked' : options.mode}
+        onChange={(mode) => {
+          if (mode === 'masked') {
+            setMasked(true);
+            return;
+          }
+          setMasked(false);
+          change({ ...options, mode });
+        }}
+        options={[
+          { value: 'password' as const, label: t('Passwort') },
+          { value: 'passphrase' as const, label: t('Passphrase') },
+          ...(maskable ? [{ value: 'masked' as const, label: t('Maskierte Adresse') }] : []),
+        ]}
+      />
 
       {masked ? (
         <MaskedPanel />
@@ -132,23 +121,23 @@ export function Generator({ status }: { status: Status }) {
             <span className="muted">{t('{bits} Bit', { bits: result?.bits ?? 0 })}</span>
           </div>
           <div className="form-actions">
-            <button
-              type="button"
+            <Button
+              icon={ICONS.generate}
               onClick={() => {
                 void run(options);
                 playNyu('generated');
               }}
             >
-              <Icon name="refresh" size={14} /> {t('Neu')}
-            </button>
+              {t('Neu')}
+            </Button>
             <span className="spacer" />
-            <button
-              type="button"
-              className="primary"
+            <Button
+              variant="primary"
+              icon={ICONS.copy}
               onClick={() => result && void copy(result.password)}
             >
-              <Icon name="copy" size={14} /> {t('Kopieren')}
-            </button>
+              {t('Kopieren')}
+            </Button>
           </div>
 
           {options.mode === 'password' ? (
@@ -183,7 +172,7 @@ export function Generator({ status }: { status: Status }) {
               ).map(([key, label]) => (
                 <div className="setting-row" key={key}>
                   <span className="setting-label mono">{label}</span>
-                  <Toggle
+                  <Switch
                     checked={pw[key]}
                     label={label}
                     onChange={(checked) =>
@@ -224,7 +213,7 @@ export function Generator({ status }: { status: Status }) {
               </fieldset>
               <div className="setting-row">
                 <span className="setting-label">{t('Verwechselbare Zeichen weglassen')}</span>
-                <Toggle
+                <Switch
                   checked={pw.avoidAmbiguous}
                   label={t('Verwechselbare Zeichen weglassen')}
                   onChange={(checked) =>
@@ -259,7 +248,7 @@ export function Generator({ status }: { status: Status }) {
               </label>
               <div className="setting-row">
                 <span className="setting-label">{t('Großbuchstaben am Wortanfang')}</span>
-                <Toggle
+                <Switch
                   checked={pp.capitalize}
                   label={t('Großbuchstaben am Wortanfang')}
                   onChange={(checked) =>
@@ -269,7 +258,7 @@ export function Generator({ status }: { status: Status }) {
               </div>
               <div className="setting-row">
                 <span className="setting-label">{t('Eine Zahl dazu')}</span>
-                <Toggle
+                <Switch
                   checked={pp.includeNumber}
                   label={t('Eine Zahl dazu')}
                   onChange={(checked) =>
@@ -282,14 +271,21 @@ export function Generator({ status }: { status: Status }) {
         </>
       )}
 
-      <button
-        type="button"
-        className="history-toggle quiet"
+      <Button
+        variant="ghost"
+        size="sm"
+        icon={ICONS.history}
+        className="history-toggle text-muted!"
         onClick={() => setShowHistory(!showHistory)}
         aria-expanded={showHistory}
       >
-        <Icon name="history" size={13} /> {t('Zuletzt generiert ({n})', { n: history.length })}
-      </button>
+        {t('Zuletzt generiert ({n})', { n: history.length })}
+        <Icon
+          icon={ICONS.expand}
+          size="xs"
+          className={showHistory ? 'transition-transform' : '-rotate-90 transition-transform'}
+        />
+      </Button>
       {showHistory && (
         <ul className="history-list">
           {history.map((entry, index) => (
@@ -298,26 +294,24 @@ export function Generator({ status }: { status: Status }) {
                 <Colored text={entry.password} />
                 <small className="muted">{when(new Date(entry.date).toISOString())}</small>
               </span>
-              <button
-                type="button"
-                className="icon-button"
+              <IconButton
+                icon={ICONS.copy}
+                size="sm"
+                label={t('Kopieren')}
                 onClick={() => void copy(entry.password)}
-                aria-label={t('Kopieren')}
-                title={t('Kopieren')}
-              >
-                <Icon name="copy" size={14} />
-              </button>
+              />
             </li>
           ))}
           {history.length > 0 && (
             <li>
-              <button
-                type="button"
-                className="quiet"
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={ICONS.delete}
                 onClick={() => void clearGeneratorHistory().then(() => setHistory([]))}
               >
                 {t('Verlauf leeren')}
-              </button>
+              </Button>
             </li>
           )}
         </ul>
