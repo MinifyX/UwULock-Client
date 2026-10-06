@@ -1,0 +1,85 @@
+/* mobile-settings: the check tab, the settings pages and the account switcher (phone, iPad). */
+
+/* ── Accounts ────────────────────────────────────────────── */
+
+.m-app button.m-account {
+  min-height: 72px;
+  border-radius: 0;
+  color: var(--uwu-ink);
+}
+
+.m-app .m-account-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 1px;
+}
+
+.m-app .m-account-text b {
+  overflow: hidden;
+  font-size: 18px;
+  font-weight: 650;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.m-app .m-account-text span {
+  overflow: hidden;
+  color: var(--uwu-muted);
+  font-size: 14px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.m-app .m-account .m-avatar[data-size='small'] + .m-account-text b {
+  font-size: 16px;
+}
+
+.m-app .m-account .uwu-row-chevron {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--uwu-muted);
+}
+
+/* ── Rows ────────────────────────────────────────────────── */
+
+.m-app .m-danger-text {
+  color: var(--uwu-danger-ink);
+}
+
+.m-app .m-text-button {
+  padding: 6px 4px;
+  color: var(--uwu-pink-ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.m-app .m-settings-head + .m-segmented {
+  margin-top: 0;
+}
+
+/* ── Notes ───────────────────────────────────────────────── */
+
+/* A group's explanation above its list. */
+.m-app .m-footnote.m-lead {
+  padding: 12px 32px 0;
+  text-align: left;
+}
+
+.m-app .m-footnote.m-error {
+  color: var(--uwu-danger-ink);
+}
+
+/* ── The review (the desktop's, inside a page) ───────────── */
+
+/* The page has the title and the back button already. */
+.m-app .m-review .review > .detail-head .item-tile,
+.m-app .m-review .review > .detail-head h2,
+.m-app .m-review .review-back {
+  display: none;
+}
+
+.m-app .m-review .review {
+  padding: 8px 16px 24px;
+}

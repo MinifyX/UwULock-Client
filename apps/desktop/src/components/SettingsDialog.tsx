@@ -27,7 +27,7 @@ import { errorText, toastError } from '../lib/errors';
 import { ago } from '../lib/format';
 import { emailOptIn, setEmailOptIn, type EmailOptIn } from '../lib/health';
 import { N_, t, useLanguage } from '../lib/i18n';
-import { isMobile, systemName } from '../lib/platform';
+import { isMobile, platform, systemName } from '../lib/platform';
 import { keys } from '../lib/shortcuts';
 import { updateSettings, useSettings, type AutoLock, type ClipboardClear } from '../lib/settings';
 import { unlockDescription, unlockLabel, unlockPrompt } from '../lib/unlock';
@@ -173,13 +173,13 @@ function Appearance() {
         />
       </Row>
       <Row
-        label={t('Website-Symbole')}
+        label={t('Website-Icons')}
         description={t(
-          'Nur mit UwULock Server: Er holt die Symbole der Websites und erfährt dabei, welche Seiten in deinem Tresor sind. Eigene Symbole bleiben verschlüsselt und erscheinen immer.',
+          'Nur mit UwULock Server: Er holt die Icons der Websites und erfährt dabei, welche Seiten in deinem Tresor sind. Eigene Icons bleiben verschlüsselt und erscheinen immer.',
         )}
       >
         <Toggle
-          label={t('Website-Symbole')}
+          label={t('Website-Icons')}
           checked={settings.siteIcons}
           onChange={(siteIcons) => updateSettings({ siteIcons })}
         />
@@ -622,7 +622,12 @@ export function SettingsDialog({
   useLanguage();
   const [section, setSection] = useState<SettingsSection>(initial);
   const loggedIn = status.state !== 'logged-out';
-  const sections = SECTIONS.filter((s) => loggedIn || (s.id !== 'account' && s.id !== 'security'));
+  const sections = SECTIONS.filter(
+    (s) =>
+      (loggedIn || (s.id !== 'account' && s.id !== 'security')) &&
+      // iPhone and iPad get new versions from TestFlight and the App Store.
+      (s.id !== 'updates' || platform() !== 'ios'),
+  );
   return (
     <Modal title={t('Einstellungen')} size="wide" onCancel={onClose}>
       <div className="settings">
@@ -642,7 +647,7 @@ export function SettingsDialog({
           {section === 'appearance' && <Appearance />}
           {section === 'security' && loggedIn && <Security status={status} onClose={onClose} />}
           {section === 'account' && loggedIn && <Account status={status} onClose={onClose} />}
-          {section === 'updates' && (
+          {section === 'updates' && platform() !== 'ios' && (
             <Updates
               update={update}
               onUpdateFound={onUpdateFound}

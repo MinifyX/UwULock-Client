@@ -65,6 +65,12 @@ pub(crate) struct Cache {
     /// The extras key opened as a different one than this device took last
     /// time: its id, until the person has seen the warning.
     key_changed: Option<String>,
+    /// The icon library's index, once it was asked for.
+    library: Option<Arc<Value>>,
+    /// Library icons fetched for a preview, by `source/id/variant`.
+    library_icons: HashMap<String, Png>,
+    /// The file of a new file Send, between `stage_send_file` and `save_send`.
+    pub(crate) send_file: Option<Zeroizing<Vec<u8>>>,
 }
 
 /// The server's refusal as the page gets it: the contract's code as the kind
@@ -724,6 +730,87 @@ pub(crate) async fn delete_own_icon(
     Ok(())
 }
 
+/// The icon library's index (§7.2): sources with their licences, and every
+/// icon with its variants. Fetched once per unlock; the page searches it.
+#[tauri::command]
+pub(crate) async fn icon_library(state: State<'_, VaultState>) -> Result<Value> {
+    state.touch();
+    need(&state, "own-icons")?;
+    need(&state, "icon-library")?;
+    let (account_id, _) = state.active_account()?;
+    if let Some(index) = with(&state, &account_id, |u| Ok(u.extras_cache.library.clone()))? {
+        return Ok((*index).clone());
+    }
+    let ctx = ctx(&state).await?;
+    let index = ctx
+        .client
+        .icon_library(&ctx.token)
+        .await
+        .map_err(uwu_failure)?;
+    with(&state, &account_id, |u| {
+        u.extras_cache.library = Some(Arc::new(index.clone()));
+        Ok(())
+    })?;
+    Ok(index)
+}
+
+/// One icon of the library as a PNG `data:` URL: for its preview, and — once
+/// picked — as the item's own icon ([`set_own_icon`] seals it like any
+/// picture, so the server never learns which item took it).
+#[tauri::command]
+pub(crate) async fn library_icon(
+    state: State<'_, VaultState>,
+    source: String,
+    icon_id: String,
+    variant: Option<String>,
+) -> Result<String> {
+    need(&state, "own-icons")?;
+    need(&state, "icon-library")?;
+    let variant = variant.unwrap_or_else(|| "default".into());
+    let name = format!("{source}/{icon_id}/{variant}");
+    let (account_id, _) = state.active_account()?;
+    if let Some(png) = with(&state, &account_id, |u| {
+        Ok(u.extras_cache.library_icons.get(&name).cloned())
+    })? {
+        return Ok(data_url(&png));
+    }
+    let ctx = ctx(&state).await?;
+    let png = ctx
+        .client
+        .library_icon(&ctx.token, &source, &icon_id, &variant)
+        .await
+        .map_err(uwu_failure)?;
+    with(&state, &account_id, |u| {
+        // A search shows a few dozen; a long session doesn't keep them all.
+        if u.extras_cache.library_icons.len() >= 300 {
+            u.extras_cache.library_icons.clear();
+        }
+        u.extras_cache
+            .library_icons
+            .insert(name, Arc::new(png.clone()));
+        Ok(())
+    })?;
+    Ok(data_url(&png))
+}
+
+/// The icon of a device on the local network at `uri` as a PNG `data:` URL,
+/// fetched by this computer: for the item editor, before the item has the
+/// address saved (or exists at all).
+#[tauri::command]
+pub(crate) async fn device_icon(state: State<'_, VaultState>, uri: String) -> Result<String> {
+    need(&state, "own-icons")?;
+    if !host_of(&uri).is_some_and(|h| icons::is_local_host(&h)) {
+        return Err(Failure::new(
+            "not-local",
+            "This address isn't on the local network.",
+        ));
+    }
+    let png = icons::device_icon(&uri)
+        .await
+        .map_err(|e| Failure::new("device-icon", format!("The device gave no icon: {e}")))?;
+    Ok(data_url(&png))
+}
+
 // ── Entry versions (§8) ────────────────────────────────────
 
 /// One value that differs between a version and the item as it is now.
@@ -1134,7 +1221,10 @@ pub struct FileRequestView {
 }
 
 /// Where links point: the main host, and the send domains.
-fn link_bases(state: &VaultState, account_id: &str) -> Result<(String, Vec<SendDomain>)> {
+pub(crate) fn link_bases(
+    state: &VaultState,
+    account_id: &str,
+) -> Result<(String, Vec<SendDomain>)> {
     let (_, account) = state.active_account()?;
     with(state, account_id, |u| {
         let info: Option<&Info> = u.info.as_ref();

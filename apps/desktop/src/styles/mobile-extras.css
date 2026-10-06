@@ -1,0 +1,34 @@
+/* mobile-extras: Sends, file requests, masked addresses, sharing an item as a Send. */
+
+/* A round tick at the end of a checklist row ("Was mitgeht"). */
+.m-app .m-tick {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--uwu-faint);
+  border-radius: 12px;
+  color: transparent;
+}
+
+.m-app .m-tick[data-on] {
+  border-color: var(--uwu-pink-solid);
+  background: var(--uwu-pink-solid);
+  color: var(--uwu-on-pink);
+}
+
+.m-app .m-tick svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* A masked address that is switched off. */
+.m-app .m-off .uwu-row-title {
+  color: var(--uwu-muted);
+}
+
+/* Empty states inside a card ("Noch nichts angekommen") need less room than a page's. */
+.m-app .uwu-list-body > .m-empty {
+  padding: 24px;
+}

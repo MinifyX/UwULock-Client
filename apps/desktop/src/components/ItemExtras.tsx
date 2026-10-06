@@ -35,6 +35,7 @@ import {
 } from '../lib/uwu';
 import { ContextMenu } from './ContextMenu';
 import { Modal } from './Modal';
+import { LibraryDialog } from './OwnIconPicker';
 import { NyuBusy, playNyu } from './nyu/stage';
 
 // ── Names of values ────────────────────────────────────────
@@ -79,14 +80,16 @@ function Card({ title, children }: { title?: ReactNode; children: ReactNode }) {
 // ── Own icon ───────────────────────────────────────────────
 
 /**
- * The button on an item's tile: pick a picture, take the icon from a device
- * on the local network, or remove the own icon.
+ * The button on an item's tile: pick a picture, an icon from the server's
+ * library, take the icon from a device on the local network, or remove the
+ * own icon. The item editor offers the same (`OwnIconEditor`).
  */
 export function IconMenu({ summary, detail }: { summary: ItemSummary; detail: Detail | null }) {
   useLanguage();
   const uwu = useUwu();
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [library, setLibrary] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   if (!has(uwu, 'own-icons') || summary.deleted) return null;
   const hasOwn = summary.id in uwu.ownIcons;
@@ -108,7 +111,7 @@ export function IconMenu({ summary, detail }: { summary: ItemSummary; detail: De
     <>
       <IconButton
         icon={ICONS.image}
-        label={t('Symbol ändern')}
+        label={t('Icon ändern')}
         size="sm"
         className="tile-edit size-6! bg-surface hover:bg-elevated"
         disabled={busy}
@@ -129,7 +132,7 @@ export function IconMenu({ summary, detail }: { summary: ItemSummary; detail: De
           if (!file) return;
           void run(
             async () => setOwnIcon(summary.id, await iconFromFile(file)),
-            t('Symbol gespeichert ✧'),
+            t('Icon gespeichert ✧'),
           );
         }}
       />
@@ -137,7 +140,7 @@ export function IconMenu({ summary, detail }: { summary: ItemSummary; detail: De
         <ContextMenu
           x={menu.x}
           y={menu.y}
-          label={t('Symbol')}
+          label={t('Icon')}
           onClose={() => setMenu(null)}
           items={[
             {
@@ -145,28 +148,47 @@ export function IconMenu({ summary, detail }: { summary: ItemSummary; detail: De
               icon: ICONS.upload,
               onSelect: () => input.current?.click(),
             },
+            ...(has(uwu, 'icon-library')
+              ? [
+                  {
+                    label: t('Aus der Bibliothek …'),
+                    icon: ICONS.search,
+                    onSelect: () => setLibrary(true),
+                  },
+                ]
+              : []),
             ...(local
               ? [
                   {
-                    label: t('Symbol vom Gerät holen'),
+                    label: t('Icon vom Gerät holen'),
                     icon: ICONS.network,
                     onSelect: () =>
-                      void run(() => fetchDeviceIcon(summary.id), t('Symbol vom Gerät geholt ✧')),
+                      void run(() => fetchDeviceIcon(summary.id), t('Icon vom Gerät geholt ✧')),
                   },
                 ]
               : []),
             ...(hasOwn
               ? [
                   {
-                    label: t('Eigenes Symbol entfernen'),
+                    label: t('Eigenes Icon entfernen'),
                     icon: ICONS.delete,
                     danger: true,
                     onSelect: () =>
-                      void run(() => deleteOwnIcon(summary.id), t('Eigenes Symbol entfernt.')),
+                      void run(() => deleteOwnIcon(summary.id), t('Eigenes Icon entfernt.')),
                   },
                 ]
               : []),
           ]}
+        />
+      )}
+      {library && (
+        <LibraryDialog
+          initial={summary.name}
+          onCancel={() => setLibrary(false)}
+          onPick={(png) => {
+            setLibrary(false);
+            void run(() => setOwnIcon(summary.id, png), t('Icon gespeichert ✧'));
+          }}
         />
       )}
     </>

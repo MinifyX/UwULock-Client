@@ -165,7 +165,7 @@ export function errorText(error: unknown): string {
     case 'not-local':
       return t('Dieser Eintrag hat keine Adresse im lokalen Netz.');
     case 'device-icon':
-      return t('Das Gerät hat kein Symbol geliefert.');
+      return t('Das Gerät hat kein Icon geliefert.');
     case 'invalid':
       if (m.startsWith("That doesn't look like an email"))
         return t('Das sieht nicht nach einer E-Mail-Adresse aus.');

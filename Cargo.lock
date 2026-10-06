@@ -5034,6 +5034,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "tauri-plugin-haptics"
+version = "2.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67ab59e8202362fb5fec1158bdb497466983ddac2483e606e4d5c1bf9b118c6c"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "tauri-plugin-opener"
 version = "2.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5090,7 +5104,7 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-uwulock-mobile"
-version = "0.5.0-beta.2"
+version = "0.6.0-beta.1"
 dependencies = [
  "base64 0.22.1",
  "serde",
@@ -5207,7 +5221,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
@@ -5802,15 +5816,15 @@ dependencies = [
 
 [[package]]
 name = "uwu-macos"
-version = "1.4.1"
-source = "git+https://github.com/MinifyX/UwUSuite-Design?tag=v1.4.1#8ad61ae0a22c9c5c083147dd1b01dcf19f9e91ef"
+version = "1.7.1"
+source = "git+https://github.com/MinifyX/UwUSuite-Design?tag=v1.7.1#5e2b9a1e48fd2221046763a30ce59299d76f4598"
 dependencies = [
  "objc2",
 ]
 
 [[package]]
 name = "uwulock-authenticator"
-version = "0.5.0-beta.2"
+version = "0.6.0-beta.1"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
@@ -5827,7 +5841,7 @@ dependencies = [
 
 [[package]]
 name = "uwulock-bitwarden"
-version = "0.5.0-beta.2"
+version = "0.6.0-beta.1"
 dependencies = [
  "base64 0.22.1",
  "futures-util",
@@ -5850,7 +5864,7 @@ dependencies = [
 
 [[package]]
 name = "uwulock-core"
-version = "0.5.0-beta.2"
+version = "0.6.0-beta.1"
 dependencies = [
  "aes",
  "argon2",
@@ -5880,7 +5894,7 @@ dependencies = [
 
 [[package]]
 name = "uwulock-desktop"
-version = "0.5.0-beta.2"
+version = "0.6.0-beta.1"
 dependencies = [
  "arboard",
  "base64 0.22.1",
@@ -5897,6 +5911,7 @@ dependencies = [
  "sha2",
  "tauri",
  "tauri-build",
+ "tauri-plugin-haptics",
  "tauri-plugin-opener",
  "tauri-plugin-updater",
  "tauri-plugin-uwulock-mobile",
@@ -5919,7 +5934,7 @@ dependencies = [
 
 [[package]]
 name = "uwulock-setup"
-version = "0.5.0-beta.2"
+version = "0.6.0-beta.1"
 dependencies = [
  "libc",
  "semver",
@@ -5937,7 +5952,7 @@ dependencies = [
 
 [[package]]
 name = "uwulock-uhid-broker"
-version = "0.5.0-beta.2"
+version = "0.6.0-beta.1"
 dependencies = [
  "libc",
  "uwulock-authenticator",
@@ -5945,7 +5960,7 @@ dependencies = [
 
 [[package]]
 name = "uwulock-wasm"
-version = "0.5.0-beta.2"
+version = "0.6.0-beta.1"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.2.17",

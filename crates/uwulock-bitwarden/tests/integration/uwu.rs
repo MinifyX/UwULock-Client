@@ -604,3 +604,63 @@ async fn a_device_gives_its_icon() {
     assert_eq!(extras::png_size(&icon), Some((16, 16)));
     assert_eq!(elsewhere.calls(), ["GET /", "GET /favicon.ico"]);
 }
+
+// ── The icon library ───────────────────────────────────────
+
+#[tokio::test]
+async fn library_icons_come_as_png_through_the_server() {
+    let icon = png(128, 128);
+    let served = icon.clone();
+    let fake = FakeHttp::start(move |request| {
+        if !authorized(request) {
+            return refused(401, "unauthorized");
+        }
+        match request.path.as_str() {
+            "/uwu/v1/icons/library" => Answer::json(
+                200,
+                json!({
+                    "object": "iconLibrary",
+                    "updated": "2026-10-01T00:00:00Z",
+                    "sources": [{ "id": "selfhst", "name": "selfh.st Icons",
+                        "url": "https://selfh.st/icons/", "license": "CC BY 4.0",
+                        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+                        "attribution": "Icons by selfh.st" }],
+                    "icons": [{ "source": "selfhst", "id": "nextcloud", "name": "Nextcloud",
+                        "variants": ["default", "light"], "aliases": [] }]
+                }),
+            ),
+            "/uwu/v1/icons/library/selfhst/nextcloud.png" if request.query == "variant=light" => {
+                Answer::bytes("image/png", served.clone())
+            }
+            "/uwu/v1/icons/library/selfhst/broken.png" => {
+                Answer::bytes("image/png", b"<html>".to_vec())
+            }
+            _ => refused(404, "not_found"),
+        }
+    });
+    let client = client(&fake.url);
+    let index = client.icon_library(TOKEN).await.unwrap();
+    assert_eq!(index["icons"][0]["variants"][1], "light");
+    let got = client
+        .library_icon(TOKEN, "selfhst", "nextcloud", "light")
+        .await
+        .unwrap();
+    assert_eq!(got, icon);
+    // Not a PNG, or not there: no icon.
+    assert!(client
+        .library_icon(TOKEN, "selfhst", "broken", "default")
+        .await
+        .is_err());
+    assert!(client
+        .library_icon(TOKEN, "selfhst", "nextcloud", "dark")
+        .await
+        .is_err());
+    // Ids go into the path escaped.
+    let _ = client
+        .library_icon(TOKEN, "selfhst", "../keys", "default")
+        .await;
+    assert!(fake
+        .calls()
+        .iter()
+        .any(|c| c == "GET /uwu/v1/icons/library/selfhst/..%2Fkeys.png"));
+}

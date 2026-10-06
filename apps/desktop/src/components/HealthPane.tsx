@@ -510,7 +510,7 @@ function keepLater(ids: Set<string>) {
  * forth. The stack is laid once: ignoring or fixing changes a card, it
  * doesn't reshuffle the rest.
  */
-function HealthReview({
+export function HealthReview({
   view,
   items,
   onBack,

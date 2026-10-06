@@ -486,6 +486,9 @@ pub struct Vault {
     pub folders: Vec<Folder>,
     pub collections: Vec<Collection>,
     pub organizations: Vec<Organization>,
+    /// The account's Sends, opened ([`crate::send::open`]). One that doesn't
+    /// open is left out.
+    pub sends: Vec<crate::send::OpenSend>,
     /// Items of a kind UwULock doesn't know, or organisations whose key didn't open.
     pub skipped: usize,
     /// The organisations' keys, kept for saving items that belong to one.
@@ -632,6 +635,18 @@ impl Vault {
             items.push(open_item(cipher, kind, outer));
         }
 
+        let sends = sync
+            .sends
+            .iter()
+            .filter_map(|send| match crate::send::open(send, user_key) {
+                Ok(send) => Some(send),
+                Err(error) => {
+                    tracing::warn!(send = %send.id, %error, "Send didn't open");
+                    None
+                }
+            })
+            .collect();
+
         Ok(Vault {
             email: sync.profile.email.clone(),
             name: sync.profile.name.clone(),
@@ -639,6 +654,7 @@ impl Vault {
             folders,
             collections,
             organizations,
+            sends,
             skipped,
             org_keys,
             private_key: private,

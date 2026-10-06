@@ -35,6 +35,7 @@ mod moving;
 mod passkeys;
 #[cfg(mobile)]
 mod phone;
+mod sends;
 mod session_lock;
 mod suite;
 mod system;
@@ -61,7 +62,9 @@ pub fn run() {
     #[cfg(self_update)]
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     #[cfg(mobile)]
-    let builder = builder.plugin(tauri_plugin_uwulock_mobile::init());
+    let builder = builder
+        .plugin(tauri_plugin_uwulock_mobile::init())
+        .plugin(tauri_plugin_haptics::init());
 
     builder
         .setup(|app| {
@@ -153,6 +156,9 @@ pub fn run() {
             extras::set_own_icon,
             extras::fetch_device_icon,
             extras::delete_own_icon,
+            extras::icon_library,
+            extras::library_icon,
+            extras::device_icon,
             extras::item_versions,
             extras::reveal_version_field,
             extras::restore_version,
@@ -175,6 +181,11 @@ pub fn run() {
             extras::delete_masked_address,
             extras::send_options,
             extras::share_as_send,
+            sends::sends,
+            sends::stage_send_file,
+            sends::save_send,
+            sends::remove_send_auth,
+            sends::delete_send,
             health::health_report,
             health::health_ignore,
             health::health_open_page,

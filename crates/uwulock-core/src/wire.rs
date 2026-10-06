@@ -449,6 +449,13 @@ pub struct Send {
     pub expiration_date: Option<String>,
     #[serde(default, rename = "deletiondate")]
     pub deletion_date: Option<String>,
+    /// Who may open it (newer servers): 0 only `emails`, with a code mailed
+    /// there; 1 with the password; 2 anybody with the link.
+    #[serde(default, rename = "authtype")]
+    pub auth_type: Option<u8>,
+    /// The addresses of `authType` 0, comma-separated.
+    #[serde(default)]
+    pub emails: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]

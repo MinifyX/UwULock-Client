@@ -39,7 +39,7 @@ const DEFAULTS: GeneratorOptions = {
 };
 
 /** Only the options are remembered, never a password. */
-function loadOptions(): GeneratorOptions {
+export function loadOptions(): GeneratorOptions {
   try {
     const raw = JSON.parse(window.localStorage.getItem(KEY) ?? '{}') as Partial<GeneratorOptions>;
     const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d);
@@ -60,7 +60,16 @@ function loadOptions(): GeneratorOptions {
   }
 }
 
-function strength(bits: number): { level: 1 | 2 | 3 | 4; label: string } {
+/** Remembers the options (the phone's generator page shares them). */
+export function saveOptions(options: GeneratorOptions) {
+  try {
+    window.localStorage.setItem(KEY, JSON.stringify(options));
+  } catch {
+    // Remembering is a convenience.
+  }
+}
+
+export function strength(bits: number): { level: 1 | 2 | 3 | 4; label: string } {
   if (bits < 50) return { level: 1, label: t('schwach') };
   if (bits < 75) return { level: 2, label: t('okay') };
   if (bits < 100) return { level: 3, label: t('stark') };
@@ -95,11 +104,7 @@ export function GeneratorDialog({
 
   useEffect(() => {
     void roll(options);
-    try {
-      window.localStorage.setItem(KEY, JSON.stringify(options));
-    } catch {
-      // Remembering is a convenience.
-    }
+    saveOptions(options);
   }, [options, roll]);
 
   const set = (patch: Partial<GeneratorOptions>) => {
@@ -285,7 +290,7 @@ function ModeSwitch({
 }
 
 /** A new masked address from UwUMail, for a site, copied right away. */
-function MaskedGenerator() {
+export function MaskedGenerator() {
   useLanguage();
   const [connection, setConnection] = useState<MaskedConnection | null>(null);
   const [site, setSite] = useState('');

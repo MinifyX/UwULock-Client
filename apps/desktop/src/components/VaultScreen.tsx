@@ -15,11 +15,13 @@ import {
 } from '../lib/api';
 import { useBackLayer } from '../lib/backStack';
 import { toastError } from '../lib/errors';
+import { countItems, sameFilter as same, visibleItems, type Filter } from '../lib/filters';
 import { copiedText } from '../lib/format';
 import { N_, t, useLanguage } from '../lib/i18n';
 import { KIND_LABEL } from '../lib/items';
 import { usePhoneLayout } from '../lib/phone';
 import { platform } from '../lib/platform';
+import { sendsAvailable } from '../lib/sends';
 import { useSettings } from '../lib/settings';
 import { toast } from '../lib/toast';
 import { has, loadIcons, openWebVaultAt, useUwu } from '../lib/uwu';
@@ -32,21 +34,12 @@ import { ItemEditor } from './ItemEditor';
 import { ItemTile } from './ItemTile';
 import { WifiConnect } from './WifiConnect';
 import { MaskedDialog } from './MaskedDialog';
+import { SendsDialog } from './SendsDialog';
 import { Modal } from './Modal';
 import { NyuScene } from './nyu/scenes';
 import { SPACE_TITLE, SuitePane } from './SuitePane';
 import { withKeys } from '../lib/shortcuts';
 import type { SuiteSpace } from '../lib/suiteModel';
-
-export type Filter =
-  | { kind: 'all' }
-  | { kind: 'favorites' }
-  | { kind: 'type'; type: ItemKind }
-  | { kind: 'folder'; id: string | null }
-  | { kind: 'collection'; id: string }
-  | { kind: 'organization'; id: string }
-  | { kind: 'due' }
-  | { kind: 'trash' };
 
 const TYPES: { type: ItemKind; label: string; icon: LucideIcon }[] = [
   { type: 'login', label: N_('Logins'), icon: ICONS.website },
@@ -72,31 +65,6 @@ function RowBadge({
       <Icon icon={icon} size="xs" label={label} className={className} />
     </span>
   );
-}
-
-function matches(filter: Filter, item: ItemSummary, due: Set<string>): boolean {
-  if (filter.kind === 'trash') return item.deleted;
-  if (item.deleted) return false;
-  switch (filter.kind) {
-    case 'all':
-      return true;
-    case 'favorites':
-      return item.favorite;
-    case 'type':
-      return item.kind === filter.type;
-    case 'folder':
-      return !item.organizationId && item.folderId === filter.id;
-    case 'collection':
-      return item.collectionIds.includes(filter.id);
-    case 'organization':
-      return item.organizationId === filter.id;
-    case 'due':
-      return due.has(item.id);
-  }
-}
-
-function same(a: Filter, b: Filter) {
-  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 type Props = {
@@ -130,7 +98,9 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
     null,
   );
   const [folderToDelete, setFolderToDelete] = useState<{ id: string; name: string } | null>(null);
-  const [extrasDialog, setExtrasDialog] = useState<null | 'file-requests' | 'masked'>(null);
+  const [extrasDialog, setExtrasDialog] = useState<null | 'sends' | 'file-requests' | 'masked'>(
+    null,
+  );
   // The password check in place of the list and the item: its report, or the review.
   const [health, setHealth] = useState<null | 'report' | 'review'>(null);
   // UwUSSH's or UwURDP's section in place of the list and the item.
@@ -157,12 +127,15 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
   useEffect(() => {
     if (!suiteOn) setSuite(null);
   }, [suiteOn]);
+  const sendsOn = sendsAvailable(uwu);
   const extrasAllowed =
-    extrasDialog === 'file-requests'
-      ? has(uwu, 'file-requests')
-      : extrasDialog === 'masked'
-        ? has(uwu, 'masked-addresses')
-        : true;
+    extrasDialog === 'sends'
+      ? sendsOn
+      : extrasDialog === 'file-requests'
+        ? has(uwu, 'file-requests')
+        : extrasDialog === 'masked'
+          ? has(uwu, 'masked-addresses')
+          : true;
   useEffect(() => {
     if (!extrasAllowed) setExtrasDialog(null);
   }, [extrasAllowed]);
@@ -187,38 +160,12 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
     return () => void stop.then((unlisten) => unlisten());
   }, [reload, status.accountId]);
 
-  const counts = useMemo(() => {
-    const live = items.filter((i) => !i.deleted);
-    return {
-      all: live.length,
-      favorites: live.filter((i) => i.favorite).length,
-      trash: items.length - live.length,
-      type: (type: ItemKind) => live.filter((i) => i.kind === type).length,
-      folder: (id: string | null) =>
-        live.filter((i) => !i.organizationId && i.folderId === id).length,
-      collection: (id: string) => live.filter((i) => i.collectionIds.includes(id)).length,
-      organization: (id: string) => live.filter((i) => i.organizationId === id).length,
-      due: live.filter((i) => due.has(i.id)).length,
-    };
-  }, [items, due]);
+  const counts = useMemo(() => countItems(items, due), [items, due]);
 
-  const visible = useMemo(() => {
-    const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
-    return items
-      .filter((item) =>
-        words.length ? !item.deleted || filter.kind === 'trash' : matches(filter, item, due),
-      )
-      .filter((item) => {
-        if (!words.length) return true;
-        const haystack = `${item.name} ${item.subtitle ?? ''} ${item.host ?? ''}`.toLowerCase();
-        return words.every((word) => haystack.includes(word));
-      })
-      .sort(
-        (a, b) =>
-          collator.compare(a.name, b.name) || collator.compare(a.subtitle ?? '', b.subtitle ?? ''),
-      );
-  }, [items, filter, query, due]);
+  const visible = useMemo(
+    () => visibleItems(items, filter, query, due),
+    [items, filter, query, due],
+  );
 
   // Icons for what is on screen: asked of Rust, which asks the server; again
   // when an own icon changed.
@@ -518,10 +465,22 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
           </>
         )}
 
-        {(has(uwu, 'file-requests') || has(uwu, 'masked-addresses')) && (
+        {(sendsOn || has(uwu, 'file-requests') || has(uwu, 'masked-addresses')) && (
           <>
             <h2>{t('Extras')}</h2>
             <ul className="nav-list">
+              {sendsOn && (
+                <li>
+                  <button
+                    type="button"
+                    className="nav-row"
+                    onClick={() => setExtrasDialog('sends')}
+                  >
+                    <Icon icon={ICONS.send} />
+                    <span className="nav-label">{t('Sends')}</span>
+                  </button>
+                </li>
+              )}
               {has(uwu, 'file-requests') && (
                 <li>
                   <button
@@ -857,6 +816,9 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
         </Modal>
       )}
 
+      {extrasAllowed && extrasDialog === 'sends' && (
+        <SendsDialog onClose={() => setExtrasDialog(null)} />
+      )}
       {extrasAllowed && extrasDialog === 'file-requests' && (
         <FileRequestsDialog
           onClose={() => setExtrasDialog(null)}

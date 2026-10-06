@@ -1,6 +1,6 @@
 {
   "name": "@uwulock/setup",
-  "version": "0.5.0-beta.2",
+  "version": "0.6.0-beta.1",
   "private": true,
   "type": "module",
   "license": "GPL-3.0-only",
@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
-    "@uwusuite/design": "https://github.com/MinifyX/UwUSuite-Design/releases/download/v1.4.1/uwusuite-design-1.4.1.tgz",
+    "@uwusuite/design": "https://github.com/MinifyX/UwUSuite-Design/releases/download/v1.7.1/uwusuite-design-1.7.1.tgz",
     "clsx": "^2.1.1",
     "lucide-react": "^1.52.0",
     "react": "^18.3.1",
