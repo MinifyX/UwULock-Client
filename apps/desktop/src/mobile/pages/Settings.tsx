@@ -274,14 +274,14 @@ export function SettingsPage() {
       </ListSection>
 
       <ListSection
+        // iPhone and iPad: new versions come from the App Store (and TestFlight) —
+        // nothing here points anywhere else.
         footer={
-          !android
+          android
             ? t(
-                'Neue Versionen kommen über TestFlight und den App Store – hast du UwULock selbst installiert, über die Release-Seite.',
-              )
-            : t(
                 'Auf Android aktualisiert sich UwULock nicht selbst. Neue Versionen (APK) gibt es auf der Release-Seite.',
               )
+            : undefined
         }
       >
         <ListRow
@@ -848,7 +848,7 @@ function UpdatesPage() {
     <Page title={t('Neue Versionen')} largeTitle>
       <ListSection
         footer={t(
-          'Auf dem Handy aktualisiert sich UwULock nicht selbst. Neue Versionen (APK für Android, IPA für iOS) gibt es auf der Release-Seite.',
+          'Auf Android aktualisiert sich UwULock nicht selbst. Neue Versionen (APK) gibt es auf der Release-Seite.',
         )}
       >
         <ListRow label={t('Installiert')} title={pkg.version} />
@@ -866,6 +866,7 @@ function UpdatesPage() {
 
 function AboutPage() {
   useLanguage();
+  const { android } = useMobile();
   const open = (page: ProjectPage) => void openProjectPage(page).catch(toastError);
   const link = (page: ProjectPage, title: string) => (
     <ListRow
@@ -889,7 +890,7 @@ function AboutPage() {
         )}
       >
         {link('source', t('Quellcode auf GitHub'))}
-        {link('releases', t('Versionen'))}
+        {android && link('releases', t('Versionen'))}
         {link('issues', t('Fehler melden'))}
         {link('license', t('Lizenz'))}
         {link('suite', 'UwUSuite')}

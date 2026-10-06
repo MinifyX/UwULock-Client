@@ -6,7 +6,10 @@ import { test } from 'node:test';
 import {
   daysUntil,
   inDays,
+  looksLikeAddress,
+  MAX_SEND_FILE,
   sendDraft,
+  sendFileLimit,
   sendForm,
   sendFormReady,
   sendStatus,
@@ -130,4 +133,38 @@ test('a Send’s form starts from what it has', () => {
     ),
     ['new', 'old'],
   );
+});
+
+test('addresses are checked as Rust checks them, before sealing', () => {
+  assert.ok(looksLikeAddress('nyu@example.com'));
+  for (const bad of [
+    'nope',
+    '@example.com',
+    'nyu@example',
+    'nyu@.example.com',
+    'nyu@example.com.',
+  ]) {
+    assert.ok(!looksLikeAddress(bad), bad);
+  }
+  const form = { ...sendForm(null, NOW), name: 'Plan', text: 'x', access: 0 as const };
+  assert.ok(sendFormReady({ ...form, emails: 'a@example.com, b@example.org' }, null, 0));
+  assert.ok(!sendFormReady({ ...form, emails: 'a@example.com, nope' }, null, 0));
+});
+
+test('a file is checked against the smaller limit, Bitwarden’s without a server one', () => {
+  assert.equal(sendFileLimit(null), MAX_SEND_FILE);
+  assert.equal(sendFileLimit(undefined), MAX_SEND_FILE);
+  assert.equal(sendFileLimit(0), MAX_SEND_FILE);
+  assert.equal(sendFileLimit(10 * 1024 * 1024), 10 * 1024 * 1024);
+  assert.equal(sendFileLimit(2 * MAX_SEND_FILE), MAX_SEND_FILE);
+});
+
+test('the open limit is a whole number Rust can take, or none', () => {
+  const form = { ...sendForm(null, NOW), name: 'Plan', text: 'x' };
+  const max = (maxAccess: string) => sendDraft({ ...form, maxAccess }, null, 0, NOW).maxAccessCount;
+  assert.equal(max(''), null);
+  assert.equal(max('abc'), null);
+  assert.equal(max('0'), null);
+  assert.equal(max('2.7'), 2);
+  assert.equal(max('1e12'), 1_000_000);
 });

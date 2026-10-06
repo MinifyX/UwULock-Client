@@ -131,6 +131,13 @@ pub(crate) fn sends(state: State<'_, VaultState>) -> Result<Vec<SendView>> {
 pub(crate) fn stage_send_file(state: State<'_, VaultState>, request: Request<'_>) -> Result<()> {
     state.touch();
     let (account_id, _) = state.active_account()?;
+    need_sends(&state, &account_id)?;
+    // A file refused below must not leave an earlier one waiting: the next
+    // save would send that one under the new file's name.
+    with(&state, &account_id, |u| {
+        u.extras_cache.send_file = None;
+        Ok(())
+    })?;
     let InvokeBody::Raw(bytes) = request.body() else {
         return Err(Failure::new("invalid", "The file didn't arrive as bytes."));
     };
@@ -216,6 +223,14 @@ pub(crate) async fn save_send(
             ctx.client
                 .update_send(&ctx.token, &send.id, &sealed.request)
                 .await?;
+            // Open to anybody again: a server that doesn't read `authType`
+            // (an older Vaultwarden) keeps a password the change left out.
+            let opened = draft.auth_type == Some(SendAuth::None.to_wire());
+            if opened && (send.has_password || send.auth != SendAuth::None) {
+                ctx.client
+                    .remove_send_auth(&ctx.token, &send.id, send.auth == SendAuth::Emails)
+                    .await?;
+            }
             send.id.clone()
         }
         None if draft.kind == 1 => {

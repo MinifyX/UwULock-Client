@@ -1,7 +1,7 @@
 /** A new folder, or a folder's new name. */
 
 import { haptic, ListSection } from '@uwusuite/design';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { saveFolder } from '../../lib/api';
 import { errorText } from '../../lib/errors';
 import { t, useLanguage } from '../../lib/i18n';
@@ -25,8 +25,10 @@ export function FolderSheet({
   const [name, setName] = useState(before);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const saving = useRef(false);
   const save = async () => {
-    if (!name.trim()) return;
+    if (!name.trim() || saving.current) return;
+    saving.current = true;
     setBusy(true);
     try {
       await saveFolder(id, name.trim());
@@ -37,6 +39,7 @@ export function FolderSheet({
     } catch (e) {
       setError(errorText(e));
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   };

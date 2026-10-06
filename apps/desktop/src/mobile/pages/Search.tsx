@@ -51,6 +51,7 @@ export function SearchView() {
     canBack: false,
     column: 'phone',
     selected: null,
+    active: true,
   };
   useEffect(() => {
     if (android) field.current?.querySelector('input')?.focus();

@@ -13,6 +13,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type RefObject,
 } from 'react';
@@ -58,19 +59,32 @@ export function useVaultData(status: Status): VaultData {
   const settings = useSettings();
   const uwu = useUwu();
 
+  // Only the newest load lands: one begun before an account switch (or an
+  // earlier sync) may answer after the next one.
+  const latest = useRef(0);
   const reload = useCallback(async () => {
+    const mine = ++latest.current;
     try {
       const [list, info] = await Promise.all([vaultItems(), vaultOverview()]);
+      if (mine !== latest.current) return;
       setItems(list);
       setOverview(info);
     } catch (e) {
-      toastError(e);
+      if (mine === latest.current) toastError(e);
     } finally {
-      setLoaded(true);
+      if (mine === latest.current) setLoaded(true);
     }
   }, []);
 
-  // Also on an account switch: the other account's items must not stay.
+  // Also on an account switch: the other account's items must not stay, not
+  // even until the new ones are there.
+  const [shownAccount, setShownAccount] = useState(status.accountId);
+  if (shownAccount !== status.accountId) {
+    setShownAccount(status.accountId);
+    setItems([]);
+    setOverview(null);
+    setLoaded(false);
+  }
   useEffect(() => {
     void reload();
     const stop = listen('vault-changed', () => void reload());
@@ -176,6 +190,12 @@ export type Nav = {
   selected: Route | null;
   /** The page below (phones), which the iOS edge swipe slides in. */
   underRef?: RefObject<HTMLElement | null>;
+  /**
+   * The page is the one in front: its tab is shown, nothing lies over it.
+   * A phone keeps visited tabs mounted (hidden), and back must not close
+   * something in a tab nobody sees.
+   */
+  active: boolean;
 };
 
 export const NavContext = createContext<Nav | null>(null);

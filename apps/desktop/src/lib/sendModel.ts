@@ -100,6 +100,34 @@ export function splitAddresses(text: string): string[] {
     .filter(Boolean);
 }
 
+/**
+ * Whether an address can take the mailed code — the check Rust makes when it
+ * seals the Send (uwulock-core's `looks_like_address`), so the editor says so
+ * before saving instead of a sealing error.
+ */
+export function looksLikeAddress(address: string): boolean {
+  const at = address.indexOf('@');
+  if (at <= 0) return false;
+  const domain = address.slice(at + 1);
+  return (
+    domain.includes('.') &&
+    !domain.startsWith('.') &&
+    !domain.endsWith('.') &&
+    !/[\s,]/.test(address)
+  );
+}
+
+/** Bitwarden's limit for a Send's file (`MAX_FILE` in src-tauri's sends.rs). */
+export const MAX_SEND_FILE = 500 * 1024 * 1024;
+
+/**
+ * The largest file a Send may carry: the server's limit when it names one,
+ * never more than Bitwarden's — checked before the file is read into memory.
+ */
+export function sendFileLimit(serverMax: number | null | undefined): number {
+  return serverMax && serverMax > 0 ? Math.min(serverMax, MAX_SEND_FILE) : MAX_SEND_FILE;
+}
+
 /** The editor's fields, as it holds them. */
 export type SendForm = {
   name: string;
@@ -150,7 +178,10 @@ export function sendFormReady(form: SendForm, send: Send | null, kind: SendKind)
   if (!form.name.trim()) return false;
   if (kind === 0 && !send?.entry && !form.text.trim()) return false;
   if (kind === 1 && !send && !form.fileName) return false;
-  if (form.access === 0 && splitAddresses(form.emails).length === 0) return false;
+  if (form.access === 0) {
+    const addresses = splitAddresses(form.emails);
+    if (addresses.length === 0 || !addresses.every(looksLikeAddress)) return false;
+  }
   if (form.access === 1 && !form.password && !send?.hasPassword) return false;
   return true;
 }
@@ -162,7 +193,7 @@ export function sendDraft(
   kind: SendKind,
   now = Date.now(),
 ): SendDraft {
-  const max = Number(form.maxAccess);
+  const max = Math.floor(Number(form.maxAccess));
   return {
     kind,
     name: form.name.trim(),
@@ -173,7 +204,9 @@ export function sendDraft(
     password: form.access === 1 ? form.password || null : null,
     authType: form.access,
     emails: form.access === 0 ? splitAddresses(form.emails) : [],
-    maxAccessCount: form.maxAccess.trim() && max > 0 ? Math.max(1, Math.floor(max)) : null,
+    // Rust takes a u32; nobody opens a Send a million times.
+    maxAccessCount:
+      form.maxAccess.trim() && Number.isFinite(max) && max > 0 ? Math.min(max, 1_000_000) : null,
     expirationDate: form.expiresDays
       ? inDays(Math.min(form.expiresDays, form.deletionDays), now)
       : null,

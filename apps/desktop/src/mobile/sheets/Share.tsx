@@ -6,11 +6,12 @@
  */
 
 import { haptic, ICONS, ListRow, ListSection, Stepper } from '@uwusuite/design';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { copyGenerated, vaultItem, type ItemDetail } from '../../lib/api';
 import { errorText } from '../../lib/errors';
 import { when } from '../../lib/format';
-import { t, useLanguage } from '../../lib/i18n';
+import { N_, t, useLanguage } from '../../lib/i18n';
+import { looksLikeAddress, splitAddresses } from '../../lib/sendModel';
 import { note } from '../../lib/toast';
 import { sendOptions, shareAsSend, useUwu, type SendOptions } from '../../lib/uwu';
 import { ItemTile } from '../../components/ItemTile';
@@ -24,8 +25,9 @@ type Choice = ReturnType<typeof choices>[number];
 
 const DAYS = [1, 2, 3, 7, 14, 30];
 
-const TOTP_WARNING =
-  'Der Schlüssel des Einmal-Codes reist verschlüsselt im Send mit. Die Send-Seite zeigt nur die laufenden Codes – wer den Link hat, kann den Schlüssel aber auslesen und damit auch nach dem Löschen des Sends weiter Codes erzeugen.';
+const TOTP_WARNING = N_(
+  'Der Schlüssel des Einmal-Codes reist verschlüsselt im Send mit. Die Send-Seite zeigt nur die laufenden Codes – wer den Link hat, kann den Schlüssel aber auslesen und damit auch nach dem Löschen des Sends weiter Codes erzeugen.',
+);
 
 export function ShareSheet({
   id,
@@ -91,14 +93,14 @@ export function ShareSheet({
   const tick = (name: string, checked: boolean) =>
     setFields((current) => (current ?? []).map((f) => (f.field === name ? { ...f, checked } : f)));
 
-  const addresses = emails
-    .split(/[\s,;]+/)
-    .map((e) => e.trim())
-    .filter(Boolean);
+  const addresses = splitAddresses(emails);
   const chosen = (fields ?? []).filter((f) => f.checked);
 
+  // Two taps in one frame would make two Sends: `busy` is only seen after a render.
+  const creating = useRef(false);
   const create = async () => {
-    if (!summary) return;
+    if (!summary || creating.current) return;
+    creating.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -128,6 +130,7 @@ export function ShareSheet({
     } catch (e) {
       setError(errorText(e));
     } finally {
+      creating.current = false;
       setBusy(false);
     }
   };
@@ -162,7 +165,7 @@ export function ShareSheet({
                 !options ||
                 !summary ||
                 chosen.length === 0 ||
-                (onlyFor && addresses.length === 0),
+                (onlyFor && (addresses.length === 0 || !addresses.every(looksLikeAddress))),
             }
       }
     >

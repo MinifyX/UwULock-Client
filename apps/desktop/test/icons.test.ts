@@ -50,7 +50,7 @@ test('the library is searched as the web vault searches it', () => {
 
 test('a device in the home network gets suggestions by its name or the item’s', () => {
   assert.equal(localLabel('jellyfin.local'), 'jellyfin');
-  assert.equal(localLabel('192.168.1.10'), null);
+  assert.equal(localLabel('192.0.2.10'), null);
   assert.equal(localLabel('localhost'), null);
   assert.equal(localLabel('[fd00::1]'), null);
   assert.deepEqual(
@@ -62,7 +62,7 @@ test('a device in the home network gets suggestions by its name or the item’s'
     ['home-assistant'],
   );
   assert.deepEqual(
-    suggestLibrary(LIBRARY, '192.168.1.5', 'My Nextcloud').map((i) => i.id),
+    suggestLibrary(LIBRARY, '192.0.2.5', 'My Nextcloud').map((i) => i.id),
     ['nextcloud', 'nextcloud-talk'],
   );
 });

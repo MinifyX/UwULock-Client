@@ -18,7 +18,7 @@ export function SuitePage({ space }: { space: SuiteSpace }) {
   const searchRef = useRef<HTMLInputElement>(null);
   return (
     <Page title={t(SPACE_TITLE[space])}>
-      <BackLayer open={detail} close={() => setDetail(false)} />
+      <BackLayer open={detail && nav.active} close={() => setDetail(false)} />
       <div className="m-embed">
         <div className="vault" data-pane={detail ? 'detail' : 'list'} data-embedded="">
           <SuitePane

@@ -395,47 +395,61 @@ export function EditSurface({
 }) {
   useLanguage();
   const { android } = useMobile();
-  useBackLayer(open, onClose);
+  // Unsaved input isn't dropped by a tap on ×, a swipe back or Android's back:
+  // it asks first. (The layer before the question: back answers the question.)
+  const close = () => {
+    if (dirty)
+      confirm.ask({ title: t('Änderungen verwerfen?'), confirm: t('Verwerfen'), run: onClose });
+    else onClose();
+  };
+  useBackLayer(open, close);
+  const confirm = useConfirm();
   if (android)
     return (
-      <FullScreenDialog
-        open={open}
-        onClose={onClose}
-        title={title}
-        action={action && { ...action, label: action.label }}
-        className="m-edit"
-      >
-        {children}
-      </FullScreenDialog>
+      <>
+        <FullScreenDialog
+          open={open}
+          onClose={close}
+          title={title}
+          action={action && { ...action, label: action.label }}
+          className="m-edit"
+        >
+          {children}
+        </FullScreenDialog>
+        {confirm.element}
+      </>
     );
   return (
-    <Sheet
-      open={open}
-      onClose={onClose}
-      title={title}
-      dismissible={!dirty}
-      className="m-edit"
-      leading={
-        <NavButton
-          label={closeIcon === 'back' ? t('Zurück') : t('Schließen')}
-          icon={closeIcon === 'back' ? ICONS.previous : ICONS.close}
-          onClick={onClose}
-        />
-      }
-      trailing={
-        action && (
+    <>
+      <Sheet
+        open={open}
+        onClose={close}
+        title={title}
+        dismissible={!dirty}
+        className="m-edit"
+        leading={
           <NavButton
-            label={action.label}
-            icon={ICONS.done}
-            tint
-            disabled={action.disabled}
-            onClick={action.onClick}
+            label={closeIcon === 'back' ? t('Zurück') : t('Schließen')}
+            icon={closeIcon === 'back' ? ICONS.previous : ICONS.close}
+            onClick={close}
           />
-        )
-      }
-    >
-      {children}
-    </Sheet>
+        }
+        trailing={
+          action && (
+            <NavButton
+              label={action.label}
+              icon={ICONS.done}
+              tint
+              disabled={action.disabled}
+              onClick={action.onClick}
+            />
+          )
+        }
+      >
+        {children}
+      </Sheet>
+      {confirm.element}
+    </>
   );
 }
 

@@ -26,6 +26,7 @@ import {
   type SendAccess,
   type SendForm,
   type SendKind,
+  sendFileLimit,
 } from '../lib/sendModel';
 import { deleteSend, removeSendAuth, saveSend, sends, stageSendFile } from '../lib/sends';
 import { getSettings } from '../lib/settings';
@@ -440,7 +441,7 @@ function SendEditor({
   const [error, setError] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const set = (patch: Partial<SendForm>) => setForm((current) => ({ ...current, ...patch }));
-  const maxBytes = uwu.limits?.maxFileBytes ?? null;
+  const maxBytes = sendFileLimit(uwu.limits?.maxFileBytes);
 
   useEffect(() => {
     let gone = false;

@@ -6,7 +6,7 @@
  */
 
 import { haptic, ICONS, ListRow, ListSection } from '@uwusuite/design';
-import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   deleteItem,
   generatePassword,
@@ -177,7 +177,12 @@ export function ItemEditSheet({
   const [reminderInitial] = useState(() => JSON.stringify(reminderDraft(reminderBefore)));
 
   useEffect(() => {
-    if (!id || !summary) return;
+    if (!id) return;
+    if (!summary) {
+      setLoading(false);
+      setError(t('Den Eintrag gibt es nicht mehr.'));
+      return;
+    }
     let stopped = false;
     vaultItem(id)
       .then((detail) => {
@@ -220,16 +225,6 @@ export function ItemEditSheet({
     [form, initial, reminder, reminderInitial, icon],
   );
 
-  const close = () => {
-    if (dirty && !busy)
-      confirm.ask({
-        title: t('Änderungen verwerfen?'),
-        confirm: t('Verwerfen'),
-        run: onClose,
-      });
-    else onClose();
-  };
-
   const generate = async (into: 'password' | 'wifi') => {
     try {
       const made = await generatePassword(loadOptions());
@@ -254,12 +249,16 @@ export function ItemEditSheet({
     }
   };
 
+  const saving = useRef(false);
   const save = async () => {
+    // Enter on the keyboard isn't disabled like the button: one save at a time.
+    if (saving.current) return;
     if (!form.name.trim()) {
       setError(t('Ohne Namen findest du den Eintrag später nicht wieder.'));
       haptic('error');
       return;
     }
+    saving.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -280,6 +279,7 @@ export function ItemEditSheet({
       setError(errorText(e));
       haptic('error');
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   };
@@ -313,9 +313,9 @@ export function ItemEditSheet({
     <>
       <EditSurface
         open={open}
-        onClose={close}
+        onClose={onClose}
         title={title}
-        dirty={dirty}
+        dirty={dirty && !busy}
         action={{
           label: android ? t('Speichern') : t('Sichern'),
           onClick: () => void save(),

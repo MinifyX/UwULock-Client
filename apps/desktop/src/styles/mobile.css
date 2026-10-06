@@ -1281,7 +1281,14 @@
   margin-inline: 20px;
 }
 
-/* "Einstellungen" fits the iPhone tab without an ellipsis. */
+/* "Einstellungen" fits the iPhone tab without touching "Generator": iOS sets
+   tab labels at 10 px medium; the package's 10.5 px semibold is too wide for
+   German labels in four equal tabs on a 390 px iPhone. */
+.m-app[data-platform='ios'] .uwu-tab {
+  font-size: 10px;
+  font-weight: 600;
+}
+
 .m-app[data-platform='ios'] .uwu-tab-label {
   letter-spacing: -0.02em;
 }

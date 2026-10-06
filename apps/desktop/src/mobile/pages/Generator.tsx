@@ -22,7 +22,6 @@ import {
   type CharSet,
 } from '../../lib/generator';
 import { N_, t, useLanguage } from '../../lib/i18n';
-import { note } from '../../lib/toast';
 import {
   createMaskedAddress,
   has,
@@ -202,7 +201,7 @@ function PasswordMode() {
                       label={t('Mindestens {set}', { set: chars })}
                       value={minimum}
                       min={1}
-                      max={Math.min(16, MAX_LENGTH)}
+                      max={Math.min(Math.max(16, minimum), MAX_LENGTH)}
                       onChange={(value) => setOptions(withMinimum(options, key, value))}
                     />
                   )}
@@ -290,11 +289,8 @@ function MaskedMode() {
             <button
               type="button"
               data-primary
-              onClick={() =>
-                void copyAddress(made.email).then(() =>
-                  note(t('Adresse kopiert ✧'), { tone: 'success' }),
-                )
-              }
+              // copyAddress tells how it went itself.
+              onClick={() => void copyAddress(made.email)}
             >
               <ICONS.copy aria-hidden />
               {t('Kopieren')}

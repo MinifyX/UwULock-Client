@@ -288,6 +288,7 @@ export function MobileApp({ status, onAddAccount }: { status: Status; onAddAccou
             canBack: depth > 0,
             column: 'phone',
             selected: null,
+            active: which === tab && top && !searchOpen,
             underRef: {
               get current() {
                 return layers.current.get(`${which}:${depth - 1}`) ?? null;
@@ -322,10 +323,7 @@ export function MobileApp({ status, onAddAccount }: { status: Status; onAddAccou
             >
               <NavContext.Provider value={nav}>
                 {depth > 0 && !isLeaving && (
-                  <BackLayer
-                    open={which === tab && top && !searchOpen}
-                    close={() => popPage(which)}
-                  />
+                  <BackLayer open={nav.active} close={() => popPage(which)} />
                 )}
                 {renderPage(route)}
               </NavContext.Provider>
@@ -354,6 +352,7 @@ export function MobileApp({ status, onAddAccount }: { status: Status; onAddAccou
       canBack: where === 'detail' && depth > 0,
       column: where,
       selected: current.detail[0] ?? null,
+      active: true,
     };
     if (!route) return empty ?? <IpadEmpty />;
     return (
@@ -373,6 +372,7 @@ export function MobileApp({ status, onAddAccount }: { status: Status; onAddAccou
         canBack: false,
         column: 'single',
         selected: null,
+        active: true,
       };
       return (
         <NavContext.Provider value={nav}>
@@ -391,6 +391,7 @@ export function MobileApp({ status, onAddAccount }: { status: Status; onAddAccou
         canBack: false,
         column: 'list',
         selected: current.list,
+        active: true,
       };
       return (
         <SplitView

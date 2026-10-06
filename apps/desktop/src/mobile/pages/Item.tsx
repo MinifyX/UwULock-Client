@@ -6,7 +6,7 @@
  */
 
 import { haptic, ICONS, ListRow, ListSection, NavButton } from '@uwusuite/design';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   deleteItem,
   deletePasskey,
@@ -211,6 +211,7 @@ function TotpRow({ id }: { id: string }) {
           code ? (
             <span
               className="m-ring"
+              role="img"
               data-soon={code.remaining <= 5 || undefined}
               style={{ '--p': code.remaining / code.period } as React.CSSProperties}
               aria-label={t('noch {n} s', { n: code.remaining })}
@@ -361,6 +362,7 @@ function PasskeysSection({ id, revision }: { id: string; revision: string | null
 function WifiSection({ id, wifi }: { id: string; wifi: WifiView }) {
   useLanguage();
   const [sharing, setSharing] = useState(false);
+  const nav = useNav();
   const enterprise: [(typeof ENTERPRISE_KEYS)[number], string][] = [
     ['eap', t('EAP-Methode')],
     ['phase2', t('Phase 2')],
@@ -414,7 +416,7 @@ function WifiSection({ id, wifi }: { id: string; wifi: WifiView }) {
           <WifiConnect id={id} wifi={wifi} />
         </div>
       )}
-      <BackLayer open={sharing} close={() => setSharing(false)} />
+      <BackLayer open={sharing && nav.active} close={() => setSharing(false)} />
       {sharing && <WifiShare itemId={id} wifi={wifi} onClose={() => setSharing(false)} />}
     </>
   );
@@ -434,14 +436,18 @@ function ItemBody({ summary }: { summary: ItemSummary }) {
   const masked = uwu.masked[id] ?? null;
   const due = uwu.reminders[id]?.isDue ?? false;
 
+  // Only the newest answer lands: an older revision's may come in after it.
+  const loads = useRef(0);
   const load = () => {
+    const mine = ++loads.current;
     vaultItem(id)
       .then((next) => {
+        if (mine !== loads.current) return;
         setDetail(next);
         setError(null);
       })
       .catch((e) => {
-        if (failure(e).kind !== 'not-found') setError(errorText(e));
+        if (mine === loads.current && failure(e).kind !== 'not-found') setError(errorText(e));
       });
   };
   // Again when the sync brought a new revision of this item.

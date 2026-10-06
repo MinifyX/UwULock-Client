@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { isMobile } from './platform';
 
 /**
@@ -63,10 +63,18 @@ export function useBackLayer(open: boolean, close: () => void) {
     latest.current = close;
   });
 
+  // Back took the layer off the stack. A close that only asks first ("Änderungen
+  // verwerfen?") leaves it open: it goes back on, or the next back would skip it.
+  const [round, setRound] = useState(0);
   const active = open && isMobile();
   useEffect(() => {
     if (!active) return;
-    const layer: Layer = { close: () => latest.current() };
+    const layer: Layer = {
+      close: () => {
+        latest.current();
+        setRound((n) => n + 1);
+      },
+    };
     stack.push(layer);
     schedule();
     return () => {
@@ -74,5 +82,5 @@ export function useBackLayer(open: boolean, close: () => void) {
       if (index !== -1) stack.splice(index, 1);
       schedule();
     };
-  }, [active]);
+  }, [active, round]);
 }

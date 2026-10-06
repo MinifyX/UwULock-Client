@@ -9,16 +9,7 @@
  */
 
 import { listen } from '@tauri-apps/api/event';
-import {
-  copyText,
-  Fab,
-  haptic,
-  ICONS,
-  ListRow,
-  ListSection,
-  NavButton,
-  Stepper,
-} from '@uwusuite/design';
+import { Fab, haptic, ICONS, ListRow, ListSection, NavButton, Stepper } from '@uwusuite/design';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { copyGenerated } from '../../lib/api';
 import { errorText, toastError } from '../../lib/errors';
@@ -36,6 +27,7 @@ import {
   type SendAccess,
   type SendForm,
   type SendKind,
+  sendFileLimit,
 } from '../../lib/sendModel';
 import {
   deleteSend,
@@ -138,15 +130,17 @@ export function useListStore<T>(store: ListStore<T>, events = false): Loaded<T> 
   return state;
 }
 
-/** Copies a link through Rust (which clears the clipboard later), else the browser's clipboard. */
+/**
+ * Copies a link through Rust, which clears the clipboard later — as the
+ * desktop does. The link opens the Send (its key is in it), so there is no
+ * fallback to the browser's clipboard, which nobody clears.
+ */
 export async function copyLink(link: string): Promise<void> {
   try {
     await copyGenerated(link);
   } catch (e) {
-    if (!(await copyText(link))) {
-      toastError(e);
-      return;
-    }
+    toastError(e);
+    return;
   }
   haptic('success');
   const seconds = getSettings().clipboardClear;
@@ -259,9 +253,11 @@ export function SendsPage() {
                   title={
                     <span className="m-row-title">
                       <span>{send.name || t('(ohne Namen)')}</span>
-                      {send.authType === 1 && <ICONS.locked aria-label={t('Mit Passwort')} />}
+                      {send.authType === 1 && (
+                        <ICONS.locked role="img" aria-label={t('Mit Passwort')} />
+                      )}
                       {send.authType === 0 && (
-                        <ICONS.account aria-label={t('Nur bestimmte Adressen')} />
+                        <ICONS.account role="img" aria-label={t('Nur bestimmte Adressen')} />
                       )}
                     </span>
                   }
@@ -494,7 +490,7 @@ function SendEditor({
     setDirty(true);
     setForm((current) => ({ ...current, ...patch }));
   };
-  const maxBytes = uwu.limits?.maxFileBytes ?? null;
+  const maxBytes = sendFileLimit(uwu.limits?.maxFileBytes);
 
   useEffect(() => {
     let gone = false;
@@ -521,8 +517,11 @@ function SendEditor({
   const ready = options !== null && sendFormReady(form, send, kind);
   const addresses = splitAddresses(form.emails);
 
+  // Two taps in one frame would make two Sends: `busy` is only seen after a render.
+  const saving = useRef(false);
   const save = async () => {
-    if (!ready || busy) return;
+    if (!ready || saving.current) return;
+    saving.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -535,12 +534,17 @@ function SendEditor({
       await sendStore.load();
       // A new Send's link is what the person wants next.
       const link = send ? null : (sendStore.get().value?.find((s) => s.id === id)?.link ?? null);
-      if (link) await copyGenerated(link).catch(() => copyText(link));
+      const copied = link
+        ? await copyGenerated(link).then(
+            () => true,
+            () => false,
+          )
+        : false;
       haptic('success');
       note(
         send
           ? t('Gespeichert ✧')
-          : link
+          : copied
             ? t('Send angelegt – der Link ist kopiert ✧')
             : t('Send angelegt ✧'),
         { tone: 'success' },
@@ -549,6 +553,7 @@ function SendEditor({
     } catch (e) {
       setError(errorText(e));
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   };

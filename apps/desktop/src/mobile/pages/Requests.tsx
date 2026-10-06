@@ -157,6 +157,7 @@ export function RequestsPage() {
                       request.unseen > 0 ? (
                         <span
                           className="m-count-badge"
+                          role="img"
                           aria-label={t('{n} neu', { n: request.unseen })}
                         >
                           {request.unseen}
@@ -690,7 +691,8 @@ function RequestEditor({
     title: request?.title ?? '',
     note: request?.note ?? '',
     owner: request?.owner ?? '',
-    days: request ? 0 : 7,
+    // A week, or the longest the server allows when that is shorter.
+    days: request ? 0 : Math.min(7, DAYS.filter((n) => n <= maxDays).at(-1) ?? 1),
     maxSubmissions: request ? (request.maxSubmissions ?? 0) : 1,
     maxFiles: request?.maxFiles ?? 10,
     maxFileMib: request?.maxFileBytes

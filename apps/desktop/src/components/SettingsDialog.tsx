@@ -647,7 +647,7 @@ export function SettingsDialog({
           {section === 'appearance' && <Appearance />}
           {section === 'security' && loggedIn && <Security status={status} onClose={onClose} />}
           {section === 'account' && loggedIn && <Account status={status} onClose={onClose} />}
-          {section === 'updates' && (
+          {section === 'updates' && platform() !== 'ios' && (
             <Updates
               update={update}
               onUpdateFound={onUpdateFound}

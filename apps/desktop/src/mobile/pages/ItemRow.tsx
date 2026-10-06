@@ -177,8 +177,10 @@ export function ItemRow({ item, query }: { item: ItemSummary; query?: string }) 
           <span>
             <Highlight text={name} query={query} />
           </span>
-          {item.favorite && <ICONS.favorite className="m-star" aria-label={t('Favorit')} />}
-          {item.reprompt && <ICONS.masterPassword aria-label={t('Geschützt')} />}
+          {item.favorite && (
+            <ICONS.favorite className="m-star" role="img" aria-label={t('Favorit')} />
+          )}
+          {item.reprompt && <ICONS.masterPassword role="img" aria-label={t('Geschützt')} />}
         </span>
       }
       subtitle={item.subtitle ? <Highlight text={item.subtitle} query={query} /> : undefined}
