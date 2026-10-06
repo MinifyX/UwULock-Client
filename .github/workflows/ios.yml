@@ -68,7 +68,7 @@ jobs:
         with:
           # One cache per job, as each builds for one target.
           shared-key: ios-${{ matrix.build }}
-          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ci-speed' || github.head_ref == 'ci-speed' }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: pnpm install --frozen-lockfile
 
       - name: Version

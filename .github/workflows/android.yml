@@ -112,7 +112,7 @@ jobs:
           pnpm tauri android build --apk --target aarch64 --ci
 
       - name: Save the Gradle cache
-        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ci-speed' || github.head_ref == 'ci-speed') && steps.gradle-cache.outputs.cache-hit != 'true'
+        if: github.ref == 'refs/heads/main' && steps.gradle-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |

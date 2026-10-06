@@ -156,7 +156,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           key: ${{ matrix.cache-key || matrix.name }}
-          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ci-speed' || github.head_ref == 'ci-speed' }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Build the setup
         shell: bash
