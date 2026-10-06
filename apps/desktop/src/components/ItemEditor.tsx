@@ -885,7 +885,7 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
 
             {has(uwu, 'own-icons') && (
               <fieldset className="editor-list">
-                <legend>{t('Symbol')}</legend>
+                <legend>{t('Icon')}</legend>
                 <OwnIconEditor
                   summary={summary}
                   name={form.name}

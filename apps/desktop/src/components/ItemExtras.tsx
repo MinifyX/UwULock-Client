@@ -111,7 +111,7 @@ export function IconMenu({ summary, detail }: { summary: ItemSummary; detail: De
     <>
       <IconButton
         icon={ICONS.image}
-        label={t('Symbol ändern')}
+        label={t('Icon ändern')}
         size="sm"
         className="tile-edit size-6! bg-surface hover:bg-elevated"
         disabled={busy}
@@ -132,7 +132,7 @@ export function IconMenu({ summary, detail }: { summary: ItemSummary; detail: De
           if (!file) return;
           void run(
             async () => setOwnIcon(summary.id, await iconFromFile(file)),
-            t('Symbol gespeichert ✧'),
+            t('Icon gespeichert ✧'),
           );
         }}
       />
@@ -140,7 +140,7 @@ export function IconMenu({ summary, detail }: { summary: ItemSummary; detail: De
         <ContextMenu
           x={menu.x}
           y={menu.y}
-          label={t('Symbol')}
+          label={t('Icon')}
           onClose={() => setMenu(null)}
           items={[
             {
@@ -160,21 +160,21 @@ export function IconMenu({ summary, detail }: { summary: ItemSummary; detail: De
             ...(local
               ? [
                   {
-                    label: t('Symbol vom Gerät holen'),
+                    label: t('Icon vom Gerät holen'),
                     icon: ICONS.network,
                     onSelect: () =>
-                      void run(() => fetchDeviceIcon(summary.id), t('Symbol vom Gerät geholt ✧')),
+                      void run(() => fetchDeviceIcon(summary.id), t('Icon vom Gerät geholt ✧')),
                   },
                 ]
               : []),
             ...(hasOwn
               ? [
                   {
-                    label: t('Eigenes Symbol entfernen'),
+                    label: t('Eigenes Icon entfernen'),
                     icon: ICONS.delete,
                     danger: true,
                     onSelect: () =>
-                      void run(() => deleteOwnIcon(summary.id), t('Eigenes Symbol entfernt.')),
+                      void run(() => deleteOwnIcon(summary.id), t('Eigenes Icon entfernt.')),
                   },
                 ]
               : []),
@@ -187,7 +187,7 @@ export function IconMenu({ summary, detail }: { summary: ItemSummary; detail: De
           onCancel={() => setLibrary(false)}
           onPick={(png) => {
             setLibrary(false);
-            void run(() => setOwnIcon(summary.id, png), t('Symbol gespeichert ✧'));
+            void run(() => setOwnIcon(summary.id, png), t('Icon gespeichert ✧'));
           }}
         />
       )}

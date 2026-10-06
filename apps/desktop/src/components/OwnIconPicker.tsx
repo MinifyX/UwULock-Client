@@ -144,7 +144,7 @@ export function LibraryDialog({
   const found = index ? searchLibrary(index, query, 30) : [];
   return (
     <Modal
-      title={t('Symbol aus der Bibliothek')}
+      title={t('Icon aus der Bibliothek')}
       size="wide"
       onCancel={onCancel}
       footer={
@@ -182,7 +182,7 @@ export function LibraryDialog({
             </ul>
           ) : (
             <p className="muted">
-              {query.trim() ? t('Kein Symbol gefunden.') : t('Tippe einen Namen ein.')}
+              {query.trim() ? t('Kein Icon gefunden.') : t('Tippe einen Namen ein.')}
             </p>
           ))}
         {index && (
@@ -192,9 +192,7 @@ export function LibraryDialog({
                 {source.name} · {source.license} · {source.attribution}.{' '}
               </span>
             ))}
-            {t(
-              'Das gewählte Symbol holt dein Server; im Eintrag wird es verschlüsselt gespeichert.',
-            )}
+            {t('Das gewählte Icon holt dein Server; im Eintrag wird es verschlüsselt gespeichert.')}
           </small>
         )}
       </div>
@@ -260,18 +258,18 @@ export function OwnIconEditor({
       )}
       <small className="field-hint">
         {value === 'remove'
-          ? t('Das eigene Symbol wird beim Speichern entfernt.')
+          ? t('Das eigene Icon wird beim Speichern entfernt.')
           : value
-            ? t('Das neue Symbol gilt, sobald du speicherst.')
+            ? t('Das neue Icon gilt, sobald du speicherst.')
             : own
               ? t(
-                  'Ein eigenes Symbol, verschlüsselt gespeichert. Die offiziellen Bitwarden-Apps zeigen das der Website.',
+                  'Ein eigenes Icon, verschlüsselt gespeichert. Die offiziellen Bitwarden-Apps zeigen das der Website.',
                 )
               : local
                 ? t(
-                    'Ein Gerät im Heimnetz: dein Server fragt es nie. Hol das Symbol vom Gerät, nimm eins aus der Bibliothek oder ein eigenes Bild.',
+                    'Ein Gerät im Heimnetz: dein Server fragt es nie. Hol das Icon vom Gerät, nimm eins aus der Bibliothek oder ein eigenes Bild.',
                   )
-                : t('Das Symbol der Website, geholt von deinem Server. Oder wähle ein eigenes.')}
+                : t('Das Icon der Website, geholt von deinem Server. Oder wähle ein eigenes.')}
       </small>
       <div className="flex flex-wrap gap-1">
         <input
@@ -313,7 +311,7 @@ export function OwnIconEditor({
             disabled={busy}
             onClick={() => void take(() => deviceIcon(local))}
           >
-            {t('Symbol vom Gerät holen')}
+            {t('Icon vom Gerät holen')}
           </Button>
         )}
         {value && (
@@ -329,7 +327,7 @@ export function OwnIconEditor({
             disabled={busy}
             onClick={() => onChange('remove')}
           >
-            {t('Eigenes Symbol entfernen')}
+            {t('Eigenes Icon entfernen')}
           </Button>
         )}
       </div>
