@@ -683,8 +683,8 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
       aliases: [],
     })),
   }),
-  library_icon: ({ icon, variant }) => {
-    const n = LIBRARY.findIndex((name) => name === (icon as { name: string }).name);
+  library_icon: ({ iconId, variant }) => {
+    const n = LIBRARY.findIndex((name) => name.toLowerCase().replace(/\s+/g, '-') === iconId);
     return swatch(
       variant === 'light' ? '#f4f4f5' : variant === 'dark' ? '#1c1420' : COLORS[n % COLORS.length]!,
     );

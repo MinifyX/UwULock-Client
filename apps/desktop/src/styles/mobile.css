@@ -1303,3 +1303,20 @@
   opacity: 0;
   pointer-events: none;
 }
+
+/* The package drops the solid tile on Android but keeps its on-pink colour,
+   which leaves the glyph invisible; Android shows it in the accent ink. */
+.m-app[data-platform='android'] .uwu-row-icon[data-tone='solid'] {
+  color: var(--uwu-pink-ink);
+}
+
+/* Text fields on a phone show focus by their caret and the keyboard; the
+   package's focus ring would draw a box inside the rounded field. */
+.m-app :is(.m-search-field, .m-field) :is(input, textarea, select):focus-visible,
+.uwu-sheet :is(.m-search-field, .m-field) :is(input, textarea, select):focus-visible {
+  box-shadow: none;
+}
+
+.m-search-field input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
