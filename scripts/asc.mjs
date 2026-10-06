@@ -148,7 +148,8 @@ async function builds(count = '10') {
       sort: '-uploadedDate',
       limit: count,
       include: 'preReleaseVersion',
-      'fields[builds]': 'version,uploadedDate,processingState,expired,usesNonExemptEncryption',
+      'fields[builds]':
+        'version,uploadedDate,processingState,expired,usesNonExemptEncryption,preReleaseVersion',
       'fields[preReleaseVersions]': 'version,platform',
     })}`,
   );

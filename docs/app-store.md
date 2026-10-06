@@ -34,7 +34,9 @@ updates it.
 - **Entitlements** (`macos/Entitlements.mas.plist`): network client (the server, icons, live
   updates), user-selected files read/write (moving a vault in, importing a key), Downloads
   read/write (file requests, saved keys go there as in every build), the App Group
-  `TEAMID.app.uwulock` and the Keychain groups `TEAMID.app.uwulock` + `TEAMID.app.uwulock.passkeys`.
+  `TEAMID.app.uwulock`, the Keychain groups `TEAMID.app.uwulock` + `TEAMID.app.uwulock.passkeys`,
+  and the AutoFill entitlement (App Store Connect wants it on the extension's container too,
+  ITMS-90729; the App ID `app.uwulock` has the capability for that).
   Nothing listens, nothing starts other programs.
 - **Data** lives in the container, `~/Library/Containers/app.uwulock/Data/Library/Application
 Support/app.uwulock`, not where the DMG keeps it. Switching between the two means signing in
@@ -103,7 +105,8 @@ follow by themselves on the next run.
    France, App Store Connect asks whether the app is distributed there. Once the answer is settled,
    `ITSAppUsesNonExemptEncryption = false` in `Info.ios.plist` and `tauri.mas.conf.json` stops the
    question per build — left out on purpose until then.
-3. **macOS on the app record**: see below whether it was needed.
+3. **macOS on the app record**: nothing to do. The record has an iOS and a macOS version, and
+   the first Mac build was accepted.
 
 ## Later: publishing (not done now)
 
@@ -174,7 +177,7 @@ TestFlight**: Zur Prüfung eingereicht ist nichts, und CI reicht nie etwas ein.
    anstelle von oder zusätzlich zu der Verschlüsselung in Apples Betriebssystem“**, dann den
    Fragen folgen. Steht die Antwort fest, kann `ITSAppUsesNonExemptEncryption = false` ins
    Info.plist, damit nicht mehr pro Build gefragt wird.
-3. **macOS-Plattform** am App-Eintrag: siehe Abschnitt oben.
+3. **macOS-Plattform** am App-Eintrag: erledigt, der Eintrag hat iOS und macOS.
 
 **Später, zum Veröffentlichen** (nicht jetzt): Store-Seite je Plattform, Datenschutz-URL und
 „Keine Daten erfasst“, Altersfreigabe 4+, Demo-Konto auf einem öffentlichen Server für App
