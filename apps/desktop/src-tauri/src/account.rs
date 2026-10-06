@@ -389,6 +389,9 @@ impl Storage {
     /// Logging out of one account: its folder goes (its remember token with
     /// it), the device id and the other accounts stay.
     pub fn forget(&self, id: &str) -> std::io::Result<()> {
+        // The token first, on its own: should the folder only partly go (a
+        // file held open on Windows), the device is still forgotten.
+        self.forget_remember_token(id)?;
         match std::fs::remove_dir_all(self.home(id)?) {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
