@@ -1,3 +1,4 @@
+import { Button, Icon, IconButton, ICONS } from '@uwusuite/design';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import {
   copyField,
@@ -27,7 +28,6 @@ import { getSettings } from '../lib/settings';
 import { toast } from '../lib/toast';
 import { setMaskedState, useUwu } from '../lib/uwu';
 import { ENTERPRISE_KEYS, isEnterprise, readWifi, type WifiView } from '../lib/wifi';
-import { Icon } from './Icon';
 import { IconMenu, ReminderCard, ShareSendDialog, VersionsCard } from './ItemExtras';
 import { ItemTile } from './ItemTile';
 import { Modal } from './Modal';
@@ -61,14 +61,13 @@ export function Colored({ text }: { text: string }) {
 function CopyButton({ id, field, label }: { id: string; field: string; label: string }) {
   useLanguage();
   return (
-    <button
-      className="icon-button"
+    <IconButton
+      icon={ICONS.copy}
+      size="sm"
+      className="phone:size-9"
       onClick={() => void copy(id, field)}
-      aria-label={t('{label} kopieren', { label })}
-      title={t('Kopieren')}
-    >
-      <Icon name="copy" size={15} />
-    </button>
+      label={t('{label} kopieren', { label })}
+    />
   );
 }
 
@@ -135,17 +134,16 @@ function SecretRow({
       mono
       actions={
         <>
-          <button
-            className="icon-button"
+          <IconButton
+            icon={value === null ? ICONS.show : ICONS.hide}
+            size="sm"
+            className="phone:size-9"
             onClick={() => void toggle()}
-            aria-label={
+            label={
               value === null ? t('{label} zeigen', { label }) : t('{label} verbergen', { label })
             }
             aria-pressed={value !== null}
-            title={value === null ? t('Zeigen') : t('Verbergen')}
-          >
-            <Icon name={value === null ? 'eye' : 'eyeOff'} size={15} />
-          </button>
+          />
           <CopyButton id={id} field={field} label={label} />
         </>
       }
@@ -313,10 +311,16 @@ function WifiSection({
         })}
       <div className="wifi-actions">
         {actions}
-        <button className="quiet" onClick={onShare} aria-haspopup="dialog" data-wifi-share>
-          <Icon name="qr" size={15} />
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={ICONS.qrCode}
+          onClick={onShare}
+          aria-haspopup="dialog"
+          data-wifi-share
+        >
           {t('Als QR-Code teilen')}
-        </button>
+        </Button>
       </div>
     </Section>
   );
@@ -345,7 +349,7 @@ function Reprompt({ id, onPassed }: { id: string; onPassed: () => void }) {
   return (
     <form className="detail-card reprompt" onSubmit={submit}>
       <p className="detail-card-title">
-        <Icon name="lock" size={15} />
+        <Icon icon={ICONS.masterPassword} />
         {t('Master-Passwort erforderlich')}
       </p>
       <p className="dialog-lead">
@@ -367,9 +371,9 @@ function Reprompt({ id, onPassed }: { id: string; onPassed: () => void }) {
       )}
       <div className="form-actions">
         <span className="spacer" />
-        <button className="primary" type="submit" disabled={busy || !password}>
+        <Button variant="primary" type="submit" disabled={busy || !password}>
           {busy ? t('Prüft …') : t('Öffnen')}
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -398,20 +402,21 @@ function ConfirmDelete({
     <Modal
       title={permanent ? t('Endgültig löschen?') : t('In den Papierkorb?')}
       tone={permanent ? 'warning' : 'default'}
+      size="small"
       onCancel={onCancel}
       footer={
         <>
           <span className="spacer" />
-          <button
-            className="danger"
+          <Button
+            variant="danger"
             data-secondary
             onClick={() => onConfirm(Boolean(masked && permanent && disableMasked))}
           >
             {permanent ? t('Endgültig löschen') : t('In den Papierkorb')}
-          </button>
-          <button className="primary" data-autofocus onClick={onCancel}>
+          </Button>
+          <Button variant="primary" data-autofocus onClick={onCancel}>
             {t('Abbrechen')}
-          </button>
+          </Button>
         </>
       }
     >
@@ -491,7 +496,7 @@ function PasskeysSection({ id, revision }: { id: string; revision: string | null
           <div className="detail-row passkey-row" key={`${key.index}-${key.credentialId}`}>
             <div className="detail-text">
               <span className="detail-label">
-                <Icon name="key" size={12} className="icon-gap" />
+                <Icon icon={ICONS.passkey} size="xs" />
                 {site}
               </span>
               <span className="detail-value">
@@ -508,15 +513,14 @@ function PasskeysSection({ id, revision }: { id: string; revision: string | null
               </span>
             </div>
             <div className="detail-actions">
-              <button
-                className="icon-button"
+              <IconButton
+                icon={ICONS.delete}
+                size="sm"
+                className="phone:size-9"
                 disabled={busy}
-                title={t('Passkey löschen')}
-                aria-label={t('Passkey für {site} löschen', { site })}
+                label={t('Passkey für {site} löschen', { site })}
                 onClick={() => setAsking(key)}
-              >
-                <Icon name="trash" size={15} />
-              </button>
+              />
             </div>
           </div>
         );
@@ -525,21 +529,22 @@ function PasskeysSection({ id, revision }: { id: string; revision: string | null
         <Modal
           title={t('Passkey löschen?')}
           tone="warning"
+          size="small"
           onCancel={() => setAsking(null)}
           footer={
             <>
               <span className="spacer" />
-              <button
-                className="danger"
+              <Button
+                variant="danger"
                 data-secondary
                 disabled={busy}
                 onClick={() => void remove(asking)}
               >
                 {t('Löschen')}
-              </button>
-              <button className="primary" data-autofocus onClick={() => setAsking(null)}>
+              </Button>
+              <Button variant="primary" data-autofocus onClick={() => setAsking(null)}>
                 {t('Abbrechen')}
-              </button>
+              </Button>
             </>
           }
         >
@@ -577,16 +582,15 @@ function WebsitesSection({ id, uris }: { id: string; uris: NonNullable<Detail['l
           actions={
             <>
               {uri.openable && (
-                <button
-                  className="icon-button"
+                <IconButton
+                  icon={ICONS.openExternal}
+                  size="sm"
+                  className="phone:size-9"
                   onClick={() =>
                     void openItemUri(id, index).catch((e) => toast(String(e), 'error'))
                   }
-                  aria-label={t('{uri} im Browser öffnen', { uri: uri.uri })}
-                  title={t('Im Browser öffnen')}
-                >
-                  <Icon name="external" size={15} />
-                </button>
+                  label={t('{uri} im Browser öffnen', { uri: uri.uri })}
+                />
               )}
               <CopyButton id={id} field={`uri:${index}`} label={t('Adresse')} />
             </>
@@ -597,6 +601,7 @@ function WebsitesSection({ id, uris }: { id: string; uris: NonNullable<Detail['l
       ))}
       {more > 0 && (
         <button
+          type="button"
           className="more-toggle link-button"
           aria-expanded={all}
           onClick={() => setAll(!all)}
@@ -610,7 +615,11 @@ function WebsitesSection({ id, uris }: { id: string; uris: NonNullable<Detail['l
             // Which sites, even folded: an added one shouldn't hide behind a number.
             <span className="more-hosts">{otherHosts(uris)}</span>
           )}
-          <Icon name="chevron" size={12} className={all ? 'turned' : undefined} />
+          <Icon
+            icon={ICONS.expand}
+            size="xs"
+            className={all ? 'transition-transform' : '-rotate-90 transition-transform'}
+          />
         </button>
       )}
     </Section>
@@ -689,33 +698,33 @@ export function ItemDetail({
           <h2>
             {summary.name || t('(ohne Namen)')}
             {summary.favorite && (
-              <Icon name="star" size={16} className="badge-star" title={t('Favorit')} />
+              <Icon icon={ICONS.favorite} className="badge-star" label={t('Favorit')} />
             )}
           </h2>
           <p className="chips">
             <span className="chip">{t(KIND_LABEL[summary.kind])}</span>
             {folder && (
               <span className="chip">
-                <Icon name="folder" size={12} />
+                <Icon icon={ICONS.folder} size="xs" />
                 {folder}
               </span>
             )}
             {org && (
               <span className="chip">
-                <Icon name="building" size={12} />
+                <Icon icon={ICONS.organization} size="xs" />
                 {org}
                 {collections.length > 0 && ` · ${collections.join(', ')}`}
               </span>
             )}
             {masked && (
               <span className="chip" title={t('Maskierte Adresse')}>
-                <Icon name="mask" size={12} />
+                <Icon icon={ICONS.maskedAddress} size="xs" />
                 {masked.email}
               </span>
             )}
             {due && !summary.deleted && (
               <span className="chip chip-due">
-                <Icon name="bell" size={12} />
+                <Icon icon={ICONS.reminder} size="xs" />
                 {t('Neues Passwort fällig')}
               </span>
             )}
@@ -725,66 +734,67 @@ export function ItemDetail({
         <div className="detail-tools">
           {summary.deleted ? (
             <>
-              <button
-                className="quiet"
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={ICONS.restore}
                 disabled={busy}
                 onClick={() => void act(() => restoreItem(id), t('Aus dem Papierkorb geholt ✧'))}
               >
-                <Icon name="history" size={15} />
                 {t('Wiederherstellen')}
-              </button>
-              <button
-                className="quiet danger-text"
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={ICONS.delete}
+                className="text-danger-ink!"
                 disabled={busy}
                 onClick={() => setAsking('permanent')}
               >
-                <Icon name="trash" size={15} />
                 {t('Endgültig löschen')}
-              </button>
+              </Button>
             </>
           ) : (
             <>
-              <button
-                className="icon-button"
+              <IconButton
+                icon={ICONS.favorite}
+                size="sm"
+                className={
+                  summary.favorite ? 'star-toggle text-pink! [&_svg]:fill-current' : 'star-toggle'
+                }
                 disabled={busy}
                 aria-pressed={summary.favorite}
-                title={summary.favorite ? t('Favorit entfernen') : t('Zu Favoriten')}
-                aria-label={summary.favorite ? t('Favorit entfernen') : t('Zu Favoriten')}
+                label={summary.favorite ? t('Favorit entfernen') : t('Zu Favoriten')}
                 onClick={() =>
                   void act(
                     () => setFavorite(id, !summary.favorite),
                     summary.favorite ? t('Kein Favorit mehr') : t('Favorit ✧'),
                   )
                 }
-              >
-                <Icon
-                  name="star"
-                  size={15}
-                  className={summary.favorite ? 'badge-star' : undefined}
-                />
-              </button>
-              <button
-                className="icon-button"
+              />
+              <IconButton
+                icon={ICONS.send}
+                size="sm"
                 disabled={busy || !d || d.locked || summary.broken}
-                title={t('Als Send teilen …')}
-                aria-label={t('Als Send teilen …')}
+                label={t('Als Send teilen …')}
                 onClick={() => setSharing(true)}
-              >
-                <Icon name="send" size={15} />
-              </button>
-              <button
-                className="icon-button"
+              />
+              <IconButton
+                icon={ICONS.delete}
+                size="sm"
                 disabled={busy}
-                title={t('In den Papierkorb')}
-                aria-label={t('In den Papierkorb')}
+                label={t('In den Papierkorb')}
                 onClick={() => setAsking('trash')}
+              />
+              <Button
+                variant="primary"
+                size="sm"
+                icon={ICONS.edit}
+                disabled={busy || summary.broken}
+                onClick={onEdit}
               >
-                <Icon name="trash" size={15} />
-              </button>
-              <button className="primary" disabled={busy || summary.broken} onClick={onEdit}>
-                <Icon name="pencil" size={15} />
                 {t('Bearbeiten')}
-              </button>
+              </Button>
             </>
           )}
         </div>
@@ -1029,17 +1039,25 @@ export function ItemDetail({
 
           {d.passwordHistory && d.passwordHistory.length > 0 && (
             <Section>
-              <button
-                className="history-toggle quiet"
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={ICONS.history}
+                className="history-toggle text-muted!"
                 aria-expanded={showHistory}
                 onClick={() => setShowHistory(!showHistory)}
               >
-                <Icon name="history" size={15} />
                 {d.passwordHistory.length === 1
                   ? t('1 früheres Passwort')
                   : t('{n} frühere Passwörter', { n: d.passwordHistory.length })}
-                <Icon name="chevron" size={14} className={showHistory ? 'turned' : undefined} />
-              </button>
+                <Icon
+                  icon={ICONS.expand}
+                  size="xs"
+                  className={
+                    showHistory ? 'transition-transform' : '-rotate-90 transition-transform'
+                  }
+                />
+              </Button>
               {showHistory &&
                 d.passwordHistory.map((entry) => (
                   <SecretRow
@@ -1058,7 +1076,7 @@ export function ItemDetail({
           <footer className="detail-foot">
             {(d.attachments ?? 0) > 0 && (
               <p>
-                <Icon name="file" size={13} />
+                <Icon icon={ICONS.file} size="xs" />
                 {t('{n} Anhänge – die öffnest du vorerst im Web-Tresor.', {
                   n: d.attachments ?? 0,
                 })}
@@ -1077,11 +1095,12 @@ export function ItemDetail({
             </p>
             <p className="detail-beta">
               <button
+                type="button"
                 className="link-button"
                 onClick={() => void openWebVault().catch(() => undefined)}
               >
                 {t('Im Web-Tresor öffnen')}
-                <Icon name="external" size={12} />
+                <Icon icon={ICONS.openExternal} size="xs" />
               </button>
             </p>
           </footer>
