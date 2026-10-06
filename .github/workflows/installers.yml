@@ -67,6 +67,7 @@ jobs:
         with:
           # Linux shares ci.yml's cache from main: a tag starts warm.
           shared-key: ${{ runner.os == 'Linux' && 'linux' || 'macos' }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - run: cargo fmt --all --check
       - name: Everything, on Linux
@@ -137,9 +138,12 @@ jobs:
         with:
           toolchain: stable
           targets: ${{ matrix.rust-targets }}
+      # Saved only by a run on main (started by hand before a release): a cache a tag saves is
+      # only ever seen by that tag, and the space for caches is shared with every workflow.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           key: ${{ matrix.name }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Build the setup
         shell: bash

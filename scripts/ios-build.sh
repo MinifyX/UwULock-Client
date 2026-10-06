@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Builds UwULock for the simulator and for the iPhone, and packs the iPhone app
-# into an .ipa.
+# Builds UwULock for the simulator and/or for the iPhone, and packs the iPhone
+# app into an .ipa.
 #
 # Nothing here is signed: UwULock has no Apple developer account, and Xcode
 # refuses to build for a real iPhone without one ("requires a development
@@ -11,13 +11,18 @@
 # Both builds go through Tauri. They have to: the "Build Rust Code" phase in the
 # Xcode project asks the surrounding `tauri ios build` process for its options
 # over a local socket, and without it the phase dies with "Abort trap: 6".
+# `--no-sign` makes Tauri archive straight away: without it, it first builds
+# the app once more on its own (`xcodebuild build`), which costs a whole second
+# release build of the Rust code and gives nothing an unsigned app needs.
 #
-# Usage: scripts/ios-build.sh <version> [output folder]
+# Usage: scripts/ios-build.sh <version> [output folder] [simulator|iphone|both]
 set -euo pipefail
 
 version="$1"
 out="${2:-out}"
+which="${3:-both}"
 gen="apps/desktop/src-tauri/gen/apple"
+case "$which" in simulator | iphone | both) ;; *) echo "::error::Unknown build: $which"; exit 2 ;; esac
 
 echo "--- tools ---"
 command -v pnpm node cargo rustup xcodegen
@@ -130,18 +135,21 @@ show_rust_log() {
 }
 
 # The simulator build, which the smoke test starts afterwards.
-pnpm tauri ios build --ci --target aarch64-sim || { show_rust_log; exit 1; }
-sim=$(find "$gen/build" -type d -name '*.app' -path '*sim*' 2>/dev/null | head -n 1)
-test -n "$sim" || { echo "::error::The simulator build produced no app"; exit 1; }
-rm -rf "$out/simulator"
-mkdir -p "$out/simulator"
-cp -R "$sim" "$out/simulator/"
-echo "Simulator app: $sim"
+if [ "$which" != iphone ]; then
+  pnpm tauri ios build --ci --no-sign --target aarch64-sim || { show_rust_log; exit 1; }
+  sim=$(find "$gen/build" -type d -name '*.app' -path '*sim*' 2>/dev/null | head -n 1)
+  test -n "$sim" || { echo "::error::The simulator build produced no app"; exit 1; }
+  rm -rf "$out/simulator"
+  mkdir -p "$out/simulator"
+  cp -R "$sim" "$out/simulator/"
+  echo "Simulator app: $sim"
+  test -d "$sim/PlugIns/UwULockPasskeys.appex" || { echo "::error::The AutoFill extension isn't in the simulator app"; exit 1; }
+  [ "$which" = simulator ] && { ls -la "$out"; exit 0; }
+fi
 
-# The iPhone itself. Exporting an .ipa is Xcode's job and needs a certificate,
-# so Tauri is expected to stop at that step — the app is finished by then.
-pnpm tauri ios build --ci --target aarch64 ||
-  echo "::notice::Tauri stopped before exporting a signed app, as expected"
+# The iPhone itself, archived and left unsigned. The .ipa is packed below, the
+# same way for every Tauri version.
+pnpm tauri ios build --ci --no-sign --target aarch64 || { show_rust_log; exit 1; }
 app=$(find "$gen/build" -type d -name '*.app' -not -path '*sim*' 2>/dev/null | head -n 1)
 if [ -z "$app" ]; then
   show_rust_log

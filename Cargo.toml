@@ -96,6 +96,13 @@ opt-level = 3
 [profile.dev.package.blowfish]
 opt-level = 3
 
+# The setup's build script packs the app with zstd at level 19 (apps/setup/src-tauri/build.rs).
+# Build scripts and what they use are built without optimisation, which made that one
+# compression take minutes for a Linux AppDir. Optimised, it is the same bytes in a fraction of
+# the time. Only the build changes, not the setup.
+[profile.release.package.zstd-sys]
+opt-level = 3
+
 [profile.release]
 codegen-units = 1
 lto = true

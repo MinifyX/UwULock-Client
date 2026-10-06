@@ -26,7 +26,7 @@
 // under the versioned names installed apps expect, on the machine that holds
 // the key. The builds below never see it.
 
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync, execSync, spawn } from 'node:child_process';
 import {
   chmodSync,
   copyFileSync,
@@ -46,6 +46,20 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const run = (command, env = {}) =>
   execSync(command, { cwd: root, stdio: 'inherit', env: { ...process.env, ...env } });
+/** `run`, but side by side with others. */
+const runAsync = (command, env = {}) =>
+  new Promise((resolve, reject) => {
+    const child = spawn(command, {
+      cwd: root,
+      stdio: 'inherit',
+      shell: true,
+      env: { ...process.env, ...env },
+    });
+    child.on('error', reject);
+    child.on('exit', (code) =>
+      code === 0 ? resolve() : reject(new Error(`${command} exited with ${code}`)),
+    );
+  });
 
 // Keep the update-signing key out of the builds: they run hundreds of
 // third-party build scripts (Cargo build.rs, npm) that would otherwise see it.
@@ -98,6 +112,52 @@ function only(dir, test, what) {
 
 const produced = [];
 
+/**
+ * A universal macOS build of one app, both halves at once. Tauri's own
+ * `--target universal-apple-darwin` builds one architecture after the other,
+ * and most of each build is the final optimisation of the whole program (one
+ * codegen unit, fat LTO), which runs on a single core. Side by side they take
+ * little longer than one. The Intel half gets a target folder of its own, as
+ * two Cargo builds can't share one. Then the two programs are joined with
+ * `lipo`, as Tauri does, and bundled from there with the same configuration.
+ */
+async function universalMac(pkg, binary, bundles, config, env = {}) {
+  // The pages once, before both builds: `pnpm build` twice at the same time
+  // would write into the same folder.
+  run(`pnpm --filter ${pkg} build`);
+  const noHook = configFile(`${binary}-universal`, {
+    ...config,
+    build: { beforeBuildCommand: null },
+  });
+  const intel = join(root, 'target', 'x86_64-build');
+  await Promise.all([
+    runAsync(
+      `pnpm --filter ${pkg} tauri build --no-bundle --target aarch64-apple-darwin --config "${noHook}"`,
+      env,
+    ),
+    runAsync(
+      `pnpm --filter ${pkg} tauri build --no-bundle --target x86_64-apple-darwin --config "${noHook}"`,
+      { ...env, CARGO_TARGET_DIR: intel },
+    ),
+  ]);
+  mkdirSync(release, { recursive: true });
+  execFileSync(
+    'lipo',
+    [
+      '-create',
+      '-output',
+      join(release, binary),
+      join(root, 'target', 'aarch64-apple-darwin', 'release', binary),
+      join(intel, 'x86_64-apple-darwin', 'release', binary),
+    ],
+    { stdio: 'inherit' },
+  );
+  run(
+    `pnpm --filter ${pkg} tauri bundle --bundles ${bundles} --target universal-apple-darwin --config "${noHook}"`,
+    env,
+  );
+}
+
 if (process.platform === 'win32') {
   console.log(`\n▸ Building UwULock ${version}`);
   run(`pnpm --filter @uwulock/desktop tauri build --no-bundle${targetArg}`);
@@ -130,22 +190,32 @@ if (process.platform === 'win32') {
       }
     : macOS;
 
+  const universal = target === 'universal-apple-darwin';
   console.log(`\n▸ Building UwULock ${version}`);
-  run(
-    `pnpm --filter @uwulock/desktop tauri build --bundles app${targetArg} --config "${configFile('app', { bundle: { macOS: appMacOS } })}"`,
-  );
+  const appConfig = { bundle: { macOS: appMacOS } };
+  if (universal) {
+    await universalMac('@uwulock/desktop', 'uwulock-desktop', 'app', appConfig);
+  } else {
+    run(
+      `pnpm --filter @uwulock/desktop tauri build --bundles app${targetArg} --config "${configFile('app', appConfig)}"`,
+    );
+  }
   execFileSync('ditto', [join(bundles, 'macos', 'UwULock.app'), join(apps, 'UwULock.app')]);
 
   console.log('\n▸ Packing it into the setup');
-  const setupConfig = configFile('setup', {
-    bundle: { active: true, targets: ['dmg'], macOS },
-  });
-  run(
-    `pnpm --filter @uwulock/setup tauri build --bundles dmg${targetArg} --config "${setupConfig}"`,
-    {
+  const setupConfig = { bundle: { active: true, targets: ['dmg'], macOS } };
+  if (universal) {
+    await universalMac('@uwulock/setup', 'uwulock-setup', 'dmg', setupConfig, {
       UWULOCK_SETUP_PAYLOAD: apps,
-    },
-  );
+    });
+  } else {
+    run(
+      `pnpm --filter @uwulock/setup tauri build --bundles dmg${targetArg} --config "${configFile('setup', setupConfig)}"`,
+      {
+        UWULOCK_SETUP_PAYLOAD: apps,
+      },
+    );
+  }
   const dmg = join(out, `UwULock-macos-${arch()}.dmg`);
   copyFileSync(
     only(join(bundles, 'dmg'), (name) => name.endsWith('.dmg'), 'disk image'),

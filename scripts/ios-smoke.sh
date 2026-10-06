@@ -5,12 +5,14 @@
 # UwUMail's ios-smoke.sh.)
 #
 # Usage: scripts/ios-smoke.sh <UwULock.app> [output folder]
+#        scripts/ios-smoke.sh --boot   only start booting the simulator, which
+#                                      takes minutes; CI does it before the build
 set -uo pipefail
 
 app="$1"
 out="${2:-smoke}"
 bundle="app.uwulock"
-mkdir -p "$out"
+[ "$app" = "--boot" ] || mkdir -p "$out"
 failed=0
 
 fail() {
@@ -50,7 +52,12 @@ device=$(xcrun simctl list devices available -j | node -e '
 ')
 [ -n "$device" ] || { fail "No iPhone simulator on this runner"; exit 1; }
 
+# Booting goes on in the background; the run below waits for it to finish.
 xcrun simctl boot "$device" 2>/dev/null
+if [ "$app" = "--boot" ]; then
+  echo "Booting $device"
+  exit 0
+fi
 xcrun simctl bootstatus "$device" -b > /dev/null
 xcrun simctl install "$device" "$app" || { fail "Install failed"; exit 1; }
 trap 'xcrun simctl shutdown "$device" 2>/dev/null' EXIT

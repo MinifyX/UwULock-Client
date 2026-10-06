@@ -1,6 +1,9 @@
 name: iOS
 
-# Builds UwULock for the iPhone and starts it in a simulator.
+# Builds UwULock for the iPhone and starts it in a simulator: two jobs side by side, the
+# simulator build with its smoke test and the iPhone build with the IPA. Pull requests only
+# build for the simulator — the iPhone build is the same Rust and Swift for another target, and
+# main and every tag still build it.
 #
 # The IPA is unsigned: UwULock has no Apple developer account, so nothing here carries a
 # certificate. A sideloading tool signs it with your own Apple ID on the way to the phone — see
@@ -41,7 +44,11 @@ env:
 
 jobs:
   app:
-    name: App (iPhone + simulator)
+    name: App (${{ matrix.build }})
+    strategy:
+      fail-fast: false
+      matrix:
+        build: ${{ github.event_name == 'pull_request' && fromJSON('["simulator"]') || fromJSON('["simulator", "iphone"]') }}
     runs-on: macos-latest
     steps:
       # Every `uses:` is pinned to a commit, with the version in the comment.
@@ -56,11 +63,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
           toolchain: stable
-          targets: aarch64-apple-ios, aarch64-apple-ios-sim
+          targets: ${{ matrix.build == 'simulator' && 'aarch64-apple-ios-sim' || 'aarch64-apple-ios' }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          shared-key: ios
+          # One cache per job, as each builds for one target: the simulator keeps the cache the
+          # single job had before (`ios`), the iPhone build has its own.
+          shared-key: ${{ matrix.build == 'simulator' && 'ios' || 'ios-iphone' }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      # A simulator takes minutes to boot; it does that while the app is built.
+      - name: Boot the simulator
+        if: matrix.build == 'simulator'
+        run: (bash scripts/ios-smoke.sh --boot > "$RUNNER_TEMP/simulator-boot.log" 2>&1 &)
       - run: pnpm install --frozen-lockfile
 
       - name: Version
@@ -98,29 +111,32 @@ jobs:
           # The AutoFill extension carries the app's version.
           UWULOCK_IOS_SHORT: ${{ steps.version.outputs.short }}
           UWULOCK_IOS_BUILD: ${{ steps.version.outputs.build }}
-        run: bash scripts/ios-build.sh "$VERSION" out
+          BUILD_KIND: ${{ matrix.build }}
+        run: bash scripts/ios-build.sh "$VERSION" out "$BUILD_KIND"
 
       - name: Smoke test (simulator)
+        if: matrix.build == 'simulator'
         run: bash scripts/ios-smoke.sh out/simulator/*.app smoke
 
       # The .app keeps its executable bit inside the tar; a plain artifact zip wouldn't.
       - name: Pack the simulator app
-        if: always()
+        if: always() && matrix.build == 'simulator'
         run: |
           if [ -d out/simulator ]; then
             tar -czf out/UwULock-simulator.tar.gz -C out simulator && rm -rf out/simulator
           fi
 
+      # `pnpm release` takes the IPA from the artifact UwULock-iOS-<sha>.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
-          name: UwULock-iOS-${{ github.sha }}
+          name: ${{ matrix.build == 'iphone' && format('UwULock-iOS-{0}', github.sha) || format('UwULock-iOS-simulator-{0}', github.sha) }}
           retention-days: 14
           if-no-files-found: warn
           path: out/*
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        if: always()
+        if: always() && matrix.build == 'simulator'
         with:
           name: UwULock-iOS-smoke-${{ github.sha }}
           retention-days: 7
@@ -130,7 +146,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: failure()
         with:
-          name: UwULock-iOS-project-${{ github.sha }}
+          name: UwULock-iOS-project-${{ matrix.build }}-${{ github.sha }}
           retention-days: 7
           path: |
             apps/desktop/src-tauri/gen/apple
