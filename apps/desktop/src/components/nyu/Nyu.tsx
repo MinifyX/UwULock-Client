@@ -18,23 +18,10 @@
  * app's stylesheet beyond the package's `nyu.css`.
  */
 
-import {
-  NYU as SUITE_NYU,
-  Nyu as SuiteNyu,
-  NyuEars,
-  NyuFace,
-  Sticker,
-  type NyuMood,
-} from '@uwusuite/design';
+import { NYU, Nyu as SuiteNyu, NyuEars, NyuFace, Sticker, type NyuMood } from '@uwusuite/design';
 import type { ReactNode } from 'react';
 
-export { Sticker, type NyuMood };
-
-/**
- * The suite's palette. `outline` is the installer's old name for `ink`, until
- * apps/setup draws from the package itself.
- */
-export const NYU = { ...SUITE_NYU, outline: SUITE_NYU.ink } as const;
+export { NYU, Sticker, type NyuMood };
 
 /**
  * A paw in Nyu's own coordinates (the body spans 28–228 × 74–220; the
