@@ -1,8 +1,8 @@
 import { listen } from '@tauri-apps/api/event';
+import { Icon, ICONS, TitleBarAction, Toaster, UwuLabels } from '@uwusuite/design';
 import { useEffect, useRef, useState } from 'react';
 import { ExtrasKeyNotice } from './components/ExtrasKeyNotice';
 import { GeneratorDialog } from './components/GeneratorDialog';
-import { Icon } from './components/Icon';
 import { LockScreen } from './components/LockScreen';
 import { LoginScreen } from './components/LoginScreen';
 import { NyuStage, playNyu } from './components/nyu/stage';
@@ -23,6 +23,7 @@ import {
   type Status,
   type UpdateInfo,
 } from './lib/api';
+import { useAppAppearance } from './lib/appearance';
 import { t, useLanguage } from './lib/i18n';
 import { useSettings } from './lib/settings';
 import {
@@ -31,11 +32,12 @@ import {
   warningText,
   type PasskeyProviderWarning,
 } from './lib/passkeys';
-import { toast, useToast } from './lib/toast';
+import { toast, toasts } from './lib/toast';
 
 export function App() {
-  useLanguage();
+  const language = useLanguage();
   const settings = useSettings();
+  useAppAppearance(settings);
   const [status, setStatus] = useState<Status | null>(null);
   const [settingsOpen, setSettingsOpen] = useState<SettingsSection | null>(null);
   const [generator, setGenerator] = useState(false);
@@ -44,8 +46,6 @@ export function App() {
   /** The login screen, for a second account next to the one already here. */
   const [adding, setAdding] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
-  const backgroundRef = useRef<HTMLDivElement>(null);
-  const current = useToast();
 
   // ── Vault state ──────────────────────────────────────────
   useEffect(() => {
@@ -110,11 +110,8 @@ export function App() {
   }, []);
 
   const unlocked = status?.state === 'unlocked';
+  // The dialogs are native <dialog>s: the page behind them is inert while they are open.
   const modalOpen = Boolean(settingsOpen || generator);
-
-  useEffect(() => {
-    if (backgroundRef.current) backgroundRef.current.inert = modalOpen;
-  }, [modalOpen]);
 
   // ── Keyboard ─────────────────────────────────────────────
   useEffect(() => {
@@ -147,101 +144,92 @@ export function App() {
   }, [modalOpen, unlocked]);
 
   return (
-    <div className="shell">
-      <div className="background" ref={backgroundRef}>
-        <TitleBar onSettings={() => setSettingsOpen('appearance')}>
-          {unlocked && <TravelBadge />}
-          {unlocked && <ExtrasKeyNotice />}
-          <button
-            className="titlebar-action"
-            onClick={() => setGenerator(true)}
-            title={t('Passwort-Generator (Strg+G)')}
-            aria-label={t('Passwort-Generator')}
-          >
-            <Icon name="dice" size={17} />
-          </button>
-          {unlocked && (
-            <button
-              className="titlebar-action"
-              onClick={() => void lock()}
-              title={t('Sperren (Strg+L)')}
-              aria-label={t('Sperren')}
+    <UwuLabels labels={language}>
+      <div className="shell">
+        <div className="background">
+          <TitleBar onSettings={() => setSettingsOpen('appearance')}>
+            {unlocked && <TravelBadge />}
+            {unlocked && <ExtrasKeyNotice />}
+            <TitleBarAction
+              label={t('Passwort-Generator (Strg+G)')}
+              onClick={() => setGenerator(true)}
             >
-              <Icon name="lock" size={17} />
-            </button>
-          )}
-        </TitleBar>
+              <Icon icon={ICONS.generate} size="md" />
+            </TitleBarAction>
+            {unlocked && (
+              <TitleBarAction label={t('Sperren (Strg+L)')} onClick={() => void lock()}>
+                <Icon icon={ICONS.locked} size="md" />
+              </TitleBarAction>
+            )}
+          </TitleBar>
 
-        <main className="stage">
-          {status === null ? null : status.state === 'logged-out' ? (
-            <LoginScreen onDone={setStatus} />
-          ) : adding ? (
-            <LoginScreen
-              adding
-              onDone={(next) => {
-                setAdding(false);
-                setStatus(next);
-              }}
-              onCancel={() => setAdding(false)}
-            />
-          ) : status.state === 'locked' ? (
-            <LockScreen
-              status={status}
-              onUnlocked={(next) => {
-                setStatus(next);
-                playNyu('unlocked');
-              }}
-              onLoggedOut={() => void vaultStatus().then(setStatus)}
-              onAddAccount={() => setAdding(true)}
-            />
-          ) : status.sessionExpired ? (
-            <LoginScreen again={status} onDone={setStatus} onCancel={() => void lock()} />
-          ) : (
-            <VaultScreen
-              status={status}
-              searchRef={searchRef}
-              onAddAccount={() => setAdding(true)}
-            />
-          )}
-        </main>
-      </div>
-
-      {current && (
-        <div className="toast" data-tone={current.tone} role="status" key={current.id}>
-          {current.text}
+          <main className="stage">
+            {status === null ? null : status.state === 'logged-out' ? (
+              <LoginScreen onDone={setStatus} />
+            ) : adding ? (
+              <LoginScreen
+                adding
+                onDone={(next) => {
+                  setAdding(false);
+                  setStatus(next);
+                }}
+                onCancel={() => setAdding(false)}
+              />
+            ) : status.state === 'locked' ? (
+              <LockScreen
+                status={status}
+                onUnlocked={(next) => {
+                  setStatus(next);
+                  playNyu('unlocked');
+                }}
+                onLoggedOut={() => void vaultStatus().then(setStatus)}
+                onAddAccount={() => setAdding(true)}
+              />
+            ) : status.sessionExpired ? (
+              <LoginScreen again={status} onDone={setStatus} onCancel={() => void lock()} />
+            ) : (
+              <VaultScreen
+                status={status}
+                searchRef={searchRef}
+                onAddAccount={() => setAdding(true)}
+              />
+            )}
+          </main>
         </div>
-      )}
 
-      <NyuStage />
+        <Toaster store={toasts} />
 
-      {update && !updateDismissed && !settingsOpen && (
-        <UpdateHint
-          update={update}
-          onLater={() => setUpdateDismissed(true)}
-          onRestart={installUpdate}
-        />
-      )}
+        <NyuStage />
 
-      {generator && <GeneratorDialog onClose={() => setGenerator(false)} />}
+        {update && !updateDismissed && !settingsOpen && (
+          <UpdateHint
+            update={update}
+            onLater={() => setUpdateDismissed(true)}
+            onRestart={installUpdate}
+          />
+        )}
 
-      {status && status.state !== 'logged-out' && <PasskeyRequestDialog />}
+        {generator && <GeneratorDialog onClose={() => setGenerator(false)} />}
 
-      {settingsOpen && status && (
-        <SettingsDialog
-          initial={settingsOpen}
-          status={status}
-          onClose={() => setSettingsOpen(null)}
-          update={update}
-          onUpdateFound={(found) => {
-            setUpdate(found);
-            setUpdateDismissed(false);
-          }}
-          onInstallUpdate={() => {
-            setSettingsOpen(null);
-            setUpdateDismissed(false);
-          }}
-        />
-      )}
-    </div>
+        {status && status.state !== 'logged-out' && <PasskeyRequestDialog />}
+
+        {settingsOpen && status && (
+          <SettingsDialog
+            initial={settingsOpen}
+            status={status}
+            onClose={() => setSettingsOpen(null)}
+            update={update}
+            onUpdateFound={(found) => {
+              setUpdate(found);
+              setUpdateDismissed(false);
+            }}
+            onInstallUpdate={() => {
+              setSettingsOpen(null);
+              setUpdateDismissed(false);
+            }}
+          />
+        )}
+      </div>
+    </UwuLabels>
   );
 }

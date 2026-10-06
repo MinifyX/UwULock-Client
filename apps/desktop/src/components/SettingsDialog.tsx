@@ -1,3 +1,12 @@
+import {
+  Button,
+  Nyu as SuiteNyu,
+  Segmented,
+  Select,
+  SettingRow,
+  Switch,
+  Wordmark,
+} from '@uwusuite/design';
 import { useEffect, useState, type ReactNode } from 'react';
 import pkg from '../../package.json';
 import {
@@ -23,7 +32,6 @@ import { unlockDescription, unlockLabel, unlockPrompt } from '../lib/unlock';
 import { FontPicker } from './FontPicker';
 import { Modal } from './Modal';
 import { MoveSetting } from './MoveDialog';
-import { Nyu } from './nyu/Nyu';
 import { PasskeySettings } from './PasskeySettings';
 
 export type SettingsSection = 'appearance' | 'security' | 'account' | 'updates' | 'about';
@@ -46,7 +54,7 @@ type Props = {
   onInstallUpdate: () => void;
 };
 
-/** One setting: a label, an optional explanation and its control. */
+/** One setting: a label, an optional explanation and its control (the package's SettingRow). */
 function Row({
   label,
   description,
@@ -57,44 +65,13 @@ function Row({
   children: ReactNode;
 }) {
   return (
-    <div className="setting-row">
-      <div className="setting-text">
-        <p className="setting-label">{label}</p>
-        {description && <p className="setting-description">{description}</p>}
-      </div>
-      <div className="setting-control">{children}</div>
-    </div>
+    <SettingRow label={label} description={description}>
+      {children}
+    </SettingRow>
   );
 }
 
-function Segmented<T extends string | number>({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: T;
-  options: { value: T; label: string }[];
-  onChange: (value: T) => void;
-}) {
-  return (
-    <div className="segmented" role="radiogroup" aria-label={label}>
-      {options.map((option) => (
-        <button
-          key={String(option.value)}
-          type="button"
-          role="radio"
-          aria-checked={option.value === value}
-          onClick={() => onChange(option.value)}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
+/** An on/off setting: the package's Switch, named by its row. */
 function Toggle({
   label,
   checked,
@@ -104,18 +81,7 @@ function Toggle({
   checked: boolean;
   onChange: (checked: boolean) => void;
 }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      className="toggle"
-      aria-checked={checked}
-      aria-label={label}
-      onClick={() => onChange(!checked)}
-    >
-      <span className="toggle-thumb" />
-    </button>
-  );
+  return <Switch label={label} checked={checked} onChange={onChange} />;
 }
 
 function Appearance() {
@@ -150,9 +116,27 @@ function Appearance() {
         />
       </Row>
       <Row
-        label={t('Schrift')}
-        description={t('Nur auf diesem Gerät. UwU Sans ist die Schrift aller UwU-Apps.')}
+        label={t('Kontrast')}
+        description={t('„System“ folgt der Einstellung von {system}.', { system: systemName() })}
       >
+        <Segmented
+          label={t('Kontrast')}
+          value={settings.contrast}
+          onChange={(contrast) => updateSettings({ contrast })}
+          options={[
+            { value: 'system', label: t('System') },
+            { value: 'normal', label: t('Normal') },
+            { value: 'high', label: t('Hoch') },
+          ]}
+        />
+      </Row>
+      <div className="flex flex-col gap-3 border-b border-hairline py-3.5">
+        <div className="flex flex-col gap-0.5">
+          <p className="text-body font-semibold">{t('Schrift')}</p>
+          <p className="text-caption text-muted">
+            {t('Nur auf diesem Gerät. UwU Sans ist die Schrift aller UwU-Apps.')}
+          </p>
+        </div>
         <FontPicker
           label={t('Schrift')}
           value={settings.font}
@@ -160,7 +144,7 @@ function Appearance() {
           systemName={t('System')}
           sample={t('Tresor 0123 Il1 O0')}
         />
-      </Row>
+      </div>
       <Row
         label={t('Animationen')}
         description={t('„System“ folgt der Einstellung von {system}.', { system: systemName() })}
@@ -213,8 +197,8 @@ function Security({ status, onClose }: { status: Status; onClose: () => void }) 
           'Nach so langer Zeit ohne Eingabe sperrt UwULock den Tresor und vergisst alles Entschlüsselte. Beim Beenden ist er immer gesperrt.',
         )}
       >
-        <select
-          className="select"
+        <Select
+          className="w-52"
           value={settings.autoLock}
           aria-label={t('Automatisch sperren')}
           onChange={(e) => updateSettings({ autoLock: Number(e.target.value) as AutoLock })}
@@ -225,7 +209,7 @@ function Security({ status, onClose }: { status: Status; onClose: () => void }) 
             </option>
           ))}
           <option value={0}>{t('Nie (nur beim Beenden)')}</option>
-        </select>
+        </Select>
       </Row>
       <Row
         label={t('Zwischenablage leeren')}
@@ -233,8 +217,8 @@ function Security({ status, onClose }: { status: Status; onClose: () => void }) 
           'Kopierte Werte verschwinden danach wieder – aber nur, wenn inzwischen nichts anderes kopiert wurde. Unter Windows landen sie nie im Zwischenablage-Verlauf.',
         )}
       >
-        <select
-          className="select"
+        <Select
+          className="w-52"
           value={settings.clipboardClear}
           aria-label={t('Zwischenablage leeren')}
           onChange={(e) =>
@@ -247,7 +231,7 @@ function Security({ status, onClose }: { status: Status; onClose: () => void }) 
             </option>
           ))}
           <option value={0}>{t('Nie')}</option>
-        </select>
+        </Select>
       </Row>
       {status.hello !== null && (
         <Row
@@ -295,14 +279,15 @@ function Security({ status, onClose }: { status: Status; onClose: () => void }) 
         label={t('Jetzt sperren')}
         description={isMobile() ? undefined : t('Auch mit Strg+L, von überall in UwULock.')}
       >
-        <button
+        <Button
+          size="sm"
           onClick={() => {
             onClose();
             void lock();
           }}
         >
           {t('Sperren')}
-        </button>
+        </Button>
       </Row>
     </>
   );
@@ -386,7 +371,8 @@ function Account({ status, onClose }: { status: Status; onClose: () => void }) {
               )
         }
       >
-        <button
+        <Button
+          size="sm"
           disabled={busy || status.syncing}
           onClick={async () => {
             setBusy(true);
@@ -402,7 +388,7 @@ function Account({ status, onClose }: { status: Status; onClose: () => void }) {
           }}
         >
           {busy || status.syncing ? t('Synchronisiert …') : t('Jetzt synchronisieren')}
-        </button>
+        </Button>
       </Row>
       {result && (
         <p className="setting-result" data-tone={result.tone} role="status">
@@ -415,7 +401,9 @@ function Account({ status, onClose }: { status: Status; onClose: () => void }) {
           'Für alles, was diese Beta noch nicht kann: Anhänge, Sends, Organisationen verwalten.',
         )}
       >
-        <button onClick={() => void openWebVault().catch(() => undefined)}>{t('Öffnen')}</button>
+        <Button size="sm" onClick={() => void openWebVault().catch(() => undefined)}>
+          {t('Öffnen')}
+        </Button>
       </Row>
       {status.state === 'unlocked' && <EmailBreachSetting />}
       {status.state === 'unlocked' && <MoveSetting />}
@@ -425,19 +413,19 @@ function Account({ status, onClose }: { status: Status; onClose: () => void }) {
           'Löscht die Anmeldung und die verschlüsselte Kopie des Tresors von diesem Gerät. Auf dem Server bleibt alles, wie es ist.',
         )}
       >
-        <button className="danger" onClick={() => setConfirm(true)}>
+        <Button size="sm" variant="danger" onClick={() => setConfirm(true)}>
           {t('Abmelden …')}
-        </button>
+        </Button>
       </Row>
       {confirm && (
         <Modal
           title={t('Von diesem Gerät abmelden?')}
+          size="small"
           onCancel={() => setConfirm(false)}
           footer={
             <>
-              <span className="spacer" />
-              <button
-                className="danger"
+              <Button
+                variant="danger"
                 data-secondary
                 onClick={async () => {
                   setConfirm(false);
@@ -450,10 +438,10 @@ function Account({ status, onClose }: { status: Status; onClose: () => void }) {
                 }}
               >
                 {t('Abmelden')}
-              </button>
-              <button className="primary" data-autofocus onClick={() => setConfirm(false)}>
+              </Button>
+              <Button variant="primary" data-autofocus onClick={() => setConfirm(false)}>
                 {t('Abbrechen')}
-              </button>
+              </Button>
             </>
           }
         >
@@ -486,9 +474,9 @@ function Updates({
           'Auf dem Handy aktualisiert sich UwULock nicht selbst. Neue Versionen (APK für Android, IPA für iOS) gibt es auf der Release-Seite.',
         )}
       >
-        <button onClick={() => void openProjectPage('releases').catch(() => undefined)}>
+        <Button size="sm" onClick={() => void openProjectPage('releases').catch(() => undefined)}>
           {t('Versionen')}
-        </button>
+        </Button>
       </Row>
     );
 
@@ -522,12 +510,13 @@ function Updates({
         )}
       >
         {update ? (
-          <button className="primary" onClick={onInstallUpdate}>
+          <Button size="sm" variant="primary" onClick={onInstallUpdate}>
             {t('{version} installieren', { version: update.version })}
-          </button>
+          </Button>
         ) : (
-          <button
-            disabled={checking}
+          <Button
+            size="sm"
+            busy={checking}
             onClick={async () => {
               setChecking(true);
               setResult(null);
@@ -546,7 +535,7 @@ function Updates({
             }}
           >
             {checking ? t('Sucht …') : t('Nach Updates suchen')}
-          </button>
+          </Button>
         )}
       </Row>
       {result && (
@@ -563,10 +552,8 @@ function About() {
   const open = (page: ProjectPage) => void openProjectPage(page).catch(() => undefined);
   return (
     <div className="about">
-      <Nyu size={88} mood="happy" title="Nyu" />
-      <p className="about-name">
-        <span>UwU</span>Lock
-      </p>
+      <SuiteNyu shell="lock" size={88} mood="happy" title="Nyu" />
+      <Wordmark product="Lock" className="mt-1.5 text-title" />
       <p className="about-version">{t('Version {version}', { version: pkg.version })}</p>
       <p className="about-text">
         {t(
@@ -579,10 +566,18 @@ function About() {
         )}
       </p>
       <div className="about-actions">
-        <button onClick={() => open('source')}>{t('Quellcode auf GitHub')}</button>
-        <button onClick={() => open('releases')}>{t('Versionen')}</button>
-        <button onClick={() => open('license')}>{t('Lizenz')}</button>
-        <button onClick={() => open('suite')}>UwUSuite</button>
+        <Button size="sm" onClick={() => open('source')}>
+          {t('Quellcode auf GitHub')}
+        </Button>
+        <Button size="sm" onClick={() => open('releases')}>
+          {t('Versionen')}
+        </Button>
+        <Button size="sm" onClick={() => open('license')}>
+          {t('Lizenz')}
+        </Button>
+        <Button size="sm" onClick={() => open('suite')}>
+          UwUSuite
+        </Button>
       </div>
     </div>
   );
@@ -629,9 +624,6 @@ export function SettingsDialog({
           {section === 'about' && <About />}
         </div>
       </div>
-      <button className="settings-close icon-button" onClick={onClose} aria-label={t('Schließen')}>
-        ×
-      </button>
     </Modal>
   );
 }

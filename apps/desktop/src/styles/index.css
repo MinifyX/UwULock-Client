@@ -1,0 +1,29 @@
+/*
+ * Every stylesheet of the window, in cascade order.
+ *
+ * The suite first: Tailwind and @uwusuite/design — tokens, UwU Sans, the base
+ * layer, motion, Nyu and the title bar — plus the font picker's fonts. Then
+ * UwULock's own sheets, in Tailwind's `components` layer: they are built from
+ * the package's tokens, and a utility class on an element always wins over
+ * them. phone.css comes last, so the phone layout overrides the others.
+ */
+@import 'tailwindcss';
+@import '@uwusuite/design/tailwind.css';
+@import '@uwusuite/design/font-picker.css';
+
+/* Tailwind looks for class names in the app's sources. */
+@source '../';
+
+@import './app.css' layer(components);
+@import './screens.css' layer(components);
+@import './vault.css' layer(components);
+@import './detail.css' layer(components);
+@import './generator.css' layer(components);
+@import './extras.css' layer(components);
+@import './wifi.css' layer(components);
+@import './passkeys.css' layer(components);
+@import './moving.css' layer(components);
+@import './health.css' layer(components);
+@import './suite.css' layer(components);
+@import '../components/nyu/nyu.css' layer(components);
+@import './phone.css' layer(components);

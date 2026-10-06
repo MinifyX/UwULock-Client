@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Icon } from '@desktop/components/Icon';
+import { Icon } from '../../legacy/Icon';
 import { NyuScene } from '@desktop/components/nyu/scenes';
 import { normalizeServerUrl } from '../../background/server';
 import { N_, t } from '../../shared/i18n';

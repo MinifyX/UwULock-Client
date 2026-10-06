@@ -1,5 +1,6 @@
 @import 'tailwindcss';
-@import '../../desktop/src/components/nyu/nyu.css';
+/* Phase 3 of the design migration moves this to @uwusuite/design/nyu.css. */
+@import './legacy/nyu.css';
 
 @theme inline {
   --font-sans: 'Manrope Variable', ui-sans-serif, system-ui, sans-serif;

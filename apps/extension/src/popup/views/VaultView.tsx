@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Icon } from '@desktop/components/Icon';
+import { Icon } from '../../legacy/Icon';
 import { NyuScene } from '@desktop/components/nyu/scenes';
 import { N_, t } from '../../shared/i18n';
 import { ItemIcon } from '../icons';

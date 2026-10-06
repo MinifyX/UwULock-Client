@@ -1,0 +1,127 @@
+/* The sign-in and lock screens (LoginScreen, LockScreen). */
+
+/* ── Welcome / login ───────────────────────────────────── */
+
+.welcome {
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(360px, 440px);
+  gap: 40px;
+  align-items: center;
+  padding: 32px clamp(24px, 6vw, 80px);
+  overflow-y: auto;
+  background:
+    radial-gradient(circle at 18% 30%, var(--uwu-pink-tint) 0, transparent 42%), var(--uwu-canvas);
+}
+
+.welcome-art {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 8px;
+}
+
+.welcome-scene {
+  width: min(360px, 100%);
+}
+
+.welcome-title {
+  margin: 10px 0 0;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.welcome-text {
+  margin: 0;
+  max-width: 400px;
+  color: var(--uwu-muted);
+  line-height: 1.55;
+}
+
+.welcome-card {
+  padding: 26px 26px 22px;
+  border-radius: var(--uwu-radius-card);
+  border: 1px solid var(--uwu-border);
+  background: var(--uwu-surface);
+  box-shadow: 0 30px 60px -40px rgba(20, 16, 22, 0.5);
+}
+
+.welcome-beta {
+  display: flex;
+  gap: 7px;
+  margin: 6px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--uwu-hairline);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--uwu-muted);
+}
+
+.welcome-beta .icon {
+  color: var(--uwu-pink);
+  margin-top: 2px;
+}
+
+@media (max-width: 820px) {
+  .welcome {
+    grid-template-columns: 1fr;
+  }
+  .welcome-art {
+    display: none;
+  }
+}
+
+/* ── Lock ──────────────────────────────────────────────── */
+
+.lock {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  overflow-y: auto;
+  background:
+    radial-gradient(circle at 50% 20%, var(--uwu-pink-tint) 0, transparent 45%), var(--uwu-canvas);
+}
+
+.lock-card {
+  width: min(400px, 100%);
+  display: grid;
+  gap: 14px;
+  padding: 22px 26px 20px;
+  border-radius: var(--uwu-radius-card);
+  border: 1px solid var(--uwu-border);
+  background: var(--uwu-surface);
+  box-shadow: 0 30px 60px -40px rgba(20, 16, 22, 0.5);
+  text-align: center;
+}
+
+.lock-card .field {
+  text-align: left;
+}
+
+.lock-scene {
+  width: 220px;
+  justify-self: center;
+  margin: -6px 0 -4px;
+}
+
+.lock-account {
+  margin: -6px 0 0;
+  display: grid;
+  gap: 2px;
+}
+
+.lock-account span,
+.lock-meta {
+  font-size: 12.5px;
+  color: var(--uwu-muted);
+}
+
+.lock-button {
+  padding: 10px 14px;
+}
+
+.lock-meta {
+  margin: 0;
+}

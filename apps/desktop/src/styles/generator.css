@@ -1,0 +1,121 @@
+/* The password generator (GeneratorDialog). */
+
+/* ── Generator ─────────────────────────────────────────── */
+
+.generator {
+  display: grid;
+  gap: 14px;
+}
+
+.generated {
+  display: block;
+  padding: 16px 14px;
+  border-radius: var(--uwu-radius-control);
+  border: 1px solid var(--uwu-border);
+  background: var(--uwu-canvas);
+  font-family: var(--uwu-mono);
+  font-size: 18px;
+  text-align: center;
+  word-break: break-all;
+  min-height: 60px;
+}
+
+.meter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--uwu-muted);
+}
+
+.meter-bar {
+  display: flex;
+  gap: 4px;
+}
+
+.meter-bar span {
+  width: 34px;
+  height: 5px;
+  border-radius: var(--uwu-radius-pill);
+  background: var(--uwu-hairline);
+}
+
+.meter[data-level='1'] .meter-bar span:nth-child(-n + 1),
+.meter[data-level='2'] .meter-bar span:nth-child(-n + 2),
+.meter[data-level='3'] .meter-bar span:nth-child(-n + 3),
+.meter[data-level='4'] .meter-bar span:nth-child(-n + 4) {
+  background: var(--uwu-pink);
+}
+
+.meter[data-level='1'] .meter-bar span:first-child {
+  background: var(--uwu-alarm);
+}
+
+.generator input[type='range'] {
+  width: 100%;
+  accent-color: var(--uwu-pink-solid);
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.generator-sets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip-check {
+  padding: 6px 12px;
+  border-radius: var(--uwu-radius-pill);
+  border: 1px solid var(--uwu-border);
+  background: var(--uwu-canvas);
+}
+
+.chip-check:has(input:checked) {
+  border-color: var(--uwu-pink);
+  background: var(--uwu-pink-tint);
+  color: var(--uwu-pink-ink);
+}
+
+/* The generator's minimum per set that is on. */
+.generator-mins {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.generator-mins legend {
+  float: left;
+  margin-right: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--uwu-muted);
+}
+
+.mini-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+}
+
+.mini-field input {
+  width: 58px;
+  padding: 4px 6px;
+  font: inherit;
+  text-align: center;
+  border: 1px solid var(--uwu-border);
+  border-radius: var(--uwu-radius-control);
+  background: var(--uwu-canvas);
+  color: var(--uwu-ink);
+}
+
+.generator-raised {
+  font-weight: 500;
+  color: var(--uwu-pink-ink);
+}

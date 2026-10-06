@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Icon } from '@desktop/components/Icon';
+import { Icon } from '../../legacy/Icon';
 import { t } from '../../shared/i18n';
 import { errorText, PasswordInput } from '../lib';
 

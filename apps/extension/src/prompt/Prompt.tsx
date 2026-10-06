@@ -5,7 +5,7 @@
  */
 
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { Icon } from '@desktop/components/Icon';
+import { Icon } from '../legacy/Icon';
 import { t } from '../shared/i18n';
 import type { PasskeyDecision, PasskeyPrompt } from '../shared/protocol';
 import { passkeyDecide, passkeyPrompt } from '../popup/api';

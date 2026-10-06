@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
-import { FontPicker } from '@desktop/components/FontPicker';
-import { Icon } from '@desktop/components/Icon';
+import { FontPicker } from '../../legacy/FontPicker';
+import { Icon } from '../../legacy/Icon';
 import { ext } from '../../shared/browser';
 import { N_, t } from '../../shared/i18n';
 import type { LockTimeout, Settings, Status } from '../../shared/protocol';

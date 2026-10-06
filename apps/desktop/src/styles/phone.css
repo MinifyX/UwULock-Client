@@ -1,64 +1,12 @@
 /*
- * Phones: Android and iOS (html[data-platform]), and the phone layout at
- * phone width (lib/phone.ts, the same 700 px).
- *
- * Safe areas: iOS draws the page under the status bar and the home
- * indicator, so the shell keeps out of them (viewport-fit=cover in
- * index.html). Android's MainActivity already places the page between the
- * bars; there the insets are 0.
+ * The phone layout: phones, and a window at phone width (lib/phone.ts, below
+ * 700 px, the package's `phone:` breakpoint). One pane at a time instead of
+ * three side by side — the list, the item over it, the folders in a drawer.
+ * Safe areas and the app bar are in app.css; dialogs fill the screen by
+ * themselves (the package's Dialog).
  */
 
-html[data-platform='android'],
-html[data-platform='ios'] {
-  /* Taps don't flash grey, and long presses don't select the UI's words. */
-  -webkit-tap-highlight-color: transparent;
-  -webkit-touch-callout: none;
-}
-
-html[data-platform='ios'] .shell {
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
-    env(safe-area-inset-left);
-  background: var(--uwu-surface);
-}
-
-/* The title bar is the app bar: no window to drag, room for a thumb. */
-html[data-platform='android'] .background,
-html[data-platform='ios'] .background {
-  grid-template-rows: 48px 1fr;
-}
-
-html[data-platform='android'] .titlebar,
-html[data-platform='ios'] .titlebar {
-  padding-right: 6px;
-}
-
-html[data-platform='android'] .titlebar-action,
-html[data-platform='ios'] .titlebar-action {
-  width: 40px;
-  height: 40px;
-  margin-right: 2px;
-}
-
-html[data-platform='android'] .titlebar-action svg,
-html[data-platform='ios'] .titlebar-action svg {
-  width: 20px;
-  height: 20px;
-}
-
-/* No hover on a touch screen: an item's copy buttons are always fully there. */
-html[data-platform='android'] .detail-actions,
-html[data-platform='ios'] .detail-actions {
-  opacity: 1;
-}
-
-/* iOS zooms into any field with text smaller than 16 px. */
-html[data-platform='ios'] input,
-html[data-platform='ios'] textarea,
-html[data-platform='ios'] select {
-  font-size: 16px;
-}
-
-@media (max-width: 700px) {
+@media (max-width: 699px) {
   /* ── Vault: one pane at a time ─────────────────────────── */
 
   .vault {
@@ -128,124 +76,8 @@ html[data-platform='ios'] select {
     min-height: 56px;
   }
 
-  .detail-back {
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    padding: 6px 8px;
-    border-bottom: 1px solid var(--uwu-hairline);
-    background: var(--uwu-canvas);
-  }
-
-  .detail-back button {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    max-width: 100%;
-    padding: 8px 10px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .detail {
-    padding: 16px 14px 28px;
-  }
-
-  /* The title gets the whole width; the item's buttons go on a row below it. */
-  .detail-head {
-    flex-wrap: wrap;
-  }
-
-  .detail-title {
-    flex: 1;
-  }
-
-  .detail-tools {
-    flex-basis: 100%;
-    justify-content: flex-end;
-  }
-
   .list-title {
     gap: 8px;
-  }
-
-  .detail-row {
-    padding-left: 14px;
-    padding-right: 6px;
-  }
-
-  .detail-actions .icon-button {
-    width: 38px;
-    height: 38px;
-  }
-
-  /* ── Dialogs fill the screen ───────────────────────────── */
-
-  .modal-backdrop {
-    padding: 0;
-    place-items: stretch;
-  }
-
-  .modal,
-  .modal[data-size='wide'] {
-    width: 100%;
-    height: 100%;
-    max-height: none;
-    border-radius: 0;
-    border: 0;
-    align-content: start;
-    grid-template-rows: auto 1fr auto;
-    padding: 16px 16px max(16px, env(safe-area-inset-bottom));
-    padding-top: max(16px, env(safe-area-inset-top));
-  }
-
-  .modal-body {
-    align-content: start;
-    min-height: 0;
-    overflow-y: auto;
-  }
-
-  .modal-footer {
-    flex-wrap: wrap;
-  }
-
-  .settings {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
-    gap: 12px;
-  }
-
-  .settings-nav {
-    flex-direction: row;
-    overflow-x: auto;
-    gap: 4px;
-    padding-bottom: 2px;
-  }
-
-  .settings-nav button {
-    flex: none;
-    white-space: nowrap;
-  }
-
-  .settings-close {
-    top: max(10px, env(safe-area-inset-top));
-    right: 10px;
-    width: 40px;
-    height: 40px;
-  }
-
-  .setting-row {
-    flex-wrap: wrap;
-  }
-
-  .setting-control:has(.font-picker) {
-    max-width: 100%;
-    flex: 1 1 100%;
-  }
-
-  .font-picker {
-    min-width: 0;
   }
 
   /* ── Sign-in and lock ──────────────────────────────────── */
@@ -268,10 +100,5 @@ html[data-platform='ios'] select {
 
   .lock-scene {
     width: 180px;
-  }
-
-  .toast {
-    bottom: max(22px, calc(env(safe-area-inset-bottom) + 12px));
-    max-width: calc(100vw - 32px);
   }
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Icon } from '@desktop/components/Icon';
+import { Icon } from '../../legacy/Icon';
 import { t } from '../../shared/i18n';
 import type { FileRequestEntry, FileRequests } from '../../shared/protocol';
 import { copyFileRequestLink, fileRequests } from '../api';

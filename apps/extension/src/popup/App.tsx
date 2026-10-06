@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Icon } from '@desktop/components/Icon';
+import { Icon } from '../legacy/Icon';
 import { playNyu } from '@desktop/components/nyu/stage';
 import { t } from '../shared/i18n';
 import { lock, syncNow } from './api';

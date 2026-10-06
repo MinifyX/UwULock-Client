@@ -5,9 +5,9 @@
  */
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { Icon } from '@desktop/components/Icon';
+import { Icon } from '../legacy/Icon';
 import { NyuStage } from '@desktop/components/nyu/stage';
-import { applyFont, isFontChoice } from '@desktop/lib/fonts';
+import { applyFont, isFontChoice } from '../legacy/fonts';
 import { ext } from '../shared/browser';
 import { RequestFailed } from '../shared/messages';
 import { locale, resolveLanguage, setLanguage, t } from '../shared/i18n';

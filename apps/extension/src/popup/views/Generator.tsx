@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Icon } from '@desktop/components/Icon';
+import { Icon } from '../../legacy/Icon';
 import { playNyu } from '@desktop/components/nyu/stage';
 import { MAX_LENGTH, minimumOf, withMinimum, type CharSet } from '@desktop/lib/generator';
 import { t } from '../../shared/i18n';

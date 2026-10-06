@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { Icon } from '@desktop/components/Icon';
+import { Icon } from '../../legacy/Icon';
 import { playNyu } from '@desktop/components/nyu/stage';
 import { QrCode } from '@desktop/components/QrCode';
 import { ENTERPRISE_KEYS, isEnterprise, readWifi, wifiQr, type WifiView } from '@desktop/lib/wifi';

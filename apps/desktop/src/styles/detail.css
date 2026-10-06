@@ -1,0 +1,381 @@
+/* An item's details and its editor (ItemDetail, ItemEditor). */
+
+/* ── Details ───────────────────────────────────────────── */
+
+.detail-pane {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--uwu-canvas);
+}
+
+.detail {
+  width: min(680px, 100%);
+  margin: 0 auto;
+  padding: 22px 24px 28px;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.detail-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.detail-title {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.detail-title h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+
+.masked {
+  letter-spacing: 0.08em;
+  color: var(--uwu-muted);
+}
+
+.colored [data-class='digit'] {
+  color: var(--uwu-pink);
+}
+
+.colored [data-class='symbol'] {
+  color: #7c5cd6;
+}
+
+:root[data-theme='dark'] .colored [data-class='symbol'] {
+  color: #c9b6f0;
+}
+
+.totp {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.totp-code {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--uwu-pink-ink);
+}
+
+.totp[data-soon] .totp-code {
+  color: var(--uwu-alarm);
+}
+
+.totp-ring circle {
+  fill: none;
+  stroke-width: 3;
+}
+
+.totp-track {
+  stroke: var(--uwu-hairline);
+}
+
+.totp-left {
+  stroke: var(--uwu-pink);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 900ms linear;
+}
+
+.totp[data-soon] .totp-left {
+  stroke: var(--uwu-alarm);
+}
+
+.totp-seconds {
+  font-size: 11.5px;
+  color: var(--uwu-muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 2ch;
+}
+
+.notes {
+  display: flex;
+  gap: 10px;
+  padding: 6px 12px 12px 16px;
+}
+
+.notes p {
+  flex: 1;
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+}
+
+.bool {
+  font-weight: 600;
+  color: var(--uwu-muted);
+}
+
+.bool[data-on] {
+  color: var(--uwu-online);
+}
+
+.history-toggle {
+  justify-content: flex-start;
+  gap: 8px;
+  margin: 4px 6px;
+  padding: 8px 10px;
+  color: var(--uwu-muted);
+}
+
+.history-toggle .turned {
+  transform: rotate(90deg);
+}
+
+.detail-error {
+  color: var(--uwu-alarm);
+  font-family: var(--uwu-font);
+  font-size: 13px;
+}
+
+.reprompt {
+  gap: 12px;
+  padding: 14px 16px 16px;
+}
+
+.reprompt .detail-card-title {
+  padding: 0;
+  color: var(--uwu-ink);
+}
+
+.detail-foot {
+  display: grid;
+  gap: 6px;
+  padding: 0 4px;
+  font-size: 12px;
+  color: var(--uwu-muted);
+}
+
+.detail-foot p {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.detail-beta {
+  flex-wrap: wrap;
+  padding-top: 8px;
+  border-top: 1px dashed var(--uwu-border);
+}
+
+@media (max-width: 1020px) {
+  .vault {
+    grid-template-columns: 200px minmax(240px, 300px) 1fr;
+  }
+}
+
+/* The tools next to an item's name: favourite, trash, edit. */
+.detail-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.detail-tools .primary {
+  padding: 6px 12px;
+}
+
+.editor {
+  display: grid;
+  gap: 14px;
+}
+
+.editor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.add-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+button.add-row {
+  justify-self: start;
+  gap: 6px;
+  font-size: 12.5px;
+}
+
+.linked-note {
+  flex: 1;
+  font-size: 12.5px;
+}
+
+.editor-switches {
+  display: grid;
+  gap: 8px;
+}
+
+.field textarea.mono,
+.field input.mono {
+  font-family: var(--uwu-mono);
+}
+
+/* The next one-time code, in the last seconds of a period (TotpRow). */
+.totp-block {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.totp-next {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--uwu-muted);
+  animation: totp-next-in 220ms ease-out both;
+}
+
+.totp-next b {
+  font-family: var(--uwu-mono);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--uwu-ink);
+}
+
+.totp-next .icon-button {
+  width: 26px;
+  height: 26px;
+}
+
+@keyframes totp-next-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* "+2 weitere Websites" under the first one. */
+.more-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 4px;
+  font-size: 12.5px;
+  max-width: 100%;
+}
+
+.more-toggle .more-hosts {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--uwu-muted);
+}
+
+/* An item's passkeys in its details. */
+.passkey-row .detail-value {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.passkey-meta {
+  font-size: 12px;
+  color: var(--uwu-muted);
+  overflow-wrap: anywhere;
+}
+
+/* The editor's renewal reminder, under its switch. */
+.editor-reminder {
+  display: grid;
+  gap: 10px;
+}
+
+.editor-reminder .extras-form {
+  padding: 10px 12px;
+  border-radius: var(--uwu-radius-control);
+  background: var(--uwu-canvas);
+}
+
+/* The editor's favourite star pops when switched on. */
+.star-toggle[aria-pressed='true'] svg {
+  animation: star-pop 320ms cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+@keyframes star-pop {
+  0% {
+    transform: scale(0.6) rotate(-20deg);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+/* No hover on a touch screen: an item's copy buttons are always fully there. */
+html[data-platform='android'] .detail-actions,
+html[data-platform='ios'] .detail-actions {
+  opacity: 1;
+}
+
+@media (max-width: 699px) {
+  .detail-back {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--uwu-hairline);
+    background: var(--uwu-canvas);
+  }
+
+  .detail-back button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    padding: 8px 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .detail {
+    padding: 16px 14px 28px;
+  }
+
+  /* The title gets the whole width; the item's buttons go on a row below it. */
+  .detail-head {
+    flex-wrap: wrap;
+  }
+
+  .detail-title {
+    flex: 1;
+  }
+
+  .detail-tools {
+    flex-basis: 100%;
+    justify-content: flex-end;
+  }
+
+  .detail-row {
+    padding-left: 14px;
+    padding-right: 6px;
+  }
+
+  .detail-actions .icon-button {
+    width: 38px;
+    height: 38px;
+  }
+}
