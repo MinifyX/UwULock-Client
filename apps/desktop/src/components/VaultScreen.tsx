@@ -20,6 +20,7 @@ import { N_, t, useLanguage } from '../lib/i18n';
 import { KIND_LABEL } from '../lib/items';
 import { usePhoneLayout } from '../lib/phone';
 import { platform } from '../lib/platform';
+import { sendsAvailable } from '../lib/sends';
 import { useSettings } from '../lib/settings';
 import { toast } from '../lib/toast';
 import { has, loadIcons, openWebVaultAt, useUwu } from '../lib/uwu';
@@ -32,6 +33,7 @@ import { ItemEditor } from './ItemEditor';
 import { ItemTile } from './ItemTile';
 import { WifiConnect } from './WifiConnect';
 import { MaskedDialog } from './MaskedDialog';
+import { SendsDialog } from './SendsDialog';
 import { Modal } from './Modal';
 import { NyuScene } from './nyu/scenes';
 import { SPACE_TITLE, SuitePane } from './SuitePane';
@@ -130,7 +132,9 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
     null,
   );
   const [folderToDelete, setFolderToDelete] = useState<{ id: string; name: string } | null>(null);
-  const [extrasDialog, setExtrasDialog] = useState<null | 'file-requests' | 'masked'>(null);
+  const [extrasDialog, setExtrasDialog] = useState<null | 'sends' | 'file-requests' | 'masked'>(
+    null,
+  );
   // The password check in place of the list and the item: its report, or the review.
   const [health, setHealth] = useState<null | 'report' | 'review'>(null);
   // UwUSSH's or UwURDP's section in place of the list and the item.
@@ -157,12 +161,15 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
   useEffect(() => {
     if (!suiteOn) setSuite(null);
   }, [suiteOn]);
+  const sendsOn = sendsAvailable(uwu);
   const extrasAllowed =
-    extrasDialog === 'file-requests'
-      ? has(uwu, 'file-requests')
-      : extrasDialog === 'masked'
-        ? has(uwu, 'masked-addresses')
-        : true;
+    extrasDialog === 'sends'
+      ? sendsOn
+      : extrasDialog === 'file-requests'
+        ? has(uwu, 'file-requests')
+        : extrasDialog === 'masked'
+          ? has(uwu, 'masked-addresses')
+          : true;
   useEffect(() => {
     if (!extrasAllowed) setExtrasDialog(null);
   }, [extrasAllowed]);
@@ -518,10 +525,22 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
           </>
         )}
 
-        {(has(uwu, 'file-requests') || has(uwu, 'masked-addresses')) && (
+        {(sendsOn || has(uwu, 'file-requests') || has(uwu, 'masked-addresses')) && (
           <>
             <h2>{t('Extras')}</h2>
             <ul className="nav-list">
+              {sendsOn && (
+                <li>
+                  <button
+                    type="button"
+                    className="nav-row"
+                    onClick={() => setExtrasDialog('sends')}
+                  >
+                    <Icon icon={ICONS.send} />
+                    <span className="nav-label">{t('Sends')}</span>
+                  </button>
+                </li>
+              )}
               {has(uwu, 'file-requests') && (
                 <li>
                   <button
@@ -857,6 +876,9 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
         </Modal>
       )}
 
+      {extrasAllowed && extrasDialog === 'sends' && (
+        <SendsDialog onClose={() => setExtrasDialog(null)} />
+      )}
       {extrasAllowed && extrasDialog === 'file-requests' && (
         <FileRequestsDialog
           onClose={() => setExtrasDialog(null)}

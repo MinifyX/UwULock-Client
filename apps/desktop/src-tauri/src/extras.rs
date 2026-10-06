@@ -65,6 +65,8 @@ pub(crate) struct Cache {
     /// The extras key opened as a different one than this device took last
     /// time: its id, until the person has seen the warning.
     key_changed: Option<String>,
+    /// The file of a new file Send, between `stage_send_file` and `save_send`.
+    pub(crate) send_file: Option<Zeroizing<Vec<u8>>>,
 }
 
 /// The server's refusal as the page gets it: the contract's code as the kind
@@ -1134,7 +1136,7 @@ pub struct FileRequestView {
 }
 
 /// Where links point: the main host, and the send domains.
-fn link_bases(state: &VaultState, account_id: &str) -> Result<(String, Vec<SendDomain>)> {
+pub(crate) fn link_bases(state: &VaultState, account_id: &str) -> Result<(String, Vec<SendDomain>)> {
     let (_, account) = state.active_account()?;
     with(state, account_id, |u| {
         let info: Option<&Info> = u.info.as_ref();

@@ -35,6 +35,7 @@ mod moving;
 mod passkeys;
 #[cfg(mobile)]
 mod phone;
+mod sends;
 mod session_lock;
 mod suite;
 mod system;
@@ -175,6 +176,11 @@ pub fn run() {
             extras::delete_masked_address,
             extras::send_options,
             extras::share_as_send,
+            sends::sends,
+            sends::stage_send_file,
+            sends::save_send,
+            sends::remove_send_auth,
+            sends::delete_send,
             health::health_report,
             health::health_ignore,
             health::health_open_page,
