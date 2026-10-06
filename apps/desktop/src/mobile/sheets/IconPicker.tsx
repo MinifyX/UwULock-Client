@@ -208,7 +208,7 @@ export function IconPicker({
               { value: 'dark', label: t('Dunkel') },
             ]}
           />
-          <label className="m-search-field">
+          <label className="m-search-field" data-uwu-field="">
             <ICONS.search aria-hidden />
             <input
               type="search"

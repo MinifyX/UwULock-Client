@@ -81,7 +81,6 @@ function ValueRow({
       mono={mono}
       wrap={wrap}
       onCopy={field ? () => void copyItemField(id, field) : undefined}
-      copyLabel={t('kopieren')}
       trailing={
         trailing ??
         (field ? (

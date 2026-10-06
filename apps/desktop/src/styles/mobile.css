@@ -1293,13 +1293,6 @@
   letter-spacing: -0.02em;
 }
 
-/* The package keeps 80 px either side of the centred title, too little next to
-   a text button such as "Bearbeiten"; the title gets out of its way. */
-.m-app .uwu-navbar:has(.uwu-nav-button[data-label]) .uwu-navbar-title {
-  right: 128px;
-  left: 128px;
-}
-
 /* iPad portrait: while the sidebar lies over the page the floating tab bar
    steps aside, as on iPadOS, instead of covering the sidebar's head. */
 .m-app .uwu-tabbar {
@@ -1309,19 +1302,6 @@
 .m-app:has(.uwu-split[data-overlay] .uwu-split-sidebar) .uwu-tabbar {
   opacity: 0;
   pointer-events: none;
-}
-
-/* The package drops the solid tile on Android but keeps its on-pink colour,
-   which leaves the glyph invisible; Android shows it in the accent ink. */
-.m-app[data-platform='android'] .uwu-row-icon[data-tone='solid'] {
-  color: var(--uwu-pink-ink);
-}
-
-/* Text fields on a phone show focus by their caret and the keyboard; the
-   package's focus ring would draw a box inside the rounded field. */
-.m-app :is(.m-search-field, .m-field) :is(input, textarea, select):focus-visible,
-.uwu-sheet :is(.m-search-field, .m-field) :is(input, textarea, select):focus-visible {
-  box-shadow: none;
 }
 
 .m-search-field input::-webkit-search-cancel-button {

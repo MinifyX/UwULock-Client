@@ -74,7 +74,7 @@ export function ItemListPage({ filter }: { filter: Filter }) {
         onRefresh={sync}
       >
         {ipad && (
-          <label className="m-search-field m-ipad-search">
+          <label className="m-search-field m-ipad-search" data-uwu-field="">
             <ICONS.search aria-hidden />
             <input
               type="search"

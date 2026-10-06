@@ -74,7 +74,7 @@ function SelectRow({
 }) {
   const id = useId();
   return (
-    <div className="m-field">
+    <div className="m-field" data-uwu-field="">
       <label htmlFor={id}>{label}</label>
       <div className="m-field-row">
         <select id={id} value={value} onChange={(event) => onChange(event.target.value)}>

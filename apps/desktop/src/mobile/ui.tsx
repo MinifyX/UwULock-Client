@@ -202,7 +202,7 @@ export function FieldInput({
 }) {
   const id = useId();
   return (
-    <div className="m-field" data-mono={mono || undefined}>
+    <div className="m-field" data-uwu-field="" data-mono={mono || undefined}>
       <label htmlFor={id}>{label}</label>
       <div className="m-field-row">
         {multiline ? (

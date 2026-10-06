@@ -153,7 +153,7 @@ export function MaskedPage() {
                   <p className="m-error">{t('UwUMail war zuletzt nicht erreichbar.')}</p>
                 )}
                 {addresses.length > 6 && (
-                  <label className="m-search-field">
+                  <label className="m-search-field" data-uwu-field="">
                     <ICONS.search aria-hidden />
                     <input
                       type="search"
@@ -289,7 +289,6 @@ function AddressRow({
             />
           }
           onCopy={() => void copyAddress(address.email)}
-          copyLabel={t('kopieren')}
           longPress={longPress}
         />
       </SwipeRow>
