@@ -28,17 +28,20 @@ import {
   cachedSync,
   deviceId,
   forgetKdfFloor,
+  forgetRememberToken,
   kdfFloor,
   local,
   migrateAccounts,
   pinAttempts,
   removeAccount,
+  rememberToken,
   removeSession,
   saveAccount,
   session,
   setLocal,
   setKdfFloor,
   setPinAttempts,
+  setRememberToken,
   setSession,
   updateAccount,
 } from './store';
@@ -236,6 +239,13 @@ async function knownAccount(server: ServerChoice, email: string): Promise<Accoun
   );
 }
 
+/** Forgets the remember token of the address on this server, the old place included. */
+async function forgetRemembered(server: ServerChoice, email: string): Promise<void> {
+  await forgetRememberToken(endpoints(server).identity, email);
+  const known = await knownAccount(server, email);
+  if (known?.rememberToken) await updateAccount(known.id, { rememberToken: null });
+}
+
 /**
  * Logging in again to an account this browser knows: the server doesn't get to ask for a
  * cheaper key derivation than the last login accepted, or the hash sent next would be that
@@ -329,8 +339,13 @@ async function token(pending: PendingLogin, extra: Record<string, string>): Prom
     deviceName: device.name,
     ...extra,
   });
-  if (!extra.twoFactorToken && known?.rememberToken) {
-    form.set('twoFactorToken', known.rememberToken);
+  // A browser remembered at an earlier two-step login skips the code — also after the vault
+  // locked, the browser restarted or the server ended the session. A code typed in goes instead.
+  const identity = endpoints(pending.server).identity;
+  const remembered = (await rememberToken(identity, pending.email)) ?? known?.rememberToken ?? null;
+  const sentRemembered = !extra.twoFactorToken && remembered !== null;
+  if (sentRemembered) {
+    form.set('twoFactorToken', remembered);
     form.set('twoFactorProvider', '5');
     form.set('twoFactorRemember', '0');
   }
@@ -345,6 +360,9 @@ async function token(pending: PendingLogin, extra: Record<string, string>): Prom
     const refusal = lowerKeys(error.body);
     const providers = refusal.twofactorproviders2 as Record<string, unknown> | undefined;
     if (providers && typeof providers === 'object') {
+      // The server didn't take the remembered token (it ran out, or the device was forgotten
+      // there): the code is asked once more, and "remember this device" brings a new one.
+      if (sentRemembered) await forgetRemembered(pending.server, pending.email);
       const methods: TwoFactorMethod[] = Object.entries(providers)
         .map(([key, details]) => {
           const provider = Number(key);
@@ -412,13 +430,17 @@ async function loggedIn(pending: PendingLogin, body: Record<string, unknown>): P
     expiresAt:
       Date.now() + Math.min(Math.max(Number(lowered.expires_in ?? 3600), 60), 86_400) * 1000,
     lastSync: previous?.lastSync ?? null,
-    rememberToken:
-      typeof lowered.twofactortoken === 'string'
-        ? lowered.twofactortoken
-        : (previous?.rememberToken ?? null),
+    rememberToken: null,
     pinProtected: null,
     uwu: null,
   };
+  // A new token replaces the old one; one kept in the account before 0.5.0-beta.2 moves out.
+  const identity = endpoints(pending.server).identity;
+  const remembered =
+    typeof lowered.twofactortoken === 'string' && lowered.twofactortoken
+      ? lowered.twofactortoken
+      : (previous?.rememberToken ?? null);
+  if (remembered) await setRememberToken(identity, pending.email, remembered);
   // Another account may be open: it is locked, this one takes over.
   if (unlockedId && unlockedId !== id) await lock();
   await saveAccount(next);
@@ -655,6 +677,8 @@ export async function logout(id?: string): Promise<Status> {
   await removeAccount(found.id);
   // Logging out on purpose is the way to accept a lowered KDF at the next login.
   await forgetKdfFloor(endpoints(found.server).identity, found.email);
+  // And it forgets this browser for two-step login: the next login asks for the code again.
+  await forgetRememberToken(endpoints(found.server).identity, found.email);
   if ((await local('activeAccount')) === found.id) {
     await setLocal('activeAccount', (await accounts())[0]?.id ?? null);
   }
@@ -675,10 +699,19 @@ export async function switchAccount(id: string): Promise<Status> {
 
 // The server ended the session: logged out elsewhere, a new master password, the device
 // removed. Whatever was open closes, and the account goes; the login screen says why. The KDF
-// its login accepted stays (see `refuseWeakerKdf`).
+// its login accepted stays (see `refuseWeakerKdf`), and so does its remember token: logging in
+// again skips the code, unless the server no longer takes the token.
 whenSessionEnds((ended) => {
   void (async () => {
     if (ended.id === unlockedId) await lock();
+    // A token still kept in the account (before 0.5.0-beta.2) moves out before the account goes.
+    // Read from storage, not from `ended`: a logout in the meantime already forgot it, and must
+    // not see it come back.
+    const identity = endpoints(ended.server).identity;
+    const legacy = (await account(ended.id))?.rememberToken;
+    if (legacy && !(await rememberToken(identity, ended.email))) {
+      await setRememberToken(identity, ended.email, legacy);
+    }
     await removeAccount(ended.id);
     if ((await local('activeAccount')) === ended.id) {
       await setLocal('activeAccount', (await accounts())[0]?.id ?? null);

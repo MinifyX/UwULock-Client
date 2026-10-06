@@ -39,7 +39,11 @@ export type Account = {
   /** Milliseconds since 1970. */
   expiresAt: number;
   lastSync: number | null;
-  /** A "remember this device" token for two-step login. */
+  /**
+   * Up to 0.5.0-beta.1: the "remember this device" token for two-step login. It went with the
+   * account when the server ended the session; now it is kept in `rememberTokens` and this stays
+   * null (an old one is still read, and moved at the next login).
+   */
   rememberToken: string | null;
   /** The PIN-wrapped user key, when the PIN is to work after a browser restart too. */
   pinProtected: string | null;
@@ -60,6 +64,12 @@ type Local = {
    * hostile server can do at will; only logging out here, or forgetting it in the popup, drops it.
    */
   kdfFloors: Record<string, string>;
+  /**
+   * The "remember this device" token of two-step login, by identity endpoint and address. Like
+   * the KDF floors it outlives the account entry: kept when the server ends the session or the
+   * vault locks, so the next login skips the code; only logging out here forgets it.
+   */
+  rememberTokens: Record<string, string>;
   /**
    * Wrong PINs in a row, per account. On disk, so a browser restart doesn't give a guesser five
    * new tries; the fifth removes the PIN.
@@ -220,6 +230,29 @@ export async function forgetKdfFloor(identity: string, email: string): Promise<v
   const floors = { ...(await local('kdfFloors')) };
   delete floors[floorKey(identity, email)];
   await setLocal('kdfFloors', floors);
+}
+
+// ── "Remember this device" ────────────────────────────────
+
+export async function rememberToken(identity: string, email: string): Promise<string | null> {
+  return (await local('rememberTokens'))?.[floorKey(identity, email)] ?? null;
+}
+
+export async function setRememberToken(
+  identity: string,
+  email: string,
+  token: string,
+): Promise<void> {
+  await setLocal('rememberTokens', {
+    ...(await local('rememberTokens')),
+    [floorKey(identity, email)]: token,
+  });
+}
+
+export async function forgetRememberToken(identity: string, email: string): Promise<void> {
+  const tokens = { ...(await local('rememberTokens')) };
+  delete tokens[floorKey(identity, email)];
+  await setLocal('rememberTokens', tokens);
 }
 
 // ── Wrong PINs ────────────────────────────────────────────

@@ -251,7 +251,7 @@ export function TwoFactor<S extends { step: string }>({
   const usable = methods.filter((m) => m.supported);
   const [provider, setProvider] = useState<number | null>(usable[0]?.provider ?? null);
   const [code, setCode] = useState('');
-  const [remember, setRemember] = useState(false);
+  const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(message);
