@@ -59,7 +59,7 @@ Still to come:
 - Import from Bitwarden JSON, KeePass, browser CSV; encrypted export
 - Attachments, sends and passkeys in the desktop app
 
-## 0.5 · Passkeys everywhere, entry Sends (0.5.0-beta.1 released)
+## 0.5 · Passkeys everywhere, entry Sends (0.5.0-beta.2 released)
 
 - [x] uwulock-core: generator minimums per set (`minLowercase`,
       `minUppercase`, `minNumber`, `minSpecial`; the length is raised to fit),
@@ -132,6 +132,7 @@ Later on phones:
   password provider (credential provider extension; needs a signed app with
   the AutoFill entitlement)
 - [x] Passkeys on the phone (0.5, see above)
+- [x] The suite's design package everywhere, two-step login once per device (0.5.0-beta.2)
 
 ## Later · A server of its own
 
