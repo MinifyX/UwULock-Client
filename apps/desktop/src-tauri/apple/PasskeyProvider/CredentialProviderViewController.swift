@@ -279,6 +279,10 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
       "entry \(point) · \(system) \(ProcessInfo.processInfo.operatingSystemVersionString) · UwULock \(version ?? "?")"
     )
     ready()
+    // A new request: one answered before on this controller (userInteractionRequired from
+    // provideCredentialWithoutUserInteraction, should the system keep the instance for the
+    // sheet) must not leave this one with a dead "Abbrechen" and no Face ID.
+    finished = false
     startWatching()
   }
 
@@ -554,6 +558,10 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
           return
         }
         logStep("verification: ok")
+        // Answered: the watchdog's rounds end (a button now would start a second attempt, and a
+        // second passkey on registration, beside this one).
+        self.watching += 1
+        self.model.unlockButton = nil
         DispatchQueue.global(qos: .userInitiated).async {
           defer { context.invalidate() }
           do {
@@ -561,9 +569,15 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
             do {
               key = try vault.key(context: context)
             } catch PasskeyVaultError.notInteractive {
+              // The person already passed Face ID, Touch ID or the passcode: trying again by
+              // itself would ask once more, maybe several times. Their tap asks again, once.
+              logStep("verification: the Keychain didn't take it", error: true)
               self.onMain {
                 guard mine == self.attempt, !self.finished else { return }
-                again()
+                self.offerUnlock(
+                  tr(
+                    "Der Schlüssel ließ sich nach der Bestätigung nicht öffnen. Tippe, um es noch einmal zu versuchen.",
+                    "The key didn't open after the verification. Tap to try again."))
               }
               return
             }

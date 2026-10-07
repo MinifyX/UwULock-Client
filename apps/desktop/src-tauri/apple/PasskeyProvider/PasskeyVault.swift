@@ -22,8 +22,9 @@ enum PasskeyVaultError: Error {
   case cancelled
   /// The system didn't let the extension ask for Face ID, Touch ID or the passcode yet
   /// (LAError.notInteractive, errSecInteractionNotAllowed: its sheet wasn't on screen yet), or
-  /// the Keychain didn't take the verification. Tried again for a few seconds, then the sheet
-  /// offers a button to ask with a tap — which the system always allows.
+  /// the Keychain didn't take the verification. Not being allowed to ask is tried again for a few
+  /// seconds; then, and when the Keychain refuses, the sheet offers a button to ask with a tap —
+  /// which the system always allows.
   case notInteractive
   /// No passcode on the device (the provider key needs one), or Face ID / Touch ID locked out.
   case noPasscode

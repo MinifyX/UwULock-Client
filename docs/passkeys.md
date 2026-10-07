@@ -330,10 +330,12 @@ may not run, so it never sees the open vault. Instead:
   So every way in waits until the sheet is on screen (`viewDidAppear`), asks for Face ID, Touch
   ID or the passcode explicitly (`LAContext.evaluatePolicy(.deviceOwnerAuthentication)`), and
   reads the provider key (`.userPresence`, `WhenPasscodeSetThisDeviceOnly`) with that evaluated
-  context and `interactionNotAllowed`, so the read itself never prompts. A refusal
-  (`LAError.notInteractive`, `errSecInteractionNotAllowed`, `errSecAuthFailed`) is tried again
-  with a fresh context for about three seconds (0.2 s, 0.4 s, … 1 s apart); after that, and when
-  the system interrupts (`systemCancel`), the sheet offers **"Mit Face ID entsperren"** (Touch
+  context and `interactionNotAllowed`, so the read itself never prompts. A refusal to ask
+  (`LAError.notInteractive`: nothing was shown) is tried again with a fresh context for about
+  three seconds (0.2 s, 0.4 s, … 1 s apart); after that, when the system interrupts
+  (`systemCancel`), and when the Keychain refuses the read after a passed verification
+  (`errSecInteractionNotAllowed`, `errSecAuthFailed` — never retried by itself, it would ask the
+  person again), the sheet offers **"Mit Face ID entsperren"** (Touch
   ID, Optic ID, or the passcode): asked on the person's tap, which the system always allows.
 - **Never an empty sheet** (0.6.0-beta.4): the SwiftUI view — title, "Wird geladen …", the
   spinner and "Abbrechen" — is built in `viewDidLoad`, pinned to the edges with constraints on an
