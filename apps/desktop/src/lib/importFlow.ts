@@ -38,7 +38,8 @@ export type ImportStep =
   | { name: 'password'; file: ImportFile; kind: 'keepass' | 'bitwarden' }
   | { name: 'preview'; parsed: Parsed }
   | { name: 'running'; parsed: Parsed; progress: ImportProgress | null }
-  | { name: 'done'; parsed: Parsed; outcome: ImportOutcome };
+  // Done: only the outcome; the file's plaintext isn't kept once it is in the vault.
+  | { name: 'done'; outcome: ImportOutcome };
 
 /** Lets the page draw ("Öffnet …") before a key derivation holds anything up. */
 const nextFrame = () =>
@@ -119,7 +120,7 @@ export function useImportFlow(initial?: Parsed) {
       const outcome = await importParsed(parsed, {
         onProgress: (progress) => setStep((s) => (s.name === 'running' ? { ...s, progress } : s)),
       });
-      setStep({ name: 'done', parsed, outcome });
+      setStep({ name: 'done', outcome });
     } catch (e) {
       // Nothing came in: back to the preview, with the reason.
       setError(importErrorText(e));

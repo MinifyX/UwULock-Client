@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- What UwULock offers Credential Manager (PasskeyProviderService): passkeys only. Passwords
-     stay with the app and the browser extension. -->
+<!-- What UwULock offers Credential Manager (PasskeyProviderService): passkeys, and logins'
+     passwords to sign in with (saving passwords stays with the app). -->
 <credential-provider xmlns:android="http://schemas.android.com/apk/res/android">
     <capabilities>
         <capability name="android.credentials.TYPE_PUBLIC_KEY_CREDENTIAL" />
+        <capability name="android.credentials.TYPE_PASSWORD_CREDENTIAL" />
     </capabilities>
 </credential-provider>

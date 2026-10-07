@@ -6,7 +6,7 @@
  */
 
 import { ICONS, ListRow, ListSection } from '@uwusuite/design';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   importCounts,
   importOutcomeError,
@@ -15,6 +15,7 @@ import {
   passkeyCount,
   TYPE_LABELS,
 } from '../../components/ImportDialog';
+import { forget, HANDED_OVER, handedOver } from '../../lib/credentialExchange';
 import { t, useLanguage } from '../../lib/i18n';
 import { SOURCES, sourceLabel, summarize, type Parsed, type Source } from '../../lib/import';
 import { checkFileSize } from '../../lib/import/limits';
@@ -25,6 +26,23 @@ import { BigButton, ChoiceSheet, FieldInput, Page } from '../ui';
 
 /** A phone lists fewer items in the preview than the desktop. */
 const LIST_LIMIT = 100;
+
+/**
+ * Settings → Importieren. What Apple Passwords handed over (iOS 26, lib/credentialExchange.ts)
+ * starts the page at its preview; a new hand-over while the page is open starts it over.
+ */
+export function SettingsImportPage() {
+  const [waiting, setWaiting] = useState(handedOver);
+  useEffect(() => {
+    const update = () => setWaiting(handedOver());
+    window.addEventListener(HANDED_OVER, update);
+    return () => window.removeEventListener(HANDED_OVER, update);
+  }, []);
+  useEffect(() => {
+    if (waiting) forget(waiting.generation);
+  }, [waiting]);
+  return <ImportPage key={waiting?.generation ?? 0} initial={waiting?.parsed} />;
+}
 
 export function ImportPage({ initial }: { initial?: Parsed }) {
   useLanguage();

@@ -89,9 +89,31 @@ pub struct PasskeyStatus {
     pub reason: Option<String>,
 }
 
+/// Whether UwULock is the system's AutoFill provider for passwords and
+/// passkeys (iOS: Settings → General → AutoFill & Passwords; Android: the
+/// Credential Manager provider and the autofill service).
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderState {
+    /// This phone can have UwULock as its provider at all (iOS 17+ with a
+    /// signed build; Android 14+ for Credential Manager, 8+ for autofill).
+    pub supported: bool,
+    /// UwULock is switched on; `None` when the system doesn't say.
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    /// The system can ask the person directly (iOS 18+, Android); otherwise
+    /// the button opens the settings.
+    #[serde(default)]
+    pub direct: bool,
+    /// Android: UwULock is the autofill service too (apps and browsers
+    /// without Credential Manager). `None` elsewhere.
+    #[serde(default)]
+    pub autofill: Option<bool>,
+}
+
 #[cfg(mobile)]
 mod mobile {
-    use super::{Error, PasskeyStatus, Prompt, UnlockStatus};
+    use super::{Error, PasskeyStatus, Prompt, ProviderState, UnlockStatus};
     use serde::{Deserialize, Serialize};
     use tauri::plugin::mobile::PluginInvokeError;
     use tauri::plugin::PluginHandle;
@@ -350,6 +372,60 @@ mod mobile {
         /// iOS: the list, the key and the system's entries go.
         pub fn passkeys_clear(&self) -> Result<(), Error> {
             self.0.run_mobile_plugin("passkeysClear", ()).map_err(error)
+        }
+
+        /// Whether UwULock is the AutoFill provider ([`ProviderState`]).
+        pub fn provider_status(&self) -> Result<ProviderState, Error> {
+            self.0
+                .run_mobile_plugin("providerStatus", ())
+                .map_err(error)
+        }
+
+        /// Asks the system to make UwULock the provider: iOS 18+ asks in a
+        /// sheet of its own, older iOS opens the AutoFill settings; Android
+        /// opens its sheet for `target` (`credentials`: Credential Manager,
+        /// `autofill`: the autofill service). Answers the state afterwards,
+        /// as far as the system tells.
+        pub fn provider_request(&self, target: &str) -> Result<ProviderState, Error> {
+            #[derive(Serialize)]
+            struct Target<'a> {
+                target: &'a str,
+            }
+            self.0
+                .run_mobile_plugin("providerRequest", Target { target })
+                .map_err(error)
+        }
+
+        /// iOS 26+: whether another app (Apple Passwords) handed over
+        /// credentials that wait to be taken in.
+        pub fn credential_exchange_pending(&self) -> Result<bool, Error> {
+            #[derive(Deserialize)]
+            struct Pending {
+                pending: bool,
+            }
+            self.0
+                .run_mobile_plugin::<Pending>("credentialExchangePending", ())
+                .map(|p| p.pending)
+                .map_err(error)
+        }
+
+        /// iOS 26+: takes the handed-over credentials from the system, as
+        /// JSON in the shape of the FIDO Credential Exchange Format
+        /// (`accounts` → `items` → `credentials`; binary values URL-safe
+        /// base64). Only once per hand-over. `discard` drops them instead.
+        pub fn credential_exchange_import(&self, discard: bool) -> Result<String, Error> {
+            #[derive(Serialize)]
+            struct Ask {
+                discard: bool,
+            }
+            #[derive(Deserialize)]
+            struct Data {
+                json: String,
+            }
+            self.0
+                .run_mobile_plugin::<Data>("credentialExchangeImport", Ask { discard })
+                .map(|d| d.json)
+                .map_err(error)
         }
 
         /// Empties the clipboard if it still holds UwULock's last copy.

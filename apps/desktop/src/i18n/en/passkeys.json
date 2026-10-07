@@ -23,8 +23,6 @@
   "UwULock meldet sich als FIDO2-Sicherheitsschlüssel an. Browser fragen ihn wie einen USB-Schlüssel, und UwULock fragt jedes Mal dich.": "UwULock shows up as a FIDO2 security key. Browsers ask it like a USB key, and UwULock asks you every time.",
   "Passkeys in Windows (experimentell)": "Passkeys in Windows (experimental)",
   "UwULock als Passkey-Manager in Windows 11, wo Windows Passkey-Manager anderer Anbieter zulässt. Danach in Windows unter Einstellungen → Konten → Passkeys einschalten.": "UwULock as a passkey manager in Windows 11, where Windows allows third-party passkey managers. Then switch it on in Windows under Settings → Accounts → Passkeys.",
-  "Passkeys in anderen Apps (AutoFill)": "Passkeys in other apps (AutoFill)",
-  "Hinterlegt die Passkeys versiegelt für UwULocks AutoFill-Erweiterung; die öffnet sie nur nach Face ID, Touch ID oder dem Gerätecode.": "Leaves the passkeys sealed for UwULock's AutoFill extension, which opens them only after Face ID, Touch ID or the device passcode.",
   "Ein Programm": "A program",
   "Das ist kein Browser, den UwULock kennt. Lehne ab, wenn du nicht gerade selbst einen Passkey benutzt.": "This isn't a browser UwULock knows. Decline unless you're using a passkey yourself right now.",
   "ein unbekanntes Programm": "an unknown program",

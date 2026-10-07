@@ -85,7 +85,7 @@
   "Andere App (Credential Exchange)": "Another app (Credential Exchange)",
   "Das Passwort der Datei stimmt nicht.": "The file's password is wrong.",
   "Diese Datei verlangt etwas, das UwULock nicht kann: {reason}": "This file asks for something UwULock can't do: {reason}",
-  "Die Notiz ist länger, als der Server annimmt.": "Its note is longer than the server accepts.",
+  "Ein Wert (meist die Notiz) ist länger, als der Server annimmt.": "A value (mostly its note) is longer than the server accepts.",
   "Der Eintrag ist unvollständig (etwa ein SSH-Schlüssel ohne alle Teile).": "The item is incomplete (an SSH key without all its parts, for example).",
   "Neue Ordner": "New folders",
   "{app}, {format}": "{app}, {format}",
@@ -93,5 +93,15 @@
   "Ein Eintrag importiert ✧": "One item imported ✧",
   "Ein Eintrag importiert, dann ist der Import stehen geblieben.": "One item imported, then the import stopped.",
   "Ein Eintrag ist draußen geblieben:": "One item stayed out:",
-  "Ein neuer Ordner angelegt.": "One new folder created."
+  "Ein neuer Ordner angelegt.": "One new folder created.",
+  "Die übergebenen Daten ließen sich nicht lesen.": "The data handed over couldn't be read.",
+  "Ein Passkey ließ sich nicht übernehmen.": "A passkey couldn't be taken over.",
+  "Gültig ab": "Valid from",
+  "Erzeugtes Passwort": "Generated password",
+  "Feld": "Field",
+  "Privater SSH-Schlüssel (PKCS#8, base64)": "Private SSH key (PKCS#8, base64)",
+  "SSH-Schlüssel-Kommentar": "SSH key comment",
+  "Daten aus Apple Passwörter übernehmen?": "Take over data from Apple Passwords?",
+  "Du siehst alle Einträge, bevor etwas in deinem Tresor gespeichert wird.": "You see every item before anything is saved in your vault.",
+  "Ansehen": "View"
 }

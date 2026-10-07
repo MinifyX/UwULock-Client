@@ -17,6 +17,8 @@
 //! - [`clipboard`] — copies that clear themselves
 //! - [`system`] — updates and links out of the app
 //! - [`phone`] — Android and iOS: the plugin, locking in the background
+//! - [`autofill`] — UwULock as the system's AutoFill provider (iOS, macOS,
+//!   Android), and what Apple Passwords hands over (iOS 26)
 //! - [`passkeys`] — the vault's passkeys for the system: a virtual security
 //!   key (Linux), a plugin passkey manager (Windows), Credential Manager
 //!   (Android), the AutoFill extension (iOS, macOS)
@@ -27,6 +29,7 @@
 //! (build.rs): the Mac App Store build has none either (docs/app-store.md).
 
 mod account;
+mod autofill;
 mod clipboard;
 mod extras;
 mod health;
@@ -230,6 +233,10 @@ pub fn run() {
             wifi::wifi_settings,
             passkeys::passkey_request,
             passkeys::passkey_answer,
+            autofill::autofill_provider_status,
+            autofill::autofill_provider_request,
+            autofill::credential_exchange_pending,
+            autofill::credential_exchange_import,
             passkeys::passkey_provider_status,
             passkeys::set_passkey_provider,
         ])

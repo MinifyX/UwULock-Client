@@ -6,6 +6,7 @@
 // iOS 17+ and macOS 14+. Nothing here works before the app and the extension are signed with an
 // Apple developer team (App Group, Keychain group): docs/passkeys.md.
 
+import AuthenticationServices
 import CryptoKit
 import Foundation
 import LocalAuthentication
@@ -19,6 +20,11 @@ enum PasskeyVaultError: Error {
   /// The list is older than one this extension already saw: put back, not UwULock's.
   case stale
   case cancelled
+  /// The system didn't let the extension ask for Face ID, Touch ID or the passcode yet
+  /// (errSecInteractionNotAllowed: its sheet wasn't on screen). Tried once more, then shown.
+  case notInteractive
+  /// No passcode on the device (the provider key needs one), or Face ID / Touch ID locked out.
+  case noPasscode
   case broken(String)
 }
 
@@ -52,11 +58,32 @@ struct PasskeyEntry: Codable {
   var generation: UInt64
 }
 
-/// As apple.rs `Snapshot`; the account comes from the file's header.
+/// How a login's address is matched, as apple.rs / autofill.rs `UriHint`: `domain` (the
+/// registrable domain: the page's host is it or below it), `host` (host, with `:port` when the
+/// address had one), `startsWith` or `exact` (the full address).
+struct PasskeyUriHint: Codable {
+  var kind: String
+  var value: String
+}
+
+/// One login for password AutoFill, as apple.rs `LoginEntry`: the password sealed on its own in
+/// `sealedPassword`, opened only to fill it.
+struct PasskeyLoginEntry: Codable {
+  var itemId: String
+  var name: String
+  var userName: String?
+  var uris: [PasskeyUriHint]?
+  var subtitle: String?
+  var sealedPassword: String
+}
+
+/// As apple.rs `Snapshot`; the account comes from the file's header. `logins` is missing in lists
+/// from before password AutoFill.
 struct PasskeySnapshot: Codable {
   var version: Int
   var generation: UInt64
   var entries: [PasskeyListEntry]
+  var logins: [PasskeyLoginEntry]?
 }
 
 /// The list as opened: whose it is, and what is in it.
@@ -123,11 +150,14 @@ final class PasskeyVault {
   var listURL: URL { folder.appendingPathComponent("passkeys.sealed") }
   var outboxURL: URL { folder.appendingPathComponent("outbox", isDirectory: true) }
 
-  /// The provider key: asks for Face ID, Touch ID or the passcode. Blocks — never on the main
-  /// thread.
-  func key(reason: String) throws -> SymmetricKey {
-    let context = LAContext()
-    context.localizedReason = reason
+  /// The provider key, read with a context the person already passed Face ID, Touch ID or the
+  /// passcode in (`evaluatePolicy(.deviceOwnerAuthentication)`, from the extension's sheet once it
+  /// is on screen): the Keychain read itself never asks, so it can't be refused for asking at
+  /// the wrong moment. The item is `.userPresence`, `WhenPasscodeSetThisDeviceOnly` (written by
+  /// the app: Passkeys.swift, passkeys/apple.rs), which that context satisfies. Blocks — never on
+  /// the main thread.
+  func key(context: LAContext) throws -> SymmetricKey {
+    context.interactionNotAllowed = true
     var query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: Self.service,
@@ -152,6 +182,8 @@ final class PasskeyVault {
       return SymmetricKey(data: data)
     case errSecUserCanceled, errSecAuthFailed:
       throw PasskeyVaultError.cancelled
+    case errSecInteractionNotAllowed:
+      throw PasskeyVaultError.notInteractive
     case errSecItemNotFound:
       throw PasskeyVaultError.noList
     default:
@@ -183,6 +215,10 @@ final class PasskeyVault {
 
   static func keyAAD(account: String, credentialId: String) -> Data {
     Data("\(domain):key:\(account):\(credentialId)".utf8)
+  }
+
+  static func passwordAAD(account: String, itemId: String) -> Data {
+    Data("\(domain):password:\(account):\(itemId)".utf8)
   }
 
   static func seal(_ plain: Data, key: SymmetricKey, kind: Kind, account: String) throws -> Data {
@@ -239,7 +275,17 @@ final class PasskeyVault {
 
   /// The list, if it opens and isn't older than one seen before.
   func list(key: SymmetricKey) throws -> PasskeyList {
-    guard let sealed = try? Data(contentsOf: listURL) else { throw PasskeyVaultError.noList }
+    // No list: switched off or logged out. A list that is there but doesn't read (file
+    // protection, a half-written file) is no reason to empty the system's list.
+    guard FileManager.default.fileExists(atPath: listURL.path) else {
+      throw PasskeyVaultError.noList
+    }
+    let sealed: Data
+    do {
+      sealed = try Data(contentsOf: listURL)
+    } catch {
+      throw PasskeyVaultError.broken("the list doesn't read")
+    }
     let opened = try Self.open(sealed, key: key, kind: .list)
     let snapshot = try JSONDecoder().decode(PasskeySnapshot.self, from: opened.plain)
     if snapshot.generation < Self.seen(opened.account) {
@@ -261,6 +307,54 @@ final class PasskeyVault {
       box, using: key, authenticating: keyAAD(account: account, credentialId: entry.credentialId))
     defer { raw.resetBytes(in: 0..<raw.count) }
     return try P256.Signing.PrivateKey(rawRepresentation: raw)
+  }
+
+  /// The password of one login, opened just to fill it.
+  static func password(_ entry: PasskeyLoginEntry, key: SymmetricKey, account: String) throws
+    -> String
+  {
+    guard let sealed = Base64URL.decode(entry.sealedPassword), sealed.count >= 12 + 16 else {
+      throw PasskeyVaultError.broken("a password doesn't decode")
+    }
+    let box = try AES.GCM.SealedBox(combined: sealed)
+    var raw = try AES.GCM.open(
+      box, using: key, authenticating: passwordAAD(account: account, itemId: entry.itemId))
+    defer { raw.resetBytes(in: 0..<raw.count) }
+    guard let text = String(data: raw, encoding: .utf8) else {
+      throw PasskeyVaultError.broken("a password isn't text")
+    }
+    return text
+  }
+
+  /// Whether a login belongs to what the system asks for: one of its addresses matches one of
+  /// the services (a domain, or a page's address), as autofill.rs `uri_matches` without regular
+  /// expressions.
+  static func matches(_ login: PasskeyLoginEntry, _ services: [ASCredentialServiceIdentifier])
+    -> Bool
+  {
+    let hints = login.uris ?? []
+    return services.contains { service in
+      let isURL = service.type == .URL
+      let url = isURL ? URL(string: service.identifier) : nil
+      guard
+        let host = (isURL ? url?.host : service.identifier)?.lowercased()
+          .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+      else { return false }
+      let hostPort = url?.port.map { "\(host):\($0)" } ?? host
+      return hints.contains { hint in
+        switch hint.kind {
+        case "domain": return host == hint.value || host.hasSuffix("." + hint.value)
+        case "host": return hostPort == hint.value
+        case "startsWith":
+          guard isURL, let saved = URL(string: hint.value), let page = url else { return false }
+          return saved.scheme?.lowercased() == page.scheme?.lowercased()
+            && saved.host?.lowercased() == page.host?.lowercased() && saved.port == page.port
+            && service.identifier.hasPrefix(hint.value)
+        case "exact": return isURL && service.identifier == hint.value
+        default: return false
+        }
+      }
+    }
   }
 
   /// A passkey made here: into the outbox for the app (which takes it into the vault at its next

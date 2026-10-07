@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the AutoFill extension for passkeys on macOS 14+ (UwULockPasskeys.appex, universal) from
+# Builds the AutoFill extension for passwords and passkeys on macOS 14+ (UwULockPasskeys.appex, universal) from
 # apps/desktop/src-tauri/apple/PasskeyProvider — the same Swift as the iPhone's extension.
 #
 # Every macOS build compiles it, so the Swift can't rot. It only goes into UwULock.app when the
@@ -46,6 +46,12 @@ sed -e "s/\$(EXECUTABLE_NAME)/$name/" \
   -e "s/\$(AppIdentifierPrefix)/$prefix/" \
   "$src/Info.plist" >"$appex/Contents/Info.plist"
 plutil -insert LSMinimumSystemVersion -string 14.0 "$appex/Contents/Info.plist"
+# Taking in Apple Passwords' data (credential exchange) is the iPhone's and iPad's for now: the
+# Mac app has no Swift of its own to receive it, so macOS doesn't offer UwULock as a target.
+for key in SupportsCredentialExchange SupportedCredentialExchangeVersions; do
+  plutil -remove "NSExtension.NSExtensionAttributes.ASCredentialProviderExtensionCapabilities.$key" \
+    "$appex/Contents/Info.plist"
+done
 plutil -lint "$appex/Contents/Info.plist"
 mkdir -p "$appex/Contents/Resources"
 cp "$src/PrivacyInfo.xcprivacy" "$appex/Contents/Resources/"

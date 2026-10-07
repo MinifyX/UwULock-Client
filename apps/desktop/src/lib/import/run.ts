@@ -46,7 +46,7 @@ setTranslator(t);
 
 export type ImportProgress = { done: number; total: number };
 
-/** `invalid`: Rust can't save it (an SSH key without all its parts, …); `too-long`: its notes. */
+/** `invalid`: Rust can't save it (an SSH key without all its parts, …); `too-long`: a value (mostly the notes) longer than the server takes. */
 export type SkippedItem = { name: string; reason: 'invalid' | 'too-long' };
 
 export type ImportOutcome = {
@@ -137,6 +137,6 @@ export function importErrorText(error: unknown): string {
 /** Why an item stayed out, in words. */
 export function skippedText(reason: SkippedItem['reason']): string {
   return reason === 'too-long'
-    ? t('Die Notiz ist länger, als der Server annimmt.')
+    ? t('Ein Wert (meist die Notiz) ist länger, als der Server annimmt.')
     : t('Der Eintrag ist unvollständig (etwa ein SSH-Schlüssel ohne alle Teile).');
 }

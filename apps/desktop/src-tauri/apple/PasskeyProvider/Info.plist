@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- The AutoFill extension's Info.plist. iOS: Xcode fills in the $(…) values (scripts/ios-build.sh
+<!-- The AutoFill extension's Info.plist (passwords and passkeys). iOS: Xcode fills in the $(…) values (scripts/ios-build.sh
      adds the target). macOS: scripts/macos-passkeys.sh fills them in itself. -->
 <plist version="1.0">
 <dict>
@@ -36,6 +36,17 @@
 			<dict>
 				<key>ProvidesPasskeys</key>
 				<true/>
+				<key>ProvidesPasswords</key>
+				<true/>
+				<!-- iOS 26 / macOS 26: Apple Passwords (and other apps) can hand their data to
+				     UwULock ("Export data to another app"); the app takes it in
+				     (ASCredentialImportManager, docs/passkeys.md). Older systems skip these keys. -->
+				<key>SupportsCredentialExchange</key>
+				<true/>
+				<key>SupportedCredentialExchangeVersions</key>
+				<array>
+					<string>1.0</string>
+				</array>
 				<key>ShowsConfigurationUI</key>
 				<true/>
 			</dict>

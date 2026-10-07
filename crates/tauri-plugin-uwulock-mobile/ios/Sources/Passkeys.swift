@@ -5,12 +5,16 @@ import LocalAuthentication
 import Security
 import Tauri
 
+/// One entry of the system's list, as passkeys/apple.rs `Identity`: a passkey (`kind` "passkey")
+/// or a login's address (`kind` "password", `rpId` the service, `serviceType` domain or url).
 struct PasskeyIdentityArgs: Decodable {
+  let kind: String?
   let rpId: String
   let userName: String
-  let credentialId: String
-  let userHandle: String
+  let credentialId: String?
+  let userHandle: String?
   let recordIdentifier: String?
+  let serviceType: String?
 }
 
 struct PasskeysStoreArgs: Decodable {
@@ -176,10 +180,18 @@ extension UwuLockMobilePlugin {
       return
     }
     let identities: [ASCredentialIdentity] = args.identities.compactMap { identity in
-      guard let id = Self.fromBase64URL(identity.credentialId) else { return nil }
+      if identity.kind == "password" {
+        return ASPasswordCredentialIdentity(
+          serviceIdentifier: ASCredentialServiceIdentifier(
+            identifier: identity.rpId, type: identity.serviceType == "url" ? .URL : .domain),
+          user: identity.userName, recordIdentifier: identity.recordIdentifier)
+      }
+      guard let id = identity.credentialId.flatMap(Self.fromBase64URL), !id.isEmpty else {
+        return nil
+      }
       return ASPasskeyCredentialIdentity(
         relyingPartyIdentifier: identity.rpId, userName: identity.userName, credentialID: id,
-        userHandle: Self.fromBase64URL(identity.userHandle) ?? Data(),
+        userHandle: identity.userHandle.flatMap(Self.fromBase64URL) ?? Data(),
         recordIdentifier: identity.recordIdentifier)
     }
     ASCredentialIdentityStore.shared.getState { state in
@@ -189,6 +201,48 @@ extension UwuLockMobilePlugin {
       }
       ASCredentialIdentityStore.shared.replaceCredentialIdentities(identities) { _, _ in
         invoke.resolve()
+      }
+    }
+  }
+
+  // MARK: UwULock as the AutoFill provider
+
+  private func providerState(enabled: Bool?) -> JsonObject {
+    var state: JsonObject = [
+      "supported": passkeyGroups() != nil,
+      "direct": false,
+    ]
+    if #available(iOS 18.0, *) { state["direct"] = true }
+    if let enabled { state["enabled"] = enabled }
+    return state
+  }
+
+  /// Whether UwULock is switched on in Settings → General → AutoFill & Passwords.
+  @objc public func providerStatus(_ invoke: Invoke) {
+    ASCredentialIdentityStore.shared.getState { state in
+      invoke.resolve(self.providerState(enabled: state.isEnabled))
+    }
+  }
+
+  /// iOS 18+: the system asks the person in a sheet of its own; iOS 17: the AutoFill settings
+  /// open (the person comes back by themselves). The state afterwards either way.
+  @objc public func providerRequest(_ invoke: Invoke) {
+    guard passkeyGroups() != nil else {
+      invoke.resolve(providerState(enabled: false))
+      return
+    }
+    let answer = {
+      ASCredentialIdentityStore.shared.getState { state in
+        invoke.resolve(self.providerState(enabled: state.isEnabled))
+      }
+    }
+    DispatchQueue.main.async {
+      if #available(iOS 18.0, *) {
+        ASSettingsHelper.requestToTurnOnCredentialProviderExtension { _ in answer() }
+      } else if #available(iOS 17.0, *) {
+        ASSettingsHelper.openCredentialProviderAppSettings { _ in answer() }
+      } else {
+        answer()
       }
     }
   }

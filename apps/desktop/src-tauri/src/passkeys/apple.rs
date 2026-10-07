@@ -49,16 +49,52 @@ const OLD_KEYS: usize = 5;
 /// How many taken-in outbox entries are remembered, against one put back.
 const REMEMBERED: usize = 1000;
 
-/// A passkey as the system's list shows it (ASPasskeyCredentialIdentity):
-/// no secret, only what the QuickType bar and the sheet show.
+/// A passkey or a login as the system's list shows it
+/// (ASPasskeyCredentialIdentity, ASPasswordCredentialIdentity): no secret,
+/// only what the QuickType bar and the sheet show. The extension builds the
+/// same from the list (`identities(of:)` in CredentialProviderViewController.swift).
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Identity {
+    /// `passkey` or `password`.
+    pub kind: &'static str,
+    /// Passkey: the rpId. Password: the service — a domain, a host, or an
+    /// address (`service_type`).
     pub rp_id: String,
     pub user_name: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub credential_id: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub user_handle: String,
     pub record_identifier: Option<String>,
+    /// Password: `domain` or `url`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub service_type: Option<&'static str>,
+}
+
+/// The system's entries for a login: one per address it can be matched by.
+fn password_identities(entry: &sealed::LoginEntry) -> Vec<Identity> {
+    let mut seen = std::collections::HashSet::new();
+    entry
+        .uris
+        .iter()
+        .filter_map(|hint| {
+            let (service, kind) = match hint.kind.as_str() {
+                "domain" | "host" => (hint.value.clone(), "domain"),
+                "startsWith" | "exact" => (hint.value.clone(), "url"),
+                _ => return None,
+            };
+            seen.insert(service.clone()).then(|| Identity {
+                kind: "password",
+                rp_id: service,
+                user_name: entry.user_name.clone().unwrap_or_default(),
+                credential_id: String::new(),
+                user_handle: String::new(),
+                record_identifier: Some(entry.item_id.clone()),
+                service_type: Some(kind),
+            })
+        })
+        .collect()
 }
 
 /// What the app remembers of an account's list (`passkeys-apple-<account>.json`).
@@ -383,23 +419,36 @@ async fn refresh(app: &AppHandle) -> Result<()> {
     }
 
     // The list for the extension.
-    let items: Vec<_> = {
+    let (items, logins): (Vec<_>, Vec<_>) = {
         let guard = vault.unlocked.read();
         let unlocked = guard.get(&account_id).ok_or_else(Failure::locked)?;
-        unlocked
+        // Not in the trash, and no login that asks for the master password
+        // again (R7 L-2): the extension only has Face ID or the device
+        // passcode.
+        let items = unlocked
             .vault
             .items
             .iter()
-            // Not in the trash, and no login that asks for the master
-            // password again (R7 L-2): the extension only has Face ID or the
-            // device passcode.
             .filter(|item| sealed::listed(item))
             .cloned()
-            .collect()
+            .collect();
+        let logins = unlocked
+            .vault
+            .items
+            .iter()
+            .filter(|item| sealed::listed_login(item))
+            .cloned()
+            .collect();
+        (items, logins)
     };
     state.generation = sealed::next_generation(state.generation, now_ms());
     let mut snapshot = Snapshot::new(&account_id, state.generation);
     let mut identities = Vec::new();
+    for item in &logins {
+        if let Some(entry) = snapshot.push_login(&key, item) {
+            identities.extend(password_identities(entry));
+        }
+    }
     for item in &items {
         for (_, passkey) in passkeys_of(&vault, &account_id, item) {
             // The extension can't count up a signature counter in the vault:
@@ -411,6 +460,8 @@ async fn refresh(app: &AppHandle) -> Result<()> {
                 continue;
             };
             identities.push(Identity {
+                kind: "passkey",
+                service_type: None,
                 rp_id: entry.rp_id.clone(),
                 user_name: entry
                     .user_name
@@ -444,8 +495,9 @@ async fn refresh(app: &AppHandle) -> Result<()> {
     native::store(app, &sealed_list, &key, &identities)
         .map_err(|e| Failure::new("unsupported", e))?;
     tracing::debug!(
-        passkeys = identities.len(),
-        "the extension's passkey list is up to date"
+        passkeys = snapshot.entries.len(),
+        logins = snapshot.logins.len(),
+        "the extension's list is up to date"
     );
     Ok(())
 }
@@ -721,6 +773,9 @@ mod native {
         let folder = folder()?;
         let _ = std::fs::remove_file(folder.join("passkeys.sealed"));
         let _ = delete_generic_password_options(options()?);
+        // The system's list keeps names until someone empties it; on macOS only the extension
+        // fills it, so it goes here too.
+        crate::autofill::mac::remove_identities();
         Ok(())
     }
 }

@@ -220,10 +220,54 @@ Passwords, passkeys & accounts.
   is a public suffix is refused on both ways.
 - An exclude list hit answers `InvalidStateError`.
 
+### Passwords
+
+The same provider also offers logins' passwords (`TYPE_PASSWORD_CREDENTIAL`), and Android 8+
+apps and browsers that don't ask Credential Manager for passwords get them from UwULock's
+autofill service (`UwuLockAutofillService`, `FillActivity`, `FillFields`). Kotlin only says who
+asks (`LoginBridge`); `passkeys/android_logins.rs` decides, with the pure part in
+`passkeys/logins.rs` and the matching of `uwulock_authenticator::autofill` (Bitwarden's match
+detection, as on Apple).
+
+- Which logins: with a password, not in the trash, not archived, and not marked to ask for the
+  master password again (Android only has the screen lock or a biometric).
+- Who asks: a privileged browser's page — Credential Manager's `getOrigin`, or for autofill the
+  page's `webDomain` when the browser's package _and_ certificate are on the privileged list —
+  matches web logins. Any other app matches its own logins (`androidapp://<package>`) and website
+  logins only of sites whose Digital Asset Links grant it `get_login_creds` (same check and cache
+  as for passkeys). Which sites to ask: the one the package name points at (`com.example.app` →
+  `example.com`) and, in an app's WebView, the page's — never every site in the vault. A
+  WebView's domain is never taken as the page's address, so an app can't phish another site's
+  login with a WebView. Without the app's certificates (Android hid the app from UwULock) only
+  `androidapp://` logins match.
+- Listing (`logins`) carries item id, name and user name, never a password. Credential Manager
+  shows `PasswordCredentialEntry`s; the autofill service shows one suggestion per login whose
+  values are empty and which is locked behind `FillActivity` (dataset authentication). A locked or
+  closed UwULock offers _Unlock UwULock_ in both, which opens the app and lists afterwards. No
+  match: no suggestion.
+- Filling (`password`): after `BiometricPrompt` (strong biometric or the screen lock) — every
+  time, for every login. Rust refuses without `verified` and checks again that the login belongs
+  to the caller; for autofill the caller is read again from the screen Android hands the activity,
+  not from the suggestion. Only then does Android get user name and password.
+- Saving passwords isn't offered (no `SaveInfo`, no password create entry): logins are saved in
+  UwULock.
+
+### Being the default provider
+
+`providerStatus` (mobile plugin) answers `ProviderState`: `supported` (Android 14+ or autofill),
+`enabled` (Credential Manager's `isEnabledCredentialProviderService`, `null` when it won't say),
+`autofill` (`hasEnabledAutofillServices`: UwULock's service is the one picked) and `direct`.
+`providerRequest` opens Android's own place for either: `credentials` →
+`Settings.ACTION_CREDENTIAL_PROVIDER` with `package:` on Android 15+, which asks directly, and
+androidx's `createSettingsPendingIntent()` on Android 14 (and when the action has no activity);
+`autofill` → `ACTION_REQUEST_SET_AUTOFILL_SERVICE`. It answers the new state when the person
+comes back — on Android 14 right away (a pending intent gives no result), so the app asks
+`providerStatus` again when it is shown.
+
 ## iOS 17+ and macOS 14+: the AutoFill extension
 
 `apps/desktop/src-tauri/apple/PasskeyProvider` (Swift): an `ASCredentialProviderViewController`
-for passkeys, the same code for both. It is its own process, started by the system while UwULock
+for passkeys and passwords, the same code for both. It is its own process, started by the system while UwULock
 may not run, so it never sees the open vault. Instead:
 
 - While the vault is open and the setting is on, the app writes a **sealed list** of the
@@ -264,6 +308,35 @@ may not run, so it never sees the open vault. Instead:
   else such a login's passkey needs the master password (desktop, Android, browser extension).
   Sign in with those from UwULock or the browser extension.
 
+- **Passwords** go into the same list (`logins`): per login the item id, name, user name, the
+  addresses as match hints and the password, sealed on its own with AAD
+  `uwulock-passkeys-v2:password:<account>:<item id>`. Only logins with a password, not deleted,
+  not archived, not re-prompt. The system's identity list gets one `ASPasswordCredentialIdentity`
+  per address (domain or URL), names only. Matching follows Bitwarden's match detection
+  (`uwulock-authenticator/src/autofill.rs`): domain (registrable domain from the Public Suffix
+  List, computed in Rust, so Swift only compares host suffixes), host (with port), starts with
+  and exact (only where the system hands over the full address); regular expressions and
+  "never" don't show up as suggestions, only in UwULock's own searchable list.
+- **Both ways in** answer through one path: picking UwULock's entry right in the system's sheet
+  (`prepareInterfaceToProvideCredential(for:)`) and picking from UwULock's own list
+  (`prepareCredentialList`). The direct pick finds the passkey by credential id (only for the
+  requested rpId), checks the 32-byte client data hash, signs, verifies its own signature and
+  answers on the main thread; it never rewrites the system's identity list while the system
+  waits for the answer. An identity that is no longer in the list (or, for a password, whose
+  login no longer matches that site) falls back to UwULock's own list instead of failing.
+- **Unlocking in the extension**: the system calls `prepareInterfaceToProvideCredential` before
+  it presents the extension's sheet; a Keychain read that needs user presence at that moment is
+  refused with `errSecInteractionNotAllowed` (-25308, the direct pick's error in 0.6.0-beta.1).
+  So every way in waits until the sheet is on screen (`viewDidAppear`), asks for Face ID, Touch
+  ID or the passcode explicitly (`LAContext.evaluatePolicy(.deviceOwnerAuthentication)`), and
+  reads the provider key (`.userPresence`, `WhenPasscodeSetThisDeviceOnly`) with that evaluated
+  context and `interactionNotAllowed`, so the read itself never prompts. A refusal is tried once
+  more, then shown in words.
+- **Diagnostics**: the extension logs to the unified log, subsystem `app.uwulock.passkeys`,
+  category `provider` — which way in, rpId, short credential id prefixes, flags, counts, why it
+  stopped. No keys, passwords, user handles or client data. On a Mac with the device attached:
+  `log stream --predicate 'subsystem == "app.uwulock.passkeys"' --info` (or Console.app).
+
 On macOS the app writes the list from Rust (`passkeys/apple.rs`, Keychain via
 `security-framework`), and the extension fills the system's identity list when it runs (and when
 switched on in System Settings → Passwords → Password Options).
@@ -291,6 +364,36 @@ GitHub builds don't, and there the setting says so:
 
 Turning it on: iOS Settings → General → AutoFill & Passwords, macOS System Settings → General →
 AutoFill & Passwords; then UwULock's own setting.
+
+### Default provider prompt
+
+After the first unlock UwULock shows a card asking to make it the provider for passwords and
+passkeys (`AutofillCard`, `lib/autofillPrompt.ts`): "Als Standard festlegen" asks the system, "Später"
+asks again after 7 days, at most three times; once switched on it never asks again. The
+settings (phone, iPad, Mac) show the state and the same button. Windows and Linux show neither.
+
+- **iOS 18 / macOS 15**: `ASSettingsHelper.requestToTurnOnCredentialProviderExtension` — the
+  system asks in a sheet of its own. **iOS 17 / macOS 14**:
+  `openCredentialProviderAppSettings` opens the settings page. The state comes from
+  `ASCredentialIdentityStore.getState().isEnabled`. The button also turns on UwULock's own
+  setting (the sealed list), without which the extension has nothing to fill.
+- macOS goes through the Objective-C runtime from Rust (`src-tauri/src/autofill.rs`, `objc2`),
+  only in the build that carries the extension (Mac App Store).
+- **Android**: see "Being the default provider" in the Android section.
+
+### Taking in Apple Passwords (iOS 26)
+
+Apple Passwords → "Export data to another app" → UwULock, the FIDO Credential Exchange Format
+(CXF). The extension declares `SupportsCredentialExchange` (version 1.0); the app lists the
+`ASCredentialExchangeActivity` activity type in `NSUserActivityTypes` (`scripts/ios-build.sh`
+reads its value from the SDK). The system starts UwULock with that activity; the mobile plugin
+(`CredentialExchange.swift`) keeps only its token. Once the vault is open, the page asks whether
+one waits, and after the person said yes the plugin calls
+`ASCredentialImportManager.importCredentials(token:)` (only then, only once) and hands the data
+as JSON to the import (`lib/import/cxf.ts`), which shows everything before anything is saved:
+logins with passwords, passkeys and one-time codes, cards, Wi-Fi, addresses, notes, the rest
+as fields. Nothing is written to disk in between. The Mac app doesn't take part (the API is
+Swift-only and the Mac app has no Swift of its own yet); its extension doesn't declare it.
 
 ## Threat model
 
@@ -325,6 +428,14 @@ What is protected: the private keys of passkeys, which are as good as the accoun
   Android (privileged browsers) or Digital Asset Links, so an app can't sign in to a site that
   doesn't trust it. Each passkey use needs the screen lock or a strong biometric unless the site
   says verification is discouraged.
+- **Android passwords**: a password only leaves the vault after the screen lock or a strong
+  biometric, for each fill; suggestions and Credential Manager entries carry names only, so
+  nothing secret reaches the system (or the app asking) before the person picked a login and
+  passed the check. The autofill service is bound only with `BIND_AUTOFILL_SERVICE`; a page's
+  domain counts only from a privileged browser with the listed certificate. An app that took a
+  package name a login names (`androidapp://`, the real app not installed) gets that login's
+  name shown, and its password only after the person picked it and passed the check — as with
+  every Android password manager. Logins that ask for the master password again never show up.
 - **Apple**: the extension holds only the provider key and the list, for as long as it runs, and
   opens one private key per request. A thief with the unlocked phone still needs Face ID / Touch
   ID / the passcode for each use. The passcode itself unlocks the provider key — weaker than the
@@ -335,6 +446,12 @@ What is protected: the private keys of passkeys, which are as good as the accoun
   deleted on another device stay usable in the extension until the vault is next opened on this
   device. Another app of the same team with App Group access can't put an older list back
   (generation) and can't import an outbox entry twice; it can delete files.
+- **Apple passwords**: the same seal and the same Face ID / Touch ID / passcode check as the
+  passkeys; each password is opened only for the login picked. The system's identity list
+  carries names and addresses only, as for passkeys.
+- **Credential exchange**: the system hands the data only to the app it was exported to, and
+  only after the person chose UwULock; UwULock asks again before taking it in and shows all of
+  it before saving. It stays in memory until then.
 - **Not covered**: a compromised OS or a malware that runs as the person and drives the UI; the
   person approving a request they didn't mean (the dialog says which site and which app).
 
@@ -351,5 +468,16 @@ What is protected: the private keys of passkeys, which are as good as the accoun
   in flight); the least recently used of 32 channels goes first, never the busy one.
 - Windows: package identity if Windows asks for it; the cancel signature's data (above).
 - Android: when Android hands over no calling app (it should for every request), passkeys are
-  listed with only the rpId checked; signing still checks the caller.
-- Apple: the iOS 18 exclude list; passwords in the extension (only passkeys for now).
+  listed with only the rpId checked; signing still checks the caller. Passwords aren't listed
+  then.
+- Android passwords: whether Android shows the autofilled app to UwULock's service (package
+  visibility) on every phone — without it, no Digital Asset Links, only `androidapp://` logins;
+  inline (keyboard) suggestions; multi-step sign-ins fill the user name only where the app or
+  page marks the field; Digital Asset Links fetched while Android waits (10 s timeout, the
+  system's own is shorter).
+- Apple: the iOS 18 exclude list; the credential exchange on the Mac and exporting from
+  UwULock; whether `getState` answers truthfully in the sandboxed Mac app.
+- Apple, untested on a device: picking UwULock's passkey right in the system's sheet (Firefox,
+  Google sign-in) after the fix in 0.6.0-beta.2 — the cause of the earlier failure wasn't
+  confirmed; the log above says which step fails; password AutoFill; the default-provider
+  prompt; the credential exchange with Apple Passwords.

@@ -110,3 +110,7 @@ zbus = { version = "5", default-features = false, features = ["async-io", "block
 libc = "0.2"
 # OSX_10_15: the data protection keychain, where Keychain access groups work.
 security-framework = { version = "3", features = ["OSX_10_15"] }
+# Asking macOS to make UwULock the AutoFill provider (autofill.rs: ASSettingsHelper,
+# ASCredentialIdentityStore). The objc2 and block2 Tauri's window layer already brings.
+objc2 = "0.6"
+block2 = "0.6"

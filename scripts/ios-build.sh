@@ -37,6 +37,21 @@ merge_info_plist() {
   if [ -f "$extra" ] && [ -n "$generated" ]; then
     /usr/libexec/PlistBuddy -c "Merge $extra" "$generated"
     echo "Merged $extra into $generated"
+    # The credential exchange's activity type (iOS 26), as the SDK spells it: Apple's docs only
+    # name the constant (ASCredentialExchangeActivity). Asked of the macOS SDK on this Mac.
+    local probe activity
+    probe="$(mktemp -d)"
+    printf 'import AuthenticationServices\nprint(ASCredentialExchangeActivity)\n' >"$probe/a.swift"
+    if xcrun swiftc -sdk "$(xcrun --sdk macosx --show-sdk-path)" -target "$(uname -m)-apple-macos26.0" \
+      "$probe/a.swift" -o "$probe/a" 2>/dev/null && activity="$("$probe/a")" && [ -n "$activity" ]; then
+      if ! /usr/libexec/PlistBuddy -c "Print :NSUserActivityTypes" "$generated" | grep -qxF "    $activity"; then
+        /usr/libexec/PlistBuddy -c "Add :NSUserActivityTypes: string $activity" "$generated"
+      fi
+      echo "Credential exchange activity: $activity"
+    else
+      echo "::warning::Couldn't read ASCredentialExchangeActivity from the SDK"
+    fi
+    rm -rf "$probe"
   fi
 }
 
@@ -66,7 +81,7 @@ node -e '
   if (patched === before) console.error("::warning::Could not find the Rust build phase in project.yml");
   fs.writeFileSync(file, patched);
 ' "$gen/project.yml"
-# The AutoFill extension for passkeys (apps/desktop/src-tauri/apple/PasskeyProvider, iOS 17+):
+# The AutoFill extension for passwords and passkeys (apps/desktop/src-tauri/apple/PasskeyProvider, iOS 17+):
 # its own target, built into the app's PlugIns. Unsigned like the app; it needs a developer team's
 # App Group and Keychain group to reach the vault (docs/passkeys.md).
 node -e '

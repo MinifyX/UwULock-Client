@@ -25,10 +25,13 @@
 
 #[cfg(target_os = "android")]
 pub(crate) mod android;
+#[cfg(target_os = "android")]
+mod android_logins;
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) mod apple;
 #[cfg(target_os = "linux")]
 mod linux;
+mod logins;
 #[cfg(any(windows, test))]
 mod registry;
 #[cfg(windows)]

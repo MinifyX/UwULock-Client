@@ -24,6 +24,8 @@ rsa.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+# Login addresses for the system's AutoFill (autofill.rs); the same url uwulock-core uses.
+url = "2"
 zeroize.workspace = true
 
 [dev-dependencies]

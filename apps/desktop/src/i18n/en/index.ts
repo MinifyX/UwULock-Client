@@ -4,6 +4,7 @@
  */
 
 import app from './app.json';
+import autofill from './autofill.json';
 import editing from './editing.json';
 import extras from './extras.json';
 import health from './health.json';
@@ -21,6 +22,7 @@ import wifi from './wifi.json';
 
 export const EN: Readonly<Record<string, string>> = {
   ...app,
+  ...autofill,
   ...editing,
   ...extras,
   ...health,

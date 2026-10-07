@@ -1,6 +1,6 @@
 /**
  * Settings on a phone and an iPad: a list of pages (Darstellung, Sicherheit,
- * Passkeys where the system has a provider, Konto, Über UwULock; Android also
+ * AutoFill where the system has a provider, Konto, Über UwULock; Android also
  * "Neue Versionen") instead of the desktop's dialog with sections. The same
  * settings and commands as SettingsDialog.tsx; only what a phone has.
  */
@@ -29,6 +29,14 @@ import {
 } from '../../lib/api';
 import { errorText, toastError } from '../../lib/errors';
 import { ago } from '../../lib/format';
+import {
+  AUTOFILL_CHANGED,
+  autofillProviderRequest,
+  hasCredentialManager,
+  providerSettingsPath,
+  providerStateText,
+  useProviderStatus,
+} from '../../lib/autofill';
 import { emailOptIn, setEmailOptIn, type EmailOptIn } from '../../lib/health';
 import { t, useLanguage } from '../../lib/i18n';
 import {
@@ -50,7 +58,7 @@ import {
 import { unlockDescription, unlockLabel, unlockPrompt } from '../../lib/unlock';
 import { initialOf } from '../../components/AccountCard';
 import { MoveDialog } from '../../components/MoveDialog';
-import { ImportPage } from './Import';
+import { SettingsImportPage } from './Import';
 import type { SettingsPage as Section } from '../nav';
 import { useMobile, useNav } from '../state';
 import {
@@ -233,7 +241,7 @@ export function SettingsPage() {
           <ListRow
             icon={ICONS.passkey}
             iconTone="solid"
-            title={t('Passkeys')}
+            title={t('AutoFill')}
             value={
               passkeys?.platform === 'apple'
                 ? passkeys.settings.appleExtension
@@ -340,7 +348,7 @@ export function SettingsSubPage({ section }: { section: Section }) {
     case 'account':
       return <AccountPage />;
     case 'import':
-      return <ImportPage />;
+      return <SettingsImportPage />;
     case 'updates':
       return android ? <UpdatesPage /> : <AboutPage />;
     case 'about':
@@ -574,43 +582,101 @@ function SecurityPage() {
   );
 }
 
-/** Passkeys in other apps: iOS's AutoFill extension (a switch), Android's Credential Manager (a hint). */
+/**
+ * AutoFill in other apps: whether UwULock is the system's provider for passwords and passkeys
+ * (with the button that asks the system), and on iOS UwULock's own switch that leaves the
+ * extension its sealed list. Android has two providers: Credential Manager and the autofill
+ * service.
+ */
 function PasskeysPage() {
   useLanguage();
   const status = usePasskeyStatus();
+  const [provider, reload] = useProviderStatus();
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
 
   if (!status)
     return (
-      <Page title={t('Passkeys')}>
+      <Page title={t('AutoFill')}>
         <Empty title={t('Lädt …')} />
       </Page>
     );
 
+  const ask = (target: 'credentials' | 'autofill') => {
+    setError(null);
+    setBusy(target);
+    void autofillProviderRequest(target)
+      .then(() => {
+        window.dispatchEvent(new Event(AUTOFILL_CHANGED));
+        window.dispatchEvent(new Event(PASSKEYS_CHANGED));
+        reload();
+      })
+      .catch((failed) => setError(errorText(failed)))
+      .finally(() => setBusy(null));
+  };
+
+  /** The pink action row under a provider that isn't on yet. */
+  const askRow = (target: 'credentials' | 'autofill', on: boolean | null) =>
+    provider?.supported && on !== true ? (
+      <ListRow
+        tone="accent"
+        title={provider.direct ? t('Als Standard festlegen') : t('Einstellungen öffnen')}
+        disabled={busy !== null}
+        onClick={() => ask(target)}
+      />
+    ) : null;
+
+  const errors = (extra: (string | null)[] = []) =>
+    [...extra, error].filter(Boolean).map((text) => (
+      <p key={text} className="m-footnote m-error" role="alert">
+        {text}
+      </p>
+    ));
+
   if (status.platform === 'android')
     return (
-      <Page title={t('Passkeys')} largeTitle>
+      <Page title={t('AutoFill')} largeTitle>
         <ListSection
           footer={t(
-            'Ab Android 14: in Android unter Einstellungen → Passwörter, Passkeys und Konten UwULock wählen.',
+            'Passwörter und Passkeys über Androids Anmeldeverwaltung (ab Android 14). Jedes Ausfüllen fragt nach deiner Displaysperre oder deinem Fingerabdruck.',
           )}
         >
           <ListRow
             icon={ICONS.passkey}
-            iconTone="success"
-            title={t('Passkeys in anderen Apps')}
+            iconTone={provider?.enabled ? 'success' : 'neutral'}
+            title={t('Passwörter und Passkeys')}
+            value={provider ? providerStateText(provider) : undefined}
             wrap
           />
+          {provider && hasCredentialManager(provider)
+            ? askRow('credentials', provider.enabled ?? null)
+            : null}
         </ListSection>
-        <p className="m-footnote">
-          {t(
-            'Logins füllt UwULock noch nicht in andere Apps aus. Kopieren und Einfügen geht; das Ausfüllen kommt später.',
+        <ListSection
+          footer={t(
+            'Für Apps und Browser, die Androids Anmeldeverwaltung nicht nutzen. In Chrome zusätzlich: Einstellungen → Autofill-Dienste → „Autofill über einen anderen Dienst“.',
           )}
-        </p>
+        >
+          <ListRow
+            icon={ICONS.website}
+            iconTone={provider?.autofill ? 'success' : 'neutral'}
+            title={t('Autofill-Dienst')}
+            value={
+              provider?.autofill == null
+                ? undefined
+                : provider.autofill
+                  ? t('Eingeschaltet')
+                  : t('Ausgeschaltet')
+            }
+            wrap
+          />
+          {askRow('autofill', provider?.autofill ?? null)}
+        </ListSection>
+        {errors()}
       </Page>
     );
 
-  if (status.platform !== 'apple') return <Page title={t('Passkeys')}>{null}</Page>;
+  if (status.platform !== 'apple') return <Page title={t('AutoFill')}>{null}</Page>;
 
   const on = status.settings.appleExtension;
   const problem = on && status.problem ? status.problem : null;
@@ -618,41 +684,54 @@ function PasskeysPage() {
   const change = (appleExtension: boolean) => {
     setError(null);
     void setPasskeyProvider({ ...status.settings, appleExtension })
-      .then(() => window.dispatchEvent(new Event(PASSKEYS_CHANGED)))
+      .then(() => {
+        window.dispatchEvent(new Event(PASSKEYS_CHANGED));
+        window.dispatchEvent(new Event(AUTOFILL_CHANGED));
+        reload();
+      })
       .catch((failed) => setError(errorText(failed)));
   };
 
   return (
-    <Page title={t('Passkeys')} largeTitle>
+    <Page title={t('AutoFill')} largeTitle>
+      {provider?.supported && (
+        <ListSection
+          footer={
+            provider.enabled === true
+              ? t('UwULock schlägt Passwörter und Passkeys beim Anmelden vor.')
+              : t('UwULock dort einschalten: {path}', { path: providerSettingsPath(provider) })
+          }
+        >
+          <ListRow
+            icon={ICONS.passkey}
+            iconTone={provider.enabled ? 'success' : 'neutral'}
+            title={t('Standard für AutoFill')}
+            value={providerStateText(provider)}
+            wrap
+          />
+          {askRow('credentials', provider.enabled)}
+        </ListSection>
+      )}
       <ListSection
         footer={t(
-          'Hinterlegt die Passkeys versiegelt für UwULocks AutoFill-Erweiterung; die öffnet sie nur nach Face ID, Touch ID oder dem Gerätecode.',
+          'Hinterlegt Passwörter und Passkeys versiegelt für UwULocks AutoFill-Erweiterung; die öffnet sie nur nach Face ID, Touch ID oder dem Gerätecode. Logins mit erneuter Master-Passwort-Abfrage bleiben draußen.',
         )}
       >
         <ListRow
-          icon={ICONS.passkey}
+          icon={ICONS.locked}
           iconTone={on ? 'success' : 'neutral'}
-          title={t('Passkeys in anderen Apps (AutoFill)')}
+          title={t('Passwörter und Passkeys für AutoFill')}
           wrap
           trailing={
             <Toggle
-              label={t('Passkeys in anderen Apps (AutoFill)')}
+              label={t('Passwörter und Passkeys für AutoFill')}
               checked={on}
               onChange={change}
             />
           }
         />
       </ListSection>
-      {[warning, problem, error].filter(Boolean).map((text) => (
-        <p key={text} className="m-footnote m-error" role="alert">
-          {text}
-        </p>
-      ))}
-      <p className="m-footnote">
-        {t(
-          'Einschalten in den iOS-Einstellungen unter Allgemein → AutoFill & Passwörter, danach hier. Logins füllt UwULock noch nicht in andere Apps aus.',
-        )}
-      </p>
+      {errors([warning, problem])}
     </Page>
   );
 }
