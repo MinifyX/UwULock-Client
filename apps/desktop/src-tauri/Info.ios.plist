@@ -26,5 +26,12 @@
 	<array>
 		<string>ASCredentialExchangeActivityType</string>
 	</array>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>de</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>de</string>
+		<string>en</string>
+	</array>
 </dict>
 </plist>

@@ -41,5 +41,10 @@
   "Der Schlüssel von Windows Hello hat sich geändert. Entsperre mit dem Master-Passwort und schalte Windows Hello wieder ein.": "Windows Hello's key has changed. Unlock with the master password and switch Windows Hello on again.",
   "Kontrast": "Contrast",
   "Normal": "Normal",
-  "Hoch": "High"
+  "Hoch": "High",
+  "Textgröße": "Text size",
+  "Kleiner": "Smaller",
+  "Größer": "Larger",
+  "Sehr groß": "Largest",
+  "„System“ folgt der Textgröße von {system}.": "“System” follows the text size of {system}."
 }

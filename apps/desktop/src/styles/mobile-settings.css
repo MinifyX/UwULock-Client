@@ -17,7 +17,7 @@
 
 .m-app .m-account-text b {
   overflow: hidden;
-  font-size: 18px;
+  font-size: var(--uwu-type-headline);
   font-weight: 650;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -26,13 +26,13 @@
 .m-app .m-account-text span {
   overflow: hidden;
   color: var(--uwu-muted);
-  font-size: 14px;
+  font-size: var(--uwu-type-subheadline);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
 .m-app .m-account .m-avatar[data-size='small'] + .m-account-text b {
-  font-size: 16px;
+  font-size: var(--uwu-type-headline);
 }
 
 .m-app .m-account .uwu-row-chevron {
@@ -51,7 +51,7 @@
 .m-app .m-text-button {
   padding: 6px 4px;
   color: var(--uwu-pink-ink);
-  font-size: 15px;
+  font-size: var(--uwu-type-subheadline);
   font-weight: 600;
 }
 
