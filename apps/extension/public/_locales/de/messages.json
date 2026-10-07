@@ -1,7 +1,7 @@
 {
   "extName": { "message": "UwULock" },
   "extDescription": {
-    "message": "Dein Tresor von UwULock, Vaultwarden oder Bitwarden im Browser: Logins ausfüllen, neue speichern, Passkeys nutzen."
+    "message": "Dein UwULock-, Vaultwarden- oder Bitwarden-Tresor im Browser: Logins ausfüllen, neue speichern, Passkeys nutzen."
   },
   "commandAutofill": { "message": "Login für diese Seite ausfüllen" },
   "commandOpen": { "message": "UwULock öffnen" }
