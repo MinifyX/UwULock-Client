@@ -313,13 +313,107 @@ impl Entry {
     }
 }
 
-/// The list the app leaves for the extension: one account's passkeys.
+fn password_aad(account: &str, item_id: &str) -> Vec<u8> {
+    format!("{DOMAIN}:password:{account}:{item_id}").into_bytes()
+}
+
+/// One login for password AutoFill. Its password is sealed on its own
+/// (`…:password:<account id>:<item id>`), like a passkey's private key: the
+/// extension opens only the one the person picked.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LoginEntry {
+    pub item_id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_name: Option<String>,
+    /// How the extension matches the login's addresses (no regular
+    /// expressions; [`crate::autofill::uri_hint`]).
+    #[serde(default)]
+    pub uris: Vec<crate::autofill::UriHint>,
+    /// Shown under the name: the first address's host.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subtitle: Option<String>,
+    pub sealed_password: String,
+}
+
+impl LoginEntry {
+    /// A vault login for the list of `account`; `None` when it has no
+    /// password.
+    pub fn of(
+        key: &[u8; 32],
+        account: &str,
+        item: &uwulock_core::vault::Item,
+    ) -> Option<LoginEntry> {
+        let login = item.login.as_ref()?;
+        let password = login.password.as_ref().filter(|p| !p.is_empty())?;
+        let uris = login
+            .uris
+            .iter()
+            .filter_map(|u| crate::autofill::uri_hint(&u.uri, u.match_kind))
+            .collect();
+        let subtitle = login
+            .uris
+            .iter()
+            .find_map(|u| crate::autofill::Target::web(&u.uri).host)
+            .map(|h| h.strip_prefix("www.").unwrap_or(&h).to_string());
+        Some(LoginEntry {
+            item_id: item.id.clone(),
+            name: item.name.to_string(),
+            user_name: login
+                .username
+                .as_ref()
+                .filter(|u| !u.is_empty())
+                .map(|u| u.to_string()),
+            uris,
+            subtitle,
+            sealed_password: b64(&encrypt(
+                key,
+                &password_aad(account, &item.id),
+                password.as_bytes(),
+            )),
+        })
+    }
+
+    /// The password, as the extension opens it to fill.
+    pub fn password(&self, key: &[u8; 32], account: &str) -> Result<Zeroizing<String>, String> {
+        let sealed = from_b64(&self.sealed_password)?;
+        let plain = decrypt(key, &password_aad(account, &self.item_id), &sealed)
+            .ok_or_else(|| "a password doesn't open".to_string())?;
+        String::from_utf8(plain.to_vec())
+            .map(Zeroizing::new)
+            .map_err(|_| "a password isn't text".to_string())
+    }
+}
+
+/// Whether a login goes into the list for password AutoFill: a login with a
+/// password, not in the trash or archived, and not marked "ask for the master
+/// password again" — the extension only has Face ID, Touch ID or the device
+/// passcode.
+pub fn listed_login(item: &uwulock_core::vault::Item) -> bool {
+    item.kind == uwulock_core::vault::ItemKind::Login
+        && !item.deleted
+        && !item.reprompt
+        && item.archived_date.is_none()
+        && item
+            .login
+            .as_ref()
+            .and_then(|l| l.password.as_ref())
+            .is_some_and(|p| !p.is_empty())
+}
+
+/// The list the app leaves for the extension: one account's passkeys and
+/// logins.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Snapshot {
     pub version: u32,
     /// Only ever goes up; the extension refuses a list older than one it saw.
     pub generation: u64,
     pub entries: Vec<ListEntry>,
+    /// Logins with a password, for password AutoFill. Older extensions skip
+    /// the field.
+    #[serde(default)]
+    pub logins: Vec<LoginEntry>,
     /// From the header, not the JSON.
     #[serde(skip)]
     pub account: String,
@@ -331,6 +425,7 @@ impl Snapshot {
             version: LIST_VERSION,
             generation,
             entries: Vec::new(),
+            logins: Vec::new(),
             account: account.to_string(),
         }
     }
@@ -345,6 +440,18 @@ impl Snapshot {
         let entry = ListEntry::of(key, &self.account, passkey, item_id)?;
         self.entries.push(entry);
         Ok(self.entries.last().expect("just pushed"))
+    }
+
+    /// Adds a login for password AutoFill, its password sealed on its own;
+    /// `None` when it has no password.
+    pub fn push_login(
+        &mut self,
+        key: &[u8; 32],
+        item: &uwulock_core::vault::Item,
+    ) -> Option<&LoginEntry> {
+        let entry = LoginEntry::of(key, &self.account, item)?;
+        self.logins.push(entry);
+        self.logins.last()
     }
 
     pub fn seal(&self, key: &[u8; 32]) -> Result<Vec<u8>, String> {
@@ -577,6 +684,72 @@ mod tests {
         assert!(entry.to_passkey().is_err());
         entry.rp_id = "login.example.com".into();
         assert!(entry.to_passkey().is_ok());
+    }
+
+    #[test]
+    fn logins_for_password_autofill() {
+        use uwulock_core::vault::{Item, ItemKind, LoginUri};
+        let key = new_key();
+        let mut item = Item::new(ItemKind::Login);
+        item.id = "item-7".into();
+        item.name = "Example".to_string().into();
+        assert!(!listed_login(&item), "no password");
+        {
+            let login = item.login.as_mut().unwrap();
+            login.username = Some("nyu@example.com".to_string().into());
+            login.password = Some("hunter2-but-longer".to_string().into());
+            login.uris = vec![
+                LoginUri {
+                    uri: "https://login.example.com/x".to_string().into(),
+                    match_kind: None,
+                    checksum: None,
+                },
+                LoginUri {
+                    uri: "^https://".to_string().into(),
+                    match_kind: Some(4),
+                    checksum: None,
+                },
+            ];
+        }
+        assert!(listed_login(&item));
+        let mut snapshot = Snapshot::new(ACCOUNT, 1);
+        let entry = snapshot.push_login(&key, &item).unwrap().clone();
+        assert_eq!(entry.user_name.as_deref(), Some("nyu@example.com"));
+        assert_eq!(entry.subtitle.as_deref(), Some("login.example.com"));
+        assert_eq!(entry.uris.len(), 1, "no regular expression");
+        assert_eq!(entry.uris[0].value, "example.com");
+        let sealed = snapshot.seal(&key).unwrap();
+        assert!(!sealed.windows(6).any(|w| w == b"hunter"));
+        let opened = Snapshot::open(&key, &sealed).unwrap();
+        let json = serde_json::to_string(&opened.logins[0]).unwrap();
+        assert!(
+            !json.contains("hunter2"),
+            "the password is sealed in the list too"
+        );
+        assert_eq!(
+            opened.logins[0].password(&key, ACCOUNT).unwrap().as_str(),
+            "hunter2-but-longer"
+        );
+        // Bound to its account and item.
+        assert!(opened.logins[0].password(&key, "someone-else").is_err());
+        let mut moved = opened.logins[0].clone();
+        moved.item_id = "item-8".into();
+        assert!(moved.password(&key, ACCOUNT).is_err());
+        // An old list without logins still reads.
+        let old = seal(
+            &key,
+            Kind::List,
+            ACCOUNT,
+            br#"{"version":2,"generation":3,"entries":[]}"#,
+        )
+        .unwrap();
+        assert!(Snapshot::open(&key, &old).unwrap().logins.is_empty());
+
+        item.reprompt = true;
+        assert!(!listed_login(&item), "asks for the master password");
+        item.reprompt = false;
+        item.archived_date = Some("2026-10-01T00:00:00Z".into());
+        assert!(!listed_login(&item), "archived");
     }
 
     #[test]

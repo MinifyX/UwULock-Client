@@ -12,6 +12,7 @@ import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.net.Uri
 import android.net.wifi.WifiEnterpriseConfig
 import android.net.wifi.WifiManager
 import android.net.wifi.WifiNetworkSuggestion
@@ -19,6 +20,7 @@ import android.os.Build
 import android.provider.MediaStore
 import android.provider.Settings
 import android.view.View
+import android.view.autofill.AutofillManager
 import android.webkit.MimeTypeMap
 import android.os.PersistableBundle
 import android.security.keystore.KeyGenParameterSpec
@@ -80,6 +82,12 @@ class CopyArgs {
     var expiresInSeconds: Long? = null
 }
 
+@InvokeArg
+class ProviderArgs {
+    /** `credentials` (Credential Manager) or `autofill` (the autofill service). */
+    var target: String = "credentials"
+}
+
 /** A Wi-Fi network, as the app's `wifi.rs` hands it over (already checked there). */
 @InvokeArg
 class WifiArgs {
@@ -115,6 +123,10 @@ class WifiArgs {
  * (Settings.ACTION_WIFI_ADD_NETWORKS) and the person confirms there; Android 10
  * gets it as a network suggestion. Needs CHANGE_WIFI_STATE (a normal permission,
  * granted at install) for the suggestion, nothing else — no location.
+ *
+ * Being the phone's password and passkey provider: providerStatus says whether UwULock is the
+ * Credential Manager provider (Android 14+) and the autofill service; providerRequest opens the
+ * system's own sheet or settings for either.
  *
  * New phone features get a @Command here and a method in src/lib.rs — see
  * docs/mobile.md.
@@ -401,6 +413,112 @@ class UwuLockMobilePlugin(private val activity: Activity) : Plugin(activity) {
             }
             invoke.resolve()
         }
+    }
+
+    // ── The phone's password and passkey provider ─────────────
+
+    private fun providerState(): JSObject {
+        val result = JSObject()
+        val autofill = activity.getSystemService(AutofillManager::class.java)
+        val autofillSupported = autofill?.isAutofillSupported == true
+        result.put("supported", Build.VERSION.SDK_INT >= 34 || autofillSupported)
+        result.put("direct", true)
+        if (Build.VERSION.SDK_INT >= 34) {
+            try {
+                val manager = activity.getSystemService(android.credentials.CredentialManager::class.java)
+                if (manager != null) {
+                    result.put(
+                        "enabled",
+                        manager.isEnabledCredentialProviderService(ComponentName(activity, PasskeyProviderService::class.java)),
+                    )
+                }
+            } catch (error: Exception) {
+                Log.w(TAG, "Credential Manager didn't say whether UwULock is on: $error")
+            }
+        }
+        if (autofillSupported) {
+            try {
+                // True only while UwULock's own service is the one picked.
+                result.put("autofill", autofill!!.hasEnabledAutofillServices())
+            } catch (error: Exception) {
+                Log.w(TAG, "Autofill didn't say whether UwULock is on: $error")
+            }
+        }
+        return result
+    }
+
+    @Command
+    fun providerStatus(invoke: Invoke) {
+        invoke.resolve(providerState())
+    }
+
+    @Command
+    fun providerRequest(invoke: Invoke) {
+        val args = invoke.parseArgs(ProviderArgs::class.java)
+        val intent = when (args.target) {
+            "autofill" -> {
+                if (activity.getSystemService(AutofillManager::class.java)?.isAutofillSupported != true) {
+                    invoke.reject("This phone has no autofill services.", "unsupported")
+                    return
+                }
+                Intent(Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE)
+                    .setData(Uri.parse("package:${activity.packageName}"))
+            }
+            "credentials" -> {
+                if (Build.VERSION.SDK_INT < 34) {
+                    invoke.reject("Credential Manager providers need Android 14.", "unsupported")
+                    return
+                }
+                if (Build.VERSION.SDK_INT < 35) {
+                    // Android 14 has no action for it: Credential Manager's own way into the
+                    // settings. No result comes back; the app asks again when it is shown.
+                    openCredentialSettings(invoke)
+                    return
+                }
+                // Android 15+ asks the person to make UwULock the provider.
+                Intent(Settings.ACTION_CREDENTIAL_PROVIDER).setData(Uri.parse("package:${activity.packageName}"))
+            }
+            else -> {
+                invoke.reject("Unknown target ${args.target}.", "invalid")
+                return
+            }
+        }
+        activity.runOnUiThread {
+            try {
+                startActivityForResult(invoke, intent, "providerChanged")
+            } catch (error: ActivityNotFoundException) {
+                if (args.target == "credentials") {
+                    openCredentialSettings(invoke)
+                } else {
+                    invoke.reject("Couldn't open the settings: ${error.message}", "failed")
+                }
+            } catch (error: Exception) {
+                Log.w(TAG, "couldn't open the provider settings", error)
+                invoke.reject("Couldn't open the settings: ${error.message}", "failed")
+            }
+        }
+    }
+
+    /** Android 14+: Credential Manager's settings (androidx), answering the state as it is now. */
+    private fun openCredentialSettings(invoke: Invoke) {
+        activity.runOnUiThread {
+            try {
+                if (Build.VERSION.SDK_INT < 34) throw IllegalStateException("needs Android 14")
+                androidx.credentials.CredentialManager.create(activity).createSettingsPendingIntent().send()
+                invoke.resolve(providerState())
+            } catch (error: Exception) {
+                Log.w(TAG, "couldn't open Credential Manager's settings", error)
+                invoke.reject("Couldn't open the settings: ${error.message}", "failed")
+            }
+        }
+    }
+
+    // Tauri finds the callback by its name; kept public like Tauri's own plugins do.
+    // Whatever the settings answer, the state is asked anew.
+    @ActivityCallback
+    @Suppress("UNUSED_PARAMETER")
+    fun providerChanged(invoke: Invoke, result: ActivityResult) {
+        invoke.resolve(providerState())
     }
 
     // ── Joining a Wi-Fi network ───────────────────────────────

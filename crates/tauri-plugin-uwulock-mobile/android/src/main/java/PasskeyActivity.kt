@@ -16,6 +16,7 @@ import androidx.credentials.CreatePublicKeyCredentialRequest
 import androidx.credentials.CreatePublicKeyCredentialResponse
 import androidx.credentials.GetCredentialResponse
 import androidx.credentials.GetPublicKeyCredentialOption
+import androidx.credentials.PasswordCredential
 import androidx.credentials.PublicKeyCredential
 import androidx.credentials.exceptions.CreateCredentialCancellationException
 import androidx.credentials.exceptions.CreateCredentialUnknownException
@@ -28,10 +29,11 @@ import org.json.JSONObject
 
 /**
  * What happens after the person picked UwULock in Android's sheet: make a passkey (CREATE), sign
- * with one (GET), or open UwULock to unlock it and hand Android the passkeys then (UNLOCK).
+ * with one (GET), hand over a login's password (PASSWORD), or open UwULock to unlock it and hand
+ * Android the passkeys and logins then (UNLOCK).
  *
  * Before making or signing, the person proves it's them — fingerprint, face or the screen lock —
- * unless the site said "discouraged". The vault work is Rust's (PasskeyBridge), on a background
+ * unless the site said "discouraged"; for a password always. The vault work is Rust's (PasskeyBridge), on a background
  * thread: making a passkey saves it to the server first.
  */
 @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
@@ -42,6 +44,7 @@ class PasskeyActivity : AppCompatActivity() {
         const val CREDENTIAL_ID = "app.uwulock.passkeys.CREDENTIAL_ID"
         const val CREATE = "create"
         const val GET = "get"
+        const val PASSWORD = "password"
         const val UNLOCK = "unlock"
 
         fun intent(context: Context, mode: String): Intent =
@@ -80,6 +83,7 @@ class PasskeyActivity : AppCompatActivity() {
         when (intent.mode()) {
             CREATE -> create()
             GET -> get()
+            PASSWORD -> password()
             UNLOCK -> unlocked()
             else -> finish()
         }
@@ -100,7 +104,7 @@ class PasskeyActivity : AppCompatActivity() {
         when (intent.mode()) {
             CREATE -> PendingIntentHandler.setCreateCredentialException(
                 result, CreateCredentialCancellationException("UwULock is locked."))
-            GET -> PendingIntentHandler.setGetCredentialException(
+            GET, PASSWORD -> PendingIntentHandler.setGetCredentialException(
                 result, GetCredentialCancellationException("UwULock is locked."))
             else -> {
                 setResult(Activity.RESULT_CANCELED)
@@ -251,6 +255,50 @@ class PasskeyActivity : AppCompatActivity() {
                         } else {
                             PendingIntentHandler.setGetCredentialException(
                                 result, GetCredentialUnknownException(answer.optString("error")))
+                        }
+                        setResult(Activity.RESULT_OK, result)
+                        finish()
+                    }
+                }
+            },
+            failed = {
+                val result = Intent()
+                PendingIntentHandler.setGetCredentialException(
+                    result, GetCredentialCancellationException("Not confirmed."))
+                setResult(Activity.RESULT_OK, result)
+                finish()
+            },
+        )
+    }
+
+    /** A login's password, for the app or site that asks (Rust checks), after verifying. */
+    private fun password() {
+        val request = PendingIntentHandler.retrieveProviderGetCredentialRequest(intent)
+        val itemId = intent.getStringExtra(ITEM_ID)
+        if (request == null || itemId.isNullOrEmpty()) {
+            finish()
+            return
+        }
+        val args = LoginBridge.caller(this, request.callingAppInfo)
+        val site = args.optString("origin").substringAfter("://").ifEmpty { request.callingAppInfo.packageName }
+        verify(
+            true,
+            getString(R.string.uwulock_passkeys_verify_get, site),
+            then = { _ ->
+                background {
+                    val login = try {
+                        LoginBridge.password(args, itemId)
+                    } catch (error: Exception) {
+                        null
+                    }
+                    runOnUiThread {
+                        val result = Intent()
+                        if (login != null) {
+                            PendingIntentHandler.setGetCredentialResponse(
+                                result, GetCredentialResponse(PasswordCredential(login.userName, login.password)))
+                        } else {
+                            PendingIntentHandler.setGetCredentialException(
+                                result, GetCredentialUnknownException("UwULock couldn't hand over the password."))
                         }
                         setResult(Activity.RESULT_OK, result)
                         finish()

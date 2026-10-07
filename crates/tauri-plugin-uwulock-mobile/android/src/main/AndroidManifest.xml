@@ -29,10 +29,37 @@
             android:excludeFromRecents="true"
             android:exported="false"
             android:theme="@style/UwULockPasskeyTheme" />
+        <!-- Passwords for apps and browsers without Credential Manager: Android's autofill
+             service. Suggestions carry no password; FillActivity verifies the person and fills.
+             Switched on by the person (Settings, or UwULock's button: providerRequest). -->
+        <service
+            android:name="app.uwulock.mobile.UwuLockAutofillService"
+            android:exported="true"
+            android:label="@string/uwulock_passkeys_label"
+            android:permission="android.permission.BIND_AUTOFILL_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.autofill.AutofillService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.autofill"
+                android:resource="@xml/uwulock_autofill_service" />
+        </service>
+        <activity
+            android:name="app.uwulock.mobile.FillActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:theme="@style/UwULockPasskeyTheme" />
     </application>
     <queries>
         <intent>
             <action android:name="android.settings.WIFI_ADD_NETWORKS" />
+        </intent>
+        <!-- Browsers: the autofill service checks a browser's certificate against the privileged
+             list before it takes the page's domain as its address (LoginBridge.autofillCaller). -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
         </intent>
     </queries>
 </manifest>

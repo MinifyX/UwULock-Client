@@ -17,17 +17,20 @@ import androidx.credentials.provider.BeginCreateCredentialResponse
 import androidx.credentials.provider.BeginCreatePublicKeyCredentialRequest
 import androidx.credentials.provider.BeginGetCredentialRequest
 import androidx.credentials.provider.BeginGetCredentialResponse
+import androidx.credentials.provider.BeginGetPasswordOption
 import androidx.credentials.provider.BeginGetPublicKeyCredentialOption
 import androidx.credentials.provider.CreateEntry
 import androidx.credentials.provider.CredentialEntry
 import androidx.credentials.provider.CredentialProviderService
+import androidx.credentials.provider.PasswordCredentialEntry
 import androidx.credentials.provider.ProviderClearCredentialStateRequest
 import androidx.credentials.provider.PublicKeyCredentialEntry
 
 /**
- * UwULock as a passkey provider for Credential Manager (Android 14+). Android asks here first,
- * quickly and without UI: which passkeys there are for a site, whether UwULock can make one.
- * Picking one starts [PasskeyActivity], which verifies the person and signs or makes.
+ * UwULock as a passkey and password provider for Credential Manager (Android 14+). Android asks
+ * here first, quickly and without UI: which passkeys and logins there are for a site or app,
+ * whether UwULock can make a passkey. Picking one starts [PasskeyActivity], which verifies the
+ * person and signs, makes or hands over the password (passwords: always verified first).
  *
  * The vault is the app's open one; a locked or closed UwULock offers "Unlock UwULock" only.
  */
@@ -36,13 +39,35 @@ class PasskeyProviderService : CredentialProviderService() {
     companion object {
         /**
          * The entries for a sign-in request, or `null` when the vault isn't open. Only for a caller
-         * that may use the site's passkeys: an app the site doesn't trust doesn't even get the
-         * names shown. May fetch the site's Digital Asset Links: never on the main thread.
+         * that may use the site's passkeys or logins: an app the site doesn't trust doesn't even
+         * get the names shown. May fetch the site's Digital Asset Links: never on the main thread.
+         * Password entries carry no password: [PasskeyActivity] asks for it after verifying.
          */
         fun entries(context: Context, request: BeginGetCredentialRequest): BeginGetCredentialResponse? {
             val response = BeginGetCredentialResponse.Builder()
             var index = 0
             for (option in request.beginGetCredentialOptions) {
+                if (option is BeginGetPasswordOption) {
+                    // Passwords only for a caller Android names.
+                    val info = request.callingAppInfo ?: continue
+                    val logins = LoginBridge.logins(LoginBridge.caller(context, info)) ?: return null
+                    val wanted = option.allowedUserIds
+                    for (login in logins) {
+                        if (wanted.isNotEmpty() && login.userName !in wanted) continue
+                        val intent = PasskeyActivity.intent(context, PasskeyActivity.PASSWORD)
+                            .putExtra(PasskeyActivity.ITEM_ID, login.itemId)
+                        val pending = PendingIntent.getActivity(
+                            context,
+                            1000 + index++,
+                            intent,
+                            PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                        )
+                        val entry = PasswordCredentialEntry.Builder(context, login.userName ?: login.name, pending, option)
+                        if (login.userName != null) entry.setDisplayName(login.name)
+                        response.addCredentialEntry(entry.build())
+                    }
+                    continue
+                }
                 if (option !is BeginGetPublicKeyCredentialOption) continue
                 val passkeys = PasskeyBridge.list(context, request.callingAppInfo, option.requestJson) ?: return null
                 val entries = mutableListOf<CredentialEntry>()
@@ -85,7 +110,7 @@ class PasskeyProviderService : CredentialProviderService() {
         callback: OutcomeReceiver<BeginCreateCredentialResponse, CreateCredentialException>,
     ) {
         if (request !is BeginCreatePublicKeyCredentialRequest) {
-            callback.onError(CreateCredentialUnknownException("UwULock only keeps passkeys here."))
+            callback.onError(CreateCredentialUnknownException("UwULock saves passkeys here; passwords are saved in the app."))
             return
         }
         val pending = PendingIntent.getActivity(

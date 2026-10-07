@@ -17,6 +17,8 @@
 //! minutes per app and site), so an untrusted app doesn't even get to show
 //! the person's account names for a site.
 //!
+//! Passwords go through the same bridge: [`super::android_logins`].
+//!
 //! Whether the person has to be verified (fingerprint, face, screen lock) is
 //! decided here once (`verification`): Kotlin asks before prompting, and
 //! `create`/`get` refuse a request that wanted it without it.
@@ -174,6 +176,8 @@ fn call(method: &str, argument: &str) -> Result<Value, String> {
             let caller: Caller = serde_json::from_str(argument).map_err(|e| e.to_string())?;
             get(app()?, &caller)
         }
+        // Passwords (Credential Manager and the autofill service).
+        "logins" | "password" => super::android_logins::call(app()?, method, argument),
         other => Err(format!("unknown call {other}")),
     }
 }
@@ -245,7 +249,7 @@ type LinksKey = (String, String, Vec<Vec<u8>>);
 /// five minutes, a no for one. Failed fetches aren't kept.
 static LINKS: OnceLock<Mutex<HashMap<LinksKey, (Instant, bool)>>> = OnceLock::new();
 
-fn app_allowed(rp_id: &str, package: &str, certs: &[Vec<u8>]) -> Result<bool, String> {
+pub(super) fn app_allowed(rp_id: &str, package: &str, certs: &[Vec<u8>]) -> Result<bool, String> {
     let key: LinksKey = (rp_id.to_string(), package.to_string(), certs.to_vec());
     let cache = LINKS.get_or_init(|| Mutex::new(HashMap::new()));
     if let Some(&(at, allowed)) = cache.lock().map_err(|e| e.to_string())?.get(&key) {

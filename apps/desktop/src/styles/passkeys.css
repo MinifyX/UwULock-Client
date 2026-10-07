@@ -64,3 +64,21 @@
 .passkey-site small {
   color: var(--uwu-muted);
 }
+
+/* "Als Standard festlegen" (AutofillCard): the update hint's card. On a phone above the tab bar,
+   across the screen; on an iPad (top tab bar) bottom right as on the desktop. */
+.m-root ~ .autofill-card {
+  left: 16px;
+  right: 16px;
+  width: auto;
+  bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  z-index: 30;
+}
+
+@media (min-width: 700px) {
+  .m-root ~ .autofill-card {
+    left: auto;
+    width: min(380px, calc(100vw - 32px));
+    bottom: calc(var(--uwu-space-5) + env(safe-area-inset-bottom, 0px));
+  }
+}

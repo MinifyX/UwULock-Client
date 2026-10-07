@@ -1,4 +1,12 @@
+import { Button } from '@uwusuite/design';
 import { useEffect, useState, type ReactElement, type ReactNode } from 'react';
+import {
+  AUTOFILL_CHANGED,
+  autofillProviderRequest,
+  providerSettingsPath,
+  providerStateText,
+  useProviderStatus,
+} from '../lib/autofill';
 import { errorText } from '../lib/errors';
 import { t, useLanguage } from '../lib/i18n';
 import {
@@ -84,30 +92,92 @@ export function PasskeySettings({ Row, Toggle }: { Row: Row; Toggle: Toggle }) {
             ),
           ]
         : [
-            t('Passkeys in anderen Apps (AutoFill)'),
+            t('Passwörter und Passkeys für AutoFill'),
             t(
-              'Hinterlegt die Passkeys versiegelt für UwULocks AutoFill-Erweiterung; die öffnet sie nur nach Face ID, Touch ID oder dem Gerätecode.',
+              'Hinterlegt Passwörter und Passkeys versiegelt für UwULocks AutoFill-Erweiterung; die öffnet sie nur nach Face ID, Touch ID oder dem Gerätecode. Logins mit erneuter Master-Passwort-Abfrage bleiben draußen.',
             ),
           ];
 
   return (
+    <>
+      {status.platform === 'apple' && <ProviderRow Row={Row} />}
+      <Row
+        label={label}
+        description={
+          <>
+            {description}
+            {warning && (
+              <>
+                <br />
+                <span className="form-error" role="alert">
+                  {warning}
+                </span>
+              </>
+            )}
+            {problem && (
+              <>
+                <br />
+                <span className="form-error">{problem}</span>
+              </>
+            )}
+            {error && (
+              <>
+                <br />
+                <span className="form-error">{error}</span>
+              </>
+            )}
+          </>
+        }
+      >
+        <Toggle
+          label={label}
+          checked={on}
+          onChange={(checked) =>
+            change(
+              status.platform === 'linux'
+                ? { securityKey: checked }
+                : status.platform === 'windows'
+                  ? { windowsPlugin: checked }
+                  : { appleExtension: checked },
+            )
+          }
+        />
+      </Row>
+    </>
+  );
+}
+
+/**
+ * macOS (the Mac App Store build, which has the extension): whether UwULock is the AutoFill
+ * provider in System Settings, and the button that asks macOS (15+) or opens those settings.
+ */
+function ProviderRow({ Row }: { Row: Row }) {
+  useLanguage();
+  const [view, reload] = useProviderStatus();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!view?.supported || view.platform !== 'macos') return null;
+  const ask = () => {
+    setBusy(true);
+    setError(null);
+    void autofillProviderRequest('credentials')
+      .then(() => {
+        window.dispatchEvent(new Event(AUTOFILL_CHANGED));
+        reload();
+      })
+      .catch((failed) => setError(errorText(failed)))
+      .finally(() => setBusy(false));
+  };
+  return (
     <Row
-      label={label}
+      label={t('Standard für AutoFill')}
       description={
         <>
-          {description}
-          {warning && (
+          {providerStateText(view)}
+          {view.enabled !== true && (
             <>
-              <br />
-              <span className="form-error" role="alert">
-                {warning}
-              </span>
-            </>
-          )}
-          {problem && (
-            <>
-              <br />
-              <span className="form-error">{problem}</span>
+              {' · '}
+              {t('UwULock dort einschalten: {path}', { path: providerSettingsPath(view) })}
             </>
           )}
           {error && (
@@ -119,19 +189,13 @@ export function PasskeySettings({ Row, Toggle }: { Row: Row; Toggle: Toggle }) {
         </>
       }
     >
-      <Toggle
-        label={label}
-        checked={on}
-        onChange={(checked) =>
-          change(
-            status.platform === 'linux'
-              ? { securityKey: checked }
-              : status.platform === 'windows'
-                ? { windowsPlugin: checked }
-                : { appleExtension: checked },
-          )
-        }
-      />
+      {view.enabled === true ? (
+        <span />
+      ) : (
+        <Button size="sm" busy={busy} onClick={ask}>
+          {view.direct ? t('Als Standard festlegen') : t('Einstellungen öffnen')}
+        </Button>
+      )}
     </Row>
   );
 }

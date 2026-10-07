@@ -61,6 +61,8 @@ class UwuLockMobilePlugin: Plugin {
       self, selector: #selector(uncoverScreen), name: UIApplication.didBecomeActiveNotification,
       object: nil)
     excludeDataFromBackup()
+    // iOS 26: credentials another app hands over (CredentialExchange.swift).
+    CredentialExchange.install()
   }
 
   // MARK: Privacy

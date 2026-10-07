@@ -19,5 +19,12 @@
 	<string>group.app.uwulock</string>
 	<key>UwULockKeychainGroup</key>
 	<string>$(AppIdentifierPrefix)app.uwulock.passkeys</string>
+
+	<!-- iOS 26: Apple Passwords hands its data over with this activity (CredentialExchange.swift
+	     in the mobile plugin). scripts/ios-build.sh adds the constant's value as the SDK has it. -->
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>ASCredentialExchangeActivityType</string>
+	</array>
 </dict>
 </plist>
