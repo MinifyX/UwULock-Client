@@ -61,6 +61,10 @@ class UwuLockMobilePlugin: Plugin {
       self, selector: #selector(uncoverScreen), name: UIApplication.didBecomeActiveNotification,
       object: nil)
     excludeDataFromBackup()
+    // The app never zooms (the page's viewport and lib/zoom.ts): the scroll view under the page
+    // doesn't pinch or bounce into a zoom of its own either.
+    webview.scrollView.pinchGestureRecognizer?.isEnabled = false
+    webview.scrollView.bouncesZoom = false
     // iOS 26: credentials another app hands over (CredentialExchange.swift).
     CredentialExchange.install()
   }
