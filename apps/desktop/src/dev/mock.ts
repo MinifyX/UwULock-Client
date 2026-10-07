@@ -705,6 +705,51 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
     state = 'locked';
     void emit('vault-status', status());
   },
+  // The import: counts what it got, takes a moment per part, and leaves one item out.
+  import_vault: async ({ format, text }) => {
+    const total =
+      format === 'json'
+        ? (JSON.parse(String(text)) as { items: unknown[] }).items.length
+        : String(text).trim().split('\n').length - 1;
+    const sent = Math.max(0, total - 1);
+    for (let done = 0; done <= sent; done += Math.max(1, Math.ceil(sent / 4))) {
+      void emit('import-progress', { done, total: sent });
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    void emit('import-progress', { done: sent, total: sent });
+    return {
+      imported: sent,
+      foldersCreated: 1,
+      skipped: total > 0 ? [{ name: 'Server (SSH)', reason: 'invalid' }] : [],
+      error: null,
+    };
+  },
+  import_open_bitwarden: ({ password }) => {
+    if (password !== 'passwort') throw { kind: 'import-password', message: 'wrong' };
+    return JSON.stringify({
+      encrypted: false,
+      folders: [],
+      items: [
+        {
+          type: 1,
+          name: 'Forum',
+          notes: null,
+          favorite: false,
+          reprompt: 0,
+          folderId: null,
+          fields: [],
+          login: {
+            username: 'nyu',
+            password: 'x',
+            totp: null,
+            uris: [{ uri: 'https://forum.example.org', match: null }],
+          },
+        },
+      ],
+    });
+  },
+  import_kdbx_argon2: () => new Array(32).fill(0),
+  import_kdbx_aes_kdf: () => new Array(32).fill(0),
 };
 
 mockWindows('main');

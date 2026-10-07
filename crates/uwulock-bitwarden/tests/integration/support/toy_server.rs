@@ -424,6 +424,7 @@ fn vault_route(request: &Request, rest: &[&str], state: &mut State) -> (u16, Val
                 .unwrap_or_default();
             save_cipher(state, None, body["cipher"].clone(), &collections)
         }
+        ("POST", ["ciphers", "import"]) => import(state, body()),
         ("PUT", ["ciphers", id]) | ("POST", ["ciphers", id]) => {
             save_cipher(state, Some(id), body(), &[])
         }
@@ -542,6 +543,56 @@ fn cipher_mut<'a>(state: &'a mut State, id: &str) -> Option<&'a mut Value> {
 
 /// A new item, or a changed one. Like Vaultwarden: the type's own object is
 /// stored as it arrives, and a save that names an older revision is refused.
+/// `POST /api/ciphers/import`, as Vaultwarden takes it: a folder with the id
+/// of one the account has is that one, any other is made new; each item goes
+/// in like a new one, into the folder its relationship names.
+fn import(state: &mut State, body: Value) -> (u16, Value) {
+    let mut ids = Vec::new();
+    for folder in body["folders"].as_array().cloned().unwrap_or_default() {
+        let known = folder["id"].as_str().filter(|id| {
+            state.sync["folders"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|f| f["id"] == json!(id))
+        });
+        let id = match known {
+            Some(id) => id.to_string(),
+            None => {
+                state.counter += 1;
+                let id = format!("f-import-{}", state.counter);
+                state.sync["folders"].as_array_mut().unwrap().push(json!({
+                    "id": id, "name": folder["name"], "revisionDate": stamp(), "object": "folder",
+                }));
+                id
+            }
+        };
+        ids.push(id);
+    }
+    let links = body["folderRelationships"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    for (index, mut cipher) in body["ciphers"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .enumerate()
+    {
+        let folder = links
+            .iter()
+            .find(|link| link["key"] == json!(index))
+            .and_then(|link| ids.get(link["value"].as_u64()? as usize));
+        cipher["folderId"] = json!(folder);
+        let (status, answer) = save_cipher(state, None, cipher, &[]);
+        if status != 200 {
+            return (status, answer);
+        }
+    }
+    (200, Value::Null)
+}
+
 fn save_cipher(
     state: &mut State,
     id: Option<&str>,

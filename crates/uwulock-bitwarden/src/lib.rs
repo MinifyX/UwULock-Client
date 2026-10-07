@@ -32,7 +32,8 @@ pub mod suite;
 pub mod uwu;
 
 pub use uwulock_core::{
-    crypto, entry_send, extras, file_request, generator, passkey, send, totp, vault, wire, Error,
+    crypto, entry_send, extras, file_request, generator, import, passkey, send, totp, vault, wire,
+    Error,
 };
 
 pub use api::{App, Client, Device, LoginOutcome, Server, Session, TwoFactorMethod};

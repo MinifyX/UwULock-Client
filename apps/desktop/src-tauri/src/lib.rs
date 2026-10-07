@@ -13,6 +13,7 @@
 //! - [`session_lock`] — locking when the screen locks or the computer sleeps
 //! - [`hello`] — unlocking with Windows Hello, or a phone's fingerprint or face
 //! - [`moving`] — moving a vault in from Bitwarden or Vaultwarden
+//! - [`importing`] — moving in from another app's export file
 //! - [`clipboard`] — copies that clear themselves
 //! - [`system`] — updates and links out of the app
 //! - [`phone`] — Android and iOS: the plugin, locking in the background
@@ -30,6 +31,7 @@ mod clipboard;
 mod extras;
 mod health;
 mod hello;
+mod importing;
 mod live;
 mod moving;
 mod passkeys;
@@ -193,6 +195,10 @@ pub fn run() {
             health::health_email_opt_in,
             health::set_health_email_opt_in,
             health::health_check_emails,
+            importing::import_vault,
+            importing::import_open_bitwarden,
+            importing::import_kdbx_argon2,
+            importing::import_kdbx_aes_kdf,
             moving::move_target,
             moving::move_login,
             moving::move_login_two_factor,

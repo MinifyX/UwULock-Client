@@ -15,7 +15,8 @@ export const TABS: readonly Tab[] = ['vault', 'check', 'generator', 'settings'];
 export type FindingGroup =
   'breached' | 'siteBreach' | 'reused' | 'weak' | 'unsecured' | 'twofa' | 'ignored';
 
-export type SettingsPage = 'appearance' | 'security' | 'autofill' | 'account' | 'updates' | 'about';
+export type SettingsPage =
+  'appearance' | 'security' | 'autofill' | 'account' | 'import' | 'updates' | 'about';
 
 export type Route =
   | { page: 'overview' }

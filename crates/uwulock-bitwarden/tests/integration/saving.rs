@@ -470,3 +470,96 @@ async fn an_item_that_didnt_open_is_never_written_back() {
     half_a_key.ssh_key.as_mut().unwrap().fingerprint = None;
     assert!(matches!(half_a_key.can_save(), Err(Error::Refused(_))));
 }
+
+#[tokio::test]
+async fn an_import_goes_in_parts_into_the_same_folders() {
+    use uwulock_bitwarden::api::import_requests;
+    use uwulock_bitwarden::import;
+
+    let server = ToyServer::start(Options::default());
+    let account = log_in(&server).await;
+    let key = &account.user_key;
+    let name = |text: &str| EncString::encrypt(text.as_bytes(), key).to_string();
+    let id_of = |answer: serde_json::Value| answer["id"].as_str().unwrap().to_string();
+    let before = account.vault().await.folders.len();
+    // "Arbeit" is there already; "Privat" the app makes before the parts go.
+    let arbeit = id_of(
+        account
+            .client
+            .create_folder(&account.access, name("Arbeit"))
+            .await
+            .unwrap(),
+    );
+    let privat = id_of(
+        account
+            .client
+            .create_folder(&account.access, name("Privat"))
+            .await
+            .unwrap(),
+    );
+
+    let file = r#"{"encrypted": false,
+        "folders": [{"id": "a", "name": "Arbeit"}, {"id": "b", "name": "Privat"}],
+        "items": [
+          {"type": 1, "name": "Mail", "folderId": "a",
+           "login": {"username": "nyu", "password": "pw",
+                     "uris": [{"uri": "https://mail.example.com", "match": null}],
+                     "fido2Credentials": [{"credentialId": "abc", "rpId": "example.com",
+                                           "counter": "0", "creationDate": "2026-01-01T00:00:00.000Z"}]}},
+          {"type": 2, "name": "Notiz", "folderId": "b", "secureNote": {"type": 0}, "notes": "geheim"},
+          {"type": 1, "name": "Forum", "folderId": "b", "login": {"username": "nyu"}}]}"#;
+    let mut read = import::read("json", file, NOW).unwrap();
+    let mut sealed = Vec::new();
+    for (index, item) in read.items.iter_mut().enumerate() {
+        if let Some(passkeys) = item.login.as_mut().and_then(|l| l.passkeys.as_mut()) {
+            import::seal_passkeys(passkeys, key).unwrap();
+        }
+        sealed.push((index, item.seal(key).unwrap()));
+    }
+    let folders = [
+        Some((arbeit.clone(), name("Arbeit"))),
+        Some((privat.clone(), name("Privat"))),
+    ];
+    let requests = import_requests(sealed, &read.in_folder, &folders, 2);
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[0].folders.len(), 2);
+    assert_eq!(
+        requests[1].folders.len(),
+        1,
+        "a part lists only its own folders"
+    );
+    for request in &requests {
+        account
+            .client
+            .import_ciphers(&account.access, request)
+            .await
+            .unwrap();
+    }
+
+    let vault = account.vault().await;
+    let item = |wanted: &str| {
+        vault
+            .items
+            .iter()
+            .find(|item| item.name.as_str() == wanted)
+            .unwrap()
+    };
+    assert_eq!(item("Mail").folder_id.as_deref(), Some(arbeit.as_str()));
+    assert_eq!(item("Notiz").folder_id.as_deref(), Some(privat.as_str()));
+    assert_eq!(item("Forum").folder_id.as_deref(), Some(privat.as_str()));
+    assert_eq!(plain(&item("Notiz").notes), Some("geheim"));
+    assert_eq!(vault.folders.len(), before + 2, "no folder twice");
+    let passkeys = item("Mail")
+        .login
+        .as_ref()
+        .unwrap()
+        .passkeys
+        .clone()
+        .unwrap();
+    let credential: EncString = passkeys[0]["credentialId"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert_eq!(credential.decrypt_string(key).unwrap().as_str(), "abc");
+}

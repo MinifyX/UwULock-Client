@@ -5,6 +5,7 @@ import { hideWindowOnClose, onMacQuit, setMacMenu } from '@uwusuite/design/tauri
 import { useEffect, useRef, useState } from 'react';
 import { ExtrasKeyNotice } from './components/ExtrasKeyNotice';
 import { GeneratorDialog } from './components/GeneratorDialog';
+import { ImportDialog } from './components/ImportDialog';
 import { LockScreen } from './components/LockScreen';
 import { LoginScreen } from './components/LoginScreen';
 import { NyuStage, playNyu } from './components/nyu/stage';
@@ -48,6 +49,7 @@ export function App() {
   const [status, setStatus] = useState<Status | null>(null);
   const [settingsOpen, setSettingsOpen] = useState<SettingsSection | null>(null);
   const [generator, setGenerator] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [updateDismissed, setUpdateDismissed] = useState(false);
   /** The login screen, for a second account next to the one already here. */
@@ -125,7 +127,11 @@ export function App() {
   const unlocked = status?.state === 'unlocked';
   const mobileVault = touchLayout && unlocked && !adding && !status.sessionExpired;
   // The dialogs are native <dialog>s: the page behind them is inert while they are open.
-  const modalOpen = Boolean(settingsOpen || generator);
+  const modalOpen = Boolean(settingsOpen || generator || importing);
+  // A locked vault ends the import dialog: the file's contents go with it.
+  useEffect(() => {
+    if (!unlocked) setImporting(false);
+  }, [unlocked]);
 
   const focusSearch = () => {
     searchRef.current?.focus();
@@ -176,6 +182,11 @@ export function App() {
               accelerator: 'CmdOrCtrl+G',
               enabled: !modalOpen,
               action: () => setGenerator(true),
+            },
+            {
+              text: `${t('Importieren')} …`,
+              enabled: unlocked && !modalOpen,
+              action: () => setImporting(true),
             },
             'separator',
             {
@@ -319,6 +330,8 @@ export function App() {
         )}
 
         {generator && <GeneratorDialog onClose={() => setGenerator(false)} />}
+
+        {unlocked && importing && <ImportDialog onClose={() => setImporting(false)} />}
 
         {unlocked && <ExtrasKeyNotice />}
 
