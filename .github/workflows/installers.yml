@@ -459,6 +459,10 @@ jobs:
             codesign --force --sign - --identifier app.uwulock.setup out/UwULock-update-macos-universal
           fi
           ls -la out
+      # Before anything built runs here: the setup below is code from the build machine, and
+      # the Developer ID and the App Store Connect key must be gone by then.
+      - name: Remove the keychain and the key, before the setup runs
+        run: bash scripts/apple-ci.sh cleanup
       # The setup unpacks what it carries into a scratch folder and checks the app arrived
       # startable. The universal one runs as arm64 here, its Intel half is checked for being
       # there; a notarized app has its ticket with it.
