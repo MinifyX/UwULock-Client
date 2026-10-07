@@ -1,0 +1,174 @@
+name: Google Play
+
+# Builds UwULock for Google Play: an App Bundle (AAB) for phones, tablets and Chromebooks
+# (arm64, armv7, x86_64), signed with UwULock's release key, so the Play version and the
+# APK from GitHub carry the same certificate and install over each other. Started by hand
+# for a release tag; the AAB is uploaded to a Play track by hand (docs/app-store.md).
+#
+# Like the APK (android.yml): built without the key, signed in a separate job on a fresh
+# runner. Only release tags are built, so no unreleased commit carries the release key.
+#
+# With `pepk_public_key` (the encryption_public_key.pem the Play Console offers under
+# "Use existing app signing key"), the signing job also exports the release key encrypted
+# for Google (PEPK). Only Google can open that file; it's what the Console asks for once.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build, e.g. v0.6.0-beta.2'
+        required: true
+      pepk_public_key:
+        description: 'Optional: content of encryption_public_key.pem from the Play Console (one-time key upload)'
+        required: false
+        default: ''
+
+concurrency:
+  group: play-${{ inputs.tag }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  aab:
+    name: App Bundle
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      code: ${{ steps.version.outputs.code }}
+    steps:
+      - name: Release tags only
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] \
+            || { echo "::error::$TAG is not a release tag (v1.2.3 or v1.2.3-beta.4)"; exit 1; }
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: play
+      - run: pnpm install --frozen-lockfile
+
+      - name: Version code
+        id: version
+        run: |
+          # Like android.yml (major·10⁹ + minor·10⁷ + patch·10⁵ + run number); Play only takes
+          # a bundle whose code is higher than every one it has seen.
+          node -e '
+            const v = require("./apps/desktop/src-tauri/tauri.conf.json").version;
+            const [maj, min, pat] = v.split("-")[0].split(".").map(Number);
+            const code = maj * 1e9 + min * 1e7 + pat * 1e5 + (Number(process.env.GITHUB_RUN_NUMBER) % 1e5);
+            console.log(`version=${v}`);
+            console.log(`code=${code}`);
+          ' >> "$GITHUB_OUTPUT"
+          test "v$(node -p 'require("./apps/desktop/src-tauri/tauri.conf.json").version')" = "${{ inputs.tag }}" \
+            || { echo "::error::tauri.conf.json's version doesn't match the tag"; exit 1; }
+
+      - uses: gradle/actions/wrapper-validation@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+
+      # Built without the signing key: thousands of third-party build scripts run here.
+      - name: Build
+        env:
+          UWULOCK_ANDROID_VERSION_CODE: ${{ steps.version.outputs.code }}
+        run: |
+          node scripts/mobile.mjs prepare
+          export NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          pnpm tauri android build --aab --target aarch64 armv7 x86_64 --ci
+
+      - name: Find the bundle
+        run: |
+          aab=$(find apps/desktop/src-tauri/gen/android/app/build/outputs/bundle -name '*release*.aab' | head -n 1)
+          test -n "$aab" || { echo "::error::No AAB was built"; exit 1; }
+          mkdir -p unsigned
+          cp "$aab" unsigned/UwULock-unsigned.aab
+          # Play wants 64-bit native libraries aligned to 16 KB pages (Android 15+ devices).
+          unzip -o -q "$aab" 'base/lib/*' -d libs
+          for so in libs/base/lib/arm64-v8a/*.so libs/base/lib/x86_64/*.so; do
+            align=$(readelf -lW "$so" | awk '$1 == "LOAD" { print $NF; exit }')
+            echo "$so: LOAD alignment $align"
+            [ $((align)) -ge 16384 ] || { echo "::error::$so isn't aligned to 16 KB"; exit 1; }
+          done
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: UwULock-Play-unsigned-${{ github.run_id }}
+          retention-days: 1
+          if-no-files-found: error
+          path: unsigned/UwULock-unsigned.aab
+
+  sign:
+    name: Sign the bundle
+    needs: aab
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: UwULock-Play-unsigned-${{ github.run_id }}
+          path: unsigned
+      - name: Sign
+        env:
+          KEYSTORE: ${{ secrets.UWULOCK_ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.UWULOCK_ANDROID_KEYSTORE_PASSWORD }}
+          PEPK_PUBLIC_KEY: ${{ inputs.pepk_public_key }}
+          # The certificate of every released UwULock APK (android.yml, scripts/release.mjs).
+          CERTIFICATE_SHA256: fd6323aea832996ed56a55d11cfcd26a61ecb159b3f9b980f1429b5de6500a1c
+          VERSION: ${{ needs.aab.outputs.version }}
+          CODE: ${{ needs.aab.outputs.code }}
+        run: |
+          test -n "$KEYSTORE" || { echo "::error::No release keystore (UWULOCK_ANDROID_KEYSTORE_BASE64)"; exit 1; }
+          keystore="$RUNNER_TEMP/uwulock-android.p12"
+          trap 'rm -f "$keystore"' EXIT
+          printf '%s' "$KEYSTORE" | base64 -d > "$keystore"
+          mkdir -p out
+          signed="out/UwULock-$VERSION-$CODE.aab"
+          jarsigner -keystore "$keystore" -storetype PKCS12 -storepass:env KEYSTORE_PASSWORD -keypass:env KEYSTORE_PASSWORD \
+            -sigalg SHA256withRSA -digestalg SHA-256 -signedjar "$signed" unsigned/UwULock-unsigned.aab uwulock
+          keytool -printcert -jarfile "$signed" | tee "$RUNNER_TEMP/certs.txt" | grep -i "SHA256:"
+          want=$(echo "$CERTIFICATE_SHA256" | tr 'a-f' 'A-F' | sed 's/../&:/g; s/:$//')
+          grep -q "SHA256: $want" "$RUNNER_TEMP/certs.txt" \
+            || { echo "::error::The bundle isn't signed with UwULock's certificate"; exit 1; }
+
+          # One-time: the release key, encrypted for Google, for Play App Signing.
+          if [ -n "$PEPK_PUBLIC_KEY" ]; then
+            printf '%s\n' "$PEPK_PUBLIC_KEY" > "$RUNNER_TEMP/play.pem"
+            openssl pkey -pubin -in "$RUNNER_TEMP/play.pem" -noout \
+              || { echo "::error::pepk_public_key isn't a PEM public key"; exit 1; }
+            curl -sSfLo "$RUNNER_TEMP/pepk.jar" https://www.gstatic.com/play-apps-publisher-rapid/signing-tool/prod/pepk.jar
+            # pepk only takes the password as an argument (no env:, no prompt without a terminal).
+            echo "::add-mask::$KEYSTORE_PASSWORD"
+            java -jar "$RUNNER_TEMP/pepk.jar" --keystore="$keystore" --alias=uwulock --output=out/uwulock-play-signing-key.zip \
+              --include-cert --rsa-aes-encryption --encryption-key-path="$RUNNER_TEMP/play.pem" \
+              --keystore-pass="$KEYSTORE_PASSWORD" --key-pass="$KEYSTORE_PASSWORD"
+          fi
+          ls -la out
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: UwULock-Play-${{ inputs.tag }}
+          retention-days: 14
+          if-no-files-found: error
+          path: out/*
