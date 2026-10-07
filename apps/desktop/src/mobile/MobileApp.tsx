@@ -30,6 +30,7 @@ import {
 } from 'react';
 import type { Status } from '../lib/api';
 import { useBackLayer } from '../lib/backStack';
+import { HANDED_OVER } from '../lib/credentialExchange';
 import { t, useLanguage } from '../lib/i18n';
 import { toasts } from '../lib/toast';
 import {
@@ -204,6 +205,13 @@ export function MobileApp({ status, onAddAccount }: { status: Status; onAddAccou
   );
 
   const sync = useCallback(() => runSync(data.reload), [data.reload]);
+
+  // iOS 26: Apple Passwords handed credentials over and the person wants to see them.
+  useEffect(() => {
+    const open = () => openInTab({ page: 'settings-page', section: 'import' });
+    window.addEventListener(HANDED_OVER, open);
+    return () => window.removeEventListener(HANDED_OVER, open);
+  }, [openInTab]);
 
   const mobile: Mobile = useMemo(
     () => ({

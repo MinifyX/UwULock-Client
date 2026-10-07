@@ -57,7 +57,7 @@ import {
 import { unlockDescription, unlockLabel, unlockPrompt } from '../../lib/unlock';
 import { initialOf } from '../../components/AccountCard';
 import { MoveDialog } from '../../components/MoveDialog';
-import { ImportPage } from './Import';
+import { SettingsImportPage } from './Import';
 import type { SettingsPage as Section } from '../nav';
 import { useMobile, useNav } from '../state';
 import {
@@ -347,7 +347,7 @@ export function SettingsSubPage({ section }: { section: Section }) {
     case 'account':
       return <AccountPage />;
     case 'import':
-      return <ImportPage />;
+      return <SettingsImportPage />;
     case 'updates':
       return android ? <UpdatesPage /> : <AboutPage />;
     case 'about':

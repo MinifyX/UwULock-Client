@@ -82,3 +82,8 @@
     bottom: calc(var(--uwu-space-5) + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* Apple Passwords' hand-over comes first; the AutoFill card waits behind it. */
+.exchange-card ~ .autofill-card {
+  display: none;
+}

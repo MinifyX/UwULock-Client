@@ -4,6 +4,7 @@ import { Icon, ICONS, TitleBarAction, Toaster, useDeviceKind, UwuLabels } from '
 import { hideWindowOnClose, onMacQuit, setMacMenu } from '@uwusuite/design/tauri';
 import { useEffect, useRef, useState } from 'react';
 import { AutofillCard } from './components/AutofillCard';
+import { CredentialExchangeCard } from './components/CredentialExchangeCard';
 import { ExtrasKeyNotice } from './components/ExtrasKeyNotice';
 import { GeneratorDialog } from './components/GeneratorDialog';
 import { ImportDialog } from './components/ImportDialog';
@@ -257,6 +258,7 @@ export function App() {
           <MobileApp status={status} onAddAccount={() => setAdding(true)} />
         </div>
         <NyuStage />
+        <CredentialExchangeCard unlocked mobile />
         <AutofillCard unlocked />
         <ExtrasKeyNotice />
         <PasskeyRequestDialog />
@@ -339,7 +341,10 @@ export function App() {
 
         {/* The Mac App Store build (with the AutoFill extension); nothing on Windows or Linux. */}
         {unlocked && !status?.sessionExpired && !update && !settingsOpen && (
-          <AutofillCard unlocked />
+          <>
+            <CredentialExchangeCard unlocked />
+            <AutofillCard unlocked />
+          </>
         )}
 
         {unlocked && travelOpen && travel.enabled && (
