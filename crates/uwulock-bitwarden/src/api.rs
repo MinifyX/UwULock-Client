@@ -629,6 +629,27 @@ impl Client {
         .map(drop)
     }
 
+    /// Many new items at once, as Bitwarden's own import sends them
+    /// (`POST /api/ciphers/import`). Bitwarden, Vaultwarden and UwULock
+    /// Server all take it; a folder with the `id` of one the account has
+    /// already is that folder, any other is made new.
+    pub async fn import_ciphers(
+        &self,
+        access_token: &str,
+        import: &ImportRequest,
+    ) -> Result<(), Error> {
+        self.write(
+            self.request(
+                reqwest::Method::POST,
+                format!("{}/ciphers/import", self.server.api()),
+            )
+            .bearer_auth(access_token)
+            .json(import),
+        )
+        .await
+        .map(drop)
+    }
+
     /// `name` is already encrypted under the user key.
     pub async fn create_folder(&self, access_token: &str, name: String) -> Result<Value, Error> {
         self.write(
@@ -1096,6 +1117,77 @@ impl Client {
             message: format!("the server's answer isn't JSON: {e}"),
         })
     }
+}
+
+/// `POST /api/ciphers/import`: sealed items, the folders they go into, and
+/// which item goes into which folder (indices into both lists).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportRequest {
+    pub ciphers: Vec<wire::CipherRequest>,
+    pub folders: Vec<ImportFolder>,
+    pub folder_relationships: Vec<ImportRelationship>,
+}
+
+/// A folder of an import: an `id` the account has (that folder), or none (a
+/// new one). `name` is encrypted under the user key.
+#[derive(Debug, Serialize)]
+pub struct ImportFolder {
+    pub id: Option<String>,
+    pub name: String,
+}
+
+/// Item `key` goes into folder `value`.
+#[derive(Debug, Serialize)]
+pub struct ImportRelationship {
+    pub key: usize,
+    pub value: usize,
+}
+
+/// Sealed items in requests of at most `chunk` each. `items` carries, with
+/// each item, its index in the file; `in_folder` says which item (that index)
+/// goes into which folder (an index into `folders`); `folders` are the
+/// account's folders by then — id and sealed name — or `None` for one that
+/// isn't there (its items go in without a folder). Each request lists only
+/// the folders its own items go into.
+pub fn import_requests(
+    items: Vec<(usize, wire::CipherRequest)>,
+    in_folder: &[(usize, usize)],
+    folders: &[Option<(String, String)>],
+    chunk: usize,
+) -> Vec<ImportRequest> {
+    let folder_of: std::collections::HashMap<usize, usize> = in_folder.iter().copied().collect();
+    let mut requests = Vec::new();
+    let mut items = items.into_iter().peekable();
+    while items.peek().is_some() {
+        let mut request = ImportRequest {
+            ciphers: Vec::new(),
+            folders: Vec::new(),
+            folder_relationships: Vec::new(),
+        };
+        let mut local = std::collections::HashMap::new();
+        for (index, cipher) in items.by_ref().take(chunk.max(1)) {
+            let folder = folder_of
+                .get(&index)
+                .and_then(|folder| Some((*folder, folders.get(*folder)?.as_ref()?)));
+            if let Some((folder, (id, name))) = folder {
+                let at = *local.entry(folder).or_insert_with(|| {
+                    request.folders.push(ImportFolder {
+                        id: Some(id.clone()),
+                        name: name.clone(),
+                    });
+                    request.folders.len() - 1
+                });
+                request.folder_relationships.push(ImportRelationship {
+                    key: request.ciphers.len(),
+                    value: at,
+                });
+            }
+            request.ciphers.push(cipher);
+        }
+        requests.push(request);
+    }
+    requests
 }
 
 /// Files take longer than the 60 seconds everything else gets.

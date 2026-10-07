@@ -50,6 +50,7 @@ import {
 import { unlockDescription, unlockLabel, unlockPrompt } from '../../lib/unlock';
 import { initialOf } from '../../components/AccountCard';
 import { MoveDialog } from '../../components/MoveDialog';
+import { ImportPage } from './Import';
 import type { SettingsPage as Section } from '../nav';
 import { useMobile, useNav } from '../state';
 import {
@@ -253,6 +254,18 @@ export function SettingsPage() {
         />
       </ListSection>
 
+      {status.state === 'unlocked' && (
+        <ListSection>
+          <ListRow
+            icon={ICONS.import}
+            iconTone="solid"
+            title={t('Importieren')}
+            selected={selected('import')}
+            onClick={() => open('import')}
+          />
+        </ListSection>
+      )}
+
       <ListSection>
         {android && (
           <ListRow
@@ -326,6 +339,8 @@ export function SettingsSubPage({ section }: { section: Section }) {
       return <PasskeysPage />;
     case 'account':
       return <AccountPage />;
+    case 'import':
+      return <ImportPage />;
     case 'updates':
       return android ? <UpdatesPage /> : <AboutPage />;
     case 'about':

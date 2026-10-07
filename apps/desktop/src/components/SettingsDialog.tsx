@@ -33,6 +33,7 @@ import { updateSettings, useSettings, type AutoLock, type ClipboardClear } from 
 import { unlockDescription, unlockLabel, unlockPrompt } from '../lib/unlock';
 import { FontPicker } from './FontPicker';
 import { Modal } from './Modal';
+import { ImportSetting } from './ImportDialog';
 import { MoveSetting } from './MoveDialog';
 import { PasskeySettings } from './PasskeySettings';
 
@@ -412,6 +413,7 @@ function Account({ status, onClose }: { status: Status; onClose: () => void }) {
         </Button>
       </Row>
       {status.state === 'unlocked' && <EmailBreachSetting />}
+      {status.state === 'unlocked' && <ImportSetting />}
       {status.state === 'unlocked' && <MoveSetting />}
       <Row
         label={t('Abmelden')}

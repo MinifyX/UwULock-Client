@@ -1,0 +1,108 @@
+/* ── Importing another app's export ───────────────────────────────────── */
+
+.import-key-file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--uwu-space-2);
+}
+
+.import-key-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--uwu-text-meta);
+}
+
+/* The preview's items: a box of its own that scrolls, the dialog stays put. */
+.import-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--uwu-hairline);
+  border-radius: var(--uwu-radius-control);
+  background: var(--uwu-canvas);
+}
+
+.import-list:focus-visible {
+  outline: 2px solid var(--uwu-pink);
+  outline-offset: 2px;
+}
+
+.import-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--uwu-space-2);
+  padding: var(--uwu-space-2) var(--uwu-space-3);
+  border-top: 1px solid var(--uwu-hairline);
+}
+
+.import-list li:first-child {
+  border-top: 0;
+}
+
+.import-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--uwu-text-body);
+  font-weight: 600;
+}
+
+.import-item-detail {
+  grid-column: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--uwu-text-caption);
+  color: var(--uwu-muted);
+}
+
+.import-chip {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  padding: 1px 6px;
+  border-radius: var(--uwu-radius-pill);
+  background: var(--uwu-pink-tint);
+  color: var(--uwu-pink-ink);
+  font-size: var(--uwu-text-caption);
+  font-weight: 700;
+}
+
+.import-item-more {
+  font-size: var(--uwu-text-caption);
+  color: var(--uwu-muted);
+}
+
+/* The phone's page: the progress bar inside a grouped list. */
+.m-import-progress {
+  display: grid;
+  gap: var(--uwu-space-2);
+  padding: var(--uwu-space-3) var(--uwu-space-4);
+}
+
+/* The preview's counts: a row of pills ("2 Logins", "1 Karte"). */
+.import-counts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--uwu-space-2);
+}
+
+.import-counts li {
+  padding: 4px 12px;
+  border: 1px solid var(--uwu-hairline);
+  border-radius: var(--uwu-radius-pill);
+  background: var(--uwu-canvas);
+  font-size: var(--uwu-text-meta);
+}
+
+.import-counts strong {
+  font-variant-numeric: tabular-nums;
+}
