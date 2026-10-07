@@ -21,7 +21,9 @@ enum PasskeyVaultError: Error {
   case stale
   case cancelled
   /// The system didn't let the extension ask for Face ID, Touch ID or the passcode yet
-  /// (errSecInteractionNotAllowed: its sheet wasn't on screen). Tried once more, then shown.
+  /// (LAError.notInteractive, errSecInteractionNotAllowed: its sheet wasn't on screen yet), or
+  /// the Keychain didn't take the verification. Tried again for a few seconds, then the sheet
+  /// offers a button to ask with a tap — which the system always allows.
   case notInteractive
   /// No passcode on the device (the provider key needs one), or Face ID / Touch ID locked out.
   case noPasscode
@@ -173,6 +175,7 @@ final class PasskeyVault {
     #endif
     var found: AnyObject?
     let status = SecItemCopyMatching(query as CFDictionary, &found)
+    logStep("keychain: provider key status \(status)")
     switch status {
     case errSecSuccess:
       guard var data = found as? Data, data.count == 32 else {
@@ -180,9 +183,12 @@ final class PasskeyVault {
       }
       defer { data.resetBytes(in: 0..<data.count) }
       return SymmetricKey(data: data)
-    case errSecUserCanceled, errSecAuthFailed:
+    case errSecUserCanceled:
       throw PasskeyVaultError.cancelled
-    case errSecInteractionNotAllowed:
+    case errSecInteractionNotAllowed, errSecAuthFailed:
+      // The read itself never asks (interactionNotAllowed): either refusal means the verification
+      // didn't cover it — asked too early, or gone stale. A fresh one is the way out, not closing
+      // the sheet as if the person had cancelled (what errSecAuthFailed did before 0.6.0-beta.4).
       throw PasskeyVaultError.notInteractive
     case errSecItemNotFound:
       throw PasskeyVaultError.noList
