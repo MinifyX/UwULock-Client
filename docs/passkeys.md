@@ -319,11 +319,19 @@ may not run, so it never sees the open vault. Instead:
   "never" don't show up as suggestions, only in UwULock's own searchable list.
 - **Both ways in** answer through one path: picking UwULock's entry right in the system's sheet
   (`prepareInterfaceToProvideCredential(for:)`) and picking from UwULock's own list
-  (`prepareCredentialList`). The direct pick finds the passkey by credential id (preferring the
+  (`prepareCredentialList`). The direct pick finds the passkey by credential id (only for the
   requested rpId), checks the 32-byte client data hash, signs, verifies its own signature and
   answers on the main thread; it never rewrites the system's identity list while the system
-  waits for the answer. An identity that is no longer in the list falls back to UwULock's own
-  list instead of failing.
+  waits for the answer. An identity that is no longer in the list (or, for a password, whose
+  login no longer matches that site) falls back to UwULock's own list instead of failing.
+- **Unlocking in the extension**: the system calls `prepareInterfaceToProvideCredential` before
+  it presents the extension's sheet; a Keychain read that needs user presence at that moment is
+  refused with `errSecInteractionNotAllowed` (-25308, the direct pick's error in 0.6.0-beta.1).
+  So every way in waits until the sheet is on screen (`viewDidAppear`), asks for Face ID, Touch
+  ID or the passcode explicitly (`LAContext.evaluatePolicy(.deviceOwnerAuthentication)`), and
+  reads the provider key (`.userPresence`, `WhenPasscodeSetThisDeviceOnly`) with that evaluated
+  context and `interactionNotAllowed`, so the read itself never prompts. A refusal is tried once
+  more, then shown in words.
 - **Diagnostics**: the extension logs to the unified log, subsystem `app.uwulock.passkeys`,
   category `provider` — which way in, rpId, short credential id prefixes, flags, counts, why it
   stopped. No keys, passwords, user handles or client data. On a Mac with the device attached:

@@ -103,6 +103,14 @@ pub fn base_domain(host: &str) -> String {
     psl::domain_str(&host).map_or(host.clone(), str::to_string)
 }
 
+/// A name with a dot that the Public Suffix List lists as a suffix itself (`co.uk`,
+/// `github.io`): no site's registrable domain.
+fn is_public_suffix(host: &str) -> bool {
+    host.contains('.')
+        && host.parse::<std::net::IpAddr>().is_err()
+        && psl::domain_str(host).is_none()
+}
+
 /// The registrable domain of an address, for `http`, `https` and `ftp` only.
 pub fn domain_of(uri: &str) -> Option<String> {
     let url = parse(uri)?;
@@ -194,7 +202,17 @@ pub fn uri_hint(uri: &str, match_kind: Option<u32>) -> Option<UriHint> {
         return None;
     }
     let (kind, value) = match match_kind.unwrap_or(DOMAIN) {
-        DOMAIN => ("domain", domain_of(uri)?),
+        DOMAIN => {
+            let domain = domain_of(uri)?;
+            // A saved host that is itself a public suffix (`github.io`) is no registrable domain:
+            // `uri_matches` only takes that very host, while Swift's suffix check would take every
+            // site under it. Sent as a host instead.
+            if is_public_suffix(&domain) {
+                ("host", domain)
+            } else {
+                ("domain", domain)
+            }
+        }
         HOST => ("host", host_port(uri)?),
         STARTS_WITH => ("startsWith", uri.to_string()),
         EXACT => ("exact", uri.to_string()),
@@ -333,5 +351,19 @@ mod tests {
         assert_eq!(uri_hint("^https://", Some(REGEX)), None);
         assert_eq!(uri_hint("https://example.com", Some(NEVER)), None);
         assert_eq!(uri_hint("androidapp://com.example.app", None), None);
+        // A public suffix itself is matched as that host only, never the sites under it.
+        assert_eq!(
+            uri_hint("https://github.io", None),
+            Some(UriHint {
+                kind: "host".into(),
+                value: "github.io".into()
+            })
+        );
+        assert!(!uri_matches(
+            "https://github.io",
+            None,
+            &web("attacker.github.io")
+        ));
+        assert_eq!(uri_hint("https://192.0.2.7", None).unwrap().kind, "domain");
     }
 }

@@ -55,10 +55,20 @@ export function readPrompt(raw: string | null): PromptState {
  */
 export function missing(view: ProviderView | null): 'credentials' | 'autofill' | null {
   if (!view || !view.supported || view.platform === 'none') return null;
+  // Android before 14 has no Credential Manager providers: the autofill service is all there is.
+  if (!hasCredentialManager(view)) return view.autofill === true ? null : 'autofill';
   if (view.enabled !== true) return 'credentials';
   if ((view.platform === 'ios' || view.platform === 'macos') && !view.list) return 'credentials';
   if (view.platform === 'android' && view.autofill === false) return 'autofill';
   return null;
+}
+
+/**
+ * Android: whether Credential Manager says anything (Android 14+). Older Android has only the
+ * autofill service, so asking for the Credential Manager provider there would only fail.
+ */
+export function hasCredentialManager(view: ProviderView): boolean {
+  return !(view.platform === 'android' && view.enabled === null && view.autofill !== null);
 }
 
 /** Whether the card shows now. */

@@ -85,7 +85,7 @@
   "Andere App (Credential Exchange)": "Another app (Credential Exchange)",
   "Das Passwort der Datei stimmt nicht.": "The file's password is wrong.",
   "Diese Datei verlangt etwas, das UwULock nicht kann: {reason}": "This file asks for something UwULock can't do: {reason}",
-  "Die Notiz ist länger, als der Server annimmt.": "Its note is longer than the server accepts.",
+  "Ein Wert (meist die Notiz) ist länger, als der Server annimmt.": "A value (mostly its note) is longer than the server accepts.",
   "Der Eintrag ist unvollständig (etwa ein SSH-Schlüssel ohne alle Teile).": "The item is incomplete (an SSH key without all its parts, for example).",
   "Neue Ordner": "New folders",
   "{app}, {format}": "{app}, {format}",

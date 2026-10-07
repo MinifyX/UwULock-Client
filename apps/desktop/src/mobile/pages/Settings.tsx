@@ -32,6 +32,7 @@ import { ago } from '../../lib/format';
 import {
   AUTOFILL_CHANGED,
   autofillProviderRequest,
+  hasCredentialManager,
   providerSettingsPath,
   providerStateText,
   useProviderStatus,
@@ -647,7 +648,9 @@ function PasskeysPage() {
             value={provider ? providerStateText(provider) : undefined}
             wrap
           />
-          {askRow('credentials', provider?.enabled ?? null)}
+          {provider && hasCredentialManager(provider)
+            ? askRow('credentials', provider.enabled ?? null)
+            : null}
         </ListSection>
         <ListSection
           footer={t(

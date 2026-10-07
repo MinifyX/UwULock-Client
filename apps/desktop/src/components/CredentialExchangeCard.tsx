@@ -11,7 +11,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useEffect, useState } from 'react';
 import { t, useLanguage } from '../lib/i18n';
 import { platform } from '../lib/platform';
-import { handOver } from '../lib/credentialExchange';
+import { forgetAll, handOver } from '../lib/credentialExchange';
 import { readCredentialExchange } from '../lib/import/cxf';
 import { importErrorText, parsedFromCollected } from '../lib/import/run';
 import type { Parsed } from '../lib/import/types';
@@ -31,6 +31,16 @@ export function CredentialExchangeCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [parsed, setParsed] = useState<Parsed | null>(null);
+
+  // Locked (or gone): what Apple Passwords handed over and wasn't taken in yet goes too, so it
+  // never shows up after the next unlock, maybe of another account.
+  useEffect(() => {
+    if (!unlocked) {
+      forgetAll();
+      return;
+    }
+    return () => forgetAll();
+  }, [unlocked]);
 
   useEffect(() => {
     if (!unlocked || platform() !== 'ios') return;

@@ -16,6 +16,7 @@
 
 import AuthenticationServices
 import CryptoKit
+import LocalAuthentication
 import SwiftUI
 import os
 
@@ -118,6 +119,50 @@ struct PasskeyView: View {
 class CredentialProviderViewController: ASCredentialProviderViewController {
   private let model = PasskeyModel()
   private var shown = false
+  /// The sheet is on screen: only then may Face ID, Touch ID or the passcode be asked for. Asked
+  /// earlier (the system calls prepareInterfaceToProvideCredential before it presents the sheet),
+  /// iOS refuses with errSecInteractionNotAllowed (-25308) — the direct pick's "broken(Keychain
+  /// -25308)".
+  private var appeared = false
+  private var waiting: [() -> Void] = []
+
+  #if os(iOS)
+    override func viewDidAppear(_ animated: Bool) {
+      super.viewDidAppear(animated)
+      sheetAppeared()
+    }
+  #else
+    override func viewDidAppear() {
+      super.viewDidAppear()
+      sheetAppeared()
+    }
+  #endif
+
+  private func sheetAppeared() {
+    guard !appeared else { return }
+    appeared = true
+    providerLog.info("sheet on screen")
+    let work = waiting
+    waiting = []
+    work.forEach { $0() }
+  }
+
+  /// Runs `work` on the main thread once the sheet is on screen. Should the system never say so,
+  /// it runs after a moment anyway (and a refusal is tried once more).
+  private func whenOnScreen(_ work: @escaping () -> Void) {
+    onMain {
+      if self.appeared {
+        work()
+        return
+      }
+      self.waiting.append(work)
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+        guard !self.appeared, !self.waiting.isEmpty else { return }
+        providerLog.info("sheet not reported on screen; going on")
+        self.sheetAppeared()
+      }
+    }
+  }
 
   #if os(macOS)
     // No nib: the view is made here.
@@ -181,8 +226,24 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
         self.model.message = tr(
           "Die Liste ist älter als eine, die schon hier war. Öffne UwULock und entsperre den Tresor.",
           "The list is older than one seen here before. Open UwULock and unlock the vault.")
+      case PasskeyVaultError.notInteractive:
+        self.model.message = tr(
+          "Das System hat die Abfrage von Face ID, Touch ID oder Code gerade nicht zugelassen. Bitte versuche es noch einmal.",
+          "The system didn't allow asking for Face ID, Touch ID or the passcode just now. Please try again.")
+      case PasskeyVaultError.noPasscode:
+        self.model.message = tr(
+          "UwULock braucht einen Gerätecode (und Face ID oder Touch ID, falls gesperrt: einmal mit dem Code entsperren).",
+          "UwULock needs a device passcode (and if Face ID or Touch ID is locked out, unlock once with the passcode).")
+      case PasskeyVaultError.broken(let why):
+        self.model.message =
+          tr(
+            "Das ging nicht. Öffne UwULock und entsperre den Tresor, dann versuche es noch einmal.",
+            "That didn't work. Open UwULock and unlock the vault, then try again.")
+          + " (\(why))"
       default:
-        self.model.message = tr("Das ging nicht: ", "That didn't work: ") + "\(error)"
+        self.model.message = tr(
+          "Das ging nicht. Öffne UwULock und entsperre den Tresor, dann versuche es noch einmal.",
+          "That didn't work. Open UwULock and unlock the vault, then try again.")
       }
     }
   }
@@ -193,15 +254,71 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
     }
   }
 
-  /// The provider key and the list, after Face ID, Touch ID or the passcode.
-  private func open(reason: String) throws -> (key: SymmetricKey, list: PasskeyList) {
-    let vault = try PasskeyVault()
-    let key = try vault.key(reason: reason)
-    let list = try vault.list(key: key)
-    providerLog.info(
-      "list opened: \(list.snapshot.entries.count, privacy: .public) passkeys, \(list.snapshot.logins?.count ?? 0, privacy: .public) logins, generation \(list.snapshot.generation, privacy: .public)"
-    )
-    return (key, list)
+  /// The provider key and the list, after Face ID, Touch ID or the passcode — asked for
+  /// explicitly, from the sheet once it is on screen — then `then` on a background queue. A
+  /// refusal for asking at the wrong moment is tried once more.
+  private func unlock(
+    reason: String, retried: Bool = false,
+    then: @escaping (_ vault: PasskeyVault, _ key: SymmetricKey, _ list: PasskeyList) throws -> Void
+  ) {
+    let vault: PasskeyVault
+    do {
+      vault = try PasskeyVault()
+    } catch {
+      fail(error)
+      return
+    }
+    whenOnScreen {
+      let context = LAContext()
+      context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { ok, error in
+        if !ok {
+          let code = (error as? LAError)?.code
+          providerLog.info("verification: \(code.map { String($0.rawValue) } ?? "-", privacy: .public)")
+          switch code {
+          case .userCancel?, .appCancel?, .systemCancel?, .userFallback?:
+            self.fail(PasskeyVaultError.cancelled)
+          case .notInteractive?:
+            self.retry(reason: reason, retried: retried, then: then)
+          case .passcodeNotSet?, .biometryLockout?:
+            self.fail(PasskeyVaultError.noPasscode)
+          default:
+            self.fail(PasskeyVaultError.broken("verification \(code.map { String($0.rawValue) } ?? "-")"))
+          }
+          return
+        }
+        self.background {
+          defer { context.invalidate() }
+          let key: SymmetricKey
+          do {
+            key = try vault.key(context: context)
+          } catch PasskeyVaultError.notInteractive {
+            self.retry(reason: reason, retried: retried, then: then)
+            return
+          }
+          let list = try vault.list(key: key)
+          providerLog.info(
+            "list opened: \(list.snapshot.entries.count, privacy: .public) passkeys, \(list.snapshot.logins?.count ?? 0, privacy: .public) logins, generation \(list.snapshot.generation, privacy: .public)"
+          )
+          try then(vault, key, list)
+        }
+      }
+    }
+  }
+
+  private func retry(
+    reason: String, retried: Bool,
+    then: @escaping (PasskeyVault, SymmetricKey, PasskeyList) throws -> Void
+  ) {
+    guard !retried else {
+      fail(PasskeyVaultError.notInteractive)
+      return
+    }
+    providerLog.info("not interactive yet: once more")
+    onMain {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+        self.unlock(reason: reason, retried: true, then: then)
+      }
+    }
   }
 
   // MARK: The system's list (QuickType bar, the sheet)
@@ -369,19 +486,18 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
     )
     show()
     model.message = tr("Anmelden bei ", "Signing in to ") + rpId
-    background {
-      let (key, list) = try self.open(
-        reason: tr("Mit UwULock anmelden bei ", "Sign in with UwULock to ") + rpId)
-      // The passkey the system listed — by its credential id, as the system knows it.
+    unlock(reason: tr("Mit UwULock anmelden bei ", "Sign in with UwULock to ") + rpId) {
+      _, key, list in
+      // The passkey the system listed — by its credential id, as the system knows it, and only
+      // for the site that asks (another site's passkey could never verify there).
       let byId = list.snapshot.entries.filter {
         Base64URL.decode($0.credentialId) == identity.credentialID
       }
-      if let entry = byId.first(where: { $0.rpId == rpId }) ?? byId.first {
-        if entry.rpId != rpId {
-          providerLog.error(
-            "picked passkey: the list has it for rp \(entry.rpId, privacy: .public), the system for \(rpId, privacy: .public)"
-          )
-        }
+      if byId.contains(where: { $0.rpId != rpId }) {
+        providerLog.error(
+          "picked passkey: the list has it for another rp than \(rpId, privacy: .public)")
+      }
+      if let entry = byId.first(where: { $0.rpId == rpId }) {
         let handle = entry.userHandle.flatMap(Base64URL.decode) ?? Data()
         if handle != identity.userHandle {
           providerLog.error(
@@ -413,9 +529,8 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
     )
     show()
     model.title = tr("Passkey für ", "Passkey for ") + rpId
-    background {
-      let (key, list) = try self.open(
-        reason: tr("Mit UwULock anmelden bei ", "Sign in with UwULock to ") + rpId)
+    unlock(reason: tr("Mit UwULock anmelden bei ", "Sign in with UwULock to ") + rpId) {
+      _, key, list in
       try self.passkeyList(
         rpId: rpId, allowed: requestParameters.allowedCredentials,
         clientDataHash: requestParameters.clientDataHash, key: key, list: list, path: "list")
@@ -436,16 +551,24 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
 
   private func pickedPassword(_ identity: ASPasswordCredentialIdentity) {
     let service = identity.serviceIdentifier.identifier
+    // A URL identifier is a saved address and may carry tokens: only its host goes to the log.
+    let site =
+      identity.serviceIdentifier.type == .URL
+      ? (URL(string: service)?.host ?? "?") : service
     providerLog.info(
-      "picked password: service \(service, privacy: .public), record \(identity.recordIdentifier ?? "-", privacy: .public)"
+      "picked password: service \(site, privacy: .public), record \(identity.recordIdentifier ?? "-", privacy: .public)"
     )
     show()
-    model.message = tr("Anmelden bei ", "Signing in to ") + service
-    background {
-      let (key, list) = try self.open(
-        reason: tr("Mit UwULock anmelden bei ", "Sign in with UwULock to ") + service)
+    model.message = tr("Anmelden bei ", "Signing in to ") + site
+    unlock(reason: tr("Mit UwULock anmelden bei ", "Sign in with UwULock to ") + site) {
+      _, key, list in
       let logins = list.snapshot.logins ?? []
-      if let login = logins.first(where: { $0.itemId == identity.recordIdentifier }) {
+      // The login the system listed, and only while it still belongs to that site: an entry left
+      // in the system's list from before the login's addresses changed fills nothing.
+      if let login = logins.first(where: {
+        $0.itemId == identity.recordIdentifier
+          && PasskeyVault.matches($0, [identity.serviceIdentifier])
+      }) {
         try self.complete(login, key: key, list: list)
         return
       }
@@ -489,9 +612,8 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
     providerLog.info("password list asked: \(serviceIdentifiers.count, privacy: .public) services")
     show()
     model.title = tr("Passwort für ", "Password for ") + (site.isEmpty ? "…" : site)
-    background {
-      let (key, list) = try self.open(
-        reason: tr("Mit UwULock anmelden bei ", "Sign in with UwULock to ") + site)
+    unlock(reason: tr("Mit UwULock anmelden bei ", "Sign in with UwULock to ") + site) {
+      _, key, list in
       self.passwordList(serviceIdentifiers, key: key, list: list)
       self.updateIdentities(list.snapshot)
     }
@@ -520,14 +642,12 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
       fail(PasskeyVaultError.broken("the site takes no ES256 passkeys"))
       return
     }
-    background {
-      let vault = try PasskeyVault()
-      let key = try vault.key(
-        reason: tr("Passkey für ", "Save a passkey for ") + rpId
-          + tr(" in UwULock sichern", " in UwULock"))
-      // The list first: it names the account the passkey is for, and a list that doesn't open is
-      // never replaced by one with only the new passkey.
-      let list = try vault.list(key: key)
+    // The list first: it names the account the passkey is for, and a list that doesn't open is
+    // never replaced by one with only the new passkey.
+    unlock(
+      reason: tr("Passkey für ", "Save a passkey for ") + rpId
+        + tr(" in UwULock sichern", " in UwULock")
+    ) { vault, key, list in
       let made = PasskeyVault.make(
         rpId: rpId, userName: identity.userName, userHandle: identity.userHandle)
       let kept = try vault.keep(made.entry, privateKey: made.key, list: list, key: key)
@@ -551,11 +671,11 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
     providerLog.info("configuration")
     show()
     model.title = tr("UwULock-AutoFill", "UwULock AutoFill")
-    background {
-      let (_, list) = try self.open(
-        reason: tr(
-          "UwULocks Passwörter und Passkeys für das System freigeben",
-          "Let the system list UwULock's passwords and passkeys"))
+    unlock(
+      reason: tr(
+        "UwULocks Passwörter und Passkeys für das System freigeben",
+        "Let the system list UwULock's passwords and passkeys")
+    ) { _, _, list in
       self.updateIdentities(list.snapshot)
       self.onMain {
         self.extensionContext.completeExtensionConfigurationRequest()

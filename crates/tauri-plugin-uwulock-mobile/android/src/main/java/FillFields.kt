@@ -8,7 +8,7 @@ import android.view.autofill.AutofillId
 /**
  * The sign-in fields of a screen another app asks the autofill service to fill: user name and
  * password, and who shows them — the app's package and, in a browser or WebView, the page's
- * domain.
+ * domain (of the frame the fields sit in).
  *
  * What a field is: the app's own autofill hints first (`password`, `username`, `emailAddress`, a
  * page's `autocomplete`), then the input type (password variations, e-mail), then words in its id
@@ -29,14 +29,19 @@ class FillFields(
 
     private enum class Kind { USERNAME, PASSWORD, NEW_PASSWORD, OTHER, SKIP }
 
+    /** A page (frame) a field sits in: its domain and scheme, from the nearest node naming one. */
+    private data class Page(val domain: String, val scheme: String?)
+
     private class Scan {
-        var webDomain: String? = null
-        var webScheme: String? = null
         var username: AutofillId? = null
+        var usernamePage: Page? = null
         var usernameStrong = false
         var password: AutofillId? = null
+        var passwordPage: Page? = null
         var lastText: AutofillId? = null
+        var lastTextPage: Page? = null
         var beforePassword: AutofillId? = null
+        var beforePasswordPage: Page? = null
     }
 
     companion object {
@@ -44,36 +49,51 @@ class FillFields(
             val packageName = structure.activityComponent?.packageName ?: return null
             val scan = Scan()
             for (i in 0 until structure.windowNodeCount) {
-                visit(structure.getWindowNodeAt(i).rootViewNode, scan)
+                visit(structure.getWindowNodeAt(i).rootViewNode, scan, null)
             }
-            val username = scan.username ?: scan.beforePassword
+            var username = scan.username
+            var usernamePage = scan.usernamePage
+            if (username == null) {
+                username = scan.beforePassword
+                usernamePage = scan.beforePasswordPage
+            }
             // A user name alone only when the app or page says so (a first sign-in step).
             if (scan.password == null && !(scan.username != null && scan.usernameStrong)) return null
-            return FillFields(packageName, scan.webDomain, scan.webScheme, username, scan.password)
+            // The site is the one of the frame the fields sit in, not the first one on the screen:
+            // a page's embedded frame from another site must not get the outer site's logins.
+            val page = if (scan.password != null) scan.passwordPage else usernamePage
+            // Fields of two different sites (or a site and the app) are never filled together.
+            if (username != null && scan.password != null && usernamePage != scan.passwordPage) {
+                username = null
+            }
+            return FillFields(packageName, page?.domain, page?.scheme, username, scan.password)
         }
 
-        private fun visit(node: AssistStructure.ViewNode, scan: Scan) {
+        private fun visit(node: AssistStructure.ViewNode, scan: Scan, inherited: Page?) {
             val domain = node.webDomain
-            if (scan.webDomain == null && !domain.isNullOrEmpty()) {
-                scan.webDomain = domain.lowercase()
-                scan.webScheme = node.webScheme?.lowercase()
-            }
+            val page = if (!domain.isNullOrEmpty()) Page(domain.lowercase(), node.webScheme?.lowercase()) else inherited
             val id = node.autofillId
             if (id != null && node.autofillType == View.AUTOFILL_TYPE_TEXT && node.visibility == View.VISIBLE) {
                 when (kind(node)) {
                     Kind.PASSWORD -> if (scan.password == null) {
                         scan.password = id
+                        scan.passwordPage = page
                         scan.beforePassword = scan.lastText
+                        scan.beforePasswordPage = scan.lastTextPage
                     }
                     Kind.USERNAME -> if (scan.username == null && scan.password == null) {
                         scan.username = id
+                        scan.usernamePage = page
                         scan.usernameStrong = strongUsername(node)
                     }
-                    Kind.OTHER -> if (scan.password == null) scan.lastText = id
+                    Kind.OTHER -> if (scan.password == null) {
+                        scan.lastText = id
+                        scan.lastTextPage = page
+                    }
                     Kind.NEW_PASSWORD, Kind.SKIP -> {}
                 }
             }
-            for (i in 0 until node.childCount) visit(node.getChildAt(i), scan)
+            for (i in 0 until node.childCount) visit(node.getChildAt(i), scan, page)
         }
 
         private fun hints(node: AssistStructure.ViewNode): List<String> {

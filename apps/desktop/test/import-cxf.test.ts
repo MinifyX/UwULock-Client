@@ -190,6 +190,62 @@ describe('Credential Exchange (Apple Passwords, iOS 26)', () => {
     );
   });
 
+  it("reads Apple's base64 secrets as base64, even when they look like base32", () => {
+    const one = (secret: string, extra: Record<string, unknown> = {}) =>
+      readCredentialExchange(
+        JSON.stringify({
+          accounts: [
+            {
+              id: 'a',
+              items: [
+                {
+                  id: 'c',
+                  title: 'Code',
+                  credentials: [{ type: 'totp', secret, ...extra }],
+                },
+              ],
+            },
+          ],
+        }),
+      ).data.items[0]!.login!.totp;
+    expect(one('AevVv6mTfWdROw==')).toBe('AHV5LP5JSN6WOUJ3');
+    expect(one('JBSWY3DPEHPK3PXP')).toBe('JBSWY3DPEHPK3PXP');
+    // Nonsense digits and periods fall back to the defaults.
+    expect(one('JBSWY3DPEHPK3PXP', { digits: 'x', period: -5 })).toBe('JBSWY3DPEHPK3PXP');
+  });
+
+  it('a passkey before the password still makes one login', () => {
+    const { data } = readCredentialExchange(
+      JSON.stringify({
+        accounts: [
+          {
+            id: 'a',
+            items: [
+              {
+                id: 'p',
+                title: 'Passkey zuerst',
+                credentials: [
+                  {
+                    type: 'passkey',
+                    credentialId: 'AQIDBA',
+                    rpId: 'example.com',
+                    username: 'nyu',
+                    userHandle: 'dXNlcg',
+                    key: 'MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg',
+                  },
+                  { type: 'basic-auth', username: 'nyu', password: 'geheim' },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    expect(data.items.length).toBe(1);
+    expect(data.items[0]!.login!.password).toBe('geheim');
+    expect(data.items[0]!.login!.fido2Credentials!.length).toBe(1);
+  });
+
   it('refuses what is not CXF', () => {
     expect(() => readCredentialExchange('nope')).toThrow();
     expect(() => readCredentialExchange('{"items":[]}')).toThrow();

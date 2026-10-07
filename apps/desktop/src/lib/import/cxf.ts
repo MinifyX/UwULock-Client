@@ -95,18 +95,24 @@ function totp(credential: Json, title: string): string | null {
   const raw = pick(credential, 'secret');
   if (typeof raw !== 'string' || !raw.trim()) return null;
   const clean = raw.trim().replace(/\s+/g, '');
-  // The spec writes the secret in base32; Apple's Data may come as base64.
-  let secret: string | null = /^[A-Z2-7]+=*$/i.test(clean)
-    ? clean.replace(/=+$/, '').toUpperCase()
-    : null;
+  // Apple's Data comes as base64 (JSONEncoder); base32 only when it can't be anything else:
+  // upper case only (a case-insensitive test would take ~7 % of base64 secrets for base32 and
+  // store another seed) and a length base32 can have.
+  const unpadded = clean.replace(/=+$/, '');
+  let secret: string | null =
+    /^[A-Z2-7]+=*$/.test(clean) && [0, 2, 4, 5, 7].includes(unpadded.length % 8) ? unpadded : null;
   if (!secret) {
     const decoded = bytes(clean);
     secret = decoded && decoded.length > 0 ? base32(decoded) : null;
   }
   if (!secret) return null;
   const algorithm = String(pick(credential, 'algorithm') ?? 'sha1').toUpperCase();
-  const digits = Number(pick(credential, 'digits') ?? 6);
-  const period = Number(pick(credential, 'period') ?? 30);
+  const whole = (value: unknown, min: number, max: number, fallback: number) => {
+    const n = Number(value ?? fallback);
+    return Number.isInteger(n) && n >= min && n <= max ? n : fallback;
+  };
+  const digits = whole(pick(credential, 'digits'), 6, 10, 6);
+  const period = whole(pick(credential, 'period'), 1, 300, 30);
   const issuer = str(credential, 'issuer');
   const user = str(credential, 'username', 'userName');
   if (algorithm === 'SHA1' && digits === 6 && period === 30) return secret;
@@ -166,15 +172,17 @@ function fieldsOf(collector: Collector, item: ExportItem, credential: Json, pref
 /** The collections' items as folders: item id → "Collection/Sub". */
 function folders(account: Json): Map<string, string> {
   const out = new Map<string, string>();
-  const walk = (collection: unknown, path: string[]) => {
-    if (!isObject(collection)) return;
+  // Nested at most this deep (folders deeper than that are no folders anyone keeps).
+  const walk = (collection: unknown, path: string[], depth = 0) => {
+    if (!isObject(collection) || depth > 32) return;
     const title = str(collection, 'title');
     const here = title ? [...path, title.replace(/\//g, '∕')] : path;
     for (const linked of list(collection.items)) {
       const id = isObject(linked) ? pick(linked, 'item') : linked;
       if (typeof id === 'string' && here.length && !out.has(id)) out.set(id, here.join('/'));
     }
-    for (const sub of list(pick(collection, 'subCollections', 'subcollections'))) walk(sub, here);
+    for (const sub of list(pick(collection, 'subCollections', 'subcollections')))
+      walk(sub, here, depth + 1);
   };
   for (const collection of list(account.collections)) walk(collection, []);
   return out;
@@ -243,7 +251,8 @@ function readItem(collector: Collector, raw: Json, title: string, inFolder: Map<
         ? !l.login.fido2Credentials?.length
         : what === 'totp'
           ? !l.login.totp
-          : l.login.password == null && l.login.username == null,
+          : // A passkey of the same item may have come first and set the user name.
+            l.login.password == null,
     ) ?? login();
 
   const notes: string[] = [];
@@ -254,7 +263,7 @@ function readItem(collector: Collector, raw: Json, title: string, inFolder: Map<
     switch (credential.type) {
       case 'basic-auth': {
         const target = roomFor('password');
-        target.login.username = str(credential, 'username', 'userName');
+        target.login.username = str(credential, 'username', 'userName') ?? target.login.username;
         target.login.password = value(pick(credential, 'password'));
         break;
       }

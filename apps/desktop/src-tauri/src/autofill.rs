@@ -193,7 +193,7 @@ fn request(app: &AppHandle, _target: &str) -> Result<ProviderView> {
 /// answer through a block; they are waited for here (never on the main
 /// thread), with a time limit.
 #[cfg(target_os = "macos")]
-mod mac {
+pub(crate) mod mac {
     use block2::RcBlock;
     use objc2::runtime::{AnyClass, AnyObject, Bool, Sel};
     use objc2::{msg_send, sel};
@@ -229,16 +229,51 @@ mod mac {
             };
             let _ = tx.send(enabled);
         });
-        // SAFETY: `sharedStore` returns the shared instance; `getState:` takes a block of
-        // `void (^)(ASCredentialIdentityStoreState *)`, as `block` is.
+        // SAFETY: `sharedStore` returns the shared instance; the Objective-C name of Swift's
+        // `getState(_:)` is `getCredentialIdentityStoreStateWithCompletion:`, taking a block of
+        // `void (^)(ASCredentialIdentityStoreState *)`, as `block` is. Checked before it is sent:
+        // an unknown selector would raise and abort the app.
         unsafe {
-            let store: *mut AnyObject = msg_send![store_class, sharedStore];
-            if store.is_null() {
+            let store = shared_store(store_class)?;
+            let selector = sel!(getCredentialIdentityStoreStateWithCompletion:);
+            let answers: Bool = msg_send![store, respondsToSelector: selector];
+            if !answers.as_bool() {
                 return None;
             }
-            let _: () = msg_send![store, getState: &*block];
+            let _: () = msg_send![store, getCredentialIdentityStoreStateWithCompletion: &*block];
         }
         rx.recv_timeout(Duration::from_secs(5)).ok()
+    }
+
+    /// `ASCredentialIdentityStore.sharedStore`; `store_class` is that class.
+    fn shared_store(store_class: &AnyClass) -> Option<&'static AnyObject> {
+        // SAFETY: `sharedStore` returns the shared instance (or nil), which lives as long as the
+        // process.
+        unsafe {
+            let store: *mut AnyObject = msg_send![store_class, sharedStore];
+            store.as_ref()
+        }
+    }
+
+    /// Empties the system's list of UwULock's passwords and passkeys (logout, switched off): on
+    /// macOS only the extension fills it, so nothing else would. Doesn't wait.
+    pub(crate) fn remove_identities() {
+        let Some(store_class) = class(c"ASCredentialIdentityStore") else {
+            return;
+        };
+        let block = RcBlock::new(|_done: Bool, _error: *mut AnyObject| {});
+        // SAFETY: `removeAllCredentialIdentitiesWithCompletion:` takes a block of
+        // `void (^)(BOOL, NSError *)`, as `block` is; checked before it is sent.
+        unsafe {
+            let Some(store) = shared_store(store_class) else {
+                return;
+            };
+            let selector = sel!(removeAllCredentialIdentitiesWithCompletion:);
+            let answers: Bool = msg_send![store, respondsToSelector: selector];
+            if answers.as_bool() {
+                let _: () = msg_send![store, removeAllCredentialIdentitiesWithCompletion: &*block];
+            }
+        }
     }
 
     /// macOS 15+: the system asks the person itself.

@@ -19,7 +19,7 @@ import {
 import { t } from './i18n';
 
 export type { ProviderView } from './autofillPrompt';
-export { missing } from './autofillPrompt';
+export { hasCredentialManager, missing } from './autofillPrompt';
 
 export const autofillProviderStatus = () => invoke<ProviderView>('autofill_provider_status');
 

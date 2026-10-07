@@ -46,9 +46,12 @@ export function AutofillCard({ unlocked }: { unlocked: boolean }) {
     setBusy(true);
     setError(null);
     try {
-      await autofillProviderRequest(target);
+      const after = await autofillProviderRequest(target);
       window.dispatchEvent(new Event(AUTOFILL_CHANGED));
-      reload();
+      // Declined in the system's own sheet (or the settings opened and nothing changed yet):
+      // counts as "Später", so the card keeps to its week and its three times.
+      if (missing(after) !== null) later();
+      else reload();
     } catch (e) {
       setError(errorText(e));
     } finally {

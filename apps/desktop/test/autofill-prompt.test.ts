@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   FRESH,
+  hasCredentialManager,
   MAX_LATER,
   missing,
   promptLater,
@@ -76,4 +77,16 @@ test('reads what the storage holds, whatever it is', () => {
     until: 5,
     done: true,
   });
+});
+
+test('Android before 14: only the autofill service is asked for', () => {
+  const old = view({ platform: 'android', enabled: null, autofill: false });
+  assert.equal(missing(old), 'autofill');
+  assert.equal(missing({ ...old, autofill: true }), null);
+  assert.equal(hasCredentialManager(old), false);
+  // Android 14+: Credential Manager first, then the autofill service.
+  const current = view({ platform: 'android', enabled: false, autofill: false });
+  assert.equal(hasCredentialManager(current), true);
+  assert.equal(missing(current), 'credentials');
+  assert.equal(missing({ ...current, enabled: true }), 'autofill');
 });

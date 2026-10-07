@@ -773,6 +773,9 @@ mod native {
         let folder = folder()?;
         let _ = std::fs::remove_file(folder.join("passkeys.sealed"));
         let _ = delete_generic_password_options(options()?);
+        // The system's list keeps names until someone empties it; on macOS only the extension
+        // fills it, so it goes here too.
+        crate::autofill::mac::remove_identities();
         Ok(())
     }
 }

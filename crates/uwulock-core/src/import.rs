@@ -494,6 +494,12 @@ pub fn open_protected_export(text: &str, password: &str) -> Result<Zeroizing<Str
 /// The most memory an Argon2 of a KeePass file may ask for: 1 GiB (the
 /// import module checks the same before it asks).
 const MAX_KDBX_MEMORY_KIB: u32 = 1024 * 1024;
+/// Memory times passes, lanes and AES-KDF rounds: the import module's limits
+/// (`limits.ts`), checked here again so the command can't be made to run for
+/// hours (it can't be stopped once it runs).
+const MAX_KDBX_COST_KIB: u64 = MAX_KDBX_MEMORY_KIB as u64 * 10;
+const MAX_KDBX_LANES: u32 = 256;
+const MAX_KDBX_AES_ROUNDS: u64 = 100_000_000;
 
 /// Argon2d (`id` false) or Argon2id over a KeePass file's composite key with
 /// the file's parameters; `version` is 0x10 or 0x13. 32 bytes.
@@ -509,6 +515,11 @@ pub fn kdbx_argon2(
     if memory_kib > MAX_KDBX_MEMORY_KIB {
         return Err(Error::Unsupported(
             "a KeePass file that asks for more than 1 GiB of memory".into(),
+        ));
+    }
+    if u64::from(memory_kib) * u64::from(iterations) > MAX_KDBX_COST_KIB || lanes > MAX_KDBX_LANES {
+        return Err(Error::Unsupported(
+            "a KeePass file whose key derivation would take far too long".into(),
         ));
     }
     let version = match version {
@@ -536,6 +547,11 @@ pub fn kdbx_aes_kdf(key: &[u8], seed: &[u8], rounds: u64) -> Result<Zeroizing<Ve
     if key.len() != 32 || seed.len() != 32 {
         return Err(invalid("AES-KDF takes a 32-byte key and seed"));
     }
+    if rounds > MAX_KDBX_AES_ROUNDS {
+        return Err(Error::Unsupported(
+            "a KeePass file whose key derivation would take far too long".into(),
+        ));
+    }
     let cipher = Aes256::new(GenericArray::from_slice(seed));
     let mut blocks = [
         GenericArray::clone_from_slice(&key[..16]),
@@ -553,6 +569,24 @@ pub fn kdbx_aes_kdf(key: &[u8], seed: &[u8], rounds: u64) -> Result<Zeroizing<Ve
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn kdbx_key_derivations_have_limits() {
+        let key = [7u8; 32];
+        assert!(matches!(
+            kdbx_aes_kdf(&key, &key, MAX_KDBX_AES_ROUNDS + 1),
+            Err(Error::Unsupported(_))
+        ));
+        assert!(matches!(
+            kdbx_argon2(true, 0x13, &key, &key, 1024 * 1024, 11, 1),
+            Err(Error::Unsupported(_))
+        ));
+        assert!(matches!(
+            kdbx_argon2(true, 0x13, &key, &key, 64, 1, 257),
+            Err(Error::Unsupported(_))
+        ));
+        assert!(kdbx_argon2(true, 0x13, &key, &key, 64, 1, 1).is_ok());
+    }
 
     #[test]
     fn csv_cells_with_commas_quotes_and_lines() {

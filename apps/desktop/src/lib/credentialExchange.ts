@@ -29,3 +29,8 @@ export function handedOver(): { generation: number; parsed: Parsed } | null {
 export function forget(taken: number) {
   if (waiting?.generation === taken) waiting = null;
 }
+
+/** The vault locked or the layout went away: nothing handed over stays in memory. */
+export function forgetAll() {
+  waiting = null;
+}

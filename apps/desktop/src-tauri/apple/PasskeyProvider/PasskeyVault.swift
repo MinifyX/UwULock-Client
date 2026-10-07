@@ -20,6 +20,11 @@ enum PasskeyVaultError: Error {
   /// The list is older than one this extension already saw: put back, not UwULock's.
   case stale
   case cancelled
+  /// The system didn't let the extension ask for Face ID, Touch ID or the passcode yet
+  /// (errSecInteractionNotAllowed: its sheet wasn't on screen). Tried once more, then shown.
+  case notInteractive
+  /// No passcode on the device (the provider key needs one), or Face ID / Touch ID locked out.
+  case noPasscode
   case broken(String)
 }
 
@@ -145,11 +150,14 @@ final class PasskeyVault {
   var listURL: URL { folder.appendingPathComponent("passkeys.sealed") }
   var outboxURL: URL { folder.appendingPathComponent("outbox", isDirectory: true) }
 
-  /// The provider key: asks for Face ID, Touch ID or the passcode. Blocks — never on the main
-  /// thread.
-  func key(reason: String) throws -> SymmetricKey {
-    let context = LAContext()
-    context.localizedReason = reason
+  /// The provider key, read with a context the person already passed Face ID, Touch ID or the
+  /// passcode in (`evaluatePolicy(.deviceOwnerAuthentication)`, from the extension's sheet once it
+  /// is on screen): the Keychain read itself never asks, so it can't be refused for asking at
+  /// the wrong moment. The item is `.userPresence`, `WhenPasscodeSetThisDeviceOnly` (written by
+  /// the app: Passkeys.swift, passkeys/apple.rs), which that context satisfies. Blocks — never on
+  /// the main thread.
+  func key(context: LAContext) throws -> SymmetricKey {
+    context.interactionNotAllowed = true
     var query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: Self.service,
@@ -174,6 +182,8 @@ final class PasskeyVault {
       return SymmetricKey(data: data)
     case errSecUserCanceled, errSecAuthFailed:
       throw PasskeyVaultError.cancelled
+    case errSecInteractionNotAllowed:
+      throw PasskeyVaultError.notInteractive
     case errSecItemNotFound:
       throw PasskeyVaultError.noList
     default:
@@ -265,7 +275,17 @@ final class PasskeyVault {
 
   /// The list, if it opens and isn't older than one seen before.
   func list(key: SymmetricKey) throws -> PasskeyList {
-    guard let sealed = try? Data(contentsOf: listURL) else { throw PasskeyVaultError.noList }
+    // No list: switched off or logged out. A list that is there but doesn't read (file
+    // protection, a half-written file) is no reason to empty the system's list.
+    guard FileManager.default.fileExists(atPath: listURL.path) else {
+      throw PasskeyVaultError.noList
+    }
+    let sealed: Data
+    do {
+      sealed = try Data(contentsOf: listURL)
+    } catch {
+      throw PasskeyVaultError.broken("the list doesn't read")
+    }
     let opened = try Self.open(sealed, key: key, kind: .list)
     let snapshot = try JSONDecoder().decode(PasskeySnapshot.self, from: opened.plain)
     if snapshot.generation < Self.seen(opened.account) {

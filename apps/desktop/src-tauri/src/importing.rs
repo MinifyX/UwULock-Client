@@ -34,6 +34,51 @@ const CHUNK: usize = 200;
 /// The longest encrypted notes Bitwarden (and UwULock Server) take.
 const MAX_SEALED_NOTES: usize = 10_000;
 
+/// Whether a sealed item has a value longer than Bitwarden's server takes
+/// (its `EncryptedStringLength` limits): one such item would make the whole
+/// request of [`CHUNK`] items fail, so it stays out on its own as `too-long`.
+/// UwULock Server and Vaultwarden only limit the notes.
+fn too_long(request: &wire::CipherRequest) -> bool {
+    let over = |value: Option<&String>, max: usize| value.is_some_and(|v| v.len() > max);
+    if request.name.len() > 1_000 || over(request.notes.as_ref(), MAX_SEALED_NOTES) {
+        return true;
+    }
+    if let Some(login) = &request.login {
+        if over(login.username.as_ref(), 1_000)
+            || over(login.password.as_ref(), 5_000)
+            || over(login.totp.as_ref(), 1_000)
+            || login.uris.iter().any(|u| over(u.uri.as_ref(), 10_000))
+        {
+            return true;
+        }
+    }
+    if let Some(card) = &request.card {
+        let values = [
+            &card.cardholder_name,
+            &card.brand,
+            &card.number,
+            &card.exp_month,
+            &card.exp_year,
+            &card.code,
+        ];
+        if values.iter().any(|v| over(v.as_ref(), 1_000)) {
+            return true;
+        }
+    }
+    let fields = request.fields.iter().flatten();
+    if fields
+        .clone()
+        .any(|f| over(f.name.as_ref(), 1_000) || over(f.value.as_ref(), 5_000))
+    {
+        return true;
+    }
+    request
+        .password_history
+        .iter()
+        .flatten()
+        .any(|h| h.password.len() > 5_000)
+}
+
 fn file_failure(error: Error) -> Failure {
     match error {
         Error::WrongKey => Failure::new("import-password", "The password of the file is wrong."),
@@ -50,7 +95,7 @@ struct Progress {
 }
 
 /// An item that stayed out, and why: `invalid` (an SSH key without all its
-/// parts, …), `too-long` (notes longer than a server takes).
+/// parts, …), `too-long` (a value, mostly the notes, longer than a server takes).
 #[derive(Serialize)]
 pub(crate) struct Skipped {
     name: String,
@@ -92,14 +137,7 @@ fn seal_all(
             continue;
         }
         match item.seal(key) {
-            Ok(request)
-                if request
-                    .notes
-                    .as_ref()
-                    .is_some_and(|notes| notes.len() > MAX_SEALED_NOTES) =>
-            {
-                skipped.push(skip("too-long"))
-            }
+            Ok(request) if too_long(&request) => skipped.push(skip("too-long")),
             Ok(request) => sealed.push((index, request)),
             Err(_) => skipped.push(skip("invalid")),
         }
@@ -122,12 +160,13 @@ pub(crate) async fn import_vault(
     let (key, existing) = {
         let guard = state.unlocked.read();
         let unlocked = guard.get(&account_id).ok_or_else(Failure::locked)?;
-        let existing: HashMap<String, String> = unlocked
-            .vault
-            .folders
-            .iter()
-            .map(|folder| (folder.name.clone(), folder.id.clone()))
-            .collect();
+        // Two of the account's folders with one name: always the first.
+        let mut existing: HashMap<String, String> = HashMap::new();
+        for folder in &unlocked.vault.folders {
+            existing
+                .entry(folder.name.clone())
+                .or_insert_with(|| folder.id.clone());
+        }
         (unlocked.user_key.clone(), existing)
     };
     let now = iso_now();
@@ -144,7 +183,20 @@ pub(crate) async fn import_vault(
                 (existing.get(name).cloned(), sealed)
             })
             .collect();
-        Ok::<_, Failure>((folders, prepared.in_folder, sealed, skipped))
+        // A file with two folders of one name: one folder, the first.
+        let mut first: HashMap<&str, usize> = HashMap::new();
+        let canonical: Vec<usize> = prepared
+            .folders
+            .iter()
+            .enumerate()
+            .map(|(index, name)| *first.entry(name.as_str()).or_insert(index))
+            .collect();
+        let in_folder = prepared
+            .in_folder
+            .iter()
+            .map(|&(item, folder)| (item, canonical.get(folder).copied().unwrap_or(folder)))
+            .collect::<Vec<_>>();
+        Ok::<_, Failure>((folders, in_folder, sealed, skipped))
     })
     .await
     .map_err(|e| Failure::new("crypto", e.to_string()))??;
@@ -268,4 +320,35 @@ pub(crate) async fn import_kdbx_aes_kdf(
     })
     .await
     .map_err(|e| Failure::new("crypto", e.to_string()))?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::too_long;
+    use uwulock_bitwarden::wire::{CipherRequest, FieldRequest, LoginRequest};
+
+    #[test]
+    fn values_longer_than_bitwarden_takes_stay_out() {
+        let mut request = CipherRequest {
+            name: "x".repeat(1_000),
+            ..CipherRequest::default()
+        };
+        assert!(!too_long(&request));
+        request.name.push('x');
+        assert!(too_long(&request));
+        request.name = "x".into();
+        request.login = Some(LoginRequest {
+            password: Some("p".repeat(5_001)),
+            ..LoginRequest::default()
+        });
+        assert!(too_long(&request));
+        request.login = None;
+        request.fields = Some(vec![FieldRequest {
+            value: Some("v".repeat(5_000)),
+            ..FieldRequest::default()
+        }]);
+        assert!(!too_long(&request));
+        request.notes = Some("n".repeat(10_001));
+        assert!(too_long(&request));
+    }
 }
