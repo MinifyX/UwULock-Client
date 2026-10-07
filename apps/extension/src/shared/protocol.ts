@@ -703,6 +703,8 @@ export type PageRequest =
   | { type: 'reveal'; id: string; field: string }
   | { type: 'copy'; id: string; field: string }
   | { type: 'copy-text'; text: string }
+  /** Safari: the popup copied by itself; the background only clears it again later. */
+  | { type: 'copied' }
   | { type: 'totp'; id: string }
   | { type: 'verify-reprompt'; id: string; password: string }
   | { type: 'save-item'; id: string | null; draft: Draft }

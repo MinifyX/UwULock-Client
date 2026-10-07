@@ -5,7 +5,7 @@
  * the background straight to the clipboard.
  */
 
-import { ext } from '../shared/browser';
+import { ext, isSafari } from '../shared/browser';
 import { ask } from '../shared/messages';
 import type {
   Draft,
@@ -77,8 +77,17 @@ export const vaultItems = () => ask<ItemSummary[]>({ type: 'items' });
 export const vaultItem = (id: string) => ask<ItemDetail>({ type: 'item', id });
 export const revealField = (id: string, field: string) =>
   ask<string>({ type: 'reveal', id, field });
-export const copyField = (id: string, field: string) => ask<void>({ type: 'copy', id, field });
-export const copyText = (text: string) => ask<void>({ type: 'copy-text', text });
+/** Safari's background can't write the clipboard (background/clipboard.ts): the popup does. */
+async function copyHere(text: string): Promise<void> {
+  await navigator.clipboard.writeText(text);
+  await ask<void>({ type: 'copied' });
+}
+export const copyField = async (id: string, field: string): Promise<void> =>
+  isSafari()
+    ? copyHere(await ask<string>({ type: 'reveal', id, field }))
+    : ask<void>({ type: 'copy', id, field });
+export const copyText = (text: string): Promise<void> =>
+  isSafari() ? copyHere(text) : ask<void>({ type: 'copy-text', text });
 export const totpCode = (id: string) => ask<TotpCode>({ type: 'totp', id });
 export const verifyReprompt = (id: string, password: string) =>
   ask<void>({ type: 'verify-reprompt', id, password });

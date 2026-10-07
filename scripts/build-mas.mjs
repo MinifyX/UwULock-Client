@@ -1,6 +1,7 @@
 // Builds UwULock for the Mac App Store: a universal app (Apple silicon and
-// Intel) with the AutoFill extension for passkeys, and signs it into the
-// installer package App Store Connect takes. docs/app-store.md.
+// Intel) with the AutoFill extension for passkeys and the Safari extension,
+// and signs it into the installer package App Store Connect takes.
+// docs/app-store.md.
 //
 //   node scripts/build-mas.mjs            build, unsigned
 //   node scripts/build-mas.mjs --sign <UwULock.app>
@@ -11,7 +12,9 @@
 // store`, src-tauri/Cargo.toml) with tauri.mas.conf.json merged over
 // tauri.conf.json: bundle id app.uwulock — the iPhone app's, so both are one
 // app in App Store Connect and the extension app.uwulock.passkeys fits under
-// it — the privacy manifest, no update feed. Both halves are built side by
+// it, as does the Safari extension app.uwulock.safari (scripts/macos-safari.sh,
+// from apps/extension/dist/safari, which has to be built first) — the privacy
+// manifest, no update feed. Both halves are built side by
 // side and joined with lipo, the way scripts/build-setup.mjs builds the disk
 // image (and with the same Cargo caches). Nothing is signed here; the App Group
 // and Keychain group paths need the team's id at build time all the same:
@@ -23,8 +26,9 @@
 //   APPLE_SIGNING_IDENTITY     the "Apple Distribution" certificate (name or SHA-1)
 //   APPLE_INSTALLER_IDENTITY   the "3rd Party Mac Developer Installer" certificate
 //   APPLE_TEAM_ID              the team id
-//   MAS_PROFILES               folder with app.uwulock.provisionprofile and
-//                              app.uwulock.passkeys.provisionprofile
+//   MAS_PROFILES               folder with app.uwulock.provisionprofile,
+//                              app.uwulock.passkeys.provisionprofile and
+//                              app.uwulock.safari.provisionprofile
 //                              (node scripts/asc.mjs profiles macos …)
 //   MAS_BUILD_NUMBER           CFBundleVersion; must grow with every upload
 //
@@ -51,6 +55,7 @@ const root = join(fileURLToPath(import.meta.url), '..', '..');
 const tauriDir = join(root, 'apps/desktop/src-tauri');
 const BUNDLE_ID = 'app.uwulock';
 const EXTENSION_ID = 'app.uwulock.passkeys';
+const SAFARI_ID = 'app.uwulock.safari';
 const BINARY = 'uwulock-desktop';
 
 function fail(message) {
@@ -112,6 +117,9 @@ async function build() {
   console.log('\n▸ The AutoFill extension');
   run('bash', ['scripts/macos-passkeys.sh', conf.version, scratch]);
 
+  console.log('\n▸ The Safari extension');
+  run('bash', ['scripts/macos-safari.sh', conf.version, scratch, SAFARI_ID]);
+
   // What differs per build, as a file: quoting JSON on a command line is
   // different in every shell.
   const overrides = join(scratch, 'tauri.mas.build.json');
@@ -122,7 +130,10 @@ async function build() {
       build: { beforeBuildCommand: null },
       bundle: {
         macOS: {
-          files: { 'PlugIns/UwULockPasskeys.appex': join(scratch, 'UwULockPasskeys.appex') },
+          files: {
+            'PlugIns/UwULockPasskeys.appex': join(scratch, 'UwULockPasskeys.appex'),
+            'PlugIns/UwULockSafari.appex': join(scratch, 'UwULockSafari.appex'),
+          },
         },
       },
     }),
@@ -205,6 +216,16 @@ function check(app) {
   if (!appexArchs.includes('arm64') || !appexArchs.includes('x86_64'))
     fail(`The extension carries ${appexArchs.join(' ')}, not arm64 and x86_64.`);
 
+  const safari = join(contents, 'PlugIns', 'UwULockSafari.appex');
+  if (!existsSync(safari)) fail('The Safari extension is missing.');
+  if (plist(join(safari, 'Contents', 'Info.plist'), 'CFBundleIdentifier') !== SAFARI_ID)
+    fail(`The Safari extension isn't ${SAFARI_ID}.`);
+  if (!existsSync(join(safari, 'Contents', 'Resources', 'manifest.json')))
+    fail('The Safari extension carries no manifest.json: was apps/extension built?');
+  const safariArchs = archs(join(safari, 'Contents', 'MacOS', 'UwULockSafari'));
+  if (!safariArchs.includes('arm64') || !safariArchs.includes('x86_64'))
+    fail(`The Safari extension carries ${safariArchs.join(' ')}, not arm64 and x86_64.`);
+
   // The updater must be gone, not merely unused: its feed in the program would
   // be a way to update outside the store as far as App Review can tell.
   const binary = readFileSync(join(contents, 'MacOS', exe));
@@ -213,7 +234,9 @@ function check(app) {
   const team = env.UWULOCK_APPLE_TEAM_ID ?? env.APPLE_TEAM_ID;
   if (team && !binary.includes(team))
     fail(`The program doesn't know the team ${team}: built without UWULOCK_APPLE_TEAM_ID?`);
-  console.log(`  ${exe}: ${found.join(' ')}, ${BUNDLE_ID} ${marketingVersion}, extension inside`);
+  console.log(
+    `  ${exe}: ${found.join(' ')}, ${BUNDLE_ID} ${marketingVersion}, both extensions inside`,
+  );
 }
 
 function sign(app) {
@@ -233,7 +256,12 @@ function sign(app) {
 
   const contents = join(app, 'Contents');
   const appex = join(contents, 'PlugIns', 'UwULockPasskeys.appex');
-  for (const info of [join(contents, 'Info.plist'), join(appex, 'Contents', 'Info.plist')]) {
+  const safari = join(contents, 'PlugIns', 'UwULockSafari.appex');
+  for (const info of [
+    join(contents, 'Info.plist'),
+    join(appex, 'Contents', 'Info.plist'),
+    join(safari, 'Contents', 'Info.plist'),
+  ]) {
     run('/usr/libexec/PlistBuddy', ['-c', `Set :CFBundleVersion ${env.MAS_BUILD_NUMBER}`, info]);
     run('/usr/libexec/PlistBuddy', [
       '-c',
@@ -250,6 +278,10 @@ function sign(app) {
   copyFileSync(
     join(env.MAS_PROFILES, `${EXTENSION_ID}.provisionprofile`),
     join(appex, 'Contents', 'embedded.provisionprofile'),
+  );
+  copyFileSync(
+    join(env.MAS_PROFILES, `${SAFARI_ID}.provisionprofile`),
+    join(safari, 'Contents', 'embedded.provisionprofile'),
   );
   const entitlements = (source, id) => {
     const file = join(scratch, `${id}.entitlements`);
@@ -270,6 +302,10 @@ function sign(app) {
     join(tauriDir, 'apple', 'PasskeyProvider', 'UwULockPasskeys-macOS.entitlements'),
     EXTENSION_ID,
   );
+  const safariEntitlements = entitlements(
+    join(tauriDir, 'apple', 'SafariExtension', 'UwULockSafari-macOS.entitlements'),
+    SAFARI_ID,
+  );
 
   console.log('\n▸ Signing');
   const codesign = (entitlementsFile, target) =>
@@ -284,8 +320,9 @@ function sign(app) {
       env.APPLE_SIGNING_IDENTITY,
       target,
     ]);
-  // Inside out: the extension, then the app, whose signature seals it.
+  // Inside out: the extensions, then the app, whose signature seals them.
   codesign(appexEntitlements, appex);
+  codesign(safariEntitlements, safari);
   codesign(appEntitlements, app);
   run('codesign', ['--verify', '--deep', '--strict', '--verbose=2', app]);
   run('codesign', ['-d', '--entitlements', '-', '--xml', app]);

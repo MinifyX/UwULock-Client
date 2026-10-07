@@ -1,8 +1,13 @@
-// The manifest, for Chromium and for Firefox, from one description.
+// The manifest, for Chromium, Firefox and Safari, from one description.
 //
 // The differences: Chromium runs the background as a service worker and needs an offscreen
 // document for the clipboard; Firefox runs it as an event page (a background script), has no
-// offscreen documents, and wants an add-on id. Everything else is the same.
+// offscreen documents, and wants an add-on id. Safari (macOS, iPhone and iPad, inside the
+// UwULock app: docs/extension.md) runs it as a non-persistent page — its service workers can't
+// be modules — and gets no WebAuthn in pages: passkeys in Safari come from UwULock's own
+// passkey provider, the system's dialog, so the page script and its bridge stay out. Safari
+// knows neither `idle` nor dynamic addresses for web-accessible files. Everything else is the
+// same.
 //
 // Browsers take only numbers as the version: 0.3.0-beta.1 becomes 0.3.0.1 (Chromium shows the
 // full name through `version_name`). Nothing updates these files by itself — they are
@@ -39,7 +44,10 @@ const CSP = [
 const SECURE_PAGES = ['https://*/*', 'http://localhost/*'];
 
 export function manifest(browser, version) {
+  if (!['chromium', 'firefox', 'safari'].includes(browser)) throw new Error(`Unknown ${browser}`);
   const firefox = browser === 'firefox';
+  const safari = browser === 'safari';
+  const chromium = browser === 'chromium';
   const icons = {
     16: 'icons/icon-16.png',
     32: 'icons/icon-32.png',
@@ -53,7 +61,7 @@ export function manifest(browser, version) {
     description: '__MSG_extDescription__',
     default_locale: 'en',
     version: numericVersion(version),
-    ...(firefox ? {} : { version_name: version, minimum_chrome_version: '116' }),
+    ...(chromium ? { version_name: version, minimum_chrome_version: '116' } : {}),
     homepage_url: 'https://github.com/MinifyX/UwULock-Client',
     icons,
     action: {
@@ -63,28 +71,44 @@ export function manifest(browser, version) {
     },
     background: firefox
       ? { scripts: ['background.js'], type: 'module' }
-      : { service_worker: 'background.js', type: 'module' },
+      : safari
+        ? { page: 'background.html', persistent: false }
+        : { service_worker: 'background.js', type: 'module' },
     permissions: [
       'storage',
       'activeTab',
       'contextMenus',
       'alarms',
       'clipboardWrite',
-      // Locking with the computer's screen (idle state `locked`).
-      'idle',
-      ...(firefox ? [] : ['offscreen']),
+      // Locking with the computer's screen (idle state `locked`). Safari has no such API.
+      ...(safari ? [] : ['idle']),
+      ...(chromium ? ['offscreen'] : []),
     ],
     // Asked for per server when somebody logs in: bitwarden.com, bitwarden.eu, or their own.
     optional_host_permissions: ['https://*/*', 'http://*/*'],
+    // Safari asks for sites itself (per site, in its own prompt), and doesn't always answer
+    // permissions.request for optional ones: declared, so the login can reach the server.
+    ...(safari ? { host_permissions: ['https://*/*', 'http://*/*'] } : {}),
     content_scripts: [
-      {
-        matches: SECURE_PAGES,
-        js: ['page.js'],
-        run_at: 'document_start',
-        all_frames: true,
-        world: 'MAIN',
-      },
-      { matches: SECURE_PAGES, js: ['bridge.js'], run_at: 'document_start', all_frames: true },
+      // Passkeys: WebAuthn in the page (page.js) and the way to the background (bridge.js).
+      // Not in Safari, where UwULock's passkey provider answers through the system's dialog.
+      ...(safari
+        ? []
+        : [
+            {
+              matches: SECURE_PAGES,
+              js: ['page.js'],
+              run_at: 'document_start',
+              all_frames: true,
+              world: 'MAIN',
+            },
+            {
+              matches: SECURE_PAGES,
+              js: ['bridge.js'],
+              run_at: 'document_start',
+              all_frames: true,
+            },
+          ]),
       {
         matches: ['https://*/*', 'http://*/*'],
         js: ['content.js'],
@@ -108,7 +132,7 @@ export function manifest(browser, version) {
       {
         resources: ['menu.html'],
         matches: ['https://*/*', 'http://*/*'],
-        ...(firefox ? {} : { use_dynamic_url: true }),
+        ...(chromium ? { use_dynamic_url: true } : {}),
       },
     ],
     content_security_policy: { extension_pages: CSP },
@@ -136,5 +160,7 @@ export function manifest(browser, version) {
           },
         }
       : {}),
+    // Safari 17 (iOS 17, the app's oldest; macOS 13 and newer): session storage, MV3 as used here.
+    ...(safari ? { browser_specific_settings: { safari: { strict_min_version: '17.0' } } } : {}),
   };
 }

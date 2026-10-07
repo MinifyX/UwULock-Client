@@ -1,4 +1,4 @@
-// Builds the browser extension, for Chromium and for Firefox, from one source:
+// Builds the browser extension, for Chromium, Firefox and Safari, from one source:
 //
 //   node scripts/build.mjs          (pnpm --filter @uwulock/extension build)
 //
@@ -6,11 +6,15 @@
 //
 // One Vite build per part: the pages (popup, prompt window, offscreen document) as ES modules,
 // the background as one ES module, and each content script as one self-contained script — a
-// content script can't load modules. Both browsers get the same files and their own manifest:
+// content script can't load modules. Every browser gets the same files and its own manifest:
 //
 //   dist/chromium/, dist/firefox/                  unpacked, for "Load unpacked" / about:debugging
+//   dist/safari/                                   what goes into the UwULock app's Safari extension
 //   ../../target/extension/UwULock-extension-chromium.zip
 //   ../../target/extension/UwULock-extension-firefox.xpi   (a zip, unsigned)
+//   ../../target/extension/UwULock-extension-safari.zip    dist/safari for the Mac and iPhone
+//                                                  builds in CI; not a download (Safari takes
+//                                                  extensions only inside a signed app)
 
 import {
   cpSync,
@@ -212,12 +216,23 @@ mkdirSync(packages, { recursive: true });
 for (const [browser, file] of [
   ['chromium', 'UwULock-extension-chromium.zip'],
   ['firefox', 'UwULock-extension-firefox.xpi'],
+  ['safari', 'UwULock-extension-safari.zip'],
 ]) {
   const dir = join(out, browser);
   cpSync(common, dir, { recursive: true });
   // The offscreen document is Chromium's alone.
-  if (browser === 'firefox') {
+  if (browser !== 'chromium') {
     rmSync(join(dir, 'offscreen.html'), { force: true });
+  }
+  if (browser === 'safari') {
+    // No WebAuthn in pages (manifest.mjs): neither the page script nor its bridge.
+    rmSync(join(dir, 'page.js'), { force: true });
+    rmSync(join(dir, 'bridge.js'), { force: true });
+    // Safari's service workers can't be modules: the background runs in a page instead.
+    writeFileSync(
+      join(dir, 'background.html'),
+      '<!doctype html>\n<meta charset="utf-8" />\n<script type="module" src="background.js"></script>\n',
+    );
   }
   writeFileSync(
     join(dir, 'manifest.json'),

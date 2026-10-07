@@ -13,6 +13,9 @@ name: iOS
 # same IPA for the App Store on a fresh runner and uploads it to TestFlight — never for review
 # (docs/app-store.md).
 #
+# The app carries the Safari extension (docs/extension.md): `extension` builds it beside the app
+# on a Linux runner, and the app job picks it up when it gets there (scripts/wait-artifact.sh).
+#
 # The Xcode project isn't in the repository; `tauri ios init` writes a fresh one on the runner
 # every time, so nothing generated has to be kept in sync by hand. (Modelled on UwUMail.)
 
@@ -21,8 +24,7 @@ on:
     branches: [main]
     # Path filters don't apply to tags: every release tag gets its IPA.
     tags: ['v*']
-    paths-ignore:
-      ['**/*.md', 'docs/**', 'brand/**', 'release-notes/**', 'LICENSE', 'apps/extension/**']
+    paths-ignore: ['**/*.md', 'docs/**', 'brand/**', 'release-notes/**', 'LICENSE']
   # Pull requests only when they touch what goes into the app; macOS runners are slow to get.
   pull_request:
     paths:
@@ -35,8 +37,14 @@ on:
       - 'scripts/ios-*.sh'
       - 'scripts/apple-ci.sh'
       - 'scripts/asc.mjs'
+      - 'scripts/wait-artifact.sh'
       - '.github/workflows/ios.yml'
   workflow_dispatch:
+    inputs:
+      upload:
+        description: Upload to TestFlight (off signs and packages only, to try the way there)
+        type: boolean
+        default: true
 
 concurrency:
   group: ios-${{ github.ref }}
@@ -44,11 +52,19 @@ concurrency:
 
 permissions:
   contents: read
+  # scripts/wait-artifact.sh looks for the Safari extension of this run.
+  actions: read
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # The Safari extension, beside the app jobs rather than before them.
+  extension:
+    uses: ./.github/workflows/extension.yml
+    with:
+      package-only: true
+
   app:
     name: App (${{ matrix.build }})
     strategy:
@@ -107,6 +123,18 @@ jobs:
           # The app icon (pnpm --filter @uwulock/desktop icons), over the template's.
           cp apps/desktop/src-tauri/icons/ios/*.png apps/desktop/src-tauri/gen/apple/Assets.xcassets/AppIcon.appiconset/
           find apps/desktop/src-tauri/gen/apple -maxdepth 2 -not -path '*/build/*' | sort
+
+      - name: The Safari extension (job `extension`)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/wait-artifact.sh extension-safari 'Build, test and package'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: extension-safari
+          path: target/extension
+      - run: |
+          mkdir -p apps/extension/dist/safari
+          unzip -q target/extension/UwULock-extension-safari.zip -d apps/extension/dist/safari
 
       - name: Build
         env:
@@ -206,6 +234,7 @@ jobs:
           bash scripts/ios-sign.sh "$ipa" "$RUNNER_TEMP/profiles" "signed/UwULock-$BUILD_NUMBER.ipa"
 
       - name: Upload to App Store Connect
+        if: github.event_name != 'workflow_dispatch' || inputs.upload
         env:
           ASC_KEY_ID: ${{ secrets.APPLE_ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APPLE_ASC_ISSUER_ID }}

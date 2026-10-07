@@ -22,8 +22,8 @@ encrypted for Google. Built without the key, signed on a fresh runner, like `and
 1. Create the app: UwULock, German, app, free.
 2. Testing → Internal testing → Testers: create a list with your own Google account, copy
    the opt-in link.
-3. Create a release. At "App integrity", choose *Use a different key* → *Export and upload a
-   key from Java keystore*, download `encryption_public_key.pem`, run the workflow with it,
+3. Create a release. At "App integrity", choose _Use a different key_ → _Export and upload a
+   key from Java keystore_, download `encryption_public_key.pem`, run the workflow with it,
    upload `uwulock-play-signing-key.zip` there. Then upload the `.aab`.
 4. Open the opt-in link on the phone, install from Play.
 

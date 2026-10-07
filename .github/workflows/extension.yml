@@ -1,10 +1,13 @@
 name: Extension
 
-# The browser extension, for Chromium and Firefox: uwulock-core as WebAssembly, the unit tests,
-# both packages, Mozilla's linter over the Firefox one, and the end-to-end test in Chromium
+# The browser extension, for Chromium, Firefox and Safari: uwulock-core as WebAssembly, the unit
+# tests, the packages, Mozilla's linter over the Firefox one, and the end-to-end test in Chromium
 # against a UwULock Server release. On every pull request that touches it, on main, and — called
 # by installers.yml — for a release, whose `pnpm release` takes the packages from the artifact
-# `extension`.
+# `extension`. The Safari build goes into the apps (docs/extension.md) as the artifact
+# `extension-safari`: installers.yml, mas.yml and ios.yml start their Mac builds right away and
+# pick it up when they need it (scripts/wait-artifact.sh); the last two call this with
+# `package-only`, which leaves out the tests that already ran.
 
 on:
   pull_request:
@@ -30,15 +33,20 @@ on:
       - 'pnpm-lock.yaml'
       - '.github/workflows/extension.yml'
   workflow_call:
+    inputs:
+      package-only:
+        description: Only the packages, without the tests and the end-to-end test
+        type: boolean
+        default: false
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  # Not `github.workflow`: called from installers.yml that is the caller's name, and sharing
-  # its group would make the two wait for each other.
-  group: extension-${{ github.event_name }}-${{ github.ref }}
+  # Called from another workflow, `github.workflow` is the caller's name: one group per caller,
+  # so the iOS, Mac App Store and installer runs of one tag don't cancel each other's.
+  group: extension-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -73,19 +81,31 @@ jobs:
 
       - name: uwulock-core as WebAssembly
         run: node apps/extension/scripts/build-wasm.mjs
-      - run: pnpm --filter @uwulock/extension typecheck
-      - run: pnpm --filter @uwulock/extension exec vitest run --reporter=dot
-      - run: node scripts/check-i18n.mjs
-      - name: Both packages
+      - if: ${{ !inputs.package-only }}
+        run: pnpm --filter @uwulock/extension typecheck
+      - if: ${{ !inputs.package-only }}
+        run: pnpm --filter @uwulock/extension exec vitest run --reporter=dot
+      - if: ${{ !inputs.package-only }}
+        run: node scripts/check-i18n.mjs
+      - name: The packages
         run: |
           pnpm --filter @uwulock/extension build
           ls -la target/extension
+      # Right away: the Mac builds wait for this one.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: extension-safari
+          path: target/extension/UwULock-extension-safari.zip
+          if-no-files-found: error
+          retention-days: 7
       # Mozilla's own checks, as addons.mozilla.org runs them (not --self-hosted: the add-on
       # goes there). Warnings (React writes innerHTML, for one) are shown; errors fail.
       - name: web-ext lint (Firefox)
+        if: ${{ !inputs.package-only }}
         run: npx --yes web-ext@8 lint --source-dir apps/extension/dist/firefox
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: ${{ !inputs.package-only }}
         with:
           name: extension
           path: |
@@ -97,6 +117,7 @@ jobs:
   e2e:
     name: End to end (Chromium, UwULock Server)
     needs: build
+    if: ${{ !inputs.package-only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

@@ -164,7 +164,7 @@ Passwords, passkeys & accounts); on the iPhone only with a signed build.
 
 ## Browser extension
 
-UwULock for Chrome, Edge, Brave, Vivaldi, Opera and Firefox, from one code base: log in (with
+UwULock for Chrome, Edge, Brave, Vivaldi, Opera, Firefox and Safari, from one code base: log in (with
 two-step login), unlock with the master password or a PIN, the page's logins first, copy and
 one-time codes (the next one too, in a code's last 10 seconds), create and edit items, a
 generator with minimums per kind of character, sharing an item as a Send (an entry Send on
@@ -176,7 +176,10 @@ Bitwarden directly; the crypto is uwulock-core, compiled to WebAssembly.
 It isn't in any store: `UwULock-extension-chromium.zip` and `UwULock-extension-firefox.xpi` are on
 the [releases](https://github.com/MinifyX/UwULock-Client/releases). Chromium loads it in developer
 mode; the Firefox file is unsigned, so it stays installed only in Developer Edition, Nightly or
-LibreWolf and loads temporarily elsewhere. [How to install it](docs/extension.md).
+LibreWolf and loads temporarily elsewhere. In **Safari** (Mac, iPhone, iPad) the same extension
+comes inside UwULock — the App Store/TestFlight apps and the Mac setup — and is switched on in
+Safari's settings; there passkeys come from the UwULock app as the system's password and passkey
+provider. [How to install it](docs/extension.md).
 
 ## Project layout
 
