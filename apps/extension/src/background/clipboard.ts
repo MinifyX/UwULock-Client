@@ -1,8 +1,11 @@
 /**
  * Copying, and taking it off the clipboard again after the configured time (30 seconds by
  * default). A Chromium service worker has no clipboard: it writes through an offscreen
- * document made for that. Firefox's background is a page and writes itself. The clearing runs
- * on an alarm, so it happens even when the worker was ended in between.
+ * document made for that. Firefox's background is a page and writes itself. Safari's is a page
+ * too, but one that may write only right after a click in it: there the popup copies by itself
+ * (popup/api.ts) and only the clearing is left here — which Safari may refuse as well, so a copy
+ * from Safari can stay on the clipboard (docs/extension.md). The clearing runs on an alarm, so
+ * it happens even when the worker was ended in between.
  */
 
 import { ext } from '../shared/browser';
@@ -54,12 +57,36 @@ async function write(text: string) {
     await ext.runtime.sendMessage({ target: 'offscreen', type: 'copy', text });
     return;
   }
-  await navigator.clipboard.writeText(text);
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (error) {
+    // Safari's background page: the older way, which some versions still allow there.
+    if (typeof document === 'undefined' || !legacyCopy(text)) throw error;
+  }
+}
+
+function legacyCopy(text: string): boolean {
+  const field = document.createElement('textarea');
+  field.value = text;
+  document.body.append(field);
+  field.select();
+  try {
+    return document.execCommand('copy');
+  } catch {
+    return false;
+  } finally {
+    field.remove();
+  }
 }
 
 /** Copy `text`; cleared again after the configured number of seconds. */
 export async function copy(text: string): Promise<void> {
   await write(text);
+  await clearLater();
+}
+
+/** The clearing alarm for what was just copied (here, or by Safari's popup). */
+export async function clearLater(): Promise<void> {
   const { clipboardClear } = await settings();
   await ext.alarms.clear(ALARM);
   if (clipboardClear > 0) {

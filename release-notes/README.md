@@ -16,7 +16,14 @@ without it. The text appears under "Was ist neu?" in UwULock's update hint and o
    and the `package.json` files.
 2. Add `release-notes/<version>.json`.
 3. Commit, tag `v<version>` and push both. The tag starts `.github/workflows/installers.yml`, which
-   checks the workspace on macOS and Linux and builds every setup — unsigned, since CI holds no key.
+   checks the workspace on macOS and Linux and builds every setup — unsigned (CI holds no update key),
+   except macOS: the app (with its Safari extension), the setup and the disk image are signed with the
+   Developer ID and notarized there (`macos-sign-app`, `macos-sign-setup`, scripts/macos-sign.mjs),
+   when the secrets `APPLE_DEVELOPER_ID_KEY` (the private key, PEM) and `APPLE_DEVELOPER_ID_CERT`
+   (the "Developer ID Application" certificate, PEM or base64 DER) are set, next to the App Store
+   Connect key (`ASC_*`, docs/app-store.md) notarytool uses. Without them the disk image stays ad-hoc
+   signed, `UwULock-macos-signing.txt` says `ad-hoc`, and `pnpm release` leaves the "notarized" line
+   out of the notes.
 4. Run `pnpm release` on the machine with the signing key, with the tag checked out.
 
 `pnpm release` waits for the tag's CI run and downloads what it built: the Windows setups for x64

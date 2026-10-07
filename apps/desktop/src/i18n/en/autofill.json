@@ -20,5 +20,10 @@
   "Passwörter und Passkeys": "Passwords and passkeys",
   "Für Apps und Browser, die Androids Anmeldeverwaltung nicht nutzen. In Chrome zusätzlich: Einstellungen → Autofill-Dienste → „Autofill über einen anderen Dienst“.": "For apps and browsers that don't use Android's Credential Manager. In Chrome also: Settings → Autofill services → “Autofill using another service”.",
   "Autofill-Dienst": "Autofill service",
-  "UwULock schlägt Passwörter und Passkeys beim Anmelden vor.": "UwULock suggests passwords and passkeys when you sign in."
+  "UwULock schlägt Passwörter und Passkeys beim Anmelden vor.": "UwULock suggests passwords and passkeys when you sign in.",
+  "In Safari aktivieren": "Turn on in Safari",
+  "Safari-Erweiterung": "Safari extension",
+  "In Safari eingeschaltet. Melde dich in der Erweiterung an; Passkeys kommen in Safari aus dieser App.": "On in Safari. Sign in to the extension; in Safari, passkeys come from this app.",
+  "Dieselbe Erweiterung wie in Chrome und Firefox, mit eigener Anmeldung. Passkeys kommen in Safari aus dieser App.": "The same extension as in Chrome and Firefox, with its own sign-in. In Safari, passkeys come from this app.",
+  "Dieselbe Erweiterung wie in Chrome und Firefox, mit eigener Anmeldung. Einschalten unter Einstellungen → Apps → Safari → Erweiterungen → UwULock. Passkeys und Passwörter kommen in Safari aus dieser App.": "The same extension as in Chrome and Firefox, with its own sign-in. Turn it on under Settings → Apps → Safari → Extensions → UwULock. In Safari, passkeys and passwords come from this app."
 }

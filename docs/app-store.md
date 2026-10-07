@@ -71,18 +71,27 @@ own that is deleted at the end (`scripts/apple-ci.sh`). The build jobs hold no s
   5–30 minutes after the upload; Apple mails problems with a build.
 
 Starting an upload by hand: Actions → **iOS** or **Mac App Store** → Run workflow → `main`.
+With **upload** unticked, the run signs everything (profiles included) but uploads nothing: the
+way to try a branch.
+
+**Safari extension**: both store apps carry it (`PlugIns/UwULockSafari.appex`, bundle id
+`app.uwulock.safari`, docs/extension.md), built from the run's `extension-safari` artifact.
+`scripts/asc.mjs profiles` registers that bundle id when it is missing (platform UNIVERSAL) and
+makes its profiles like the others'. The Safari extension needs no App Group or keychain group.
 
 ### Secrets (MinifyX/UwULock-Client)
 
-| Secret                   | Content                                                                                       |
-| ------------------------ | --------------------------------------------------------------------------------------------- |
-| `APPLE_TEAM_ID`          | `7N8YX2CL7J`                                                                                  |
-| `APPLE_ASC_KEY_ID`       | App Store Connect API key ID (team key, role App Manager)                                     |
-| `APPLE_ASC_ISSUER_ID`    | its issuer ID                                                                                 |
-| `APPLE_ASC_KEY_P8`       | the key itself (`AuthKey_….p8`, PEM)                                                          |
-| `APPLE_DISTRIBUTION_P12` | base64 of a .p12 with the **Apple Distribution** certificate and its key (iOS and Mac)        |
-| `APPLE_INSTALLER_P12`    | base64 of a .p12 with the **Mac Installer Distribution** certificate and its key (the `.pkg`) |
-| `APPLE_P12_PASSWORD`     | the password of both .p12                                                                     |
+| Secret                    | Content                                                                                       |
+| ------------------------- | --------------------------------------------------------------------------------------------- |
+| `APPLE_TEAM_ID`           | `7N8YX2CL7J`                                                                                  |
+| `APPLE_ASC_KEY_ID`        | App Store Connect API key ID (team key, role App Manager)                                     |
+| `APPLE_ASC_ISSUER_ID`     | its issuer ID                                                                                 |
+| `APPLE_ASC_KEY_P8`        | the key itself (`AuthKey_….p8`, PEM)                                                          |
+| `APPLE_DISTRIBUTION_P12`  | base64 of a .p12 with the **Apple Distribution** certificate and its key (iOS and Mac)        |
+| `APPLE_INSTALLER_P12`     | base64 of a .p12 with the **Mac Installer Distribution** certificate and its key (the `.pkg`) |
+| `APPLE_P12_PASSWORD`      | the password of both .p12                                                                     |
+| `APPLE_DEVELOPER_ID_KEY`  | the disk image's signing key (PEM, `installers.yml`, release-notes/README.md)                 |
+| `APPLE_DEVELOPER_ID_CERT` | its **Developer ID Application** certificate (PEM or base64 DER)                              |
 
 Both certificates were made through the App Store Connect API from a key that never left Lorin's
 machine (a copy is kept offline). They run out on **2027-10-06**. To renew: a new key and CSR
@@ -163,6 +172,9 @@ TestFlight**: Zur Prüfung eingereicht ist nichts, und CI reicht nie etwas ein.
   es hoch.
 - **Version** `0.5.0-beta.2` → `0.5.0`; **Build-Nummer** = Laufnummer.Versuch des Workflows, pro
   Plattform steigend.
+- **Safari-Erweiterung**: beide Store-Apps tragen sie (`app.uwulock.safari`, aus dem Artefakt
+  `extension-safari` desselben Laufs); `scripts/asc.mjs` legt die Bundle-ID bei Bedarf an. Run
+  workflow ohne **upload** signiert nur, zum Ausprobieren eines Branches.
 - **Profile** holt bzw. erneuert `scripts/asc.mjs` über die App-Store-Connect-API; die
   Zertifikate (gültig bis 2027-10-06) liegen als Secrets im Repo, Erneuern siehe oben.
 

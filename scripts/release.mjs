@@ -208,6 +208,9 @@ if (build) {
   fail('The setup in target/installers is older than the release commit. Run without --no-build.');
 }
 
+/** Whether CI signed the disk image with the Developer ID and Apple notarized it (installers.yml). */
+let macNotarized = false;
+
 const work = mkdtempSync(join(tmpdir(), 'uwulock-release-'));
 try {
   const files = new Map(localWindows ? [[windowsName, windowsSetup]] : []);
@@ -228,6 +231,14 @@ try {
       copyFileSync(from, to);
       files.set(entry.file, to);
     }
+    const macSigning = join(ci, 'installers-macos-universal', 'UwULock-macos-signing.txt');
+    macNotarized =
+      existsSync(macSigning) && readFileSync(macSigning, 'utf8').trim() === 'developer-id';
+    console.log(
+      macNotarized
+        ? '  ✓ the disk image is signed with the Developer ID and notarized'
+        : '  ! the disk image is only ad-hoc signed (no Developer ID in CI)',
+    );
 
     console.log('\n▸ Fetching the Android APK and the iPhone IPA of this tag');
     for (const phone of PHONES) {
@@ -479,7 +490,9 @@ function releaseBody(aurLive) {
     'Windows: warnt es („Der Computer wurde durch Windows geschützt“), **Weitere Informationen → Trotzdem ausführen**.',
     ...(mac
       ? [
-          'macOS: die `.dmg` öffnen und **UwULock Setup** starten. UwULock ist nicht bei Apple notarisiert (keine Developer ID): sagt macOS, es könne das Programm nicht prüfen, unter **Systemeinstellungen → Datenschutz & Sicherheit → Trotzdem öffnen** freigeben.',
+          macNotarized
+            ? `macOS: die \`.dmg\` öffnen und **UwULock Setup** starten (von Apple notarisiert). Die Safari-Erweiterung kommt mit: in Safari unter **Einstellungen → Erweiterungen** einschalten ([Anleitung](${extensionGuide})).`
+            : 'macOS: die `.dmg` öffnen und **UwULock Setup** starten. UwULock ist nicht bei Apple notarisiert (keine Developer ID): sagt macOS, es könne das Programm nicht prüfen, unter **Systemeinstellungen → Datenschutz & Sicherheit → Trotzdem öffnen** freigeben.',
         ]
       : []),
     ...(windowsOnly
@@ -503,7 +516,9 @@ function releaseBody(aurLive) {
     'Windows: if it warns that it "protected your PC", **More info → Run anyway**.',
     ...(mac
       ? [
-          "macOS: open the `.dmg` and start **UwULock Setup**. UwULock isn't notarized by Apple (no developer ID): if macOS says it can't check the app, allow it under **System Settings → Privacy & Security → Open Anyway**.",
+          macNotarized
+            ? `macOS: open the \`.dmg\` and start **UwULock Setup** (notarized by Apple). The Safari extension comes with it: turn it on in Safari under **Settings → Extensions** ([guide](${extensionGuide})).`
+            : "macOS: open the `.dmg` and start **UwULock Setup**. UwULock isn't notarized by Apple (no developer ID): if macOS says it can't check the app, allow it under **System Settings → Privacy & Security → Open Anyway**.",
         ]
       : []),
     ...(windowsOnly

@@ -57,6 +57,7 @@ import {
   type TextSizeChoice,
 } from '../../lib/settings';
 import { textSizeOptions } from '../../lib/appearance';
+import { useSafariStatus } from '../../lib/safari';
 import { unlockDescription, unlockLabel, unlockPrompt } from '../../lib/unlock';
 import { initialOf } from '../../components/AccountCard';
 import { MoveDialog } from '../../components/MoveDialog';
@@ -612,6 +613,7 @@ function PasskeysPage() {
   useLanguage();
   const status = usePasskeyStatus();
   const [provider, reload] = useProviderStatus();
+  const [safari] = useSafariStatus();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -751,6 +753,15 @@ function PasskeysPage() {
           }
         />
       </ListSection>
+      {safari?.platform === 'ios' && safari.available && (
+        <ListSection
+          footer={t(
+            'Dieselbe Erweiterung wie in Chrome und Firefox, mit eigener Anmeldung. Einschalten unter Einstellungen → Apps → Safari → Erweiterungen → UwULock. Passkeys und Passwörter kommen in Safari aus dieser App.',
+          )}
+        >
+          <ListRow icon={ICONS.website} title={t('In Safari aktivieren')} wrap />
+        </ListSection>
+      )}
       {errors([warning, problem])}
     </Page>
   );

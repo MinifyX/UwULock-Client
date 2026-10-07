@@ -22,6 +22,7 @@
 //! - [`passkeys`] — the vault's passkeys for the system: a virtual security
 //!   key (Linux), a plugin passkey manager (Windows), Credential Manager
 //!   (Android), the AutoFill extension (iOS, macOS)
+//! - [`safari`] — the Safari extension the Apple builds carry: switched on?
 //!
 //! The same app runs on Android and iOS (docs/mobile.md); what only a
 //! desktop has — the updater, Windows Hello, the screen lock — is left out
@@ -40,6 +41,7 @@ mod moving;
 mod passkeys;
 #[cfg(mobile)]
 mod phone;
+mod safari;
 mod sends;
 mod session_lock;
 mod suite;
@@ -239,6 +241,8 @@ pub fn run() {
             autofill::credential_exchange_import,
             passkeys::passkey_provider_status,
             passkeys::set_passkey_provider,
+            safari::safari_extension_status,
+            safari::safari_extension_open,
         ])
         .build(tauri::generate_context!())
         .expect("failed to start UwULock")

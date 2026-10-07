@@ -39,6 +39,10 @@ storage. While the vault is unlocked, its key is held in memory. Web pages can't
 from your vault unless you fill an item into them; they can notice that the extension is
 installed (it offers passkeys to every https page and shows its menu next to login fields).
 
+In Safari the extension comes inside the UwULock app but keeps all of this to itself: it
+exchanges nothing with the app, offers no passkeys to pages (the app does that, as the system's
+passkey provider) and asks Safari for access to the websites you allow.
+
 ## What UwULock doesn't do
 
 No analytics, no telemetry, no advertising, no tracking, no crash reports, no third-party
@@ -100,6 +104,10 @@ der Erweiterung. Solange der Tresor entsperrt ist, liegt sein Schlüssel im Arbe
 Webseiten können nichts aus deinem Tresor lesen, außer du füllst einen Eintrag bei ihnen aus;
 sie können aber merken, dass die Erweiterung installiert ist (sie bietet jeder https-Seite
 Passkeys an und zeigt ihr Menü neben Anmeldefeldern).
+
+In Safari steckt die Erweiterung in der UwULock-App, behält das alles aber für sich: Sie tauscht
+nichts mit der App aus, bietet Seiten keine Passkeys an (das macht die App als Passkey-Anbieter
+des Systems) und bekommt von Safari nur Zugriff auf die Websites, die du erlaubst.
 
 ## Was UwULock nicht tut
 

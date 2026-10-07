@@ -4,9 +4,20 @@ name: Installers
 # `pnpm release` publishes: the Windows setups for x64 and ARM, the universal
 # macOS disk image, .deb, .rpm and portable folder for Linux x64 and arm64, and
 # the browser extension for Chromium and Firefox (extension.yml, called below).
-# All unsigned: nothing here holds the update signing key or any other secret.
-# The files the updater runs are signed by `pnpm release`, next to the key,
-# after it downloads them from here.
+# Nothing here holds the update signing key: the files the updater runs are
+# signed by `pnpm release`, next to the key, after it downloads them from here.
+#
+# The Mac disk image is signed with the Developer ID and notarized by Apple
+# when the secrets APPLE_DEVELOPER_ID_KEY and APPLE_DEVELOPER_ID_CERT are set
+# (docs/install.md), on machines that build nothing — the certificate never
+# shares a machine with a few hundred build scripts, as in mas.yml:
+#
+#   macos-app (builds) → macos-sign-app (signs, notarizes)
+#     → macos-setup (builds the setup around it) → macos-sign-setup (signs, notarizes)
+#
+# Without the secrets the same jobs hand everything on ad-hoc signed, as
+# before. The app carries the Safari extension (docs/extension.md), which the
+# extension job builds beside it (scripts/wait-artifact.sh).
 
 on:
   push:
@@ -17,6 +28,8 @@ on:
 
 permissions:
   contents: read
+  # scripts/wait-artifact.sh looks for the Safari extension of this run.
+  actions: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -88,14 +101,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # One disk image for Intel and Apple silicon: both built on Apple
-          # silicon (the runner images for Intel Macs come and go) and joined.
-          - name: macos-universal
-            os: macos-latest
-            target: universal-apple-darwin
-            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
-            # Its own cache since the Intel half builds in target/x86_64-build.
-            cache-key: macos-universal-split
+          # (macOS: the macos-* jobs below.)
           # The oldest supported Ubuntu, so the packages and the portable
           # folder run on anything as new or newer. Two machines at once: the
           # .deb and .rpm need the app built once more (as package `uwulock`),
@@ -172,30 +178,17 @@ jobs:
 
       # The setup unpacks what it carries into a scratch folder and checks the
       # app arrived startable — the part of an install no window is needed
-      # for. The universal one runs as arm64 here, its Intel half is checked
-      # for being there. The Windows setup has no such mode and is checked by
-      # what it was built from.
+      # for. (macOS: in macos-sign-setup.) The Windows setup has no such mode
+      # and is checked by what it was built from.
       - name: Check what the setup carries
-        if: runner.os == 'macOS' || matrix.name == 'linux-x64'
+        if: matrix.name == 'linux-x64'
         shell: bash
         run: |
           set -e
           check="$RUNNER_TEMP/payload-check"
-          if [ "$RUNNER_OS" = "macOS" ]; then
-            setup=target/installers/UwULock-update-macos-universal
-            chmod +x "$setup"
-            lipo "$setup" -verify_arch arm64 x86_64
-            "$setup" --check-payload "$check"
-            for app in "$check"/*.app; do
-              codesign --verify --deep --strict "$app"
-              lipo "$app"/Contents/MacOS/* -verify_arch arm64 x86_64
-              echo "signed, universal: $app"
-            done
-          else
-            setup=target/installers/UwULock-update-linux-x64.AppImage
-            "$setup" --check-payload "$check"
-            ldd "$check/UwULock/usr/bin/"* | grep "not found" && exit 1 || echo "every library found"
-          fi
+          setup=target/installers/UwULock-update-linux-x64.AppImage
+          "$setup" --check-payload "$check"
+          ldd "$check/UwULock/usr/bin/"* | grep "not found" && exit 1 || echo "every library found"
 
       # The .deb installs through dpkg as package `uwulock` (what the app checks
       # before it updates itself), the .rpm is named the same, and the portable
@@ -272,6 +265,225 @@ jobs:
           path: target/installers/*
           if-no-files-found: error
           retention-days: 14
+
+  # ── macOS: one disk image for Intel and Apple silicon ─────────────────────
+  # Both halves built on Apple silicon (the runner images for Intel Macs come
+  # and go) and joined (scripts/build-setup.mjs).
+  macos-app:
+    name: macOS app (universal)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      # Its own cache since the Intel half builds in target/x86_64-build; shared by name with
+      # macos-setup and mas.yml, which only read it.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: macos-universal-split
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: The Safari extension (job `extension`)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/wait-artifact.sh extension-safari 'Build, test and package'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: extension-safari
+          path: target/extension
+      - run: |
+          mkdir -p apps/extension/dist/safari
+          unzip -q target/extension/UwULock-extension-safari.zip -d apps/extension/dist/safari
+
+      - name: Build UwULock.app
+        run: node scripts/build-setup.mjs --target universal-apple-darwin --part app
+      # `ditto` keeps what an app bundle is made of — links, modes, extended attributes.
+      - run: ditto -c -k --keepParent target/installers/macos/UwULock.app UwULock-app.zip
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: macos-app-unsigned
+          path: UwULock-app.zip
+          if-no-files-found: error
+          retention-days: 3
+
+  macos-sign-app:
+    name: macOS app, signed
+    needs: macos-app
+    runs-on: macos-latest
+    env:
+      DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID_KEY != '' && secrets.APPLE_DEVELOPER_ID_CERT != '' }}
+    steps:
+      # Only the scripts, not the workspace: nothing here installs or builds.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/apple-ci.sh
+            scripts/macos-sign.mjs
+            apps/desktop/src-tauri/apple/SafariExtension
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: macos-app-unsigned
+      - run: ditto -x -k UwULock-app.zip app
+      - name: The Developer ID and the App Store Connect key
+        if: env.DEVELOPER_ID == 'true'
+        env:
+          APPLE_DEVELOPER_ID_KEY: ${{ secrets.APPLE_DEVELOPER_ID_KEY }}
+          APPLE_DEVELOPER_ID_CERT: ${{ secrets.APPLE_DEVELOPER_ID_CERT }}
+          APPLE_ASC_KEY_P8: ${{ secrets.APPLE_ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.APPLE_ASC_KEY_ID }}
+        run: |
+          bash scripts/apple-ci.sh developer-id
+          bash scripts/apple-ci.sh api-key
+      - name: Sign and notarize
+        if: env.DEVELOPER_ID == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.APPLE_ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APPLE_ASC_ISSUER_ID }}
+        run: node scripts/macos-sign.mjs app app/UwULock.app
+      - name: Without a Developer ID
+        if: env.DEVELOPER_ID != 'true'
+        run: echo "::warning::No Developer ID (APPLE_DEVELOPER_ID_KEY, APPLE_DEVELOPER_ID_CERT) — the disk image stays ad-hoc signed, and Safari won't load its extension."
+      - run: ditto -c -k --keepParent app/UwULock.app UwULock-app.zip
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: macos-app
+          path: UwULock-app.zip
+          if-no-files-found: error
+          retention-days: 3
+      - name: Remove the keychain and the key
+        if: always()
+        run: bash scripts/apple-ci.sh cleanup
+
+  macos-setup:
+    name: macOS setup (universal)
+    needs: macos-sign-app
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      # The app's cache (macos-app): the setup is built on the same dependencies.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: macos-universal-split
+          save-if: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: macos-app
+      - run: ditto -x -k UwULock-app.zip "$RUNNER_TEMP/payload"
+      - name: Build the setup
+        run: |
+          node scripts/build-setup.mjs --target universal-apple-darwin --part setup --payload "$RUNNER_TEMP/payload"
+          cp target/installers/UwULock-update-macos-universal target/installers/macos/
+          cp target/installers/UwULock-macos-universal.dmg target/installers/macos/UwULock-macos-universal-adhoc.dmg
+          ditto -c -k --keepParent target/installers/macos setup.zip
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: macos-setup-unsigned
+          path: setup.zip
+          if-no-files-found: error
+          retention-days: 3
+
+  macos-sign-setup:
+    name: Setup (macos-universal)
+    needs: macos-setup
+    runs-on: macos-latest
+    env:
+      DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID_KEY != '' && secrets.APPLE_DEVELOPER_ID_CERT != '' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/apple-ci.sh
+            scripts/macos-sign.mjs
+            apps/desktop/src-tauri/apple/SafariExtension
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: macos-setup-unsigned
+      - run: ditto -x -k setup.zip work
+      - name: The Developer ID and the App Store Connect key
+        if: env.DEVELOPER_ID == 'true'
+        env:
+          APPLE_DEVELOPER_ID_KEY: ${{ secrets.APPLE_DEVELOPER_ID_KEY }}
+          APPLE_DEVELOPER_ID_CERT: ${{ secrets.APPLE_DEVELOPER_ID_CERT }}
+          APPLE_ASC_KEY_P8: ${{ secrets.APPLE_ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.APPLE_ASC_KEY_ID }}
+        run: |
+          bash scripts/apple-ci.sh developer-id
+          bash scripts/apple-ci.sh api-key
+      - name: Sign, the disk image anew, notarize
+        if: env.DEVELOPER_ID == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.APPLE_ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APPLE_ASC_ISSUER_ID }}
+        run: node scripts/macos-sign.mjs setup work/macos
+      - name: The files `pnpm release` takes
+        run: |
+          mkdir -p out
+          if [ "$DEVELOPER_ID" = true ]; then
+            cp work/macos/UwULock-macos-universal.dmg out/
+            echo developer-id > out/UwULock-macos-signing.txt
+          else
+            cp work/macos/UwULock-macos-universal-adhoc.dmg out/UwULock-macos-universal.dmg
+            echo ad-hoc > out/UwULock-macos-signing.txt
+          fi
+          cp work/macos/UwULock-update-macos-universal out/
+          chmod +x out/UwULock-update-macos-universal
+          ls -la out
+      # The setup unpacks what it carries into a scratch folder and checks the app arrived
+      # startable. The universal one runs as arm64 here, its Intel half is checked for being
+      # there; a notarized app has its ticket with it.
+      - name: Check what the setup carries
+        run: |
+          set -e
+          check="$RUNNER_TEMP/payload-check"
+          setup=out/UwULock-update-macos-universal
+          lipo "$setup" -verify_arch arm64 x86_64
+          codesign --verify --strict "$setup"
+          "$setup" --check-payload "$check"
+          for app in "$check"/*.app; do
+            codesign --verify --deep --strict "$app"
+            lipo "$app"/Contents/MacOS/* -verify_arch arm64 x86_64
+            test -f "$app/Contents/PlugIns/UwULockSafari.appex/Contents/Resources/manifest.json"
+            if [ "$DEVELOPER_ID" = true ]; then
+              xcrun stapler validate "$app"
+              spctl --assess --type execute --verbose=2 "$app"
+            fi
+            echo "signed, universal, with the Safari extension: $app"
+          done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: installers-macos-universal
+          path: out/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove the keychain and the key
+        if: always()
+        run: bash scripts/apple-ci.sh cleanup
 
   # The two halves of Linux x64 as one artifact, installers-linux-x64, as `pnpm release` takes it.
   merge-linux-x64:

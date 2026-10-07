@@ -1,7 +1,7 @@
 import { Button, Icon, IconButton, ICONS, isFontChoice, Segmented, Switch } from '@uwusuite/design';
 import { useState, type ReactNode } from 'react';
 import { FontPicker } from '@desktop/components/FontPicker';
-import { ext } from '../../shared/browser';
+import { ext, isSafari } from '../../shared/browser';
 import { N_, t } from '../../shared/i18n';
 import type { LockTimeout, Settings, Status } from '../../shared/protocol';
 import { logout, setPin, setSettings, switchAccount, syncNow } from '../api';
@@ -91,6 +91,7 @@ export function SettingsView({
 
   const manifest = ext.runtime.getManifest() as chrome.runtime.Manifest & { version_name?: string };
   const version = manifest.version_name ?? manifest.version;
+  const safari = isSafari();
 
   return (
     <div className="popup-scroll settings-view">
@@ -177,16 +178,19 @@ export function SettingsView({
             ))}
           </select>
         </Row>
-        <Row
-          label={t('Mit dem Computer sperren')}
-          description={t('Sperrt UwULock, sobald der Bildschirm gesperrt wird.')}
-        >
-          <Switch
-            checked={settings.lockWithSystem}
+        {/* Safari doesn't say when the screen locks (no `idle`). */}
+        {!safari && (
+          <Row
             label={t('Mit dem Computer sperren')}
-            onChange={(v) => void change({ lockWithSystem: v })}
-          />
-        </Row>
+            description={t('Sperrt UwULock, sobald der Bildschirm gesperrt wird.')}
+          >
+            <Switch
+              checked={settings.lockWithSystem}
+              label={t('Mit dem Computer sperren')}
+              onChange={(v) => void change({ lockWithSystem: v })}
+            />
+          </Row>
+        )}
         <Row
           label={t('Mit PIN entsperren')}
           description={
@@ -247,16 +251,30 @@ export function SettingsView({
             onChange={(v) => void change({ copyTotp: v })}
           />
         </Row>
-        <Row
-          label={t('Passkeys in UwULock speichern')}
-          description={t('Aus: Der Browser fragt wie sonst.')}
-        >
-          <Switch
-            checked={settings.passkeys}
+        {/* Safari: passkeys come from the UwULock app's provider, in the system's dialog. */}
+        {safari ? (
+          <div className="setting-row">
+            <span className="setting-text">
+              <span className="setting-label">{t('Passkeys und Passwörter in Safari')}</span>
+              <span className="setting-description">
+                {t(
+                  'Kommen aus der UwULock-App: Schalte UwULock in den Einstellungen des Geräts unter Allgemein → AutoFill & Passwörter ein.',
+                )}
+              </span>
+            </span>
+          </div>
+        ) : (
+          <Row
             label={t('Passkeys in UwULock speichern')}
-            onChange={(v) => void change({ passkeys: v })}
-          />
-        </Row>
+            description={t('Aus: Der Browser fragt wie sonst.')}
+          >
+            <Switch
+              checked={settings.passkeys}
+              label={t('Passkeys in UwULock speichern')}
+              onChange={(v) => void change({ passkeys: v })}
+            />
+          </Row>
+        )}
         <Row label={t('Standard-Erkennung von Adressen')}>
           <select
             className="select"

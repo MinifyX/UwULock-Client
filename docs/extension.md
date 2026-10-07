@@ -139,6 +139,35 @@ When Firefox asks for permissions, allow access to your websites (for filling) a
 to your server. If the popup closes while Firefox asks, open it again and log in once more —
 the permission is there now.
 
+## Safari (Mac, iPhone, iPad)
+
+Safari gets the same extension, with its own login, unlock and sync, but no file to download:
+it comes inside UwULock (from 0.6.0-beta.3 on) — the Mac App Store / TestFlight app, the iPhone
+and iPad app, and the Mac setup's app. Safari 17 or newer (macOS 13, iOS 17).
+
+- **Mac**: UwULock → Settings → **Turn on in Safari**. That opens Safari → Settings →
+  Extensions; tick UwULock there and allow it on your websites. The disk image's app is signed
+  with Apple's Developer ID; with a build that isn't (built yourself), Safari only lists it with
+  **Allow unsigned extensions** in its Develop menu.
+- **iPhone, iPad**: Settings → Apps → Safari → Extensions → UwULock: switch it on and allow
+  it on all websites (or per site, when Safari asks).
+- Then click UwULock in Safari's toolbar (on iPhone: the **aA** menu) and log in. Safari asks
+  once whether UwULock may reach your server: allow it.
+
+What is different in Safari:
+
+- **Passkeys don't go through the extension.** Safari lets no extension stand in for WebAuthn;
+  passkeys (and, if you like, passwords) come from the UwULock app as the system's password and
+  passkey provider: Mac System Settings → General → AutoFill & Passwords, on iPhone and iPad
+  Settings → General → AutoFill & Passwords → UwULock. The extension's settings say so instead of
+  the passkey switch.
+- No **locking with the computer** (Safari has no idle API); the lock timeout works.
+- **Copying** happens in the popup, while it is open. Clearing the clipboard after the set time
+  works as long as Safari keeps the extension's background running; if Safari closed it earlier,
+  the copy stays until something else is copied.
+- The extension and the app don't share a session: there is no native messaging. Logging out
+  of one leaves the other as it is.
+
 ## Using it
 
 - **Filling**: click into a login field and then the pink button in it (or press ↓), pick the
@@ -200,7 +229,7 @@ pnpm install
 rustup target add wasm32-unknown-unknown
 cargo install wasm-bindgen-cli --version 0.2.129 --locked   # the version crates/uwulock-wasm pins
 pnpm --filter @uwulock/extension wasm      # uwulock-core → apps/extension/src/wasm/pkg
-pnpm --filter @uwulock/extension build     # dist/chromium, dist/firefox, target/extension/*
+pnpm --filter @uwulock/extension build     # dist/chromium, dist/firefox, dist/safari, target/extension/*
 pnpm --filter @uwulock/extension test      # unit tests (vitest)
 pnpm --filter @uwulock/extension e2e       # end to end: Chromium + a UwULock Server (Docker)
 ```
@@ -209,6 +238,13 @@ The end-to-end test runs the built extension in Playwright's Chromium against Uw
 release image (or `UWULOCK_SERVER_BIN=<binary>`); Chromium needs its system libraries
 (`playwright-core install --with-deps chromium`, or run it in the
 `mcr.microsoft.com/playwright` image).
+
+`dist/safari` is what the Apple builds put into their Safari app extension (`UwULockSafari.appex`,
+native part in `apps/desktop/src-tauri/apple/SafariExtension`): `scripts/macos-safari.sh` for the
+Mac (setup and Mac App Store build), `scripts/ios-build.sh` for iPhone and iPad. Its bundle id is
+the app's with `.safari`: `app.uwulock.safari` in the store apps, `app.uwulock.desktop.safari` in
+the disk image's. CI builds the extension once per run (`extension.yml`, `package-only`) and the
+Apple jobs pick up its `extension-safari` artifact (`scripts/wait-artifact.sh`).
 
 ---
 
@@ -274,3 +310,30 @@ signiert**. Ehrlich gesagt heißt das:
 Wenn Firefox nach Berechtigungen fragt: den Zugriff auf Websites (zum Ausfüllen) und beim
 Anmelden auf deinen Server erlauben. Geht das Popup dabei zu, öffne es wieder und melde dich noch
 einmal an – die Berechtigung ist dann da.
+
+## Safari (Mac, iPhone, iPad)
+
+Safari bekommt dieselbe Erweiterung mit eigener Anmeldung, Entsperren und Synchronisierung, aber
+ohne eigene Datei: Sie steckt in UwULock (ab 0.6.0-beta.3) – in der App aus dem Mac App Store bzw.
+TestFlight, in der iPhone- und iPad-App und in der App aus dem Mac-Setup. Safari 17 oder neuer
+(macOS 13, iOS 17).
+
+- **Mac**: UwULock → Einstellungen → **In Safari aktivieren**. Das öffnet Safari → Einstellungen
+  → Erweiterungen; dort UwULock anhaken und auf deinen Websites erlauben.
+- **iPhone, iPad**: Einstellungen → Apps → Safari → Erweiterungen → UwULock einschalten und auf
+  allen Websites erlauben (oder pro Seite, wenn Safari fragt).
+- Dann in Safari auf UwULock in der Symbolleiste tippen (iPhone: im **aA**-Menü) und anmelden.
+  Safari fragt einmal, ob UwULock deinen Server erreichen darf: erlauben.
+
+Anders als in Chrome und Firefox:
+
+- **Passkeys laufen nicht über die Erweiterung.** Safari lässt keine Erweiterung WebAuthn
+  übernehmen; Passkeys (und auf Wunsch Passwörter) kommen aus der UwULock-App als Passwort- und
+  Passkey-Anbieter des Systems: am Mac Systemeinstellungen → Allgemein → AutoFill & Passwörter,
+  auf iPhone und iPad Einstellungen → Allgemein → AutoFill & Passwörter → UwULock. Die
+  Einstellungen der Erweiterung zeigen das statt des Passkey-Schalters.
+- Kein **Sperren mit dem Computer** (Safari kennt keinen Leerlauf-Zustand); die Sperrzeit gilt.
+- **Kopieren** passiert im Popup, solange es offen ist. Das Leeren der Zwischenablage klappt,
+  solange Safari den Hintergrund der Erweiterung laufen lässt.
+- App und Erweiterung teilen keine Sitzung (kein Native Messaging): Abmelden in einem lässt das
+  andere, wie es ist.

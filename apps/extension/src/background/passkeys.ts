@@ -245,8 +245,8 @@ function cancel(entry: Waiting) {
   finish(entry, FALLBACK);
 }
 
-// Closing the window is cancelling.
-ext.windows.onRemoved.addListener((windowId) => {
+// Closing the window is cancelling. (Safari has no passkey window, nor windows on the iPhone.)
+ext.windows?.onRemoved.addListener((windowId) => {
   for (const entry of waiting.values()) {
     if (entry.windowId === windowId) {
       entry.windowId = null;

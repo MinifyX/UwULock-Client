@@ -81,28 +81,31 @@ node -e '
   if (patched === before) console.error("::warning::Could not find the Rust build phase in project.yml");
   fs.writeFileSync(file, patched);
 ' "$gen/project.yml"
-# The AutoFill extension for passwords and passkeys (apps/desktop/src-tauri/apple/PasskeyProvider, iOS 17+):
-# its own target, built into the app's PlugIns. Unsigned like the app; it needs a developer team's
-# App Group and Keychain group to reach the vault (docs/passkeys.md).
+# The app's extensions, each its own target built into the app's PlugIns, unsigned like the app:
+#   UwULockPasskeys  AutoFill for passwords and passkeys (apps/desktop/src-tauri/apple/PasskeyProvider,
+#                    iOS 17+); it needs a developer team's App Group and Keychain group to reach the
+#                    vault (docs/passkeys.md).
+#   UwULockSafari    the Safari extension (apps/desktop/src-tauri/apple/SafariExtension): Xcode builds
+#                    its native part, the extension's files (apps/extension/dist/safari) are copied
+#                    in after the build (docs/extension.md).
 node -e '
   const fs = require("fs");
   const [gen, short, build] = process.argv.slice(1);
-  const lines = [
-    "targets:",
-    "  UwULockPasskeys:",
+  const target = (name, dir, id, extra = []) => [
+    `  ${name}:`,
     "    type: app-extension",
     "    platform: iOS",
     "    deploymentTarget: \"17.0\"",
     "    sources:",
-    "      - path: ../../apple/PasskeyProvider",
+    `      - path: ../../apple/${dir}`,
     "        excludes: [\"*.entitlements\", \"Info.plist\"]",
     "    settings:",
     "      base:",
-    "        PRODUCT_NAME: UwULockPasskeys",
-    "        PRODUCT_MODULE_NAME: UwULockPasskeys",
-    "        PRODUCT_BUNDLE_IDENTIFIER: app.uwulock.passkeys",
-    "        INFOPLIST_FILE: ../../apple/PasskeyProvider/Info.plist",
-    "        UWULOCK_APP_GROUP: group.app.uwulock",
+    `        PRODUCT_NAME: ${name}`,
+    `        PRODUCT_MODULE_NAME: ${name}`,
+    `        PRODUCT_BUNDLE_IDENTIFIER: ${id}`,
+    `        INFOPLIST_FILE: ../../apple/${dir}/Info.plist`,
+    ...extra,
     `        MARKETING_VERSION: "${short}"`,
     `        CURRENT_PROJECT_VERSION: "${build}"`,
     "        SWIFT_VERSION: \"5.0\"",
@@ -112,37 +115,61 @@ node -e '
     "        CODE_SIGNING_REQUIRED: NO",
     "        CODE_SIGN_IDENTITY: \"\"",
     "        CODE_SIGN_ENTITLEMENTS: \"\"",
+  ];
+  const lines = [
+    "targets:",
+    ...target("UwULockPasskeys", "PasskeyProvider", "app.uwulock.passkeys", [
+      "        UWULOCK_APP_GROUP: group.app.uwulock",
+    ]),
+    ...target("UwULockSafari", "SafariExtension", "app.uwulock.safari"),
     "",
   ];
-  fs.writeFileSync(`${gen}/passkeys.yml`, lines.join("\n"));
+  fs.writeFileSync(`${gen}/extensions.yml`, lines.join("\n"));
   const file = `${gen}/project.yml`;
   let text = fs.readFileSync(file, "utf8");
-  if (!text.includes("passkeys.yml")) text = "include:\n  - passkeys.yml\n" + text;
-  // The app depends on the extension, which puts it into PlugIns.
-  const target = text.match(/^  ([^\s:]+_iOS):\s*$/m);
-  if (!target) { console.error("::error::No iOS app target in project.yml"); process.exit(1); }
-  const start = target.index + target[0].length;
+  if (!text.includes("extensions.yml")) text = "include:\n  - extensions.yml\n" + text;
+  // The app depends on the extensions, which puts them into PlugIns.
+  const app = text.match(/^  ([^\s:]+_iOS):\s*$/m);
+  if (!app) { console.error("::error::No iOS app target in project.yml"); process.exit(1); }
+  const start = app.index + app[0].length;
   const next = text.slice(start).search(/^  \S/m);
   const end = next < 0 ? text.length : start + next;
   let block = text.slice(start, end);
   const listed = block.match(/^    dependencies:[ \t]*\n([ \t]*)- /m);
   const indent = listed ? listed[1] : "      ";
-  const entry = `${indent}- target: UwULockPasskeys\n${indent}  embed: true\n`;
-  if (!block.includes("UwULockPasskeys")) {
+  const entries = ["UwULockPasskeys", "UwULockSafari"]
+    .filter((name) => !block.includes(name))
+    .map((name) => `${indent}- target: ${name}\n${indent}  embed: true\n`)
+    .join("");
+  if (entries) {
     if (/^    dependencies:\s*$/m.test(block)) {
-      block = block.replace(/^    dependencies:\s*\n/m, (m) => m + entry);
+      block = block.replace(/^    dependencies:\s*\n/m, (m) => m + entries);
     } else {
-      block = block.replace(/\n*$/, "\n") + "    dependencies:\n" + entry;
+      block = block.replace(/\n*$/, "\n") + "    dependencies:\n" + entries;
     }
   }
   text = text.slice(0, start) + block + text.slice(end);
   fs.writeFileSync(file, text);
-  console.log(`AutoFill extension added to ${target[1]}`);
+  console.log(`Extensions added to ${app[1]}`);
 ' "$gen" "${UWULOCK_IOS_SHORT:-${version%%-*}}" "${UWULOCK_IOS_BUILD:-1}"
 (cd "$gen" && xcodegen generate)
 merge_info_plist
 
 mkdir -p "$out"
+
+# The Safari extension's files, into the extension Xcode built: at the top of the .appex, where
+# Safari looks for manifest.json on iOS.
+safari_files="${UWULOCK_SAFARI_EXTENSION:-apps/extension/dist/safari}"
+test -f "$safari_files/manifest.json" || {
+  echo "::error::No Safari extension in $safari_files: pnpm --filter @uwulock/extension build:all first"
+  exit 1
+}
+add_safari_files() { # <app>
+  local appex="$1/PlugIns/UwULockSafari.appex"
+  test -d "$appex" || { echo "::error::The Safari extension isn't in $1"; exit 1; }
+  cp -R "$safari_files"/. "$appex/"
+  test -f "$appex/manifest.json" || { echo "::error::No manifest.json in $appex"; exit 1; }
+}
 
 show_rust_log() {
   echo "--- what the Rust build phase printed ---"
@@ -175,6 +202,7 @@ echo "iPhone app: $app"
 # The privacy manifest (apple/PrivacyInfo.xcprivacy) at the app's top, where iOS and App Store
 # Connect look for it. The extension's own comes in as a resource of its target.
 cp apps/desktop/src-tauri/apple/PrivacyInfo.xcprivacy "$app/"
+add_safari_files "$app"
 rm -rf "$RUNNER_TEMP/Payload"
 mkdir -p "$RUNNER_TEMP/Payload"
 cp -R "$app" "$RUNNER_TEMP/Payload/"

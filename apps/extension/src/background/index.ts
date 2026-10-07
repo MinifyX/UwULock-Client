@@ -119,6 +119,9 @@ async function handlePage(message: PageRequest): Promise<unknown> {
     case 'copy-text':
       await clipboard.copy(message.text);
       return null;
+    case 'copied':
+      await clipboard.clearLater();
+      return null;
     case 'totp':
       return vault.totp(message.id);
     case 'verify-reprompt':
@@ -360,12 +363,13 @@ live.onUpdates({
 });
 
 // ── Menus, shortcut, badge ────────────────────────────────
+// Safari on iPhone and iPad has neither context menus nor keyboard shortcuts.
 
-ext.contextMenus.onClicked.addListener((info, tab) => {
+ext.contextMenus?.onClicked.addListener((info, tab) => {
   void session.restored.then(() => menus.onMenuClick(info, tab)).catch(() => undefined);
 });
 
-ext.commands.onCommand.addListener((command, tab) => {
+ext.commands?.onCommand.addListener((command, tab) => {
   void session.restored.then(() => menus.onCommand(command, tab)).catch(() => undefined);
 });
 

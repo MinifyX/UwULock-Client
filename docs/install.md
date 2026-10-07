@@ -59,9 +59,13 @@ Uninstall from **Windows Settings → Apps → Installed apps → UwULock**.
 
 ## macOS
 
-Open the `.dmg` and double-click **UwULock Setup**. UwULock isn't notarized by
-Apple (that needs a paid developer account), so the first time macOS says it
-can't check the app. Then:
+Open the `.dmg` and double-click **UwULock Setup**. From 0.6.0-beta.3 on the
+disk image, the setup and the app are signed with Apple's Developer ID and
+notarized by Apple: macOS opens them without asking. The release notes say so
+for each version; the app also brings the [Safari extension](extension.md#safari-mac-iphone-ipad).
+
+Older versions (and ones you build yourself) aren't notarized, so the first
+time macOS says it can't check the app. Then:
 
 1. Open **System Settings → Privacy & Security**.
 2. Scroll down: next to "UwULock Setup was blocked", click **Open Anyway** and
@@ -246,9 +250,13 @@ UwULock**.
 
 ## macOS
 
-Die `.dmg` öffnen und **UwULock Setup** doppelklicken. UwULock ist nicht bei
-Apple notarisiert (das braucht einen kostenpflichtigen Entwickler-Account),
-deshalb sagt macOS beim ersten Mal, es könne die App nicht prüfen. Dann:
+Die `.dmg` öffnen und **UwULock Setup** doppelklicken. Ab 0.6.0-beta.3 sind
+Disk-Image, Setup und App mit Apples Developer ID signiert und von Apple
+notarisiert: macOS öffnet sie ohne Rückfrage. Die Release-Notizen sagen es pro
+Version; die App bringt außerdem die [Safari-Erweiterung](extension.md#safari-mac-iphone-ipad-1) mit.
+
+Ältere Versionen (und selbst gebaute) sind nicht notarisiert, deshalb sagt macOS
+beim ersten Mal, es könne die App nicht prüfen. Dann:
 
 1. **Systemeinstellungen → Datenschutz & Sicherheit** öffnen.
 2. Nach unten scrollen: neben „UwULock Setup wurde blockiert“ auf **Trotzdem

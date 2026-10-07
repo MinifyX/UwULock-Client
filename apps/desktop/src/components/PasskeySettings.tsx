@@ -8,6 +8,7 @@ import {
   useProviderStatus,
 } from '../lib/autofill';
 import { errorText } from '../lib/errors';
+import { safariExtensionOpen, useSafariStatus } from '../lib/safari';
 import { t, useLanguage } from '../lib/i18n';
 import {
   onPasskeyProviderWarning,
@@ -101,6 +102,7 @@ export function PasskeySettings({ Row, Toggle }: { Row: Row; Toggle: Toggle }) {
   return (
     <>
       {status.platform === 'apple' && <ProviderRow Row={Row} />}
+      {status.platform === 'apple' && <SafariRow Row={Row} />}
       <Row
         label={label}
         description={
@@ -194,6 +196,56 @@ function ProviderRow({ Row }: { Row: Row }) {
       ) : (
         <Button size="sm" busy={busy} onClick={ask}>
           {view.direct ? t('Als Standard festlegen') : t('Einstellungen öffnen')}
+        </Button>
+      )}
+    </Row>
+  );
+}
+
+/**
+ * macOS builds with the Safari extension (the disk image's, the Mac App Store's): whether it is
+ * switched on in Safari, and the button that opens Safari's settings on it.
+ */
+function SafariRow({ Row }: { Row: Row }) {
+  useLanguage();
+  const [view, reload] = useSafariStatus();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (view?.platform !== 'macos' || !view.available) return null;
+  const open = () => {
+    setBusy(true);
+    setError(null);
+    void safariExtensionOpen()
+      .then(reload)
+      .catch((failed) => setError(errorText(failed)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Row
+      label={t('Safari-Erweiterung')}
+      description={
+        <>
+          {view.enabled === true
+            ? t(
+                'In Safari eingeschaltet. Melde dich in der Erweiterung an; Passkeys kommen in Safari aus dieser App.',
+              )
+            : t(
+                'Dieselbe Erweiterung wie in Chrome und Firefox, mit eigener Anmeldung. Passkeys kommen in Safari aus dieser App.',
+              )}
+          {error && (
+            <>
+              <br />
+              <span className="form-error">{error}</span>
+            </>
+          )}
+        </>
+      }
+    >
+      {view.enabled === true ? (
+        <span />
+      ) : (
+        <Button size="sm" busy={busy} onClick={open}>
+          {t('In Safari aktivieren')}
         </Button>
       )}
     </Row>

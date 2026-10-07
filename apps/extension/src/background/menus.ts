@@ -71,6 +71,9 @@ async function build() {
   }
   entries.push({ id: 'generate', parentId: ROOT, title: t('Passwort generieren (kopiert)') });
 
+  await updateBadge(tab?.id, logins.length);
+  // Safari on iPhone and iPad has no context menus.
+  if (!ext.contextMenus) return;
   await ext.contextMenus.removeAll();
   for (const entry of entries) {
     ext.contextMenus.create(
@@ -84,7 +87,6 @@ async function build() {
       () => void ext.runtime.lastError,
     );
   }
-  await updateBadge(tab?.id, logins.length);
 }
 
 async function updateBadge(tabId: number | undefined, count: number) {

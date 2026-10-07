@@ -2,9 +2,12 @@
 // store builds are signed with, and the builds TestFlight has.
 //
 //   node scripts/asc.mjs profiles <ios|macos> <certificate.pem> <folder>
-//       The App Store profiles for app.uwulock and app.uwulock.passkeys, made
-//       for that certificate, written to <folder>/<bundle id>.mobileprovision
-//       (iOS) or .provisionprofile (macOS). A profile that exists, is valid and
+//       The App Store profiles for app.uwulock, app.uwulock.passkeys and
+//       app.uwulock.safari, made for that certificate, written to
+//       <folder>/<bundle id>.mobileprovision (iOS) or .provisionprofile
+//       (macOS). An identifier that isn't registered yet and needs no
+//       capability (the Safari extension) is registered on the way. A
+//       profile that exists, is valid and
 //       names the certificate is taken as it is; one that doesn't is made anew
 //       (the old one of the same name deleted first). So a profile Apple
 //       invalidated — a capability changed, the certificate renewed — heals on
@@ -22,7 +25,9 @@ import { join } from 'node:path';
 
 const API = 'https://api.appstoreconnect.apple.com';
 const APP = 'app.uwulock';
-const BUNDLES = [APP, `${APP}.passkeys`];
+const BUNDLES = [APP, `${APP}.passkeys`, `${APP}.safari`];
+/** Identifiers this script may register itself: they need no capability set by hand. */
+const REGISTER = { [`${APP}.safari`]: 'UwULock Safari Extension' };
 const PLATFORMS = {
   ios: { type: 'IOS_APP_STORE', name: 'iOS', extension: 'mobileprovision' },
   macos: { type: 'MAC_APP_STORE', name: 'macOS', extension: 'provisionprofile' },
@@ -96,7 +101,16 @@ async function profiles(platform, certificatePem, folder) {
       'GET',
       `/v1/bundleIds?${query({ 'filter[identifier]': identifier, limit: '200' })}`,
     );
-    const bundle = bundles.data.find((b) => b.attributes.identifier === identifier);
+    let bundle = bundles.data.find((b) => b.attributes.identifier === identifier);
+    if (!bundle && REGISTER[identifier]) {
+      ({ data: bundle } = await api('POST', '/v1/bundleIds', {
+        data: {
+          type: 'bundleIds',
+          attributes: { identifier, name: REGISTER[identifier], platform: 'UNIVERSAL' },
+        },
+      }));
+      console.log(`  ${identifier}: registered`);
+    }
     if (!bundle) fail(`The identifier ${identifier} isn't registered (developer portal).`);
 
     const name = `UwULock ${kind.name} App Store ${identifier}`;
