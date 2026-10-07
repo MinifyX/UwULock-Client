@@ -927,15 +927,18 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
         "UwULock doesn't fill in one-time codes. Open UwULock and copy the code there."))
   }
 
-  /// Text to insert (the edit menu's AutoFill → Passwords on any field): not offered either.
-  @available(iOS 18.0, macOS 15.0, *)
-  override func prepareInterfaceForUserChoosingTextToInsert() {
-    enter("prepareInterfaceForUserChoosingTextToInsert")
-    tell(
-      tr(
-        "UwULock fügt hier keinen Text ein. Tippe in ein Anmeldefeld und wähle dort UwULock.",
-        "UwULock doesn't insert text here. Tap a sign-in field and pick UwULock there."))
-  }
+  /// Text to insert (the edit menu's AutoFill → Passwords on any field; iOS only): not offered
+  /// either.
+  #if os(iOS)
+    @available(iOS 18.0, *)
+    override func prepareInterfaceForUserChoosingTextToInsert() {
+      enter("prepareInterfaceForUserChoosingTextToInsert")
+      tell(
+        tr(
+          "UwULock fügt hier keinen Text ein. Tippe in ein Anmeldefeld und wähle dort UwULock.",
+          "UwULock doesn't insert text here. Tap a sign-in field and pick UwULock there."))
+    }
+  #endif
 
   // MARK: Making a passkey
 

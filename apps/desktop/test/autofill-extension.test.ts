@@ -38,7 +38,7 @@ test('every way in the system may take is answered', () => {
     /override func prepareCredentialList\(for serviceIdentifiers: \[ASCredentialServiceIdentifier\]\)/,
     /override func prepareCredentialList\(\s*for serviceIdentifiers: \[ASCredentialServiceIdentifier\],\s*requestParameters/,
     /@available\(iOS 18\.0, macOS 15\.0, \*\)\s*override func prepareOneTimeCodeCredentialList/,
-    /@available\(iOS 18\.0, macOS 15\.0, \*\)\s*override func prepareInterfaceForUserChoosingTextToInsert/,
+    /@available\(iOS 18\.0, \*\)\s*override func prepareInterfaceForUserChoosingTextToInsert/,
     /override func prepareInterface\(forPasskeyRegistration/,
     /override func prepareInterfaceForExtensionConfiguration/,
   ])
