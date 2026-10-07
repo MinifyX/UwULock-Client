@@ -54,7 +54,9 @@ import {
   type ContrastSetting,
   type LanguageSetting,
   type MotionSetting,
+  type TextSizeChoice,
 } from '../../lib/settings';
+import { textSizeOptions } from '../../lib/appearance';
 import { unlockDescription, unlockLabel, unlockPrompt } from '../../lib/unlock';
 import { initialOf } from '../../components/AccountCard';
 import { MoveDialog } from '../../components/MoveDialog';
@@ -361,7 +363,9 @@ function AppearancePage() {
   const settings = useSettings();
   const { ios, android } = useMobile();
   const [haptics, setHaptics] = useHaptics();
-  const [choice, setChoice] = useState<null | 'contrast' | 'font' | 'motion' | 'language'>(null);
+  const [choice, setChoice] = useState<
+    null | 'contrast' | 'font' | 'textSize' | 'motion' | 'language'
+  >(null);
   const close = () => setChoice(null);
   const systemNote = !android
     ? t('„System“ folgt der Einstellung von {system}.', { system: 'iOS' })
@@ -393,6 +397,11 @@ function AppearancePage() {
           title={t('Schrift')}
           value={fontLabel(settings.font)}
           onClick={() => setChoice('font')}
+        />
+        <ListRow
+          title={t('Textgröße')}
+          value={textSizeOptions().find((option) => option.value === settings.textSize)?.label}
+          onClick={() => setChoice('textSize')}
         />
         <ListRow
           title={t('Animationen')}
@@ -464,6 +473,17 @@ function AppearancePage() {
         onChange={(font) => updateSettings({ font })}
         options={FONT_CHOICES.map((font) => ({ value: font, label: fontLabel(font) }))}
         footer={t('Nur auf diesem Gerät. UwU Sans ist die Schrift aller UwU-Apps.')}
+      />
+      <ChoiceSheet<TextSizeChoice>
+        open={choice === 'textSize'}
+        onClose={close}
+        title={t('Textgröße')}
+        value={settings.textSize}
+        onChange={(textSize) => updateSettings({ textSize })}
+        options={textSizeOptions()}
+        footer={t('„System“ folgt der Textgröße von {system}.', {
+          system: android ? 'Android' : 'iOS',
+        })}
       />
       <ChoiceSheet<MotionSetting>
         open={choice === 'motion'}

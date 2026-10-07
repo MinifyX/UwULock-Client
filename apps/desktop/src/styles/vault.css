@@ -69,7 +69,8 @@
   padding: 0 var(--uwu-space-3);
   border-radius: 12px;
   font-size: var(--uwu-text-meta);
-  font-weight: 500;
+  /* Regular, as the system's sidebars; the selection shows in colour (docs/typography.md). */
+  font-weight: 400;
   color: var(--uwu-ink);
   text-align: left;
   cursor: pointer;
@@ -92,7 +93,7 @@
 .nav-row[aria-current='true'] {
   background: var(--uwu-pink-tint);
   color: var(--uwu-pink-ink);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .nav-row[aria-current='true'] > .uwu-icon {
@@ -108,7 +109,7 @@
 
 .nav-count {
   font-size: var(--uwu-text-badge);
-  font-weight: 500;
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
   color: var(--uwu-muted);
 }
@@ -230,7 +231,7 @@
 }
 
 .list-count {
-  font-weight: 500;
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
 }
 

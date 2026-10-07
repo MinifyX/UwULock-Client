@@ -9,15 +9,17 @@
 
 import {
   FONT_CHOICES,
+  TEXT_SIZE_CHOICES,
   type ContrastSetting,
   type FontChoice,
   type MotionSetting,
+  type TextSizeChoice,
   type ThemeSetting,
 } from '@uwusuite/design';
 import { useSyncExternalStore } from 'react';
 import pkg from '../../package.json';
 
-export type { ContrastSetting, FontChoice, MotionSetting, ThemeSetting };
+export type { ContrastSetting, FontChoice, MotionSetting, TextSizeChoice, ThemeSetting };
 /** German or English; "system" follows the language the system prefers. */
 export type LanguageSetting = 'system' | 'de' | 'en';
 /** Beta gets pre-releases (tags like v0.1.0-beta.1) before everyone else. */
@@ -35,6 +37,8 @@ export type Settings = {
   motion: MotionSetting;
   /** The interface font, on this device (@uwusuite/design's applyUiFont). */
   font: FontChoice;
+  /** Darstellung → Textgröße, on top of the system's text size (@uwusuite/design's useTypeScale). */
+  textSize: TextSizeChoice;
   updateChannel: UpdateChannel;
   autoLock: AutoLock;
   clipboardClear: ClipboardClear;
@@ -56,6 +60,7 @@ export const DEFAULT_SETTINGS: Settings = {
   contrast: 'system',
   motion: 'system',
   font: 'uwu',
+  textSize: 'system',
   // Someone who installed a beta wants the next beta too.
   updateChannel: pkg.version.includes('-') ? 'beta' : 'stable',
   autoLock: 15,
@@ -87,6 +92,7 @@ export function sanitize(raw: unknown): Settings {
     motion: oneOf(input.motion, ['system', 'on', 'off'] as const, d.motion),
     // A font that is no longer offered falls back to UwU Sans.
     font: oneOf(input.font, FONT_CHOICES, d.font),
+    textSize: oneOf(input.textSize, TEXT_SIZE_CHOICES, d.textSize),
     updateChannel: oneOf(input.updateChannel, ['stable', 'beta'] as const, d.updateChannel),
     autoLock: oneOf(input.autoLock, [0, 1, 5, 15, 30, 60, 240] as const, d.autoLock),
     clipboardClear: oneOf(input.clipboardClear, [0, 10, 30, 60, 120] as const, d.clipboardClear),

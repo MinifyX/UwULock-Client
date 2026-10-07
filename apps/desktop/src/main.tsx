@@ -3,6 +3,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
 import { prepareDocument } from './lib/appearance';
+import { isIosAppOnMac } from './lib/platform';
 import './styles/index.css';
 
 async function start() {
@@ -35,6 +36,9 @@ async function start() {
  * iPad or a tablet keeps following its window (Split View, Slide Over).
  */
 function phoneKind() {
+  // The iPhone/iPad app on a Mac is the iPad app, whatever its window's width
+  // (lib/platform.ts): macOS draws it at 77 %, which suits the iPad's sizes.
+  if (isIosAppOnMac()) return 'ipad' as const;
   const kind = detectDeviceKind({
     userAgent: navigator.userAgent,
     width: Math.min(window.screen.width, window.screen.height),

@@ -32,6 +32,7 @@ import { keys } from '../lib/shortcuts';
 import { updateSettings, useSettings, type AutoLock, type ClipboardClear } from '../lib/settings';
 import { unlockDescription, unlockLabel, unlockPrompt } from '../lib/unlock';
 import { FontPicker } from './FontPicker';
+import { textSizeOptions } from '../lib/appearance';
 import { Modal } from './Modal';
 import { ImportSetting } from './ImportDialog';
 import { MoveSetting } from './MoveDialog';
@@ -148,6 +149,17 @@ function Appearance() {
           sample={t('Tresor 0123 Il1 O0')}
         />
       </div>
+      <Row
+        label={t('Textgröße')}
+        description={t('„System“ folgt der Textgröße von {system}.', { system: systemName() })}
+      >
+        <Segmented
+          label={t('Textgröße')}
+          value={settings.textSize}
+          onChange={(textSize) => updateSettings({ textSize })}
+          options={textSizeOptions()}
+        />
+      </Row>
       <Row
         label={t('Animationen')}
         description={t('„System“ folgt der Einstellung von {system}.', { system: systemName() })}

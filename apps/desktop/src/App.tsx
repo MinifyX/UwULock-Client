@@ -207,7 +207,7 @@ export function App() {
         'separator',
         { text: 'UwUSuite', action: () => help('suite') },
       ],
-    }).catch(() => undefined);
+    }).catch((error: unknown) => console.error('setMacMenu', error));
     // The handlers only use setters and the search field's ref.
   }, [language, unlocked, modalOpen, travel.enabled, travel.hidden]);
 

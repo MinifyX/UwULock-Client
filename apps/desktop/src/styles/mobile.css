@@ -52,7 +52,7 @@
   width: 40px;
   height: 40px;
   border-radius: 11px;
-  font-size: 18px;
+  font-size: 18px; /* fixed: sized with its tile/ring */
 }
 
 .m-app .uwu-row-icon:has(.item-tile, .m-glyph-tile) {
@@ -136,7 +136,7 @@
   border-radius: 11px;
   background: var(--uwu-pink-solid);
   color: var(--uwu-on-pink);
-  font-size: 13px;
+  font-size: var(--uwu-type-footnote);
   font-weight: 700;
 }
 
@@ -166,7 +166,7 @@
 
 .m-hero h2 {
   margin: 4px 0 0;
-  font-size: 26px;
+  font-size: var(--uwu-type-title1);
   font-weight: 750;
   line-height: 1.2;
   overflow-wrap: anywhere;
@@ -175,14 +175,14 @@
 .m-hero-sub {
   margin: 0;
   color: var(--uwu-muted);
-  font-size: 15px;
+  font-size: var(--uwu-type-subheadline);
 }
 
 .m-hero .item-tile {
   width: 76px;
   height: 76px;
   border-radius: 20px;
-  font-size: 34px;
+  font-size: 34px; /* fixed: sized with its tile/ring */
 }
 
 .m-hero .item-tile svg {
@@ -211,7 +211,7 @@
   border-radius: 999px;
   background: var(--uwu-surface);
   color: var(--uwu-muted);
-  font-size: 13px;
+  font-size: var(--uwu-type-footnote);
   font-weight: 600;
 }
 
@@ -245,7 +245,7 @@
   border-radius: 999px;
   background: var(--uwu-success-tint);
   color: var(--uwu-success-ink);
-  font-size: 12px;
+  font-size: var(--uwu-type-caption1);
   font-weight: 700;
 }
 
@@ -297,7 +297,7 @@
 
 .m-code {
   font-family: var(--uwu-mono);
-  font-size: 24px;
+  font-size: var(--uwu-type-title2);
   font-weight: 600;
   letter-spacing: 0.08em;
 }
@@ -315,7 +315,7 @@
     var(--uwu-pink-tint) 0
   );
   color: var(--uwu-pink-ink);
-  font-size: 13px;
+  font-size: 13px; /* fixed: sized with its tile/ring */
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -343,7 +343,7 @@
 .m-note {
   padding: 14px 18px;
   background: var(--uwu-surface);
-  font-size: 16px;
+  font-size: var(--uwu-type-callout);
   line-height: 1.45;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -354,7 +354,7 @@
 .m-secret-block {
   margin: 0;
   font-family: var(--uwu-mono);
-  font-size: 12px;
+  font-size: var(--uwu-type-caption1);
   white-space: pre-wrap;
   word-break: break-all;
 }
@@ -370,7 +370,7 @@
 
 .m-field label {
   color: var(--uwu-muted);
-  font-size: 13px;
+  font-size: var(--uwu-type-footnote);
 }
 
 .m-field-row {
@@ -387,7 +387,7 @@
   background: none;
   color: var(--uwu-ink);
   font: inherit;
-  font-size: 17px;
+  font-size: max(16px, var(--uwu-type-body));
   outline: none;
 }
 
@@ -398,7 +398,7 @@
 
 .m-field[data-mono] :is(input, textarea) {
   font-family: var(--uwu-mono);
-  font-size: 16px;
+  font-size: max(16px, var(--uwu-type-callout));
 }
 
 .m-field :is(input, textarea)::placeholder {
@@ -418,7 +418,7 @@
 .m-error {
   margin: 10px 32px 0;
   color: var(--uwu-danger-ink);
-  font-size: 14px;
+  font-size: var(--uwu-type-subheadline);
 }
 
 /* ── Switch ──────────────────────────────────────────────── */
@@ -553,7 +553,7 @@
   overflow: hidden;
   color: var(--uwu-pink-ink);
   font-family: var(--uwu-mono);
-  font-size: 14px;
+  font-size: var(--uwu-type-subheadline);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -571,7 +571,7 @@
   height: 38px;
   border-radius: 19px !important;
   color: var(--uwu-muted) !important;
-  font-size: 15px;
+  font-size: var(--uwu-type-subheadline);
   font-weight: 600;
 }
 
@@ -615,18 +615,18 @@
   padding: 40px 24px;
   color: var(--uwu-muted);
   text-align: center;
-  font-size: 15px;
+  font-size: var(--uwu-type-subheadline);
 }
 
 .m-empty b {
   color: var(--uwu-ink);
-  font-size: 19px;
+  font-size: var(--uwu-type-title3);
 }
 
 .m-footnote {
   padding: 22px 32px 0;
   color: var(--uwu-muted);
-  font-size: 13px;
+  font-size: var(--uwu-type-footnote);
   line-height: 1.4;
   text-align: center;
 }
@@ -645,7 +645,7 @@
 .m-confirm-text {
   margin: 4px 24px 18px;
   color: var(--uwu-muted);
-  font-size: 15px;
+  font-size: var(--uwu-type-subheadline);
   line-height: 1.45;
 }
 
@@ -676,14 +676,14 @@
   border-radius: 50%;
   background: linear-gradient(140deg, #ff6aa2, #c8165f);
   color: #fff;
-  font-size: 22px;
+  font-size: 22px; /* fixed: sized with its tile/ring */
   font-weight: 750;
 }
 
 .m-avatar[data-size='small'] {
   width: 44px;
   height: 44px;
-  font-size: 17px;
+  font-size: 17px; /* fixed: sized with its tile/ring */
 }
 
 .m-avatar[data-alt] {
@@ -698,14 +698,14 @@
   border-radius: 50%;
   background: linear-gradient(140deg, #ff6aa2, #c8165f) !important;
   color: #fff !important;
-  font-size: 16px;
+  font-size: 16px; /* fixed: sized with its tile/ring */
   font-weight: 750;
 }
 
 .m-app[data-platform='android'] .m-avatar-button {
   width: 38px;
   height: 38px;
-  font-size: 14px;
+  font-size: 14px; /* fixed: sized with its tile/ring */
 }
 
 /* ── Edit sheet ──────────────────────────────────────────── */
@@ -723,7 +723,7 @@
   width: 60px;
   height: 60px;
   border-radius: 16px;
-  font-size: 26px;
+  font-size: 26px; /* fixed: sized with its tile/ring */
 }
 
 .m-icon-head .item-tile svg,
@@ -744,7 +744,7 @@
 
 .m-icon-head-text span {
   color: var(--uwu-muted);
-  font-size: 15px;
+  font-size: var(--uwu-type-subheadline);
 }
 
 .m-pill {
@@ -754,7 +754,7 @@
   border-radius: 17px !important;
   background: var(--uwu-pink-tint) !important;
   color: var(--uwu-pink-ink) !important;
-  font-size: 15px;
+  font-size: var(--uwu-type-subheadline);
   font-weight: 650;
 }
 
@@ -781,7 +781,7 @@
   gap: 5px;
   min-width: 0;
   color: var(--uwu-muted);
-  font-size: 11px;
+  font-size: var(--uwu-type-caption2);
 }
 
 .m-library button span {
@@ -827,7 +827,7 @@
   border: 0;
   background: none;
   color: var(--uwu-ink);
-  font-size: 16px;
+  font-size: max(16px, var(--uwu-type-body));
   outline: none;
 }
 
@@ -849,7 +849,7 @@
 .m-gen-value {
   min-height: 62px;
   font-family: var(--uwu-mono);
-  font-size: 23px;
+  font-size: var(--uwu-type-title2);
   font-weight: 600;
   line-height: 1.35;
   word-break: break-all;
@@ -878,7 +878,7 @@
   justify-content: space-between;
   margin-top: 6px;
   color: var(--uwu-muted);
-  font-size: 14px;
+  font-size: var(--uwu-type-subheadline);
 }
 
 .m-gen-buttons {
@@ -896,7 +896,7 @@
   border-radius: 23px !important;
   background: var(--uwu-pink-tint) !important;
   color: var(--uwu-pink-ink) !important;
-  font-size: 16px;
+  font-size: var(--uwu-type-callout);
   font-weight: 650;
 }
 
@@ -961,7 +961,7 @@
 
 .m-len-note {
   color: var(--uwu-warning-ink);
-  font-size: 13px;
+  font-size: var(--uwu-type-footnote);
 }
 
 .m-set {
@@ -1010,19 +1010,19 @@
 
 .m-score-ring b {
   position: relative;
-  font-size: 28px;
+  font-size: 28px; /* fixed: sized with its tile/ring */
   font-variant-numeric: tabular-nums;
 }
 
 .m-score h3 {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--uwu-type-title3);
 }
 
 .m-score p {
   margin: 3px 0 0;
   color: var(--uwu-muted);
-  font-size: 15px;
+  font-size: var(--uwu-type-subheadline);
   line-height: 1.35;
 }
 
@@ -1042,7 +1042,7 @@
 .m-preview-address span {
   flex: 1;
   font-family: var(--uwu-mono);
-  font-size: 15px;
+  font-size: var(--uwu-type-subheadline);
   word-break: break-all;
 }
 
@@ -1076,7 +1076,7 @@
   padding: 0 14px;
   border-radius: 18px !important;
   background: var(--uwu-surface) !important;
-  font-size: 15px;
+  font-size: var(--uwu-type-subheadline);
   font-weight: 600;
 }
 
@@ -1114,7 +1114,7 @@
 
 .m-ipad-empty b {
   color: var(--uwu-ink);
-  font-size: 19px;
+  font-size: var(--uwu-type-title3);
 }
 
 .m-ipad-sidebar-button {
@@ -1148,7 +1148,7 @@
 
 .m-sidebar-head b {
   flex: 1;
-  font-size: 22px;
+  font-size: var(--uwu-type-title2);
   font-weight: 750;
 }
 
@@ -1207,7 +1207,7 @@
 .m-menu-preview > span > span {
   overflow: hidden;
   color: var(--uwu-muted);
-  font-size: 15px;
+  font-size: var(--uwu-type-subheadline);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -1246,7 +1246,7 @@
 
 .m-error-inline {
   color: var(--uwu-danger-ink);
-  font-size: 13px;
+  font-size: var(--uwu-type-footnote);
 }
 
 .m-muted-row .uwu-row-title {
@@ -1265,7 +1265,7 @@
   border-radius: 15px;
   background: color-mix(in srgb, var(--uwu-ink) 6%, transparent);
   color: var(--uwu-faint);
-  font-size: 20px;
+  font-size: 20px; /* fixed: sized with its tile/ring */
   line-height: 54px;
   text-align: center;
 }
@@ -1285,7 +1285,7 @@
    tab labels at 10 px medium; the package's 10.5 px semibold is too wide for
    German labels in four equal tabs on a 390 px iPhone. */
 .m-app[data-platform='ios'] .uwu-tab {
-  font-size: 10px;
+  font-size: var(--uwu-type-caption2);
   font-weight: 600;
 }
 

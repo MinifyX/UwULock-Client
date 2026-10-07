@@ -33,6 +33,9 @@ function boot(): Plugin {
 export default defineConfig({
   plugins: [react(), tailwindcss(), boot()],
   clearScreen: false,
+  // TAURI_ENV_PLATFORM tells the page which build it is in: the iPhone/iPad
+  // app on a Mac says "Macintosh" but must stay the iPad app (lib/platform.ts).
+  envPrefix: ['VITE_', 'TAURI_ENV_'],
   server: {
     port: 1420,
     strictPort: true,

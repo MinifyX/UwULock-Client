@@ -182,7 +182,7 @@ p.muted {
 .field > span,
 .field-label-row {
   font-size: var(--uwu-text-caption);
-  font-weight: 600;
+  font-weight: 500;
   line-height: var(--uwu-leading);
   color: var(--uwu-muted);
 }
@@ -518,7 +518,7 @@ input[type='checkbox'][role='switch']:checked::before {
 
 .detail-label {
   font-size: var(--uwu-text-caption);
-  font-weight: 600;
+  font-weight: 500;
   color: var(--uwu-muted);
 }
 
@@ -957,7 +957,8 @@ html[data-platform='ios'] .shell {
   background: var(--uwu-surface);
 }
 
-/* iOS zooms into any field with text smaller than 16 px. */
-html[data-platform='ios'] :is(input, textarea, select) {
-  font-size: 16px;
+/* iOS zooms into any field with text smaller than 16 px. Only a floor: the
+   fields' own sizes (already max(16px, …)) win. */
+:where(html[data-platform='ios']) :where(input, textarea, select) {
+  font-size: max(16px, 1em);
 }
