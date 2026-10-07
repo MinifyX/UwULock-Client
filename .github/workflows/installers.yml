@@ -453,6 +453,11 @@ jobs:
           fi
           cp work/macos/UwULock-update-macos-universal out/
           chmod +x out/UwULock-update-macos-universal
+          # Unsigned from the build (lipo keeps no signature); ad-hoc like the rest, so Apple
+          # silicon runs it. The Developer ID path signed it in macos-sign.mjs.
+          if [ "$DEVELOPER_ID" != true ]; then
+            codesign --force --sign - --identifier app.uwulock.setup out/UwULock-update-macos-universal
+          fi
           ls -la out
       # The setup unpacks what it carries into a scratch folder and checks the app arrived
       # startable. The universal one runs as arm64 here, its Intel half is checked for being
