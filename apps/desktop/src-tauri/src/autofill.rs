@@ -379,3 +379,212 @@ pub(crate) async fn credential_exchange_import(discard: bool) -> Result<String> 
         Err(Failure::new("unsupported", "only on iOS 26"))
     }
 }
+
+// ── The AutoFill protocol ───────────────────────────────────
+
+/// How much of the protocol is read: the extension keeps it under this
+/// anyway (AutoFillLog.swift).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+const LOG_BYTES: u64 = 64 * 1024;
+/// How many lines the page shows at most, the newest.
+const LOG_LINES: usize = 300;
+/// A longer line is cut: the extension writes short ones, anything else
+/// isn't its.
+const LOG_LINE_CHARS: usize = 600;
+
+/// What the AutoFill extension logged on this device (iOS, and the Mac
+/// builds with the extension): which way the system came in, the steps, the
+/// error codes. Hosts, counts and short id prefixes, never a password, a
+/// user name or a full address.
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutofillLog {
+    /// This system has the extension, so a protocol can exist.
+    supported: bool,
+    /// The last lines, oldest first.
+    lines: Vec<String>,
+}
+
+#[tauri::command]
+pub(crate) async fn autofill_log() -> AutofillLog {
+    tauri::async_runtime::spawn_blocking(read_log)
+        .await
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+pub(crate) async fn autofill_log_clear() -> Result<()> {
+    tauri::async_runtime::spawn_blocking(clear_log)
+        .await
+        .map_err(|e| Failure::new("failed", e.to_string()))?
+}
+
+#[cfg(target_os = "ios")]
+fn read_log() -> AutofillLog {
+    match crate::phone::plugin().map(|plugin| plugin.autofill_log()) {
+        Some(Ok(Some(text))) => AutofillLog {
+            supported: true,
+            lines: log_lines(&text),
+        },
+        Some(Err(error)) => {
+            tracing::debug!(%error, "the AutoFill protocol didn't read");
+            AutofillLog {
+                supported: true,
+                lines: Vec::new(),
+            }
+        }
+        _ => AutofillLog::default(),
+    }
+}
+
+#[cfg(target_os = "ios")]
+fn clear_log() -> Result<()> {
+    let plugin = crate::phone::plugin()
+        .ok_or_else(|| Failure::new("unsupported", "the phone's plugin isn't there"))?;
+    plugin
+        .autofill_log_clear()
+        .map_err(|e| Failure::new("failed", e.message))
+}
+
+#[cfg(target_os = "macos")]
+fn read_log() -> AutofillLog {
+    let Ok(path) = crate::passkeys::apple::autofill_log_path() else {
+        return AutofillLog::default();
+    };
+    let lines = match read_tail(&path, LOG_BYTES) {
+        Ok(text) => log_lines(&text),
+        Err(error) => {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                tracing::debug!(%error, "the AutoFill protocol didn't read");
+            }
+            Vec::new()
+        }
+    };
+    AutofillLog {
+        supported: true,
+        lines,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn clear_log() -> Result<()> {
+    let path =
+        crate::passkeys::apple::autofill_log_path().map_err(|e| Failure::new("unsupported", e))?;
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(Failure::new("io", e.to_string())),
+    }
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "macos")))]
+fn read_log() -> AutofillLog {
+    AutofillLog::default()
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "macos")))]
+fn clear_log() -> Result<()> {
+    Err(Failure::new(
+        "unsupported",
+        "no AutoFill extension on this system",
+    ))
+}
+
+/// The last `max` bytes of a file, as text (a character cut in two at the
+/// front becomes U+FFFD; [`log_lines`] drops that line anyway).
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+fn read_tail(path: &std::path::Path, max: u64) -> std::io::Result<String> {
+    use std::io::{Read as _, Seek as _, SeekFrom};
+    let mut file = std::fs::File::open(path)?;
+    let size = file.metadata()?.len();
+    if size > max {
+        file.seek(SeekFrom::Start(size - max))?;
+    }
+    let mut bytes = Vec::with_capacity(size.min(max) as usize);
+    file.take(max).read_to_end(&mut bytes)?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// The protocol's lines worth showing: only whole entries (each starts with
+/// its ISO 8601 time, so a line cut off at the front of a tail is left out),
+/// control characters as spaces, overlong lines cut, the last [`LOG_LINES`].
+#[cfg_attr(
+    not(any(target_os = "ios", target_os = "macos", test)),
+    allow(dead_code)
+)]
+fn log_lines(text: &str) -> Vec<String> {
+    let entry = |line: &str| {
+        let bytes = line.as_bytes();
+        bytes.len() > 20 && bytes[..4].iter().all(u8::is_ascii_digit) && bytes[4] == b'-'
+    };
+    let kept: Vec<String> = text
+        .lines()
+        .filter(|line| entry(line))
+        .map(|line| {
+            line.chars()
+                .take(LOG_LINE_CHARS)
+                .map(|c| if c.is_control() { ' ' } else { c })
+                .collect()
+        })
+        .collect();
+    let skip = kept.len().saturating_sub(LOG_LINES);
+    kept.into_iter().skip(skip).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const LINE: &str = "2026-10-07T12:00:00.123Z [a1b2] entry prepareCredentialList(password)";
+
+    #[test]
+    fn log_lines_keep_whole_entries() {
+        let text = format!("0:00.000Z [a1b2] cut off\n{LINE}\n\n  \n{LINE}\n");
+        assert_eq!(log_lines(&text), vec![LINE.to_string(), LINE.to_string()]);
+        assert!(log_lines("").is_empty());
+        assert!(log_lines("not a log\n").is_empty());
+    }
+
+    #[test]
+    fn log_lines_keep_the_newest() {
+        let text: String = (0..LOG_LINES + 50)
+            .map(|n| format!("2026-10-07T12:00:00.000Z [a1b2] step {n}\n"))
+            .collect();
+        let lines = log_lines(&text);
+        assert_eq!(lines.len(), LOG_LINES);
+        assert!(lines[0].ends_with("step 50"));
+        assert!(lines[LOG_LINES - 1].ends_with(&format!("step {}", LOG_LINES + 49)));
+    }
+
+    #[test]
+    fn log_lines_are_clean_and_short() {
+        let long = format!("{LINE} {}\u{7}\r", "x".repeat(2 * LOG_LINE_CHARS));
+        let lines = log_lines(&long);
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].chars().count(), LOG_LINE_CHARS);
+        assert!(!lines[0].chars().any(char::is_control));
+        let bell = log_lines(&format!("{LINE}\u{7}"));
+        assert!(bell[0].ends_with(' '));
+    }
+
+    #[test]
+    fn read_tail_reads_the_end() {
+        let path = std::env::temp_dir().join(format!(
+            "uwulock-autofill-log-{}-{:?}.log",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let text: String = (0..2000)
+            .map(|n| format!("2026-10-07T12:00:00.000Z [a1b2] step {n}\n"))
+            .collect();
+        std::fs::write(&path, &text).unwrap();
+        let tail = read_tail(&path, 1024).unwrap();
+        assert_eq!(tail.len(), 1024);
+        assert!(text.ends_with(&tail));
+        let lines = log_lines(&tail);
+        assert!(lines.last().unwrap().ends_with("step 1999"));
+        assert!(read_tail(&path, 1 << 20).unwrap() == text);
+        std::fs::remove_file(&path).unwrap();
+        assert!(read_tail(&path, 1024).is_err());
+    }
+}

@@ -87,3 +87,41 @@
 .exchange-card ~ .autofill-card {
   display: none;
 }
+
+/* ── The AutoFill protocol (components/AutofillLog.tsx) ───── */
+
+/* Lines as the extension wrote them: monospaced, wrapped anywhere (hosts and ids have no spaces),
+   and selectable, also on a phone where the UI's words otherwise aren't. */
+.autofill-log {
+  margin: 0;
+  padding: var(--uwu-space-3);
+  border: 1px solid var(--uwu-hairline);
+  border-radius: var(--uwu-radius-card);
+  background: var(--uwu-control);
+  font-family: var(--uwu-mono);
+  font-size: var(--uwu-text-caption);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
+}
+
+.autofill-log-note,
+.autofill-log-empty {
+  margin: 0 0 var(--uwu-space-3);
+  color: var(--uwu-muted);
+}
+
+/* The desktop dialog scrolls the lines, not the whole dialog. */
+dialog .autofill-log {
+  max-height: 55vh;
+  overflow: auto;
+}
+
+/* On a phone the lines sit between the page's sections. */
+.m-root .autofill-log,
+.m-root .autofill-log-empty {
+  margin: 0 16px var(--uwu-space-4);
+}

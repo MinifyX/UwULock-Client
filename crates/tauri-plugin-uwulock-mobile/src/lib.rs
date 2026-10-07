@@ -374,6 +374,29 @@ mod mobile {
             self.0.run_mobile_plugin("passkeysClear", ()).map_err(error)
         }
 
+        /// iOS: the AutoFill extension's protocol (`Passkeys/autofill.log` in
+        /// the App Group folder), as text; `None` without an App Group
+        /// (unsigned build). No secrets are in it.
+        pub fn autofill_log(&self) -> Result<Option<String>, Error> {
+            #[derive(Deserialize)]
+            struct Log {
+                supported: bool,
+                #[serde(default)]
+                text: String,
+            }
+            self.0
+                .run_mobile_plugin::<Log>("autofillLog", ())
+                .map(|log| log.supported.then_some(log.text))
+                .map_err(error)
+        }
+
+        /// iOS: empties the AutoFill extension's protocol.
+        pub fn autofill_log_clear(&self) -> Result<(), Error> {
+            self.0
+                .run_mobile_plugin("autofillLogClear", ())
+                .map_err(error)
+        }
+
         /// Whether UwULock is the AutoFill provider ([`ProviderState`]).
         pub fn provider_status(&self) -> Result<ProviderState, Error> {
             self.0

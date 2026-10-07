@@ -330,12 +330,33 @@ may not run, so it never sees the open vault. Instead:
   So every way in waits until the sheet is on screen (`viewDidAppear`), asks for Face ID, Touch
   ID or the passcode explicitly (`LAContext.evaluatePolicy(.deviceOwnerAuthentication)`), and
   reads the provider key (`.userPresence`, `WhenPasscodeSetThisDeviceOnly`) with that evaluated
-  context and `interactionNotAllowed`, so the read itself never prompts. A refusal is tried once
-  more, then shown in words.
+  context and `interactionNotAllowed`, so the read itself never prompts. A refusal
+  (`LAError.notInteractive`, `errSecInteractionNotAllowed`, `errSecAuthFailed`) is tried again
+  with a fresh context for about three seconds (0.2 s, 0.4 s, … 1 s apart); after that, and when
+  the system interrupts (`systemCancel`), the sheet offers **"Mit Face ID entsperren"** (Touch
+  ID, Optic ID, or the passcode): asked on the person's tap, which the system always allows.
+- **Never an empty sheet** (0.6.0-beta.4): the SwiftUI view — title, "Wird geladen …", the
+  spinner and "Abbrechen" — is built in `viewDidLoad`, pinned to the edges with constraints on an
+  opaque background, before the system says what it wants; later steps only change its model.
+  Every way in is answered, also the ones UwULock doesn't serve: the iOS 17 requests, the older
+  password-only `prepareInterfaceToProvideCredential(for: ASPasswordCredentialIdentity)` and
+  `provideCredentialWithoutUserInteraction(for: ASPasswordCredentialIdentity)` (whose default
+  does nothing), and iOS 18's one-time codes and text to insert (a message and "Abbrechen"). A
+  watchdog offers the button when nothing was asked for after 4 seconds, or Face ID didn't get
+  anywhere in 15.
 - **Diagnostics**: the extension logs to the unified log, subsystem `app.uwulock.passkeys`,
   category `provider` — which way in, rpId, short credential id prefixes, flags, counts, why it
   stopped. No keys, passwords, user handles or client data. On a Mac with the device attached:
   `log stream --predicate 'subsystem == "app.uwulock.passkeys"' --info` (or Console.app).
+- **The AutoFill protocol**: the same steps, plus the way in, the system's version, when the
+  sheet appeared (and its size), LocalAuthentication error codes and Keychain statuses, go into
+  `Passkeys/autofill.log` in the App Group folder (`AutoFillLog.swift`: written on its own queue,
+  file protection as the list, cut back to the last ~48 KB / 300 lines past 64 KB). Without a Mac:
+  in UwULock under **Einstellungen → AutoFill → AutoFill-Protokoll** (iPhone, iPad) or
+  **Einstellungen → AutoFill-Protokoll → Anzeigen** (the Mac builds with the extension), with
+  "Kopieren" for a bug report and "Löschen". The app reads it through the mobile plugin
+  (`autofillLog`) on iOS and from the group folder on macOS (`autofill.rs`). Each line:
+  `<time> [<process>] <step>`; an `ERROR` step says where it stopped.
 
 On macOS the app writes the list from Rust (`passkeys/apple.rs`, Keychain via
 `security-framework`), and the extension fills the system's identity list when it runs (and when

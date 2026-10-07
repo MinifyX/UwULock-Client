@@ -25,5 +25,14 @@
   "Safari-Erweiterung": "Safari extension",
   "In Safari eingeschaltet. Melde dich in der Erweiterung an; Passkeys kommen in Safari aus dieser App.": "On in Safari. Sign in to the extension; in Safari, passkeys come from this app.",
   "Dieselbe Erweiterung wie in Chrome und Firefox, mit eigener Anmeldung. Passkeys kommen in Safari aus dieser App.": "The same extension as in Chrome and Firefox, with its own sign-in. In Safari, passkeys come from this app.",
-  "Dieselbe Erweiterung wie in Chrome und Firefox, mit eigener Anmeldung. Einschalten unter Einstellungen → Apps → Safari → Erweiterungen → UwULock. Passkeys und Passwörter kommen in Safari aus dieser App.": "The same extension as in Chrome and Firefox, with its own sign-in. Turn it on under Settings → Apps → Safari → Extensions → UwULock. In Safari, passkeys and passwords come from this app."
+  "Dieselbe Erweiterung wie in Chrome und Firefox, mit eigener Anmeldung. Einschalten unter Einstellungen → Apps → Safari → Erweiterungen → UwULock. Passkeys und Passwörter kommen in Safari aus dieser App.": "The same extension as in Chrome and Firefox, with its own sign-in. Turn it on under Settings → Apps → Safari → Extensions → UwULock. In Safari, passkeys and passwords come from this app.",
+  "AutoFill-Protokoll": "AutoFill log",
+  "Anzeigen": "Show",
+  "AutoFill-Protokoll kopiert": "AutoFill log copied",
+  "AutoFill-Protokoll gelöscht": "AutoFill log deleted",
+  "AutoFill-Protokoll löschen?": "Delete the AutoFill log?",
+  "Die Einträge auf diesem Gerät werden gelöscht.": "The entries on this device are deleted.",
+  "Noch keine Einträge. Fülle einmal ein Passwort oder einen Passkey mit UwULock aus.": "No entries yet. Fill in a password or a passkey with UwULock once.",
+  "Was die AutoFill-Erweiterung zuletzt getan hat, ohne Passwörter – für eine Fehlermeldung.": "What the AutoFill extension did lately, without passwords – for a bug report.",
+  "Was UwULocks AutoFill-Erweiterung auf diesem Gerät getan hat: welcher Weg, welcher Schritt, welcher Fehlercode. Ohne Passwörter, Benutzernamen und vollständige Adressen – du kannst es für eine Fehlermeldung kopieren.": "What UwULock's AutoFill extension did on this device: which way in, which step, which error code. Without passwords, user names or full addresses – you can copy it for a bug report."
 }

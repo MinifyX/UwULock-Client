@@ -27,6 +27,30 @@ export const autofillProviderStatus = () => invoke<ProviderView>('autofill_provi
 export const autofillProviderRequest = (target: 'credentials' | 'autofill') =>
   invoke<ProviderView>('autofill_provider_request', { target });
 
+/**
+ * What the AutoFill extension logged on this device (iOS, and the Mac builds with the
+ * extension; src-tauri/src/autofill.rs): which way the system came in, each step, error codes.
+ * Hosts, counts and short id prefixes, never a password, a user name or a full address.
+ */
+export type AutofillLog = { supported: boolean; lines: string[] };
+
+export const autofillLog = () => invoke<AutofillLog>('autofill_log');
+export const autofillLogClear = () => invoke<void>('autofill_log_clear');
+
+/** The protocol, read once `active` and again on `reload()`. */
+export function useAutofillLog(active = true): [AutofillLog | null, () => void] {
+  const [log, setLog] = useState<AutofillLog | null>(null);
+  const load = useCallback(() => {
+    void autofillLog()
+      .then(setLog)
+      .catch(() => setLog(null));
+  }, []);
+  useEffect(() => {
+    if (active) load();
+  }, [active, load]);
+  return [log, load];
+}
+
 /** Something changed the provider or UwULock's own switch: settings and the card reload. */
 export const AUTOFILL_CHANGED = 'uwulock-autofill-changed';
 

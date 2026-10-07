@@ -502,6 +502,13 @@ async fn refresh(app: &AppHandle) -> Result<()> {
     Ok(())
 }
 
+/// macOS: the AutoFill extension's protocol in the App Group folder
+/// (AutoFillLog.swift); an error in a build without a developer team.
+#[cfg(target_os = "macos")]
+pub(crate) fn autofill_log_path() -> std::result::Result<PathBuf, String> {
+    native::log_path()
+}
+
 /// Whether an outbox name from [`native::outbox`] is one of ours: a file
 /// name in the outbox or in its `unreadable/` folder, nothing else.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -613,6 +620,10 @@ mod native {
             .join("Library/Group Containers")
             .join(format!("{}.app.uwulock", team()?))
             .join("Passkeys"))
+    }
+
+    pub(super) fn log_path() -> Result<PathBuf, String> {
+        Ok(folder()?.join("autofill.log"))
     }
 
     /// The user's real home folder. In the Mac App Store build `HOME` is the

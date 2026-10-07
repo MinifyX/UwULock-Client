@@ -35,8 +35,10 @@ import {
   hasCredentialManager,
   providerSettingsPath,
   providerStateText,
+  useAutofillLog,
   useProviderStatus,
 } from '../../lib/autofill';
+import { autofillLogActions, autofillLogNote, AutofillLogText } from '../../components/AutofillLog';
 import { emailOptIn, setEmailOptIn, type EmailOptIn } from '../../lib/health';
 import { t, useLanguage } from '../../lib/i18n';
 import {
@@ -348,6 +350,8 @@ export function SettingsSubPage({ section }: { section: Section }) {
       return <SecurityPage />;
     case 'autofill':
       return <PasskeysPage />;
+    case 'autofill-log':
+      return <AutofillLogPage />;
     case 'account':
       return <AccountPage />;
     case 'import':
@@ -611,8 +615,10 @@ function SecurityPage() {
  */
 function PasskeysPage() {
   useLanguage();
+  const nav = useNav();
   const status = usePasskeyStatus();
   const [provider, reload] = useProviderStatus();
+  const [log] = useAutofillLog();
   const [safari] = useSafariStatus();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -762,7 +768,69 @@ function PasskeysPage() {
           <ListRow icon={ICONS.website} title={t('In Safari aktivieren')} wrap />
         </ListSection>
       )}
+      {log?.supported && (
+        <ListSection
+          footer={t(
+            'Was die AutoFill-Erweiterung zuletzt getan hat, ohne Passwörter – für eine Fehlermeldung.',
+          )}
+        >
+          <ListRow
+            icon={ICONS.info}
+            iconTone="neutral"
+            title={t('AutoFill-Protokoll')}
+            value={log.lines.length ? String(log.lines.length) : undefined}
+            onClick={() => nav.open({ page: 'settings-page', section: 'autofill-log' })}
+          />
+        </ListSection>
+      )}
       {errors([warning, problem])}
+    </Page>
+  );
+}
+
+/** The AutoFill extension's protocol (components/AutofillLog.tsx): read, copy, empty. */
+function AutofillLogPage() {
+  useLanguage();
+  const [log, reload] = useAutofillLog();
+  const confirm = useConfirm();
+  const lines = log?.lines ?? [];
+  const { copy, clear } = autofillLogActions(lines, reload);
+  return (
+    <Page title={t('AutoFill-Protokoll')} largeTitle>
+      <ListSection footer={autofillLogNote()}>
+        <ListRow
+          icon={ICONS.copy}
+          iconTone="neutral"
+          title={t('Kopieren')}
+          chevron={false}
+          disabled={!lines.length}
+          onClick={copy}
+        />
+        <ListRow
+          icon={ICONS.sync}
+          iconTone="neutral"
+          title={t('Neu laden')}
+          chevron={false}
+          onClick={reload}
+        />
+        <ListRow
+          icon={ICONS.delete}
+          iconTone="danger"
+          title={<span className="m-danger-text">{t('Löschen')}</span>}
+          chevron={false}
+          disabled={!lines.length}
+          onClick={() =>
+            confirm.ask({
+              title: t('AutoFill-Protokoll löschen?'),
+              text: t('Die Einträge auf diesem Gerät werden gelöscht.'),
+              confirm: t('Löschen'),
+              run: clear,
+            })
+          }
+        />
+      </ListSection>
+      {log ? <AutofillLogText lines={lines} /> : <Empty title={t('Lädt …')} />}
+      {confirm.element}
     </Page>
   );
 }

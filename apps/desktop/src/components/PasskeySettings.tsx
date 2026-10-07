@@ -5,8 +5,10 @@ import {
   autofillProviderRequest,
   providerSettingsPath,
   providerStateText,
+  useAutofillLog,
   useProviderStatus,
 } from '../lib/autofill';
+import { AutofillLogDialog } from './AutofillLog';
 import { errorText } from '../lib/errors';
 import { safariExtensionOpen, useSafariStatus } from '../lib/safari';
 import { t, useLanguage } from '../lib/i18n';
@@ -103,6 +105,7 @@ export function PasskeySettings({ Row, Toggle }: { Row: Row; Toggle: Toggle }) {
     <>
       {status.platform === 'apple' && <ProviderRow Row={Row} />}
       {status.platform === 'apple' && <SafariRow Row={Row} />}
+      {status.platform === 'apple' && <LogRow Row={Row} />}
       <Row
         label={label}
         description={
@@ -198,6 +201,29 @@ function ProviderRow({ Row }: { Row: Row }) {
           {view.direct ? t('Als Standard festlegen') : t('Einstellungen öffnen')}
         </Button>
       )}
+    </Row>
+  );
+}
+
+/**
+ * The Mac builds with the AutoFill extension: its protocol, for when filling in didn't work.
+ */
+function LogRow({ Row }: { Row: Row }) {
+  useLanguage();
+  const [log] = useAutofillLog();
+  const [open, setOpen] = useState(false);
+  if (!log?.supported) return null;
+  return (
+    <Row
+      label={t('AutoFill-Protokoll')}
+      description={t(
+        'Was die AutoFill-Erweiterung zuletzt getan hat, ohne Passwörter – für eine Fehlermeldung.',
+      )}
+    >
+      <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>
+        {t('Anzeigen')}
+      </Button>
+      {open && <AutofillLogDialog onClose={() => setOpen(false)} />}
     </Row>
   );
 }
