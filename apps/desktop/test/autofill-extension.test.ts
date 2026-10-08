@@ -74,3 +74,10 @@ test('the protocol never gets a secret', () => {
   }
   assert.match(code('AutoFillLog.swift'), /PasskeyVault\.writing/);
 });
+
+test('the password search looks at names, users and the hosts of the addresses', () => {
+  assert.match(controller, /keywords: \(\$0\.uris \?\? \[\]\)\.map/);
+  assert.match(controller, /words\.allSatisfy \{ hay\.contains\(\$0\) \}/);
+  // Everything is listed without a search, not only what fits the page.
+  assert.match(controller, /tr\("Alle Logins", "All logins"\)/);
+});

@@ -200,7 +200,7 @@ struct PasskeyView: View {
         Text(model.title).font(.headline).foregroundColor(Palette.ink).lineLimit(2)
       }
       Spacer(minLength: 8)
-      Button(tr("Abbrechen", "Cancel")) { model.cancel() }
+      Button(tr("Abbrechen", "Cancel"), role: .cancel) { model.cancel() }
         .font(.body.weight(.medium))
         .foregroundColor(Palette.pink)
         .buttonStyle(.plain)
