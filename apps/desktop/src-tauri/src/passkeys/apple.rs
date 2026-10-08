@@ -44,6 +44,8 @@ static AGAIN: AtomicBool = AtomicBool::new(false);
 /// The last line the app put into the AutoFill protocol about its list: the
 /// same one isn't repeated on every vault event.
 static NOTED: parking_lot::Mutex<String> = parking_lot::const_mutex(String::new());
+/// Whether the system was asked if UwULock is on there, this run.
+static SYSTEM_CHECKED: AtomicBool = AtomicBool::new(false);
 
 /// Held while the list is handed to the extension and while an account's
 /// list is taken away: a refresh that began before a logout can't put the
@@ -237,20 +239,30 @@ fn old_keys(
 
 pub(crate) fn refresh_soon(app: &AppHandle) {
     if !enabled(app) {
-        note("list off: AutoFill is switched off in UwULock's settings");
+        note("list off: UwULock's own AutoFill setting is off");
+        // Maybe the system has UwULock on: then the setting follows, and
+        // that refreshes.
+        if !SYSTEM_CHECKED.swap(true, Ordering::SeqCst) {
+            crate::autofill::check_system(app);
+        }
         return;
     }
-    AGAIN.store(true, Ordering::Release);
-    if REFRESHING.swap(true, Ordering::AcqRel) {
+    // SeqCst on both flags, here and in the worker: a store followed by a
+    // load of the other flag on each side (Release/Acquire lets them pass
+    // each other, and an event would wait for the next one).
+    AGAIN.store(true, Ordering::SeqCst);
+    if REFRESHING.swap(true, Ordering::SeqCst) {
         return;
     }
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         loop {
-            while AGAIN.swap(false, Ordering::AcqRel) {
+            while AGAIN.swap(false, Ordering::SeqCst) {
                 match refresh(&app).await {
                     Ok(Some(done)) => note(&done),
                     Ok(None) => {}
+                    // Locked or logged out: nothing to hand over, not a fault.
+                    Err(error) if error.kind() == "locked" => {}
                     Err(error) => {
                         tracing::debug!(
                             error = error.message(),
@@ -264,10 +276,10 @@ pub(crate) fn refresh_soon(app: &AppHandle) {
                     }
                 }
             }
-            REFRESHING.store(false, Ordering::Release);
+            REFRESHING.store(false, Ordering::SeqCst);
             // An event between the last round and letting go: its caller
             // saw REFRESHING still set, so this one runs it.
-            if !AGAIN.load(Ordering::Acquire) || REFRESHING.swap(true, Ordering::AcqRel) {
+            if !AGAIN.load(Ordering::SeqCst) || REFRESHING.swap(true, Ordering::SeqCst) {
                 break;
             }
         }
@@ -553,9 +565,11 @@ async fn refresh(app: &AppHandle) -> Result<Option<String>> {
         "the extension's list is up to date"
     );
     Ok(Some(format!(
-        "list stored: {} of {all_logins} logins (the others without a password, archived or asking for the master password), {} passkeys",
+        "list stored: generation {}, {} of {all_logins} logins (the others without a password, archived or asking for the master password), {} passkeys, {} system entries",
+        state.generation,
         snapshot.logins.len(),
-        snapshot.entries.len()
+        snapshot.entries.len(),
+        identities.len()
     )))
 }
 

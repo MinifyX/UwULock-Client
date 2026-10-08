@@ -216,7 +216,7 @@ struct PasskeyView: View {
       TextField(tr("Name, Benutzer oder Adresse", "Name, user or address"), text: $model.query)
         .focused($searching)
         .foregroundColor(Palette.ink)
-        .disableAutocorrection(true)
+        .autocorrectionDisabled()
         .textFieldStyle(.plain)
       #if os(iOS)
         .textInputAutocapitalization(.never)
@@ -796,7 +796,7 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
             let list = try vault.list(key: key)
             self.onMain { if mine == self.attempt { self.asking = nil } }
             logStep(
-              "list opened: \(list.snapshot.entries.count) passkeys, \(list.snapshot.logins?.count ?? 0) logins, generation \(list.snapshot.generation)"
+              "list opened: \(list.snapshot.entries.count) passkeys, \(list.snapshot.logins.map { "\($0.count) logins" } ?? "no logins field (a list from before password AutoFill)"), generation \(list.snapshot.generation)"
             )
             try then(vault, key, list)
           } catch {
@@ -1116,10 +1116,11 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
           id: $0.itemId, title: $0.name,
           subtitle: [$0.userName, $0.subtitle].compactMap { $0 }.joined(separator: " · "),
           suggested: suggested.contains($0.itemId),
-          keywords: ($0.uris ?? []).map { hint in
-            hint.kind == "domain" || hint.kind == "host"
-              ? hint.value : (URL(string: hint.value)?.host ?? hint.value)
-          })
+          keywords: ($0.hosts ?? [])
+            + ($0.uris ?? []).map { hint in
+              hint.kind == "domain" || hint.kind == "host"
+                ? hint.value : (URL(string: hint.value)?.host ?? hint.value)
+            })
       }
       self.model.pick = { choice in
         guard let login = logins.first(where: { $0.itemId == choice.id }) else { return }

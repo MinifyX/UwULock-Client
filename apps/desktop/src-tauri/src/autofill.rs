@@ -79,6 +79,33 @@ fn list_on(app: &AppHandle) -> Result<()> {
     Ok(())
 }
 
+/// UwULock is switched on in the system's AutoFill but its own setting is
+/// off (turned on in Settings → AutoFill & Passwords rather than with the
+/// app's button, or settings from before): the extension would keep an old
+/// list, without logins. The system's switch is the person's say: the
+/// setting follows it.
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+fn follow_system(app: &AppHandle, enabled: Option<bool>) {
+    if enabled == Some(true) && !list_setting(app) {
+        tracing::info!("UwULock is on in the system's AutoFill: the extension gets its list");
+        if let Err(error) = list_on(app) {
+            tracing::warn!(
+                error = error.message(),
+                "the extension's list didn't switch on"
+            );
+        }
+    }
+}
+
+/// Once the app runs: whether the system has UwULock on (see [`follow_system`]).
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+pub(crate) fn check_system(app: &AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        status(&app);
+    });
+}
+
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 fn list_setting(app: &AppHandle) -> bool {
     use tauri::Manager as _;
@@ -132,7 +159,11 @@ fn status(app: &AppHandle) -> ProviderView {
         };
     };
     match plugin.provider_status() {
-        Ok(state) => from_plugin(platform(), state, list_flag(app)),
+        Ok(state) => {
+            #[cfg(target_os = "ios")]
+            follow_system(app, state.enabled);
+            from_plugin(platform(), state, list_flag(app))
+        }
         Err(error) => {
             tracing::debug!(%error, "the phone didn't say whether UwULock is its provider");
             ProviderView {
@@ -157,10 +188,12 @@ fn request(app: &AppHandle, target: &str) -> Result<ProviderView> {
 #[cfg(target_os = "macos")]
 fn status(app: &AppHandle) -> ProviderView {
     let supported = crate::passkeys::apple::problem(app).is_none();
+    let enabled = supported.then(mac::enabled).flatten();
+    follow_system(app, enabled);
     ProviderView {
         platform: "macos",
         supported,
-        enabled: supported.then(mac::enabled).flatten(),
+        enabled,
         direct: supported && mac::can_ask(),
         autofill: None,
         list: list_setting(app),

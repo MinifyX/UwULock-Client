@@ -53,7 +53,15 @@ final class AutoFillLog {
       let line =
         self.stamp.string(from: now) + " [" + self.run + "] "
         + text.replacingOccurrences(of: "\n", with: " ") + "\n"
-      var data = (try? Data(contentsOf: url)) ?? Data()
+      // Only a missing file starts a new one: a file that didn't read now isn't replaced.
+      var data: Data
+      do {
+        data = try Data(contentsOf: url)
+      } catch CocoaError.fileReadNoSuchFile {
+        data = Data()
+      } catch {
+        return
+      }
       data.append(Data(line.utf8))
       if data.count > Self.maxBytes { data = Self.tail(data) }
       try? FileManager.default.createDirectory(

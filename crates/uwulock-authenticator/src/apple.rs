@@ -334,6 +334,10 @@ pub struct LoginEntry {
     /// Shown under the name: the first address's host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subtitle: Option<String>,
+    /// Every address's host, for the extension's search ("mail" finds
+    /// mail.example.com even when the login matches by domain).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hosts: Vec<String>,
     pub sealed_password: String,
 }
 
@@ -352,11 +356,18 @@ impl LoginEntry {
             .iter()
             .filter_map(|u| crate::autofill::uri_hint(&u.uri, u.match_kind))
             .collect();
-        let subtitle = login
+        let mut hosts: Vec<String> = Vec::new();
+        for host in login
             .uris
             .iter()
-            .find_map(|u| crate::autofill::Target::web(&u.uri).host)
-            .map(|h| h.strip_prefix("www.").unwrap_or(&h).to_string());
+            .filter_map(|u| crate::autofill::Target::web(&u.uri).host)
+        {
+            let host = host.strip_prefix("www.").unwrap_or(&host).to_string();
+            if !hosts.contains(&host) {
+                hosts.push(host);
+            }
+        }
+        let subtitle = hosts.first().cloned();
         Some(LoginEntry {
             item_id: item.id.clone(),
             name: item.name.to_string(),
@@ -367,6 +378,7 @@ impl LoginEntry {
                 .map(|u| u.to_string()),
             uris,
             subtitle,
+            hosts,
             sealed_password: b64(&encrypt(
                 key,
                 &password_aad(account, &item.id),
@@ -716,6 +728,10 @@ mod tests {
         let entry = snapshot.push_login(&key, &item).unwrap().clone();
         assert_eq!(entry.user_name.as_deref(), Some("nyu@example.com"));
         assert_eq!(entry.subtitle.as_deref(), Some("login.example.com"));
+        assert_eq!(
+            entry.hosts.first().map(String::as_str),
+            Some("login.example.com")
+        );
         assert_eq!(entry.uris.len(), 1, "no regular expression");
         assert_eq!(entry.uris[0].value, "example.com");
         let sealed = snapshot.seal(&key).unwrap();
