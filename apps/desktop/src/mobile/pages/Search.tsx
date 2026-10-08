@@ -6,7 +6,14 @@
  * hits fit above it.
  */
 
-import { ICONS, ListSection, NavButton, Screen, SearchBar, useKeyboardOpen } from '@uwusuite/design';
+import {
+  ICONS,
+  ListSection,
+  NavButton,
+  Screen,
+  SearchBar,
+  useKeyboardOpen,
+} from '@uwusuite/design';
 import type { LucideIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef } from 'react';
 import { visibleItems, type Filter } from '../../lib/filters';
