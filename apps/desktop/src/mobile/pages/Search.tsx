@@ -2,10 +2,11 @@
  * Searching the vault on a phone. iOS: the tab bar's search field at the
  * bottom, the results on a page above it. Android: a search view with the
  * field at the top. Before anything is typed: the items opened last and a
- * few lists to jump to.
+ * few lists to jump to. While the keyboard is up the title is small, so the
+ * hits fit above it.
  */
 
-import { ICONS, ListSection, NavButton, Screen, SearchBar } from '@uwusuite/design';
+import { ICONS, ListSection, NavButton, Screen, SearchBar, useKeyboardOpen } from '@uwusuite/design';
 import type { LucideIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef } from 'react';
 import { visibleItems, type Filter } from '../../lib/filters';
@@ -36,6 +37,7 @@ export function SearchView() {
   useLanguage();
   const { android, data, query, setQuery, setSearchOpen, openInTab } = useMobile();
   const field = useRef<HTMLDivElement>(null);
+  const keyboard = useKeyboardOpen();
   const q = query.trim();
   const found = useMemo(
     () => (q ? visibleItems(data.items, { kind: 'all' }, q, data.due) : []),
@@ -102,7 +104,7 @@ export function SearchView() {
       <div className="m-search" ref={field}>
         <Screen
           title={t('Suche')}
-          largeTitle={!android}
+          largeTitle={!android && !keyboard}
           className="m-search-screen"
           searchBar={
             android ? (
