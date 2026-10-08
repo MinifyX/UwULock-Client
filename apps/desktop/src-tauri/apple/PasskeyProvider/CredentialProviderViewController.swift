@@ -28,12 +28,50 @@ import SwiftUI
 #if os(iOS)
   import UIKit
   typealias HostingController<V: View> = UIHostingController<V>
-  let sheetBackground = Color(UIColor.systemBackground)
 #else
   import AppKit
   typealias HostingController<V: View> = NSHostingController<V>
-  let sheetBackground = Color(NSColor.windowBackgroundColor)
 #endif
+
+/// UwULock's colours (the design package's tokens.css, light and dark), so the sheet looks like
+/// the app and not like a bare system form.
+enum Palette {
+  static let canvas = dynamic(0xf8f4f6, 0x141016)
+  static let surface = dynamic(0xffffff, 0x1c171f)
+  static let ink = dynamic(0x1c1420, 0xf8f2f6)
+  static let muted = dynamic(0x716672, 0xb3a8b3)
+  static let faint = dynamic(0xa69ba5, 0x7d717d)
+  static let hairline = dynamic(0xf2e8ee, 0x2c2430)
+  static let border = dynamic(0xe9dde4, 0x3a3040)
+  static let pink = dynamic(0xe11d74, 0xff7fac)
+  static let onPink = dynamic(0xffffff, 0x1c1420)
+  static let pinkInk = dynamic(0xa3154f, 0xffa3c4)
+  static let pinkTint = dynamic(0xffe4ef, 0x3a1a2a)
+
+  #if os(iOS)
+    static let canvasNative = UIColor { $0.userInterfaceStyle == .dark ? rgb(0x141016) : rgb(0xf8f4f6) }
+    static func rgb(_ hex: UInt32) -> UIColor {
+      UIColor(
+        red: CGFloat((hex >> 16) & 0xff) / 255, green: CGFloat((hex >> 8) & 0xff) / 255,
+        blue: CGFloat(hex & 0xff) / 255, alpha: 1)
+    }
+    private static func dynamic(_ light: UInt32, _ dark: UInt32) -> Color {
+      Color(UIColor { $0.userInterfaceStyle == .dark ? rgb(dark) : rgb(light) })
+    }
+  #else
+    static func rgb(_ hex: UInt32) -> NSColor {
+      NSColor(
+        srgbRed: CGFloat((hex >> 16) & 0xff) / 255, green: CGFloat((hex >> 8) & 0xff) / 255,
+        blue: CGFloat(hex & 0xff) / 255, alpha: 1)
+    }
+    private static func dynamic(_ light: UInt32, _ dark: UInt32) -> Color {
+      Color(
+        NSColor(name: nil) {
+          $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? rgb(dark) : rgb(light)
+        })
+    }
+  #endif
+}
 
 /// German when the system prefers it, English otherwise.
 func tr(_ german: String, _ english: String) -> String {
@@ -46,18 +84,32 @@ func short(_ data: Data?) -> String {
   return String(Base64URL.encode(data).prefix(6)) + "…(\(data.count))"
 }
 
+/// Folded for searching: no case, no accents.
+func folded(_ text: String) -> String {
+  text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+}
+
 final class PasskeyModel: ObservableObject {
   struct Choice: Identifiable {
     let id: String
     let title: String
     let subtitle: String
-    /// Matches the page or app: listed first, and all that is shown until the person searches.
+    /// Matches the page or app: listed first, under its own heading.
     let suggested: Bool
+    /// More to find it by than the title and subtitle: the hosts of its addresses.
+    var keywords: [String] = []
+
+    /// Title, subtitle and keywords, folded once for the search.
+    fileprivate var haystack: String {
+      folded(([title, subtitle] + keywords).joined(separator: "\n"))
+    }
   }
 
   @Published var title = "UwULock"
   @Published var message: String? = tr("Wird geladen …", "Loading …")
-  @Published var choices: [Choice] = []
+  @Published var choices: [Choice] = [] {
+    didSet { haystacks = choices.map(\.haystack) }
+  }
   @Published var busy = true
   @Published var query = ""
   /// Passwords: a search over all logins, not only the suggested ones.
@@ -68,73 +120,233 @@ final class PasskeyModel: ObservableObject {
   var pick: (Choice) -> Void = { _ in }
   var cancel: () -> Void = {}
   var unlock: () -> Void = {}
+  private var haystacks: [String] = []
 
+  /// What the search lets through: every word of it somewhere in the name, the user name or an
+  /// address; everything while it is empty.
   var shown: [Choice] {
-    let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
-    if needle.isEmpty { return searchable ? choices.filter(\.suggested) : choices }
-    return choices.filter {
-      $0.title.lowercased().contains(needle) || $0.subtitle.lowercased().contains(needle)
+    let words = folded(query).split(whereSeparator: \.isWhitespace).map(String.init)
+    if words.isEmpty { return choices }
+    return zip(choices, haystacks).compactMap { choice, hay in
+      words.allSatisfy { hay.contains($0) } ? choice : nil
     }
   }
 }
 
 struct PasskeyView: View {
   @ObservedObject var model: PasskeyModel
+  @FocusState private var searching: Bool
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      Text(model.title).font(.headline)
-      if let message = model.message {
-        Text(message).font(.subheadline).foregroundColor(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-      if model.busy {
-        ProgressView()
-      }
-      if let label = model.unlockButton {
-        Button {
-          model.unlock()
-        } label: {
-          Text(label).frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.borderedProminent)
-      }
+    VStack(alignment: .leading, spacing: 0) {
+      header
       if model.searchable && !model.busy {
-        TextField(tr("Suchen", "Search"), text: $model.query)
-          .textFieldStyle(.roundedBorder)
-          .disableAutocorrection(true)
+        searchField
+          .padding(.horizontal, 16)
+          .padding(.bottom, 12)
       }
       ScrollView {
-        VStack(alignment: .leading, spacing: 10) {
-          ForEach(model.shown) { choice in
-            Button {
-              model.pick(choice)
-            } label: {
-              VStack(alignment: .leading) {
-                Text(choice.title)
-                Text(choice.subtitle).font(.caption).foregroundColor(.secondary)
+        VStack(alignment: .leading, spacing: 18) {
+          if model.busy {
+            VStack(spacing: 12) {
+              ProgressView().controlSize(.large).tint(Palette.pink)
+              if let message = model.message {
+                Text(message).font(.subheadline).foregroundColor(Palette.muted)
+                  .multilineTextAlignment(.center)
               }
-              .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 32)
+          } else if let message = model.message {
+            note(icon: "info.circle", message)
           }
-          if model.searchable && !model.busy && model.shown.isEmpty {
-            Text(
-              model.query.isEmpty
-                ? tr(
-                  "Kein Login passt zu dieser Seite. Suche nach einem anderen.",
-                  "No login fits this site. Search for another one.")
-                : tr("Nichts gefunden.", "Nothing found.")
-            )
-            .font(.subheadline).foregroundColor(.secondary)
+          if let label = model.unlockButton {
+            Button {
+              model.unlock()
+            } label: {
+              Label(label, systemImage: "lock.open.fill")
+                .font(.body.weight(.semibold))
+                .foregroundColor(Palette.onPink)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Palette.pink, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
           }
+          if !model.busy { results }
         }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 24)
       }
-      Button(tr("Abbrechen", "Cancel"), role: .cancel) { model.cancel() }
+      #if os(iOS)
+        .scrollDismissesKeyboard(.interactively)
+      #endif
     }
-    .padding()
     .frame(minWidth: 320, minHeight: 240)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    .background(sheetBackground)
+    .background(Palette.canvas.ignoresSafeArea())
+    .tint(Palette.pink)
+  }
+
+  private var header: some View {
+    HStack(alignment: .center, spacing: 12) {
+      Image(systemName: "lock.fill")
+        .font(.system(size: 15, weight: .semibold))
+        .foregroundColor(Palette.pinkInk)
+        .frame(width: 36, height: 36)
+        .background(Palette.pinkTint, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+      VStack(alignment: .leading, spacing: 1) {
+        Text("UwULock").font(.caption.weight(.semibold)).foregroundColor(Palette.pinkInk)
+        Text(model.title).font(.headline).foregroundColor(Palette.ink).lineLimit(2)
+      }
+      Spacer(minLength: 8)
+      Button(tr("Abbrechen", "Cancel"), role: .cancel) { model.cancel() }
+        .font(.body.weight(.medium))
+        .foregroundColor(Palette.pink)
+        .buttonStyle(.plain)
+    }
+    .padding(.horizontal, 16)
+    .padding(.top, 18)
+    .padding(.bottom, 14)
+  }
+
+  private var searchField: some View {
+    HStack(spacing: 8) {
+      Image(systemName: "magnifyingglass").foregroundColor(Palette.muted)
+      TextField(tr("Name, Benutzer oder Adresse", "Name, user or address"), text: $model.query)
+        .focused($searching)
+        .foregroundColor(Palette.ink)
+        .autocorrectionDisabled()
+        .textFieldStyle(.plain)
+      #if os(iOS)
+        .textInputAutocapitalization(.never)
+        .submitLabel(.search)
+      #endif
+      if !model.query.isEmpty {
+        Button {
+          model.query = ""
+        } label: {
+          Image(systemName: "xmark.circle.fill").foregroundColor(Palette.faint)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(tr("Suche leeren", "Clear search"))
+      }
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 11)
+    .background(Palette.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    .overlay(
+      RoundedRectangle(cornerRadius: 14, style: .continuous)
+        .stroke(searching ? Palette.pink : Palette.border, lineWidth: searching ? 1.5 : 1))
+  }
+
+  @ViewBuilder private var results: some View {
+    let shown = model.shown
+    if !model.searchable {
+      if !shown.isEmpty { section(nil, shown) }
+    } else if model.choices.isEmpty {
+      note(
+        icon: "tray",
+        tr(
+          "In UwULocks Liste für AutoFill sind keine Logins. Öffne UwULock und entsperre den Tresor – danach sind sie hier.",
+          "UwULock's AutoFill list has no logins. Open UwULock and unlock the vault, then they're here."
+        ))
+    } else if shown.isEmpty {
+      note(
+        icon: "magnifyingglass",
+        tr("Nichts gefunden für „\(model.query)“.", "Nothing found for “\(model.query)”."))
+    } else {
+      let suggested = shown.filter(\.suggested)
+      let others = shown.filter { !$0.suggested }
+      if !suggested.isEmpty {
+        section(tr("Passend zu dieser Seite", "For this site"), suggested)
+      } else if model.query.isEmpty {
+        note(
+          icon: "questionmark.circle",
+          tr(
+            "Kein Login passt zu dieser Seite. Wähle einen aus allen Logins.",
+            "No login fits this site. Pick one of all logins."))
+      }
+      if !others.isEmpty {
+        section(
+          model.query.isEmpty || suggested.isEmpty
+            ? tr("Alle Logins", "All logins") : tr("Weitere Treffer", "More results"),
+          others)
+      }
+    }
+  }
+
+  private func section(_ heading: String?, _ choices: [PasskeyModel.Choice]) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      if let heading {
+        Text(heading.uppercased())
+          .font(.caption.weight(.semibold))
+          .foregroundColor(Palette.muted)
+          .padding(.leading, 6)
+      }
+      LazyVStack(spacing: 0) {
+        ForEach(Array(choices.enumerated()), id: \.element.id) { index, choice in
+          if index > 0 {
+            Rectangle().fill(Palette.hairline).frame(height: 1).padding(.leading, 62)
+          }
+          row(choice)
+        }
+      }
+      .background(Palette.surface)
+      .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+      .overlay(
+        RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Palette.border, lineWidth: 1))
+    }
+  }
+
+  private func row(_ choice: PasskeyModel.Choice) -> some View {
+    Button {
+      model.pick(choice)
+    } label: {
+      HStack(spacing: 12) {
+        Text(String(choice.title.trimmingCharacters(in: .whitespaces).prefix(1)).uppercased())
+          .font(.headline)
+          .foregroundColor(Palette.pinkInk)
+          .frame(width: 36, height: 36)
+          .background(Palette.pinkTint, in: Circle())
+        VStack(alignment: .leading, spacing: 2) {
+          Text(choice.title).font(.body.weight(.medium)).foregroundColor(Palette.ink)
+            .lineLimit(1)
+          if !choice.subtitle.isEmpty {
+            Text(choice.subtitle).font(.footnote).foregroundColor(Palette.muted).lineLimit(1)
+          }
+        }
+        Spacer(minLength: 8)
+        Image(systemName: "chevron.right")
+          .font(.footnote.weight(.semibold))
+          .foregroundColor(Palette.faint)
+      }
+      .padding(.horizontal, 14)
+      .padding(.vertical, 10)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(RowStyle())
+  }
+
+  private func note(icon: String, _ text: String) -> some View {
+    HStack(alignment: .top, spacing: 10) {
+      Image(systemName: icon).foregroundColor(Palette.pinkInk)
+      Text(text).font(.subheadline).foregroundColor(Palette.muted)
+        .fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 0)
+    }
+    .padding(14)
+    .background(Palette.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    .overlay(
+      RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Palette.border, lineWidth: 1))
+  }
+}
+
+/// A row that tints while pressed.
+struct RowStyle: ButtonStyle {
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .background(configuration.isPressed ? Palette.pinkTint.opacity(0.6) : Color.clear)
   }
 }
 
@@ -210,8 +422,8 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
     addChild(host)
     host.view.translatesAutoresizingMaskIntoConstraints = false
     #if os(iOS)
-      view.backgroundColor = .systemBackground
-      host.view.backgroundColor = .systemBackground
+      view.backgroundColor = Palette.canvasNative
+      host.view.backgroundColor = Palette.canvasNative
     #endif
     view.addSubview(host.view)
     NSLayoutConstraint.activate([
@@ -584,7 +796,7 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
             let list = try vault.list(key: key)
             self.onMain { if mine == self.attempt { self.asking = nil } }
             logStep(
-              "list opened: \(list.snapshot.entries.count) passkeys, \(list.snapshot.logins?.count ?? 0) logins, generation \(list.snapshot.generation)"
+              "list opened: \(list.snapshot.entries.count) passkeys, \(list.snapshot.logins.map { "\($0.count) logins" } ?? "no logins field (a list from before password AutoFill)"), generation \(list.snapshot.generation)"
             )
             try then(vault, key, list)
           } catch {
@@ -903,7 +1115,12 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
         PasskeyModel.Choice(
           id: $0.itemId, title: $0.name,
           subtitle: [$0.userName, $0.subtitle].compactMap { $0 }.joined(separator: " · "),
-          suggested: suggested.contains($0.itemId))
+          suggested: suggested.contains($0.itemId),
+          keywords: ($0.hosts ?? [])
+            + ($0.uris ?? []).map { hint in
+              hint.kind == "domain" || hint.kind == "host"
+                ? hint.value : (URL(string: hint.value)?.host ?? hint.value)
+            })
       }
       self.model.pick = { choice in
         guard let login = logins.first(where: { $0.itemId == choice.id }) else { return }

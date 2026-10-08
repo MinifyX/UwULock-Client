@@ -390,6 +390,18 @@ mod mobile {
                 .map_err(error)
         }
 
+        /// iOS: a line from the app into the AutoFill protocol (no secrets:
+        /// counts, generations, error codes).
+        pub fn autofill_log_note(&self, text: &str) -> Result<(), Error> {
+            #[derive(Serialize)]
+            struct Note<'a> {
+                text: &'a str,
+            }
+            self.0
+                .run_mobile_plugin("autofillLogNote", Note { text })
+                .map_err(error)
+        }
+
         /// iOS: empties the AutoFill extension's protocol.
         pub fn autofill_log_clear(&self) -> Result<(), Error> {
             self.0

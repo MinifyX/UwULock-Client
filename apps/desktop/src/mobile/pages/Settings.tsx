@@ -829,7 +829,11 @@ function AutofillLogPage() {
           }
         />
       </ListSection>
-      {log ? <AutofillLogText lines={lines} /> : <Empty title={t('Lädt …')} />}
+      {log ? (
+        <AutofillLogText lines={lines} problem={log.problem} />
+      ) : (
+        <Empty title={t('Lädt …')} />
+      )}
       {confirm.element}
     </Page>
   );

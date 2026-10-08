@@ -13,12 +13,14 @@ import { Modal } from './Modal';
  */
 
 /** The lines as they are, newest at the bottom; selectable, so a part can be copied too. */
-export function AutofillLogText({ lines }: { lines: string[] }) {
+export function AutofillLogText({ lines, problem }: { lines: string[]; problem?: string }) {
   useLanguage();
   if (lines.length === 0)
     return (
       <p className="autofill-log-empty">
-        {t('Noch keine Einträge. Fülle einmal ein Passwort oder einen Passkey mit UwULock aus.')}
+        {problem
+          ? t('Das Protokoll ließ sich nicht lesen: {problem}', { problem })
+          : t('Noch keine Einträge. Fülle einmal ein Passwort oder einen Passkey mit UwULock aus.')}
       </p>
     );
   return <pre className="autofill-log">{lines.join('\n')}</pre>;
@@ -67,7 +69,7 @@ export function AutofillLogDialog({ onClose }: { onClose: () => void }) {
       }
     >
       <p className="autofill-log-note">{autofillLogNote()}</p>
-      {log ? <AutofillLogText lines={lines} /> : <p>{t('Lädt …')}</p>}
+      {log ? <AutofillLogText lines={lines} problem={log.problem} /> : <p>{t('Lädt …')}</p>}
     </Modal>
   );
 }

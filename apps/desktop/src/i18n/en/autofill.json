@@ -34,5 +34,6 @@
   "Die Einträge auf diesem Gerät werden gelöscht.": "The entries on this device are deleted.",
   "Noch keine Einträge. Fülle einmal ein Passwort oder einen Passkey mit UwULock aus.": "No entries yet. Fill in a password or a passkey with UwULock once.",
   "Was die AutoFill-Erweiterung zuletzt getan hat, ohne Passwörter – für eine Fehlermeldung.": "What the AutoFill extension did lately, without passwords – for a bug report.",
-  "Was UwULocks AutoFill-Erweiterung auf diesem Gerät getan hat: welcher Weg, welcher Schritt, welcher Fehlercode. Ohne Passwörter, Benutzernamen und vollständige Adressen – du kannst es für eine Fehlermeldung kopieren.": "What UwULock's AutoFill extension did on this device: which way in, which step, which error code. Without passwords, user names or full addresses – you can copy it for a bug report."
+  "Was UwULocks AutoFill-Erweiterung auf diesem Gerät getan hat: welcher Weg, welcher Schritt, welcher Fehlercode. Ohne Passwörter, Benutzernamen und vollständige Adressen – du kannst es für eine Fehlermeldung kopieren.": "What UwULock's AutoFill extension did on this device: which way in, which step, which error code. Without passwords, user names or full addresses – you can copy it for a bug report.",
+  "Das Protokoll ließ sich nicht lesen: {problem}": "The protocol couldn't be read: {problem}"
 }

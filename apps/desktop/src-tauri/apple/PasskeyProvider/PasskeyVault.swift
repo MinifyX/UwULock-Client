@@ -77,6 +77,8 @@ struct PasskeyLoginEntry: Codable {
   var userName: String?
   var uris: [PasskeyUriHint]?
   var subtitle: String?
+  /// Every address's host, for the search; missing in lists from before 0.6.0-beta.5.
+  var hosts: [String]?
   var sealedPassword: String
 }
 

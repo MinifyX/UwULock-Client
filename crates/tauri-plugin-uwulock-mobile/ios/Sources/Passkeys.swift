@@ -23,6 +23,10 @@ struct PasskeysStoreArgs: Decodable {
   let identities: [PasskeyIdentityArgs]
 }
 
+struct AutofillLogNoteArgs: Decodable {
+  let text: String
+}
+
 struct PasskeysNamesArgs: Decodable {
   let names: [String]
 }
@@ -196,10 +200,16 @@ extension UwuLockMobilePlugin {
     }
     ASCredentialIdentityStore.shared.getState { state in
       guard state.isEnabled else {
+        self.appendAutofillLog(
+          "system list skipped: UwULock is not on in AutoFill & Passwords", once: true)
         invoke.resolve()
         return
       }
-      ASCredentialIdentityStore.shared.replaceCredentialIdentities(identities) { _, _ in
+      ASCredentialIdentityStore.shared.replaceCredentialIdentities(identities) { ok, error in
+        self.appendAutofillLog(
+          "system list \(ok ? "replaced" : "not replaced"), \(identities.count) entries"
+            + (error.map { " (\(($0 as NSError).domain) \(($0 as NSError).code))" } ?? ""),
+          once: true)
         invoke.resolve()
       }
     }
@@ -305,11 +315,70 @@ extension UwuLockMobilePlugin {
       return
     }
     let file = groups.folder.appendingPathComponent("autofill.log")
-    let data = (try? Data(contentsOf: file)) ?? Data()
+    let data: Data
+    do {
+      data = try Data(contentsOf: file)
+    } catch CocoaError.fileReadNoSuchFile {
+      data = Data()
+    } catch {
+      let ns = error as NSError
+      invoke.reject("the file didn't read (\(ns.domain) \(ns.code))", code: "io")
+      return
+    }
     // The extension keeps it under 64 KB; a cut-off first line is Rust's to drop.
     let text = String(decoding: data.suffix(64 * 1024), as: UTF8.self)
     invoke.resolve(["supported": true, "text": text])
   }
+
+  /// A line from the app's side (passkeys/apple.rs: the list it left, or why it left none), so
+  /// the protocol tells a list the app never wrote from one the extension couldn't read.
+  @objc public func autofillLogNote(_ invoke: Invoke) throws {
+    let args = try invoke.parseArgs(AutofillLogNoteArgs.self)
+    appendAutofillLog(args.text)
+    invoke.resolve()
+  }
+
+  /// One line into the protocol, as AutoFillLog.swift writes them (timestamp, a run tag, the
+  /// text), cut back to its last 48 KB past 64 KB.
+  /// `once`: not again while it is the same as the last such line (every sync stores the list,
+  /// and the protocol keeps only its last lines).
+  func appendAutofillLog(_ text: String, once: Bool = false) {
+    guard let groups = passkeyGroups() else { return }
+    if once {
+      guard Self.lastNote.withLock({ last in
+        defer { last = text }
+        return last != text
+      }) else { return }
+    }
+    let file = groups.folder.appendingPathComponent("autofill.log")
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let line =
+      formatter.string(from: Date()) + " [app] " + text.replacingOccurrences(of: "\n", with: " ")
+      + "\n"
+    Self.logQueue.async {
+      // Only a missing file starts a new one: a file that didn't read now isn't replaced.
+      var data: Data
+      do {
+        data = try Data(contentsOf: file)
+      } catch CocoaError.fileReadNoSuchFile {
+        data = Data()
+      } catch {
+        return
+      }
+      data.append(Data(line.utf8))
+      if data.count > 64 * 1024 {
+        let tail = data.suffix(48 * 1024)
+        data = Data(tail.drop(while: { $0 != 0x0a }).dropFirst())
+      }
+      try? FileManager.default.createDirectory(
+        at: groups.folder, withIntermediateDirectories: true)
+      try? data.write(to: file, options: [.atomic, .completeFileProtection])
+    }
+  }
+
+  private static let logQueue = DispatchQueue(label: "app.uwulock.autofill-log", qos: .utility)
+  private static let lastNote = NoteLock()
 
   @objc public func autofillLogClear(_ invoke: Invoke) {
     if let groups = passkeyGroups() {
@@ -333,5 +402,17 @@ extension UwuLockMobilePlugin {
     ASCredentialIdentityStore.shared.removeAllCredentialIdentities { _, _ in
       invoke.resolve()
     }
+  }
+}
+
+/// The last line noted with `once`, behind a lock: the plugin's calls come on any thread.
+final class NoteLock {
+  private let lock = NSLock()
+  private var last = ""
+
+  func withLock<T>(_ body: (inout String) -> T) -> T {
+    lock.lock()
+    defer { lock.unlock() }
+    return body(&last)
   }
 }
