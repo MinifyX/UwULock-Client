@@ -41,3 +41,12 @@
 html:is([data-platform='ios'], [data-platform='android']) .shell > [aria-live='polite'].fixed {
   top: calc(env(safe-area-inset-top) + var(--uwu-space-2));
 }
+
+/*
+ * The window never zooms (lib/zoom.ts): no double-tap zoom on a touch screen. Panning and the
+ * page's own gestures stay; pinching is stopped by the viewport in index.html.
+ */
+html,
+body {
+  touch-action: manipulation;
+}

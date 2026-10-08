@@ -239,6 +239,8 @@ pub fn run() {
             autofill::autofill_provider_request,
             autofill::credential_exchange_pending,
             autofill::credential_exchange_import,
+            autofill::autofill_log,
+            autofill::autofill_log_clear,
             passkeys::passkey_provider_status,
             passkeys::set_passkey_provider,
             safari::safari_extension_status,

@@ -294,6 +294,30 @@ extension UwuLockMobilePlugin {
     invoke.resolve()
   }
 
+  // MARK: The AutoFill protocol
+
+  /// What the AutoFill extension logged (AutoFillLog.swift: Passkeys/autofill.log in the App
+  /// Group folder): step names, hosts, counts and error codes, nothing secret. Empty when the
+  /// extension never wrote one; `supported` false without an App Group (unsigned build).
+  @objc public func autofillLog(_ invoke: Invoke) {
+    guard let groups = passkeyGroups() else {
+      invoke.resolve(["supported": false, "text": ""])
+      return
+    }
+    let file = groups.folder.appendingPathComponent("autofill.log")
+    let data = (try? Data(contentsOf: file)) ?? Data()
+    // The extension keeps it under 64 KB; a cut-off first line is Rust's to drop.
+    let text = String(decoding: data.suffix(64 * 1024), as: UTF8.self)
+    invoke.resolve(["supported": true, "text": text])
+  }
+
+  @objc public func autofillLogClear(_ invoke: Invoke) {
+    if let groups = passkeyGroups() {
+      try? FileManager.default.removeItem(at: groups.folder.appendingPathComponent("autofill.log"))
+    }
+    invoke.resolve()
+  }
+
   @objc public func passkeysClear(_ invoke: Invoke) {
     if let groups = passkeyGroups() {
       try? FileManager.default.removeItem(at: groups.folder.appendingPathComponent("passkeys.sealed"))

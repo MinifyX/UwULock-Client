@@ -16,7 +16,14 @@ export type FindingGroup =
   'breached' | 'siteBreach' | 'reused' | 'weak' | 'unsecured' | 'twofa' | 'ignored';
 
 export type SettingsPage =
-  'appearance' | 'security' | 'autofill' | 'account' | 'import' | 'updates' | 'about';
+  | 'appearance'
+  | 'security'
+  | 'autofill'
+  | 'autofill-log'
+  | 'account'
+  | 'import'
+  | 'updates'
+  | 'about';
 
 export type Route =
   | { page: 'overview' }

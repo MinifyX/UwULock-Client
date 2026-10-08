@@ -22,6 +22,7 @@ import android.provider.Settings
 import android.view.View
 import android.view.autofill.AutofillManager
 import android.webkit.MimeTypeMap
+import android.webkit.WebView
 import android.os.PersistableBundle
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyPermanentlyInvalidatedException
@@ -139,6 +140,18 @@ class UwuLockMobilePlugin(private val activity: Activity) : Plugin(activity) {
         private const val KEY_PREFIX = "uwulock-unlock-"
         private const val IV_LENGTH = 12
         private const val CLIP_LABEL = "UwULock"
+    }
+
+    /**
+     * The app never zooms (the page's viewport and lib/zoom.ts): no pinch, no zoom buttons. The
+     * text size stays the app's own setting, which follows Android's font size (textZoom is left
+     * alone).
+     */
+    override fun load(webView: WebView) {
+        super.load(webView)
+        webView.settings.setSupportZoom(false)
+        webView.settings.builtInZoomControls = false
+        webView.settings.displayZoomControls = false
     }
 
     /** The text of UwULock's last copy, so a later clear leaves anything copied since alone. */

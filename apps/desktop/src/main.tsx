@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom/client';
 import { App } from './App';
 import { prepareDocument } from './lib/appearance';
 import { isIosAppOnMac } from './lib/platform';
+import { blockZoom } from './lib/zoom';
 import './styles/index.css';
 
 async function start() {
@@ -12,6 +13,7 @@ async function start() {
     await import('./dev/mock');
   }
   prepareDocument();
+  blockZoom();
   const root = document.getElementById('root');
   if (!root) throw new Error('#root missing from index.html');
   const phone = phoneKind();
