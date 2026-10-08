@@ -403,6 +403,9 @@ pub struct AutofillLog {
     supported: bool,
     /// The last lines, oldest first.
     lines: Vec<String>,
+    /// Why there are none to read, when it isn't that there are none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    problem: Option<String>,
 }
 
 #[tauri::command]
@@ -425,15 +428,22 @@ fn read_log() -> AutofillLog {
         Some(Ok(Some(text))) => AutofillLog {
             supported: true,
             lines: log_lines(&text),
+            problem: None,
+        },
+        Some(Ok(None)) => AutofillLog {
+            supported: true,
+            lines: Vec::new(),
+            problem: Some("no App Group in this build".into()),
         },
         Some(Err(error)) => {
             tracing::debug!(%error, "the AutoFill protocol didn't read");
             AutofillLog {
                 supported: true,
                 lines: Vec::new(),
+                problem: Some(error.to_string()),
             }
         }
-        _ => AutofillLog::default(),
+        None => AutofillLog::default(),
     }
 }
 
@@ -451,18 +461,18 @@ fn read_log() -> AutofillLog {
     let Ok(path) = crate::passkeys::apple::autofill_log_path() else {
         return AutofillLog::default();
     };
-    let lines = match read_tail(&path, LOG_BYTES) {
-        Ok(text) => log_lines(&text),
+    let (lines, problem) = match read_tail(&path, LOG_BYTES) {
+        Ok(text) => (log_lines(&text), None),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (Vec::new(), None),
         Err(error) => {
-            if error.kind() != std::io::ErrorKind::NotFound {
-                tracing::debug!(%error, "the AutoFill protocol didn't read");
-            }
-            Vec::new()
+            tracing::debug!(%error, "the AutoFill protocol didn't read");
+            (Vec::new(), Some(error.to_string()))
         }
     };
     AutofillLog {
         supported: true,
         lines,
+        problem,
     }
 }
 

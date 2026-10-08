@@ -23,6 +23,10 @@ struct PasskeysStoreArgs: Decodable {
   let identities: [PasskeyIdentityArgs]
 }
 
+struct AutofillLogNoteArgs: Decodable {
+  let text: String
+}
+
 struct PasskeysNamesArgs: Decodable {
   let names: [String]
 }
@@ -196,10 +200,15 @@ extension UwuLockMobilePlugin {
     }
     ASCredentialIdentityStore.shared.getState { state in
       guard state.isEnabled else {
+        self.appendAutofillLog(
+          "app: system list skipped (UwULock not on in AutoFill & Passwords), \(identities.count) entries")
         invoke.resolve()
         return
       }
-      ASCredentialIdentityStore.shared.replaceCredentialIdentities(identities) { _, _ in
+      ASCredentialIdentityStore.shared.replaceCredentialIdentities(identities) { ok, error in
+        self.appendAutofillLog(
+          "app: system list \(ok ? "replaced" : "not replaced"), \(identities.count) entries"
+            + (error.map { " (\(($0 as NSError).domain) \(($0 as NSError).code))" } ?? ""))
         invoke.resolve()
       }
     }
@@ -310,6 +319,39 @@ extension UwuLockMobilePlugin {
     let text = String(decoding: data.suffix(64 * 1024), as: UTF8.self)
     invoke.resolve(["supported": true, "text": text])
   }
+
+  /// A line from the app's side (passkeys/apple.rs: the list it left, or why it left none), so
+  /// the protocol tells a list the app never wrote from one the extension couldn't read.
+  @objc public func autofillLogNote(_ invoke: Invoke) throws {
+    let args = try invoke.parseArgs(AutofillLogNoteArgs.self)
+    appendAutofillLog("app: " + args.text)
+    invoke.resolve()
+  }
+
+  /// One line into the protocol, as AutoFillLog.swift writes them (timestamp, a run tag, the
+  /// text), cut back to its last 48 KB past 64 KB.
+  func appendAutofillLog(_ text: String) {
+    guard let groups = passkeyGroups() else { return }
+    let file = groups.folder.appendingPathComponent("autofill.log")
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let line =
+      formatter.string(from: Date()) + " [app] " + text.replacingOccurrences(of: "\n", with: " ")
+      + "\n"
+    Self.logQueue.async {
+      var data = (try? Data(contentsOf: file)) ?? Data()
+      data.append(Data(line.utf8))
+      if data.count > 64 * 1024 {
+        let tail = data.suffix(48 * 1024)
+        data = Data(tail.drop(while: { $0 != 0x0a }).dropFirst())
+      }
+      try? FileManager.default.createDirectory(
+        at: groups.folder, withIntermediateDirectories: true)
+      try? data.write(to: file, options: [.atomic, .completeFileProtection])
+    }
+  }
+
+  private static let logQueue = DispatchQueue(label: "app.uwulock.autofill-log", qos: .utility)
 
   @objc public func autofillLogClear(_ invoke: Invoke) {
     if let groups = passkeyGroups() {

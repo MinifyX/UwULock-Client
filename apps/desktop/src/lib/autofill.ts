@@ -32,7 +32,7 @@ export const autofillProviderRequest = (target: 'credentials' | 'autofill') =>
  * extension; src-tauri/src/autofill.rs): which way the system came in, each step, error codes.
  * Hosts, counts and short id prefixes, never a password, a user name or a full address.
  */
-export type AutofillLog = { supported: boolean; lines: string[] };
+export type AutofillLog = { supported: boolean; lines: string[]; problem?: string };
 
 export const autofillLog = () => invoke<AutofillLog>('autofill_log');
 export const autofillLogClear = () => invoke<void>('autofill_log_clear');

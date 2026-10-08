@@ -37,6 +37,13 @@ use super::{passkeys_of, Provider};
 use crate::vault::{Failure, Result, VaultState};
 
 static REFRESHING: AtomicBool = AtomicBool::new(false);
+/// Something changed while a refresh ran: one more round after it, so the
+/// list ends up with what the vault holds last (an unlock's refresh used to
+/// swallow the sync right after it, leaving the extension an old list).
+static AGAIN: AtomicBool = AtomicBool::new(false);
+/// The last line the app put into the AutoFill protocol about its list: the
+/// same one isn't repeated on every vault event.
+static NOTED: parking_lot::Mutex<String> = parking_lot::const_mutex(String::new());
 
 /// Held while the list is handed to the extension and while an account's
 /// list is taken away: a refresh that began before a logout can't put the
@@ -229,19 +236,55 @@ fn old_keys(
 }
 
 pub(crate) fn refresh_soon(app: &AppHandle) {
-    if !enabled(app) || REFRESHING.swap(true, Ordering::AcqRel) {
+    if !enabled(app) {
+        note("list off: AutoFill is switched off in UwULock's settings");
+        return;
+    }
+    AGAIN.store(true, Ordering::Release);
+    if REFRESHING.swap(true, Ordering::AcqRel) {
         return;
     }
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        if let Err(error) = refresh(&app).await {
-            tracing::debug!(
-                error = error.message(),
-                "the extension's passkey list wasn't refreshed"
-            );
+        loop {
+            while AGAIN.swap(false, Ordering::AcqRel) {
+                match refresh(&app).await {
+                    Ok(Some(done)) => note(&done),
+                    Ok(None) => {}
+                    Err(error) => {
+                        tracing::debug!(
+                            error = error.message(),
+                            "the extension's passkey list wasn't refreshed"
+                        );
+                        note(&format!(
+                            "list not refreshed: {} ({})",
+                            error.kind(),
+                            error.message()
+                        ));
+                    }
+                }
+            }
+            REFRESHING.store(false, Ordering::Release);
+            // An event between the last round and letting go: its caller
+            // saw REFRESHING still set, so this one runs it.
+            if !AGAIN.load(Ordering::Acquire) || REFRESHING.swap(true, Ordering::AcqRel) {
+                break;
+            }
         }
-        REFRESHING.store(false, Ordering::Release);
     });
+}
+
+/// A line about the list into the AutoFill protocol (iOS), unless it is the
+/// one noted last. Counts, generations and error kinds only.
+fn note(text: &str) {
+    {
+        let mut last = NOTED.lock();
+        if *last == text {
+            return;
+        }
+        *last = text.to_string();
+    }
+    native::note(text);
 }
 
 fn dir(app: &AppHandle) -> PathBuf {
@@ -335,9 +378,12 @@ fn in_vault(vault: &VaultState, passkey: &uwulock_core::passkey::Passkey) -> boo
     })
 }
 
-async fn refresh(app: &AppHandle) -> Result<()> {
-    if native::problem(app).is_some() {
-        return Ok(());
+/// The list for the extension, from the open vault; what went in, for the
+/// protocol, or `None` when this build has no extension to hand it to.
+async fn refresh(app: &AppHandle) -> Result<Option<String>> {
+    if let Some(problem) = native::problem(app) {
+        tracing::debug!(%problem, "no AutoFill extension to hand the list to");
+        return Ok(None);
     }
     let vault = app.state::<VaultState>();
     let (account_id, _) = vault.active_account()?;
@@ -419,6 +465,7 @@ async fn refresh(app: &AppHandle) -> Result<()> {
     }
 
     // The list for the extension.
+    let all_logins;
     let (items, logins): (Vec<_>, Vec<_>) = {
         let guard = vault.unlocked.read();
         let unlocked = guard.get(&account_id).ok_or_else(Failure::locked)?;
@@ -432,13 +479,19 @@ async fn refresh(app: &AppHandle) -> Result<()> {
             .filter(|item| sealed::listed(item))
             .cloned()
             .collect();
-        let logins = unlocked
+        let logins: Vec<_> = unlocked
             .vault
             .items
             .iter()
             .filter(|item| sealed::listed_login(item))
             .cloned()
             .collect();
+        all_logins = unlocked
+            .vault
+            .items
+            .iter()
+            .filter(|item| item.kind == uwulock_core::vault::ItemKind::Login && !item.deleted)
+            .count();
         (items, logins)
     };
     state.generation = sealed::next_generation(state.generation, now_ms());
@@ -499,7 +552,11 @@ async fn refresh(app: &AppHandle) -> Result<()> {
         logins = snapshot.logins.len(),
         "the extension's list is up to date"
     );
-    Ok(())
+    Ok(Some(format!(
+        "list stored: {} of {all_logins} logins (the others without a password, archived or asking for the master password), {} passkeys",
+        snapshot.logins.len(),
+        snapshot.entries.len()
+    )))
 }
 
 /// macOS: the AutoFill extension's protocol in the App Group folder
@@ -535,6 +592,12 @@ mod native {
     ) -> Result<tauri::State<'static, tauri_plugin_uwulock_mobile::Mobile<tauri::Wry>>, String>
     {
         crate::phone::plugin().ok_or_else(|| "the phone's plugin isn't there".to_string())
+    }
+
+    pub(super) fn note(text: &str) {
+        if let Ok(plugin) = plugin() {
+            let _ = plugin.autofill_log_note(text);
+        }
     }
 
     pub(super) fn problem(_app: &AppHandle) -> Option<String> {
@@ -698,6 +761,10 @@ mod native {
     pub(super) fn problem(_app: &AppHandle) -> Option<String> {
         team().err()
     }
+
+    /// The Mac has Console.app for the app's side (`tracing`): nothing into
+    /// the extension's protocol.
+    pub(super) fn note(_text: &str) {}
 
     pub(super) fn store(
         _app: &AppHandle,
