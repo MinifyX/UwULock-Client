@@ -19,12 +19,12 @@ const TWO_STEP = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Sign in</title></head>
 <body>
   <h1>Sign in in two steps</h1>
-  <form id="first" onsubmit="event.preventDefault(); next();">
+  <form id="first" onsubmit="event.preventDefault(); secondStep();">
     <label>Username <input id="username" name="username" autocomplete="username"></label>
     <button id="next" type="submit">Next</button>
   </form>
 <script>
-function next() {
+function secondStep() {
   document.getElementById('first').remove();
   document.body.insertAdjacentHTML('beforeend',
     '<form method="post" action="/login"><label>Password <input id="password" name="password" type="password" autocomplete="current-password"></label><button type="submit">Sign in</button></form>');
