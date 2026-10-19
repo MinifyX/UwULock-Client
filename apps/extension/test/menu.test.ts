@@ -144,7 +144,7 @@ describe('the menu frame', () => {
       frameId: 3,
       message: { type: 'bg:menu-guard', session },
     });
-    expect(offers).toEqual([[7, 'bank', false, false, false, { frameId: 3, session }]]);
+    expect(offers).toEqual([[7, 'bank', { menu: { frameId: 3, session } }]]);
     expect(own.got.at(-1)).toEqual({ type: 'picked', answer: { filled: true } });
   });
 

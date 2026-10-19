@@ -159,4 +159,37 @@ describe('pages', () => {
     expect(isInsecureUrl('http://localhost:8080')).toBe(false);
     expect(isInsecureUrl('https://example.com')).toBe(false);
   });
+
+  it('does not count the local network as insecure', () => {
+    for (const lan of [
+      'http://10.0.0.2',
+      'http://172.16.4.1:5000',
+      'http://192.168.1.1/login',
+      'http://169.254.10.1',
+      'http://100.64.0.7',
+      'http://[fd00::5]:8080',
+      'http://[fe80::1]',
+      'http://[::ffff:192.168.0.2]',
+      'http://nas',
+      'http://nas.local',
+      'http://router.lan',
+      'http://box.home.arpa',
+      'http://fritz.box',
+      'http://speedport.ip',
+      'http://printer.localdomain.',
+    ]) {
+      expect(isInsecureUrl(lan), lan).toBe(false);
+    }
+    for (const wan of [
+      'http://192.0.2.10',
+      'http://198.51.100.10',
+      'http://[fc::1]',
+      'http://[fe8::1]',
+      'http://[2001:db8::1]',
+      'http://shop.example',
+      'http://local.example.com',
+    ]) {
+      expect(isInsecureUrl(wan), wan).toBe(true);
+    }
+  });
 });

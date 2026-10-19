@@ -278,7 +278,7 @@ function Body({ item }: { item: ItemDetail }) {
         <FillReprompt
           name={item.summary.name}
           onFill={async (password) => {
-            await fillTab(id, false, password);
+            await fillTab(id, password);
             window.close();
           }}
           onCancel={() => setAsking(false)}

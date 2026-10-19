@@ -254,7 +254,6 @@
   "Einmal-Code kopieren": "Copy one-time code",
   "Passwort für {name} bei {host} aktualisieren?": "Update the password for {name} on {host}?",
   "Verwerfen": "Discard",
-  "Diese Seite ist nicht verschlüsselt (http).": "This page is not encrypted (http).",
   "Auf dieser Seite kann UwULock nichts ausfüllen.": "UwULock can't fill anything on this page.",
   "Noch kein Login für diese Seite.": "No login for this page yet.",
   "Neuer Login für diese Seite": "New login for this page",
@@ -365,5 +364,7 @@
   "An": "On",
   "Aus": "Off",
   "Passkeys und Passwörter in Safari": "Passkeys and passwords in Safari",
-  "Kommen aus der UwULock-App: Schalte UwULock in den Einstellungen des Geräts unter Allgemein → AutoFill & Passwörter ein.": "They come from the UwULock app: turn UwULock on in your device’s settings under General → AutoFill & Passwords."
+  "Kommen aus der UwULock-App: Schalte UwULock in den Einstellungen des Geräts unter Allgemein → AutoFill & Passwörter ein.": "They come from the UwULock app: turn UwULock on in your device’s settings under General → AutoFill & Passwords.",
+  "HTTP statt HTTPS – möglicherweise unsicher": "HTTP instead of HTTPS – possibly insecure",
+  "Diese Seite ist nicht verschlüsselt (http).": "This page is not encrypted (http)."
 }

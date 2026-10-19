@@ -194,11 +194,12 @@ async function view(found: Session): Promise<MenuView> {
         ? await autofill.frameItems(fieldSender(found), kind)
         : [],
     masked: state === 'unlocked' && found.maskable && hasFeature(account, 'masked-addresses'),
+    insecure: isInsecureUrl(found.url),
     language: resolveLanguage(config.language),
   };
 }
 
-async function pick(found: Session, itemId: unknown, confirmedInsecure: boolean) {
+async function pick(found: Session, itemId: unknown) {
   const answer = (value: MenuPickAnswer) => post(found, { type: 'picked', answer: value });
   if (!session.unlockedAccountId()) return answer({ filled: false, reason: 'locked' });
   // Only what this menu lists: the frame's own logins, or its cards and addresses.
@@ -214,12 +215,8 @@ async function pick(found: Session, itemId: unknown, confirmedInsecure: boolean)
     () => false,
   );
   if (seen !== true) return answer({ filled: false, reason: 'unseen' });
-  if (isInsecureUrl(found.url) && !confirmedInsecure) {
-    return answer({ filled: false, reason: 'insecure' });
-  }
-  await autofill.offer(found.tabId, listed.id, false, confirmedInsecure, false, {
-    frameId: found.frameId,
-    session: found.id,
+  await autofill.offer(found.tabId, listed.id, {
+    menu: { frameId: found.frameId, session: found.id },
   });
   answer({ filled: true });
 }
@@ -279,7 +276,7 @@ async function onRequest(port: Port, message: MenuRequest) {
       found.busy = true;
       try {
         if (message.type === 'pick') {
-          await pick(found, message.itemId, message.confirmedInsecure === true);
+          await pick(found, message.itemId);
         } else {
           await masked(found);
         }

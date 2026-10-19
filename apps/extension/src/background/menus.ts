@@ -126,7 +126,7 @@ export async function onMenuClick(info: chrome.contextMenus.OnClickData, tab?: c
       await session.openPopup();
       return;
     }
-    await offer(tab.id, itemId, action !== 'fill');
+    await offer(tab.id, itemId, { explicit: action !== 'fill' });
   }
 }
 

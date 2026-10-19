@@ -14,6 +14,24 @@ const LOGIN = `<!doctype html>
   </form>
 </body></html>`;
 
+// The username first, the password after "Next", in the same document (Google, Microsoft).
+const TWO_STEP = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Sign in</title></head>
+<body>
+  <h1>Sign in in two steps</h1>
+  <form id="first" onsubmit="event.preventDefault(); secondStep();">
+    <label>Username <input id="username" name="username" autocomplete="username"></label>
+    <button id="next" type="submit">Next</button>
+  </form>
+<script>
+function secondStep() {
+  document.getElementById('first').remove();
+  document.body.insertAdjacentHTML('beforeend',
+    '<form method="post" action="/login"><label>Password <input id="password" name="password" type="password" autocomplete="current-password"></label><button type="submit">Sign in</button></form>');
+}
+</script>
+</body></html>`;
+
 const WELCOME = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Welcome</title></head>
 <body><h1 id="welcome">Welcome back</h1><input id="search" type="search" placeholder="Search"></body></html>`;
@@ -101,7 +119,12 @@ export function startPages() {
       });
       return;
     }
-    const page = { '/login': LOGIN, '/welcome': WELCOME, '/webauthn': WEBAUTHN }[path];
+    const page = {
+      '/login': LOGIN,
+      '/two-step': TWO_STEP,
+      '/welcome': WELCOME,
+      '/webauthn': WEBAUTHN,
+    }[path];
     if (!page) {
       response.writeHead(404);
       response.end();

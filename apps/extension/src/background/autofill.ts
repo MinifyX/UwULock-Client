@@ -68,6 +68,8 @@ export function tabUrl(tabId: number): string | undefined {
 ext.tabs.onRemoved.addListener((tabId) => {
   tabUrls.delete(tabId);
   seenUsernames.delete(tabId);
+  lastFill.delete(tabId);
+  pendingSteps.delete(tabId);
 });
 
 function order(a: vault.IndexEntry, b: vault.IndexEntry): number {
@@ -252,6 +254,9 @@ export async function pageInfo(sender: Sender): Promise<PageInfo> {
   const url = sender.url ?? '';
   const tabId = sender.tab?.id;
   if (tabId !== undefined && sender.frameId === 0 && url) {
+    // Another site in the tab: no second step there for the first.
+    const pending = pendingSteps.get(tabId);
+    if (pending && pending.origin !== topOrigin(sender)) pendingSteps.delete(tabId);
     tabUrls.set(tabId, url);
     void onTopFrame(tabId);
   }
@@ -293,13 +298,12 @@ type Offer = {
   created: number;
   /** Picked in the popup for this tab: the top frame may have it even if it doesn't match. */
   explicit: boolean;
-  /** The popup asked about plain http already. */
-  insecureOk: boolean;
   /**
    * The master password was asked for this very fill (an item with the re-prompt): good for one
    * fill, as in Bitwarden, which asks every time.
    */
-  reprompted: boolean; /**
+  reprompted: boolean;
+  /**
    * Picked in a frame's inline menu: only that frame may claim it, once. (Offers from the popup
    * go to every frame of the tab, each judged on its own address.)
    */
@@ -308,23 +312,72 @@ type Offer = {
 
 const OFFER_LIFETIME = 15_000;
 const offers = new Map<string, Offer>();
+/** Which frame of a tab, on which page, while which vault was open. */
+type FillPlace = { itemId: string; at: number; frameId: number; origin: string; closings: number };
 /** The last fill per tab, for copying its one-time code afterwards. */
-const lastFill = new Map<number, { itemId: string; at: number }>();
+const lastFill = new Map<number, FillPlace>();
+/**
+ * A first step filled with this item (the username alone): its password goes into the second
+ * step when that appears soon after, in the same frame, with the tab still on that origin.
+ */
+const pendingSteps = new Map<number, FillPlace>();
+const STEP_WINDOW = 5_000;
+const STEP_LIFETIME = 60_000;
+
+/** The origin of the tab's page, as `sender`'s frame sees the tab. */
+function topOrigin(sender: Sender): string {
+  const tabId = sender.tab?.id;
+  const url =
+    sender.frameId === 0
+      ? sender.url
+      : (sender.tab?.url ?? (tabId !== undefined ? tabUrls.get(tabId) : undefined));
+  try {
+    return url ? new URL(url).origin : '';
+  } catch {
+    return '';
+  }
+}
+
+function placeOf(sender: Sender, itemId: string): FillPlace {
+  return {
+    itemId,
+    at: Date.now(),
+    frameId: sender.frameId ?? -1,
+    origin: topOrigin(sender),
+    closings: vault.closedCount(),
+  };
+}
+
+/** Still the same vault, frame and page as `place`, within `window`. */
+function samePlace(place: FillPlace, sender: Sender, window: number): boolean {
+  return (
+    Date.now() - place.at <= window &&
+    place.closings === vault.closedCount() &&
+    place.frameId === sender.frameId &&
+    !!place.origin &&
+    place.origin === topOrigin(sender)
+  );
+}
 
 function token(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+export type OfferOptions = {
+  /** Picked in the popup for this tab (see `Offer.explicit`). */
+  explicit?: boolean;
+  reprompted?: boolean;
+  /** Picked in a frame's inline menu. */
+  menu?: { frameId: number; session: string };
+  /** For one frame only: the second step of a login whose first step was just filled there. */
+  frameId?: number;
+};
+
 /** Ask every frame of a tab to claim an item's values; each is judged on its own address. */
-export async function offer(
-  tabId: number,
-  itemId: string,
-  explicit: boolean,
-  insecureOk = false,
-  reprompted = false,
-  menu?: { frameId: number; session: string },
-) {
+export async function offer(tabId: number, itemId: string, options: OfferOptions = {}) {
+  const { explicit = false, reprompted = false, menu } = options;
+  const frameId = menu?.frameId ?? options.frameId;
   const entry = vault.autofillIndex().find((e) => e.id === itemId);
   if (!entry) throw { kind: 'not-found', message: "This item isn't in the vault any more." };
   for (const [key, old] of offers)
@@ -335,9 +388,8 @@ export async function offer(
     itemId,
     created: Date.now(),
     explicit,
-    insecureOk,
     reprompted,
-    ...(menu ? { frameId: menu.frameId } : {}),
+    ...(frameId !== undefined ? { frameId } : {}),
   });
   const message: BackgroundMessage = {
     type: 'bg:fill-offer',
@@ -346,9 +398,10 @@ export async function offer(
     kind: entry.kind,
     ...(menu ? { session: menu.session } : {}),
   };
-  const options = menu ? { frameId: menu.frameId } : undefined;
   await (
-    options ? ext.tabs.sendMessage(tabId, message, options) : ext.tabs.sendMessage(tabId, message)
+    frameId !== undefined
+      ? ext.tabs.sendMessage(tabId, message, { frameId })
+      : ext.tabs.sendMessage(tabId, message)
   ).catch(() => undefined);
 }
 
@@ -356,7 +409,6 @@ export async function fill(
   sender: Sender,
   itemId: string,
   offerToken: unknown,
-  confirmedInsecure: boolean,
 ): Promise<FillAnswer> {
   const refuse = (reason: Extract<FillAnswer, { filled: false }>['reason']): FillAnswer => ({
     filled: false,
@@ -392,8 +444,6 @@ export async function fill(
     return refuse('no-match');
   }
 
-  if (isInsecureUrl(url) && !confirmedInsecure && !fromOffer.insecureOk) return refuse('insecure');
-
   // An item with the re-prompt is filled only right after the master password was asked for
   // this fill — never on the strength of an earlier answer (CL-I3).
   if (entry.reprompt && !fromOffer.reprompted) return refuse('reprompt');
@@ -408,7 +458,7 @@ export async function fill(
   // A menu's pick and an answered re-prompt are good for one fill.
   if (fromOffer.reprompted || fromOffer.frameId !== undefined) offers.delete(offerToken);
   lastUsed.set(itemId, Date.now());
-  lastFill.set(tabId, { itemId, at: Date.now() });
+  lastFill.set(tabId, placeOf(sender, itemId));
   await session.touch();
   return { filled: true, values };
 }
@@ -424,6 +474,49 @@ export async function copyTotp(sender: Sender, itemId: string) {
   if (code) await clipboard.copy(code);
 }
 
+/**
+ * The content script filled the username of a first step with this item: remember it for the
+ * second. Only right after a fill of that very item there, and never for an item with the
+ * re-prompt, which asks for the master password with every fill.
+ */
+export function usernameStepFilled(sender: Sender, itemId: string) {
+  const tabId = sender.tab?.id;
+  if (tabId === undefined) return;
+  const last = lastFill.get(tabId);
+  if (!last || last.itemId !== itemId || !samePlace(last, sender, STEP_WINDOW)) return;
+  const entry = vault.autofillIndex().find((e) => e.id === itemId);
+  if (!entry || entry.kind !== 'login' || entry.reprompt || entry.archived) return;
+  pendingSteps.set(tabId, placeOf(sender, itemId));
+}
+
+/**
+ * An empty password field appeared in a frame: the second step of a login whose first step was
+ * filled in this tab within the last minute. Offered to that frame only, if its page matches the
+ * item by itself, and only once.
+ */
+export async function nextStep(sender: Sender) {
+  const tabId = sender.tab?.id;
+  if (tabId === undefined || sender.frameId === undefined) return;
+  const pending = pendingSteps.get(tabId);
+  if (!pending) return;
+  if (Date.now() - pending.at > STEP_LIFETIME || pending.closings !== vault.closedCount()) {
+    pendingSteps.delete(tabId);
+    return;
+  }
+  if (!session.unlockedAccountId() || !samePlace(pending, sender, STEP_LIFETIME)) return;
+  const url = sender.url ?? '';
+  if (!isFillableUrl(url)) return;
+  const entry = vault.autofillIndex().find((e) => e.id === pending.itemId);
+  if (!entry || entry.kind !== 'login' || entry.reprompt || entry.archived) return;
+  // Taken before waiting, so that two password fields don't both get it.
+  pendingSteps.delete(tabId);
+  if (!(await loginMatches(entry, url, { topFrame: sender.frameId === 0, strict: true }))) {
+    if (!pendingSteps.has(tabId)) pendingSteps.set(tabId, pending);
+    return;
+  }
+  await offer(tabId, entry.id, { frameId: sender.frameId });
+}
+
 /** The shortcut, or the context menu without a pick: the best match of the tab. */
 export async function fillBest(tab: chrome.tabs.Tab) {
   if (tab.id === undefined) return;
@@ -437,7 +530,7 @@ export async function fillBest(tab: chrome.tabs.Tab) {
   const best = (await matchingLogins(url, { topFrame: true, strict: true }))[0];
   // An item with the re-prompt asks for the master password in the popup first.
   if (best?.reprompt) await session.openPopup();
-  else if (best) await offer(tab.id, best.id, false);
+  else if (best) await offer(tab.id, best.id);
 }
 
 // ── The popup's view of the tab ───────────────────────────
@@ -491,11 +584,7 @@ export async function tabItems(): Promise<TabItems> {
  * A pick in the popup. An item with the re-prompt needs the master password with every fill
  * (`password`), checked here before the page is offered anything.
  */
-export async function fillTab(
-  itemId: string,
-  confirmedInsecure: boolean,
-  password: string | undefined,
-) {
+export async function fillTab(itemId: string, password: string | undefined) {
   const tab = await activeTab();
   if (tab?.id === undefined) throw { kind: 'no-tab', message: 'No page to fill.' };
   const entry = vault.autofillIndex().find((e) => e.id === itemId);
@@ -508,7 +597,7 @@ export async function fillTab(
     await vault.verifyReprompt(itemId, password);
     reprompted = true;
   }
-  await offer(tab.id, itemId, true, confirmedInsecure, reprompted);
+  await offer(tab.id, itemId, { explicit: true, reprompted });
 }
 
 // ── Saving what was sent ──────────────────────────────────
@@ -605,6 +694,8 @@ export async function submitted(
   forgetOld();
   const url = sender.url ?? '';
   const tabId = sender.tab?.id;
+  // A password sent: whatever the second step was, it is done.
+  if (tabId !== undefined && password) pendingSteps.delete(tabId);
   const config = await settings();
   if (tabId === undefined || !isFillableUrl(url) || !config.savePrompt) return;
   const host = hostnameOf(url);

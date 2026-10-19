@@ -50,6 +50,7 @@ function show() {
       kind: 'login',
       language: 'en',
       masked: false,
+      insecure: false,
       items: [
         {
           id: 'bank',

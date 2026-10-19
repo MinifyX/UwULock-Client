@@ -178,7 +178,6 @@ async function handlePage(message: PageRequest): Promise<unknown> {
       await session.requireUnlocked();
       return autofill.fillTab(
         message.id,
-        message.confirmedInsecure,
         typeof message.password === 'string' ? message.password : undefined,
       );
     case 'pending-saves':
@@ -221,12 +220,12 @@ async function handleContent(message: ContentRequest, sender: Sender): Promise<u
     case 'content:page-info':
       return autofill.pageInfo(sender);
     case 'content:fill':
-      return autofill.fill(
-        sender,
-        message.itemId,
-        message.token,
-        message.confirmedInsecure === true,
-      );
+      return autofill.fill(sender, message.itemId, message.token);
+    case 'content:username-step':
+      if (typeof message.itemId === 'string') autofill.usernameStepFilled(sender, message.itemId);
+      return null;
+    case 'content:next-step':
+      return autofill.nextStep(sender).then(() => null);
     case 'content:menu-open':
       return menu.open(sender, message.kind, message.maskable);
     case 'content:menu-close':
