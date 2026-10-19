@@ -24,9 +24,8 @@ export function TabView({
   const settings = useSettings();
   const [items, setItems] = useState<TabItems | null>(null);
   const [pending, setPending] = useState<PendingSave[]>([]);
-  const [confirm, setConfirm] = useState<string | null>(null);
   /** An item with the re-prompt, waiting for the master password to be filled. */
-  const [reprompt, setReprompt] = useState<{ item: ItemSummary; insecureOk: boolean } | null>(null);
+  const [reprompt, setReprompt] = useState<ItemSummary | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -47,17 +46,13 @@ export function TabView({
     return () => ext.runtime.onMessage.removeListener(listener);
   }, [load]);
 
-  const fill = async (item: ItemSummary, insecureOk = false) => {
-    if (items?.insecure && !insecureOk) {
-      setConfirm(item.id);
-      return;
-    }
+  const fill = async (item: ItemSummary) => {
     if (item.reprompt) {
-      setReprompt({ item, insecureOk });
+      setReprompt(item);
       return;
     }
     try {
-      await fillTab(item.id, insecureOk);
+      await fillTab(item.id);
       window.close();
     } catch (e) {
       toastError(e);
@@ -173,32 +168,17 @@ export function TabView({
         )}
       </h2>
 
-      {confirm && (
-        <div className="notice" data-tone="error" role="alert">
-          <span>{t('Diese Seite ist nicht verschlüsselt (http). Trotzdem ausfüllen?')}</span>
-          <Button
-            size="sm"
-            onClick={() => {
-              const item =
-                items.logins.find((i) => i.id === confirm) ??
-                [...items.cards, ...items.identities].find((i) => i.id === confirm);
-              setConfirm(null);
-              if (item) void fill(item, true);
-            }}
-          >
-            {t('Ausfüllen')}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setConfirm(null)}>
-            {t('Abbrechen')}
-          </Button>
-        </div>
+      {items.insecure && (
+        <p className="notice" data-tone="error" role="note">
+          {t('HTTP statt HTTPS – möglicherweise unsicher')}
+        </p>
       )}
 
       {reprompt && (
         <FillReprompt
-          name={reprompt.item.name}
+          name={reprompt.name}
           onFill={async (password) => {
-            await fillTab(reprompt.item.id, reprompt.insecureOk, password);
+            await fillTab(reprompt.id, password);
             window.close();
           }}
           onCancel={() => setReprompt(null)}

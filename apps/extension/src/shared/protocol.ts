@@ -55,7 +55,7 @@ export type PageInfo = {
    * frame only (`MenuView`).
    */
   counts: { logins: number; cards: number; identities: number };
-  /** The frame is plain http: filling asks first. */
+  /** The frame is plain http on the internet (see `isInsecureUrl`): filling warns. */
   insecure: boolean;
   /** Show the button and menu in login fields. */
   inlineMenu: boolean;
@@ -105,9 +105,8 @@ export type IdentityValues = {
 
 export type FillValues = LoginValues | CardValues | IdentityValues;
 
-/** Why a fill was refused. `insecure`: ask the person first, then send again with `confirmedInsecure`. */
-export type FillRefusal =
-  'locked' | 'insecure' | 'no-match' | 'reprompt' | 'expired' | 'not-found' | 'refused';
+/** Why a fill was refused. */
+export type FillRefusal = 'locked' | 'no-match' | 'reprompt' | 'expired' | 'not-found' | 'refused';
 
 export type FillAnswer =
   { filled: true; values: FillValues } | { filled: false; reason: FillRefusal };
@@ -200,7 +199,7 @@ export type ContentRequest =
    * it in the popup, the context menu, the menu's frame, or pressed the shortcut. Nothing is
    * filled without one.
    */
-  | { type: 'content:fill'; itemId: string; token: string; confirmedInsecure?: boolean }
+  | { type: 'content:fill'; itemId: string; token: string }
   /**
    * The inline menu opens for a field of this frame: a session the menu's frame is shown for
    * (`menu.html#<session>`). `kind`: what the field takes; `maskable`: a username or email field.
@@ -226,6 +225,10 @@ export type ContentRequest =
   | { type: 'content:prompt-answer'; id: string; answer: SaveAnswer }
   /** The page had no field for the one-time code: copy it instead, like Bitwarden does. */
   | { type: 'content:copy-totp'; itemId: string }
+  /** The username of a first step was just filled with this item: its password comes next. */
+  | { type: 'content:username-step'; itemId: string }
+  /** An empty password field appeared: the second step of a login filled just before? */
+  | { type: 'content:next-step' }
   /** The vault is locked: open the popup to unlock. */
   | { type: 'content:open-popup' }
   /** UwULock Server's / Bitwarden's WebAuthn fallback connector answered (two-step login). */
@@ -281,6 +284,8 @@ export type MenuView = {
   items: PageItem[];
   /** Offer "New masked address" (UwULock Server, a username or email field). */
   masked: boolean;
+  /** The page is plain http on the internet: the list says so. */
+  insecure: boolean;
   language: 'de' | 'en';
 };
 
@@ -289,7 +294,7 @@ export type MenuPickAnswer = { filled: true } | { filled: false; reason: FillRef
 
 export type MenuRequest =
   | { type: 'hello'; session: string }
-  | { type: 'pick'; itemId: string; confirmedInsecure?: boolean }
+  | { type: 'pick'; itemId: string }
   | { type: 'masked' }
   | { type: 'open-popup' }
   | { type: 'open-masked-settings' }
@@ -725,7 +730,7 @@ export type PageRequest =
   /** The items for the active tab, and whether it is plain http. */
   | { type: 'tab-items' }
   /** `password`: the master password, which an item with the re-prompt needs for every fill. */
-  | { type: 'fill-tab'; id: string; confirmedInsecure: boolean; password?: string }
+  | { type: 'fill-tab'; id: string; password?: string }
   | { type: 'pending-saves' }
   | { type: 'answer-pending-save'; id: string; answer: SaveAnswer }
   | { type: 'passkey-prompt'; id: string }

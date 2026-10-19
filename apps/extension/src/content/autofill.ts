@@ -12,7 +12,7 @@
  */
 
 import { ext } from '../shared/browser';
-import { setLanguage } from '../shared/i18n';
+import { setLanguage, t } from '../shared/i18n';
 import { ask } from '../shared/messages';
 import type {
   BackgroundMessage,
@@ -33,7 +33,7 @@ import {
   type TotpFields,
 } from './forms';
 import { createInlineMenu, type MenuKind } from './inline-menu';
-import { showInsecureConfirm, showSavePrompt } from './notification-bar';
+import { showNotice, showSavePrompt } from './notification-bar';
 import { installSaveDetection } from './save-detect';
 
 const CONNECTOR = '/webauthn-fallback-connector.html';
@@ -41,6 +41,9 @@ const CONNECTOR = '/webauthn-fallback-connector.html';
 const INFO_INTERVAL_MS = 2000;
 /** Added nodes looked at per batch of DOM changes. */
 const MUTATION_CAP = 200;
+/** How long after a first step (the username alone) its second is looked for, and how often. */
+const STEP_MS = 60_000;
+const STEP_POLL_MS = 700;
 
 const isTop = (() => {
   try {
@@ -141,16 +144,23 @@ function canFill(s: Scan, kind: ItemKind): boolean {
 
 // ── Filling ───────────────────────────────────────────────
 
-function apply(values: FillValues, itemId: string, near: Element | null) {
+/** Fills what fits; for logins, says which kind of form it was. */
+function apply(
+  values: FillValues,
+  itemId: string,
+  near: Element | null,
+): LoginFields['kind'] | null {
   filling = true;
   try {
     const s = fields(true);
     if (values.kind === 'login') {
       const totp = pickTotp(s, near);
-      fillLogin(pickLogin(s, near), totp, values);
+      const login = pickLogin(s, near);
+      fillLogin(login, totp, values);
       if (values.totp && !totp) {
         void ask<unknown>({ type: 'content:copy-totp', itemId }).catch(() => undefined);
       }
+      return login?.kind ?? null;
     } else if (values.kind === 'card') {
       const card = pickCard(s, near);
       if (card) fillCard(card, values);
@@ -158,46 +168,91 @@ function apply(values: FillValues, itemId: string, near: Element | null) {
       const identity = pickIdentity(s, near);
       if (identity) fillIdentity(identity, values);
     }
+    return null;
   } finally {
     filling = false;
   }
 }
 
-async function claim(
-  offer: { token: string; itemId: string },
-  confirmedInsecure: boolean,
-  near: Element | null = null,
-) {
+type Offer = {
+  token: string;
+  itemId: string;
+  kind: ItemKind;
+  session?: string;
+};
+
+async function claim(offer: Offer, near: Element | null = null) {
   let answer: FillAnswer;
   try {
     answer = await ask<FillAnswer>({
       type: 'content:fill',
       itemId: offer.itemId,
       token: offer.token,
-      ...(confirmedInsecure ? { confirmedInsecure: true } : {}),
     });
   } catch {
     return;
   }
-  if (answer.filled) {
-    apply(answer.values, offer.itemId, near ?? deepActive());
-  } else if (answer.reason === 'insecure' && !confirmedInsecure) {
-    await loadInfo();
-    showInsecureConfirm(() => claim(offer, true, near));
+  if (!answer.filled) return;
+  const kind = apply(answer.values, offer.itemId, near ?? deepActive());
+  if (kind === 'username-step') firstStepFilled(offer.itemId);
+  else if (kind) stopStepWatch();
+  // Only this frame's own menu warned about this frame (the popup, the shortcut and the second
+  // step judge the tab, or nothing): say it afterwards, without asking.
+  if (offer.session === undefined && (await loadInfo())?.insecure) {
+    showNotice(t('HTTP statt HTTPS – möglicherweise unsicher'));
   }
 }
 
-function onFillOffer(offer: { token: string; itemId: string; kind: ItemKind; session?: string }) {
+function onFillOffer(offer: Offer) {
   // Picked in this frame's inline menu: into the menu's field, and the menu closes.
   if (offer.session !== undefined) {
     const field = menu.field();
     if (!field || offer.session !== menu.session()) return;
     menu.detach();
-    void claim(offer, false, field);
+    void claim(offer, field);
     return;
   }
   if (!canFill(fields(true), offer.kind)) return;
-  void claim(offer, false);
+  void claim(offer);
+}
+
+// ── Logins in two steps ───────────────────────────────────
+
+/** Password fields already reported as a possible second step. */
+const stepAsked = new WeakSet<HTMLInputElement>();
+let stepTimer: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * The username of a first step was filled: the background keeps the item for its second step
+ * for a minute. This frame looks for that step meanwhile, also where no field is added (a
+ * password field that was only hidden).
+ */
+function firstStepFilled(itemId: string) {
+  void ask<unknown>({ type: 'content:username-step', itemId }).catch(() => undefined);
+  stopStepWatch();
+  const until = Date.now() + STEP_MS;
+  stepTimer = setInterval(() => {
+    if (Date.now() > until) stopStepWatch();
+    else if (!document.hidden) checkSecondStep(true);
+  }, STEP_POLL_MS);
+}
+
+function stopStepWatch() {
+  if (stepTimer) clearInterval(stepTimer);
+  stepTimer = null;
+}
+
+/** An empty password field to fill: asks the background once per field whether it is a second step. */
+function checkSecondStep(fresh = false) {
+  if (filling || info?.state !== 'unlocked') return;
+  for (const login of fields(fresh).logins) {
+    const password = login.password;
+    if (login.kind !== 'login' || !password || password.value || stepAsked.has(password)) continue;
+    stepAsked.add(password);
+    stopStepWatch();
+    void ask<unknown>({ type: 'content:next-step' }).catch(() => undefined);
+    return;
+  }
 }
 
 // ── The page's info ───────────────────────────────────────
@@ -229,6 +284,7 @@ function loadInfo(force = false): Promise<PageInfo | null> {
     });
   return infoAsked.then((value) => {
     menu.refresh();
+    checkSecondStep();
     const active = deepActive();
     if (active instanceof HTMLInputElement && !menu.field()) onFocus(active);
     return value;
@@ -287,6 +343,7 @@ function onFieldsChanged() {
   scan = null;
   menu.check();
   if (!info || Date.now() - infoAt > INFO_INTERVAL_MS) void loadInfo(true);
+  else checkSecondStep();
 }
 
 function hasField(node: Node): boolean {

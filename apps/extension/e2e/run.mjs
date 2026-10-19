@@ -378,6 +378,21 @@ async function main() {
         (await site.locator('#password').inputValue()) === SITE_PASSWORD,
     );
 
+    step('A login in two steps: the password follows by itself after "Next"');
+    await site.goto(`${pages.url}/two-step`);
+    await site.locator('#username').click();
+    await clickAx(site, 'button', 'Open the UwULock menu');
+    await clickMenuOption(site, 'localhost');
+    await until(
+      'the username',
+      async () => (await site.locator('#username').inputValue()) === SITE_USER,
+    );
+    await site.locator('#next').click();
+    await until(
+      'the password of the second step',
+      async () => (await site.locator('#password').inputValue()) === SITE_PASSWORD,
+    );
+
     step('A see-through layer over the menu that lets clicks through: the menu takes none');
     await site.goto(`${pages.url}/login`);
     await site.locator('#username').click();

@@ -4,8 +4,9 @@
  * the background or changes the page.
  *
  * Fields are grouped by their form. Fields outside any form are grouped by the closest
- * `fieldset`, `dialog` or `[role=form]`, else by their document or shadow root. Open shadow
- * roots are searched too, closed ones can't be.
+ * `fieldset`, `dialog` or `[role=form]`, else by their document. A field in an open shadow root
+ * (a web component's input) belongs to the group of the component around it: the same search
+ * goes on from its host. Closed shadow roots can't be searched.
  *
  * Visibility: jsdom (the tests) has no layout, every box is 0×0 there. Sizes and positions are
  * therefore only used when the page has a layout at all (its root element has a size); without
@@ -102,21 +103,44 @@ export function collectControls(root: ParentNode): Control[] {
   return out;
 }
 
-function groupKey(control: Control): Node {
-  return (
-    control.form ??
-    control.closest('fieldset, dialog, [role="form"]') ??
-    (control.getRootNode() as Document | ShadowRoot)
-  );
+const GROUPS = 'form, fieldset, dialog, [role="form"]';
+
+/**
+ * The form, fieldset, dialog or document a control belongs to, across open shadow roots. A
+ * fieldset around this one field alone groups nothing (Reddit wraps each field in its own).
+ */
+function groupKey(control: Control, sizes: Map<Element, number>): Node {
+  if (control.form) return control.form;
+  let node: Element = control;
+  for (let depth = 0; depth < 20; depth += 1) {
+    let found = node.closest(GROUPS);
+    while (found?.localName === 'fieldset') {
+      let size = sizes.get(found);
+      if (size === undefined) {
+        size = collectControls(found).filter((el) => !isHiddenInput(el)).length;
+        sizes.set(found, size);
+      }
+      if (size > 1) break;
+      found = found.parentElement?.closest(GROUPS) ?? null;
+    }
+    if (found) return found;
+    const root = node.getRootNode();
+    if (!(root instanceof ShadowRoot)) return root;
+    node = root.host;
+  }
+  return node.getRootNode();
 }
+
+const isHiddenInput = (el: Control) => el instanceof HTMLInputElement && el.type === 'hidden';
 
 function groupsOf(root: ParentNode): Group[] {
   const groups = new Map<Node, Group>();
+  const sizes = new Map<Element, number>();
   for (const control of collectControls(root)) {
-    const key = groupKey(control);
+    const key = groupKey(control, sizes);
     let group = groups.get(key);
     if (!group) {
-      group = { form: control.form, controls: [] };
+      group = { form: key instanceof HTMLFormElement ? key : null, controls: [] };
       groups.set(key, group);
     }
     group.controls.push(control);
@@ -206,7 +230,7 @@ export function hintText(el: Element): string {
     const root = el.getRootNode() as Document | ShadowRoot;
     for (const id of labelledBy.split(/\s+/)) {
       const label = id && root.getElementById?.(id);
-      if (label) parts.push(label.textContent ?? '');
+      if (label) parts.push((label.textContent ?? '').slice(0, 200));
     }
   }
   return parts
@@ -265,6 +289,16 @@ function looksLikeUsername(el: HTMLInputElement): boolean {
   const ac = autocompleteName(el);
   if (ac === 'username' || ac === 'email') return true;
   return el.type === 'email' || USER_HINT.test(hintText(el));
+}
+
+/** Names of fields that are a login's username and nothing else. */
+const USERNAME_NAME =
+  /^(user(_?name)?|login(_?name|_?id|fmt)?|identifier|j_username|benutzer(name)?|user_?id|uname|login_?field|account_?name)$/i;
+
+/** The field says it is a login's username: `autocomplete=username`, or its name or id does. */
+function surelyUsername(el: HTMLInputElement): boolean {
+  if (autocompleteName(el) === 'username') return true;
+  return USERNAME_NAME.test(el.name) || USERNAME_NAME.test(el.id);
 }
 
 // ── Logins ────────────────────────────────────────────────
@@ -328,22 +362,38 @@ function buttonText(el: Element): string {
     el.id,
     el.getAttribute('name') ?? '',
   ];
+  // Amazon's "Weiter" is a submit input labelled by a span next to it.
+  const labelledBy = el.getAttribute('aria-labelledby');
+  if (labelledBy) {
+    const root = el.getRootNode() as Document | ShadowRoot;
+    for (const id of labelledBy.split(/\s+/).slice(0, 3)) {
+      const label = id && root.getElementById?.(id);
+      if (label) parts.push((label.textContent ?? '').slice(0, 200));
+    }
+  }
   return parts.join(' ').slice(0, 200).toLowerCase();
 }
 
 const BUTTONS =
   'button, input[type="submit"], input[type="button"], input[type="image"], [role="button"]';
 
-/** The buttons closest to `el`: in its form, or in the nearest ancestor that has any. */
-export function nearbyButtons(el: Element): Element[] {
+/**
+ * The buttons closest to `el`: in its form, or in the nearest ancestor that has any. With
+ * `beyondForm`, also those of the nearest ancestors around the form: Synology's DSM puts its
+ * sign-in arrow next to the form, not in it.
+ */
+export function nearbyButtons(el: Element, beyondForm = false): Element[] {
   const form = (el as HTMLInputElement).form;
-  if (form) return Array.from(form.querySelectorAll(BUTTONS));
-  let node: Element | null = el.parentElement;
-  for (let depth = 0; node && depth < 6; depth += 1, node = node.parentElement) {
-    const found = node.querySelectorAll(BUTTONS);
-    if (found.length) return Array.from(found);
+  const own = form ? Array.from(form.querySelectorAll(BUTTONS)) : [];
+  if (form && !beyondForm) return own;
+  let node: Element | null = parentAcrossShadow(form ?? el);
+  for (let depth = 0; node && depth < 6; depth += 1, node = parentAcrossShadow(node)) {
+    const found = Array.from(node.querySelectorAll(BUTTONS)).filter(
+      (button) => !own.includes(button),
+    );
+    if (found.length) return [...own, ...found];
   }
-  return [];
+  return own;
 }
 
 function usernameStep(group: Group): HTMLInputElement | null {
@@ -358,9 +408,12 @@ function usernameStep(group: Group): HTMLInputElement | null {
   const field = texts[0]!;
   if (!isTextField(field) || !looksLikeUsername(field) || isTotpField(field)) return null;
   if (NEWSLETTER_HINT.test(hintText(field))) return null;
-  const buttons = nearbyButtons(field).map(buttonText);
+  const buttons = nearbyButtons(field, true).map(buttonText);
   if (buttons.some((text) => NEWSLETTER_HINT.test(text))) return null;
   if (group.form && NEWSLETTER_HINT.test(hintText(group.form))) return null;
+  // A field that says it is a username needs no "next" button with words on it: UniFi's is an
+  // arrow, Google's lies far outside any form, and Enter sends it anyway.
+  if (surelyUsername(field)) return field;
   return buttons.some((text) => NEXT_HINT.test(text)) ? field : null;
 }
 

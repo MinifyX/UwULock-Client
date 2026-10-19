@@ -5,7 +5,6 @@
   "Ausfüllen hat nicht geklappt.": "Filling in didn't work.",
   "Bei UwULock anmelden": "Log in to UwULock",
   "Das hat nicht geklappt.": "That didn't work.",
-  "Diese Seite ist nicht verschlüsselt (http). Trotzdem ausfüllen?": "This page is not encrypted (http). Fill in anyway?",
   "Dieser Eintrag verlangt dein Master-Passwort – öffne UwULock.": "This item asks for your master password – open UwULock.",
   "Gespeichert": "Saved",
   "Keine passenden Einträge": "No matching items",
@@ -16,7 +15,6 @@
   "Passwort für {itemName} bei {host} aktualisieren?": "Update the password of {itemName} for {host}?",
   "Schließen": "Close",
   "Speichern": "Save",
-  "Trotzdem ausfüllen": "Fill in anyway",
   "UwULock entsperren": "Unlock UwULock",
   "UwULock ist gesperrt.": "UwULock is locked.",
   "UwULock öffnen": "Open UwULock",
@@ -35,5 +33,6 @@
   "Dein Konto hat noch keinen Schlüssel für UwULocks Extras. Öffne einmal den Web-Tresor oder UwULock am Rechner.": "Your account has no key for UwULock's extras yet. Open the web vault or UwULock on your computer once.",
   "Das ist nicht erlaubt.": "That isn't allowed.",
   "Der Server hat die Anfrage abgelehnt: {reason}": "The server refused the request: {reason}",
-  "In diesem eingebetteten Bereich füllst du über das UwULock-Fenster aus.": "In this embedded part of the page, fill from the UwULock window."
+  "In diesem eingebetteten Bereich füllst du über das UwULock-Fenster aus.": "In this embedded part of the page, fill from the UwULock window.",
+  "HTTP statt HTTPS – möglicherweise unsicher": "HTTP instead of HTTPS – possibly insecure"
 }

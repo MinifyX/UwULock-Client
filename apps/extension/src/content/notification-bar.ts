@@ -1,7 +1,7 @@
 /**
  * The bar at the top right of a page that offers to save or update a login after a form was
- * sent (top frame only), and asks before filling a plain-http page. One bar at a time; a new
- * one replaces the old. Its buttons take only clicks the guard of ui.ts accepts: the bar seen
+ * sent (top frame only). One bar at a time; a new one replaces the old. `showNotice` is a
+ * short note beside it with nothing to click (a plain-http page was filled by the shortcut). Its buttons take only clicks the guard of ui.ts accepts: the bar seen
  * whole and unchanged for a moment, the pointer pressed on the button then.
  */
 
@@ -185,22 +185,46 @@ export function showSavePrompt(prompt: SavePrompt) {
   );
 }
 
-/** Asks before filling a plain-http page; `confirm` runs after a real click. */
-export function showInsecureConfirm(confirm: () => Promise<void> | void) {
-  const bar = open(
-    t('Diese Seite ist nicht verschlüsselt (http). Trotzdem ausfüllen?'),
-    null,
-    [
-      {
-        label: t('Trotzdem ausfüllen'),
-        primary: true,
-        run: async () => {
-          closeBar();
-          await confirm();
-        },
-      },
-      { label: t('Abbrechen'), run: () => finish(bar, null) },
-    ],
-    () => finish(bar, null),
+const NOTICE_CSS = `
+.notice {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  max-width: calc(100vw - 24px);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  pointer-events: none;
+}
+.notice .text { color: var(--uwu-warning-ink); font-weight: 600; }
+`;
+const NOTICE_MS = 4000;
+
+let notice: { host: HTMLElement; timer: ReturnType<typeof setTimeout> } | null = null;
+
+/** A short note at the top right, nothing to click: it goes away by itself. */
+export function showNotice(text: string) {
+  if (notice) {
+    clearTimeout(notice.timer);
+    notice.host.remove();
+  }
+  const { host, root } = createHost(NOTICE_CSS);
+  root.append(
+    h(
+      'div',
+      { class: 'notice panel', role: 'status' },
+      lockGlyph(18),
+      h('span', { class: 'text' }, text),
+    ),
   );
+  const own = {
+    host,
+    timer: setTimeout(() => {
+      host.remove();
+      if (notice === own) notice = null;
+    }, NOTICE_MS),
+  };
+  notice = own;
 }

@@ -60,6 +60,49 @@ describe('logins', () => {
     expect(login!.password).toBe($('#pw'));
   });
 
+  it('takes a sign-in button outside the form for the first step (Synology DSM)', () => {
+    document.body.innerHTML = `<div class="login">
+      <form><input name="username" autocomplete="username" placeholder="Benutzername"></form>
+      <div role="button" aria-label="Anmelden" tabindex="0"></div></div>`;
+    const [login] = findLoginFields(document);
+    expect(login).toMatchObject({ kind: 'username-step', password: null });
+  });
+
+  it('takes a named username field with an icon-only button as a first step (UniFi)', () => {
+    document.body.innerHTML = `<form><input id="user" autocomplete="username">
+      <button type="submit"><svg></svg></button></form>`;
+    const [login] = findLoginFields(document);
+    expect(login).toMatchObject({ kind: 'username-step' });
+    expect(login!.username).toBe($('#user'));
+  });
+
+  it('reads a button labelled by aria-labelledby (Amazon)', () => {
+    document.body.innerHTML = `<form><input type="email" id="claim" name="mail">
+      <span id="next-label">Weiter</span><input type="submit" aria-labelledby="next-label"></form>`;
+    const [login] = findLoginFields(document);
+    expect(login).toMatchObject({ kind: 'username-step' });
+  });
+
+  it('finds the next button far from a formless identifier field (Google)', () => {
+    document.body.innerHTML = `<div><div><div><div><input type="email" id="id"></div></div></div>
+      <div><div><button>Weiter</button></div></div></div>`;
+    const [login] = findLoginFields(document);
+    expect(login).toMatchObject({ kind: 'username-step' });
+  });
+
+  it('keeps fields together that sit in their own fieldset and shadow root (Reddit)', () => {
+    document.body.innerHTML = `<x-form id="login"><fieldset><x-input id="u"></x-input></fieldset>
+      <fieldset><x-input id="p"></x-input></fieldset><button>Log in</button></x-form>`;
+    const user = $('#u').attachShadow({ mode: 'open' });
+    user.innerHTML = '<label><input name="username" autocomplete="username"></label>';
+    const pass = $('#p').attachShadow({ mode: 'open' });
+    pass.innerHTML = '<label><input type="password" name="password"></label>';
+    const logins = findLoginFields(document);
+    expect(logins).toHaveLength(1);
+    expect(logins[0]).toMatchObject({ kind: 'login' });
+    expect(logins[0]!.username).toBe(user.querySelector('input'));
+  });
+
   it('takes sign-up forms as sign-up: no password to fill, both are new', () => {
     load('signup');
     const [login] = findLoginFields(document);

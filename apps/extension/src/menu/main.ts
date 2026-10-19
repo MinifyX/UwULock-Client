@@ -69,6 +69,7 @@ html, body {
 .name { font-weight: 600; }
 .sub { font-size: 12px; color: var(--uwu-muted); }
 .note { padding: 8px 10px 4px; }
+.warning { padding: 6px 10px 4px; font-size: 12px; color: var(--uwu-warning-ink); }
 .message { display: grid; gap: 10px; padding: 8px 10px; }
 `;
 
@@ -261,7 +262,7 @@ function entries(): { note: string | null; list: Entry[] } {
         label: item.name,
         sub: item.subtitle,
         letter: (item.name.trim()[0] ?? '?').toUpperCase(),
-        run: () => pick(item, false),
+        run: () => pick(item),
       })),
       ...masked,
     ],
@@ -270,12 +271,21 @@ function entries(): { note: string | null; list: Entry[] } {
 
 function render() {
   const { note, list } = entries();
+  // Plain http on the internet: one click still fills, the list only says so.
+  const warning =
+    view?.insecure && view.state === 'unlocked' && view.kind !== 'signup'
+      ? h(
+          'div',
+          { class: 'warning', role: 'note' },
+          t('HTTP statt HTTPS – möglicherweise unsicher'),
+        )
+      : '';
   const listbox = h(
     'div',
     { role: 'listbox', tabindex: '-1', 'aria-label': t('UwULock – passende Einträge') },
     ...list.map(entry),
   );
-  panel.replaceChildren(note ? h('div', { class: 'note muted' }, note) : '', listbox);
+  panel.replaceChildren(warning, note ? h('div', { class: 'note muted' }, note) : '', listbox);
   armed = false;
 }
 
@@ -313,34 +323,18 @@ function message(text: string, actions: { label: string; primary?: boolean; run:
   if (document.hasFocus()) buttons[0]?.focus();
 }
 
-let picked: PageItem | null = null;
-
-function pick(item: PageItem, confirmedInsecure: boolean) {
+function pick(item: PageItem) {
   if (busy) return;
   busy = true;
-  picked = item;
-  send({ type: 'pick', itemId: item.id, ...(confirmedInsecure ? { confirmedInsecure } : {}) });
+  send({ type: 'pick', itemId: item.id });
 }
 
 function onPicked(answer: MenuPickAnswer) {
   busy = false;
-  const item = picked;
   if (answer.filled) return; // The content script fills and closes the menu.
   switch (answer.reason) {
     case 'unseen':
       // The page's side didn't see the frame uncovered: the click doesn't count, the list stays.
-      return;
-    case 'insecure':
-      message(t('Diese Seite ist nicht verschlüsselt (http). Trotzdem ausfüllen?'), [
-        {
-          label: t('Trotzdem ausfüllen'),
-          primary: true,
-          run: () => {
-            if (item) pick(item, true);
-          },
-        },
-        { label: t('Abbrechen'), run: render },
-      ]);
       return;
     case 'reprompt':
       message(t('Dieser Eintrag verlangt dein Master-Passwort – öffne UwULock.'), [

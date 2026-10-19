@@ -312,15 +312,61 @@ export function isFillableUrl(pageUrl: string | undefined | null): boolean {
   );
 }
 
-/** Plain http, except to this computer itself, which is never on the wire. */
+/** Names that only resolve inside a home or office network. */
+const LOCAL_SUFFIXES = [
+  '.localhost',
+  '.local',
+  '.lan',
+  '.home',
+  '.home.arpa',
+  '.internal',
+  '.intranet',
+  '.localdomain',
+  '.fritz.box',
+];
+
+function isPrivateIpv4(host: string): boolean {
+  const parts = host.split('.');
+  if (parts.length !== 4 || !parts.every((p) => /^\d{1,3}$/.test(p))) return false;
+  const [a, b] = parts.map(Number) as [number, number];
+  return (
+    a === 10 ||
+    a === 127 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 169 && b === 254) ||
+    (a === 100 && b >= 64 && b <= 127)
+  );
+}
+
+function isPrivateIpv6(host: string): boolean {
+  if (!host.includes(':')) return false;
+  if (host === '::1') return true;
+  // IPv4-mapped, which URL writes in hex: ::ffff:c0a8:2 is 192.168.0.2.
+  const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host);
+  if (mapped) {
+    const [hi, lo] = [parseInt(mapped[1]!, 16), parseInt(mapped[2]!, 16)];
+    return isPrivateIpv4([hi >> 8, hi & 255, lo >> 8, lo & 255].join('.'));
+  }
+  // fc00::/7 (unique local) and fe80::/10 (link-local).
+  // A first group of four digits: `fc::1` is 00fc::1.
+  return /^f[cd][0-9a-f]{2}:/.test(host) || /^fe[89ab][0-9a-f]:/.test(host);
+}
+
+/**
+ * Plain http on the internet. This computer and the local network (private addresses, names
+ * without a dot, home router names) count as safe enough: that traffic doesn't cross the internet,
+ * and routers, NAS and printers there rarely have certificates.
+ */
 export function isInsecureUrl(pageUrl: string): boolean {
   const parsed = url(pageUrl);
   if (!parsed || parsed.protocol !== 'http:') return false;
-  const host = parsed.hostname.replace(/^\[|\]$/g, '');
-  return !(
-    host === 'localhost' ||
-    host.endsWith('.localhost') ||
-    host === '127.0.0.1' ||
-    host === '::1'
-  );
+  const host = parsed.hostname
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '')
+    .replace(/\.$/, '');
+  if (!host.includes('.') && !host.includes(':')) return false;
+  if (host === 'speedport.ip' || host === 'fritz.box') return false;
+  if (LOCAL_SUFFIXES.some((suffix) => host.endsWith(suffix))) return false;
+  return !(isPrivateIpv4(host) || isPrivateIpv6(host));
 }
