@@ -1,0 +1,4 @@
+{
+  "de": "- Safari auf dem Mac: Das Ausfüllen über die AutoFill-Vorschläge (Schlüssel-Symbol) bremst die Seite nicht mehr aus. Bisher hat UwULock bei jedem Vorschlag die komplette Liste der Anmeldedaten neu an macOS übergeben, worauf Safari alle Einträge neu eingelesen hat und die Seite eine Weile kaum noch reagierte. Jetzt wird die Liste nur übergeben, wenn sie sich geändert hat",
+  "en": "- Safari on the Mac: filling in through the AutoFill suggestions (key icon) no longer slows the page down. Until now UwULock handed the whole list of sign-ins to macOS again on every suggestion, Safari read all entries anew, and the page barely responded for a while. Now the list is only handed over when it changed"
+}
