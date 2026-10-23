@@ -620,6 +620,7 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
       case PasskeyVaultError.noList:
         // Switched off or logged out: the system's list goes too.
         ASCredentialIdentityStore.shared.removeAllCredentialIdentities { _, _ in }
+        Self.forgetHandedOver()
         self.model.message = tr(
           "Öffne UwULock einmal und entsperre den Tresor, mit eingeschaltetem AutoFill für andere Apps.",
           "Open UwULock once and unlock the vault, with AutoFill for other apps switched on.")
@@ -838,16 +839,38 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
     return out
   }
 
+  /// Which list the system's entries were last made from (account, generation, count), in the
+  /// extension's own container: the same list isn't handed over again.
+  private static let handedOverKey = "uwulock.identities.handedOver"
+
+  private static func handedOver(_ list: PasskeyList, count: Int) -> String {
+    "\(list.account):\(list.snapshot.generation):\(count)"
+  }
+
+  /// The system's entries are gone (or to be made again): the next list is handed over.
+  static func forgetHandedOver() {
+    UserDefaults.standard.removeObject(forKey: handedOverKey)
+  }
+
   /// Keeps the system's list in step with the list, then `done` (always, also when the system
   /// has UwULock switched off). Never while the system answers a pick from that list
   /// (prepareInterfaceToProvideCredential): replacing the entries under a request made from one
   /// of them is asking for trouble. On iOS the app keeps it current anyway; on macOS this is the
-  /// only place it is filled.
-  private func updateIdentities(_ snapshot: PasskeySnapshot, done: (() -> Void)? = nil) {
-    let identities = Self.identities(of: snapshot)
+  /// only place it is filled — once per list the app wrote, not on every request: each
+  /// replacement has Safari read all of UwULock's entries again, and the page it fills into
+  /// hangs meanwhile. `force` hands it over regardless (the system asked to be set up).
+  private func updateIdentities(_ list: PasskeyList, force: Bool = false, done: (() -> Void)? = nil) {
+    let identities = Self.identities(of: list.snapshot)
+    let mark = Self.handedOver(list, count: identities.count)
     ASCredentialIdentityStore.shared.getState { state in
       guard state.isEnabled else {
         logStep("identities: UwULock isn't switched on in the system")
+        Self.forgetHandedOver()
+        done?()
+        return
+      }
+      if !force && UserDefaults.standard.string(forKey: Self.handedOverKey) == mark {
+        logStep("identities: the system already has this list (\(identities.count))")
         done?()
         return
       }
@@ -855,6 +878,11 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
         logStep(
           "identities replaced: \(identities.count), ok \(ok) \(error.map { String(describing: $0) } ?? "")"
         )
+        if ok {
+          UserDefaults.standard.set(mark, forKey: Self.handedOverKey)
+        } else {
+          Self.forgetHandedOver()
+        }
         done?()
       }
     }
@@ -1053,7 +1081,7 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
       try self.passkeyList(
         rpId: rpId, allowed: requestParameters.allowedCredentials,
         clientDataHash: requestParameters.clientDataHash, key: key, list: list, path: "list")
-      self.updateIdentities(list.snapshot)
+      self.updateIdentities(list)
     }
   }
 
@@ -1139,7 +1167,7 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
     unlock(reason: tr("Mit UwULock anmelden bei ", "Sign in with UwULock to ") + site) {
       _, key, list in
       self.passwordList(serviceIdentifiers, key: key, list: list)
-      self.updateIdentities(list.snapshot)
+      self.updateIdentities(list)
     }
   }
 
@@ -1209,7 +1237,7 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
         relyingParty: rpId, clientDataHash: request.clientDataHash, credentialID: made.id,
         attestationObject: PasskeyVault.attestationObject(authData))
       logStep("registration: made \(short(made.id))")
-      self.updateIdentities(kept.snapshot)
+      self.updateIdentities(kept)
       self.onMain {
         guard !self.finished else { return }
         self.finishing("registration handing over")
@@ -1237,7 +1265,7 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
           self.extensionContext.completeExtensionConfigurationRequest()
         }
       }
-      self.updateIdentities(list.snapshot, done: done)
+      self.updateIdentities(list, force: true, done: done)
       DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: done)
     }
   }

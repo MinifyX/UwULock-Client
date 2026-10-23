@@ -81,3 +81,14 @@ test('the password search looks at names, users and the hosts of the addresses',
   // Everything is listed without a search, not only what fits the page.
   assert.match(controller, /tr\("Alle Logins", "All logins"\)/);
 });
+
+test("the system's list is handed over once per list, not on every request (Safari hangs)", () => {
+  assert.match(controller, /UserDefaults\.standard\.string\(forKey: Self\.handedOverKey\) == mark/);
+  assert.match(controller, /list\.snapshot\.generation/);
+  // Setting up in the system always hands it over; a removed list is handed over again.
+  assert.match(controller, /updateIdentities\(list, force: true, done: done\)/);
+  assert.match(
+    controller,
+    /removeAllCredentialIdentities \{ _, _ in \}\s*Self\.forgetHandedOver\(\)/,
+  );
+});
