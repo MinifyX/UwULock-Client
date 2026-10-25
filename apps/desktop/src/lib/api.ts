@@ -280,6 +280,8 @@ export const wifiConnect = (id: string) => invoke<WifiJoined>('wifi_connect', { 
 /** Android: the system's Wi-Fi settings; `false` where there are none to open. */
 export const wifiSettings = () => invoke<boolean>('wifi_settings');
 export const copyGenerated = (text: string) => invoke<void>('copy_generated', { text });
+/** Not secret (the AutoFill protocol): a plain copy that isn't cleared. */
+export const copyText = (text: string) => invoke<void>('copy_text', { text });
 export const totpCode = (id: string) => invoke<TotpCode>('totp_code', { id });
 export const generatePassword = (options: GeneratorOptions) =>
   invoke<Generated>('generate_password', { options });

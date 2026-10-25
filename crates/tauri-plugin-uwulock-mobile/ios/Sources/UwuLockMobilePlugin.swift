@@ -255,6 +255,16 @@ class UwuLockMobilePlugin: Plugin {
     }
   }
 
+  /// Text that isn't secret (the AutoFill protocol): an ordinary copy that reaches other
+  /// devices, never expires and isn't taken back on locking.
+  @objc public func copyText(_ invoke: Invoke) throws {
+    let args = try invoke.parseArgs(CopyArgs.self)
+    DispatchQueue.main.async {
+      UIPasteboard.general.string = args.text
+      invoke.resolve()
+    }
+  }
+
   @objc public func clearClipboard(_ invoke: Invoke) {
     DispatchQueue.main.async {
       // The change count says whether anything was copied since, without reading the
