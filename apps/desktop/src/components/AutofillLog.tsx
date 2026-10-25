@@ -1,5 +1,5 @@
 import { Button } from '@uwusuite/design';
-import { copyGenerated } from '../lib/api';
+import { copyText } from '../lib/api';
 import { autofillLogClear, useAutofillLog } from '../lib/autofill';
 import { toastError } from '../lib/errors';
 import { t, useLanguage } from '../lib/i18n';
@@ -30,7 +30,7 @@ export function AutofillLogText({ lines, problem }: { lines: string[]; problem?:
 export function autofillLogActions(lines: string[], cleared: () => void) {
   return {
     copy: () =>
-      void copyGenerated(lines.join('\n'))
+      void copyText(lines.join('\n'))
         .then(() => toast(t('AutoFill-Protokoll kopiert')))
         .catch(toastError),
     clear: () =>

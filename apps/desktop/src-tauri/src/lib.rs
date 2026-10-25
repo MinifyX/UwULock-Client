@@ -144,6 +144,7 @@ pub fn run() {
             vault::reveal_field,
             vault::copy_field,
             vault::copy_generated,
+            vault::copy_text,
             vault::totp_code,
             vault::generate_password,
             vault::item_passkeys,

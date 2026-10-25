@@ -357,6 +357,20 @@ class UwuLockMobilePlugin(private val activity: Activity) : Plugin(activity) {
 
     // ── Copying ───────────────────────────────────────────────
 
+    /** Text that isn't secret (the AutoFill protocol): an ordinary copy, not cleared later. */
+    @Command
+    fun copyText(invoke: Invoke) {
+        val args = invoke.parseArgs(CopyArgs::class.java)
+        activity.runOnUiThread {
+            try {
+                clipboard().setPrimaryClip(ClipData.newPlainText("UwULock", args.text))
+                invoke.resolve()
+            } catch (error: Exception) {
+                invoke.reject("Couldn't copy: ${error.message}", "failed")
+            }
+        }
+    }
+
     @Command
     fun copySecret(invoke: Invoke) {
         val args = invoke.parseArgs(CopyArgs::class.java)

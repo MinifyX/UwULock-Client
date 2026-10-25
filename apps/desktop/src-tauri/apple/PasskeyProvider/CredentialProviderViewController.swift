@@ -110,6 +110,8 @@ final class PasskeyModel: ObservableObject {
   @Published var choices: [Choice] = [] {
     didSet { haystacks = choices.map(\.haystack) }
   }
+  /// A passkey request's passkeys for the site, above the logins (`choices`) it may fill instead.
+  @Published var passkeys: [Choice] = []
   @Published var busy = true
   @Published var query = ""
   /// Passwords: a search over all logins, not only the suggested ones.
@@ -242,6 +244,9 @@ struct PasskeyView: View {
 
   @ViewBuilder private var results: some View {
     let shown = model.shown
+    if !model.passkeys.isEmpty {
+      section(tr("Passkeys", "Passkeys"), model.passkeys)
+    }
     if !model.searchable {
       if !shown.isEmpty { section(nil, shown) }
     } else if model.choices.isEmpty {
@@ -260,7 +265,7 @@ struct PasskeyView: View {
       let others = shown.filter { !$0.suggested }
       if !suggested.isEmpty {
         section(tr("Passend zu dieser Seite", "For this site"), suggested)
-      } else if model.query.isEmpty {
+      } else if model.query.isEmpty && model.passkeys.isEmpty {
         note(
           icon: "questionmark.circle",
           tr(
@@ -610,6 +615,7 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
       self.progressed = true
       self.model.busy = false
       self.model.choices = []
+      self.model.passkeys = []
       self.model.searchable = false
       self.model.unlockButton = nil
       switch error {
@@ -936,18 +942,31 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
   }
 
   /// UwULock's own list of passkeys for `rpId`: one signs straight away, several are shown.
+  /// With `services` (the system asked for passkeys and passwords), the logins come along: the
+  /// site's first and a search over all, and one passkey signs straight away only when no login
+  /// fits the site.
   private func passkeyList(
     rpId: String, allowed: [Data], clientDataHash: Data, key: SymmetricKey, list: PasskeyList,
-    path: String
+    path: String, services: [ASCredentialServiceIdentifier]? = nil
   ) throws {
     let found = list.snapshot.entries.filter { entry in
       entry.rpId == rpId
         && (allowed.isEmpty
           || Base64URL.decode(entry.credentialId).map { allowed.contains($0) } == true)
     }
+    let forSite = list.snapshot.entries.filter { $0.rpId == rpId }.count
+    // The site itself stands in for the system's services when it names none.
+    let sites = services.map {
+      $0.isEmpty ? [ASCredentialServiceIdentifier(identifier: rpId, type: .domain)] : $0
+    }
+    let logins = sites.map { _ in Self.sortedLogins(list) } ?? []
+    let suggested = sites.map { sites in
+      Set(logins.filter { PasskeyVault.matches($0, sites) }.map(\.itemId))
+    } ?? []
     logStep(
-      "passkey list (\(path)): rp \(rpId), \(found.count) found, \(allowed.count) allowed")
-    if found.count == 1 {
+      "passkey list (\(path)): rp \(rpId), \(found.count) found, \(allowed.count) allowed, \(forSite) for the rp, \(list.snapshot.entries.count) in the list, \(sites == nil ? "no logins" : "\(suggested.count) of \(logins.count) logins match")"
+    )
+    if found.count == 1 && suggested.isEmpty {
       try answer(
         found[0], list: list, key: key, rpId: rpId, clientDataHash: clientDataHash, path: path)
       return
@@ -957,20 +976,26 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
       self.progressed = true
       self.model.busy = false
       self.model.unlockButton = nil
-      self.model.title = tr("Passkey für ", "Passkey for ") + rpId
-      if found.isEmpty {
-        self.model.message = tr(
+      self.model.title = tr("Anmelden bei ", "Sign in to ") + rpId
+      self.model.message =
+        found.isEmpty
+        ? tr(
           "Im Tresor ist kein Passkey für diese Seite.", "There's no passkey for this site in the vault.")
-        return
-      }
-      self.model.message = nil
-      self.model.choices = found.map {
+        : nil
+      self.model.passkeys = found.map {
         PasskeyModel.Choice(
-          id: $0.credentialId, title: $0.userName ?? $0.userDisplayName ?? $0.rpId,
+          id: Self.passkeyPrefix + $0.credentialId,
+          title: $0.userName ?? $0.userDisplayName ?? $0.rpId,
           subtitle: $0.userDisplayName ?? $0.rpId, suggested: true)
       }
+      if sites != nil {
+        self.showLogins(logins, suggested: suggested, key: key, list: list)
+      }
+      let pickLogin = self.model.pick
       self.model.pick = { choice in
-        guard let entry = found.first(where: { $0.credentialId == choice.id }) else { return }
+        guard choice.id.hasPrefix(Self.passkeyPrefix) else { return pickLogin(choice) }
+        let id = String(choice.id.dropFirst(Self.passkeyPrefix.count))
+        guard let entry = found.first(where: { $0.credentialId == id }) else { return }
         self.model.busy = true
         self.background {
           try self.answer(
@@ -979,6 +1004,9 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
       }
     }
   }
+
+  /// Passkey choices' ids: apart from the logins' item ids in the same sheet.
+  private static let passkeyPrefix = "passkey:"
 
   override func provideCredentialWithoutUserInteraction(for credentialRequest: ASCredentialRequest) {
     // The provider key always wants Face ID, Touch ID or the passcode: the system shows
@@ -1065,7 +1093,9 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
     }
   }
 
-  /// The person picked UwULock without a passkey from the system's list: UwULock shows its own.
+  /// The person picked UwULock without a passkey from the system's list: UwULock shows its own,
+  /// and the logins beside them — the system asks for either (a password completes the request
+  /// as well).
   override func prepareCredentialList(
     for serviceIdentifiers: [ASCredentialServiceIdentifier],
     requestParameters: ASPasskeyCredentialRequestParameters
@@ -1080,7 +1110,8 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
       _, key, list in
       try self.passkeyList(
         rpId: rpId, allowed: requestParameters.allowedCredentials,
-        clientDataHash: requestParameters.clientDataHash, key: key, list: list, path: "list")
+        clientDataHash: requestParameters.clientDataHash, key: key, list: list, path: "list",
+        services: serviceIdentifiers)
       self.updateIdentities(list)
     }
   }
@@ -1127,9 +1158,7 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
   private func passwordList(
     _ services: [ASCredentialServiceIdentifier], key: SymmetricKey, list: PasskeyList
   ) {
-    let logins = (list.snapshot.logins ?? []).sorted {
-      $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-    }
+    let logins = Self.sortedLogins(list)
     let suggested = Set(logins.filter { PasskeyVault.matches($0, services) }.map(\.itemId))
     logStep("password list: \(logins.count) logins, \(suggested.count) match")
     onMain {
@@ -1137,24 +1166,37 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
       self.progressed = true
       self.model.busy = false
       self.model.unlockButton = nil
-      self.model.searchable = true
       self.model.message = nil
-      self.model.choices = logins.map {
-        PasskeyModel.Choice(
-          id: $0.itemId, title: $0.name,
-          subtitle: [$0.userName, $0.subtitle].compactMap { $0 }.joined(separator: " · "),
-          suggested: suggested.contains($0.itemId),
-          keywords: ($0.hosts ?? [])
-            + ($0.uris ?? []).map { hint in
-              hint.kind == "domain" || hint.kind == "host"
-                ? hint.value : (URL(string: hint.value)?.host ?? hint.value)
-            })
-      }
-      self.model.pick = { choice in
-        guard let login = logins.first(where: { $0.itemId == choice.id }) else { return }
-        self.model.busy = true
-        self.background { try self.complete(login, key: key, list: list) }
-      }
+      self.showLogins(logins, suggested: suggested, key: key, list: list)
+    }
+  }
+
+  private static func sortedLogins(_ list: PasskeyList) -> [PasskeyLoginEntry] {
+    (list.snapshot.logins ?? []).sorted {
+      $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+    }
+  }
+
+  /// The logins to pick from, the `suggested` ones first, with a search over all (on main).
+  private func showLogins(
+    _ logins: [PasskeyLoginEntry], suggested: Set<String>, key: SymmetricKey, list: PasskeyList
+  ) {
+    model.searchable = true
+    model.choices = logins.map {
+      PasskeyModel.Choice(
+        id: $0.itemId, title: $0.name,
+        subtitle: [$0.userName, $0.subtitle].compactMap { $0 }.joined(separator: " · "),
+        suggested: suggested.contains($0.itemId),
+        keywords: ($0.hosts ?? [])
+          + ($0.uris ?? []).map { hint in
+            hint.kind == "domain" || hint.kind == "host"
+              ? hint.value : (URL(string: hint.value)?.host ?? hint.value)
+          })
+    }
+    model.pick = { choice in
+      guard let login = logins.first(where: { $0.itemId == choice.id }) else { return }
+      self.model.busy = true
+      self.background { try self.complete(login, key: key, list: list) }
     }
   }
 

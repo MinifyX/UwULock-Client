@@ -53,6 +53,19 @@ impl Clipboard {
         Ok(())
     }
 
+    /// Text that isn't secret (the AutoFill protocol): an ordinary copy
+    /// that goes to other devices and stays, untouched by the clearing.
+    pub fn copy_plain(&self, text: &str) -> Result<(), String> {
+        let plugin = crate::phone::plugin().ok_or("No clipboard yet.")?;
+        let text = text.to_string();
+        std::thread::spawn(move || {
+            if let Err(error) = plugin.copy_text(&text) {
+                tracing::warn!(%error, "couldn't copy");
+            }
+        });
+        Ok(())
+    }
+
     fn clear_if_ours(&self, generation: u64) {
         let mut last = self.last.lock();
         if last.is_none_or(|(latest, _)| latest != generation) {
@@ -116,6 +129,14 @@ impl Clipboard {
             });
         }
         Ok(())
+    }
+
+    /// Text that isn't secret (the AutoFill protocol): an ordinary copy,
+    /// never cleared.
+    pub fn copy_plain(&self, text: &str) -> Result<(), String> {
+        arboard::Clipboard::new()
+            .and_then(|mut clipboard| clipboard.set_text(text.to_string()))
+            .map_err(|e| format!("Couldn't copy: {e}"))
     }
 
     fn clear_if_ours(&self, generation: u64) {

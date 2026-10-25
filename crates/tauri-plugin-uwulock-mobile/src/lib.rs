@@ -236,6 +236,20 @@ mod mobile {
                 .map_err(error)
         }
 
+        /// An ordinary copy of text that isn't secret: not kept on the
+        /// device, never expiring, not cleared on locking.
+        pub fn copy_text(&self, text: &str) -> Result<(), Error> {
+            self.0
+                .run_mobile_plugin(
+                    "copyText",
+                    Copy {
+                        text,
+                        expires_in_seconds: None,
+                    },
+                )
+                .map_err(error)
+        }
+
         /// The bars around the page (Android) and the status bar's text
         /// (iOS) follow the page's theme.
         pub fn set_appearance(&self, dark: bool, background: &str) -> Result<(), Error> {

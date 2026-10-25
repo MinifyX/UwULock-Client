@@ -92,3 +92,15 @@ test("the system's list is handed over once per list, not on every request (Safa
     /removeAllCredentialIdentities \{ _, _ in \}\s*Self\.forgetHandedOver\(\)/,
   );
 });
+
+test('the passkey sheet also offers the logins and does not sign while one fits the page', () => {
+  assert.match(controller, /found\.count == 1 && suggested\.isEmpty/);
+  assert.match(controller, /services: serviceIdentifiers/);
+  assert.match(controller, /model\.passkeys = /);
+});
+
+test('the protocol is copied as plain text, not as an expiring local-only secret', () => {
+  const page = readFileSync(new URL('../src/components/AutofillLog.tsx', import.meta.url), 'utf8');
+  assert.match(page, /copyText\(/);
+  assert.doesNotMatch(page, /copyGenerated|copySecret/);
+});
