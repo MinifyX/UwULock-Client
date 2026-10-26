@@ -38,6 +38,7 @@ on:
       - 'apps/desktop/src-tauri/apple/**'
       - 'apps/desktop/src-tauri/src/system.rs'
       - 'apps/desktop/src-tauri/src/passkeys/apple.rs'
+      - 'apps/desktop/src-tauri/src/hello.rs'
 
 permissions:
   contents: read

@@ -674,6 +674,7 @@ mod native {
 #[cfg(target_os = "macos")]
 mod native {
     use super::{outbox_name, Identity};
+    use crate::hello::touch;
     use security_framework::access_control::{ProtectionMode, SecAccessControl};
     use security_framework::item::{ItemClass, ItemSearchOptions};
     use security_framework::passwords::{
@@ -686,6 +687,7 @@ mod native {
     const TEAM: Option<&str> = option_env!("UWULOCK_APPLE_TEAM_ID");
     const SERVICE: &str = "app.uwulock.passkeys";
     const ACCOUNT: &str = "provider-key";
+    const INTERACTION_NOT_ALLOWED: i32 = -25308;
 
     fn team() -> Result<&'static str, String> {
         TEAM.filter(|t| !t.is_empty())
@@ -756,20 +758,44 @@ mod native {
         )
     }
 
+    fn search(group: &str) -> ItemSearchOptions {
+        let mut search = ItemSearchOptions::new();
+        search
+            .class(ItemClass::generic_password())
+            .service(SERVICE)
+            .account(ACCOUNT)
+            .access_group(group)
+            .ignore_legacy_keychains();
+        // Never Touch ID for the app's side: what would need it fails instead.
+        if let Some(context) = touch::context(true) {
+            touch::with_context(&mut search, &context);
+        }
+        search
+    }
+
     fn key_there(key: &[u8; 32]) -> bool {
         let Ok(group) = group() else {
             return false;
         };
-        ItemSearchOptions::new()
-            .class(ItemClass::generic_password())
-            .service(SERVICE)
-            .account(ACCOUNT)
-            .access_group(&group)
+        match search(&group)
             .label(&label(key))
-            .ignore_legacy_keychains()
             .load_attributes(true)
             .search()
-            .is_ok_and(|found| !found.is_empty())
+        {
+            Ok(found) => !found.is_empty(),
+            // Only an item with this label gets as far as wanting Touch ID.
+            Err(error) => error.code() == INTERACTION_NOT_ALLOWED,
+        }
+    }
+
+    /// Removes the item, with Touch ID only if macOS insists on it for that.
+    fn delete() -> Result<(), String> {
+        match search(&group()?).delete() {
+            Err(error) if error.code() == INTERACTION_NOT_ALLOWED => {
+                delete_generic_password_options(options()?).map_err(|e| e.to_string())
+            }
+            _ => Ok(()),
+        }
     }
 
     pub(super) fn problem(_app: &AppHandle) -> Option<String> {
@@ -792,7 +818,7 @@ mod native {
         if !key_there(key) {
             // Missing, or another account's key, or one from before: as on
             // iOS, only after Touch ID or the login password, this Mac only.
-            let _ = delete_generic_password_options(options()?);
+            let _ = delete();
             let access = SecAccessControl::create_with_protection(
                 Some(ProtectionMode::AccessibleWhenPasscodeSetThisDeviceOnly),
                 AccessControlOptions::USER_PRESENCE.bits(),
@@ -864,7 +890,7 @@ mod native {
     pub(super) fn clear(_app: &AppHandle) -> Result<(), String> {
         let folder = folder()?;
         let _ = std::fs::remove_file(folder.join("passkeys.sealed"));
-        let _ = delete_generic_password_options(options()?);
+        let _ = delete();
         // The system's list keeps names until someone empties it; on macOS only the extension
         // fills it, so it goes here too.
         crate::autofill::mac::remove_identities();

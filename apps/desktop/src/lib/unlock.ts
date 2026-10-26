@@ -44,5 +44,7 @@ export function unlockPrompt(): UnlockPrompt {
     title: t('UwULock entsperren'),
     subtitle: t('Bestätige, dass du es bist.'),
     cancel: t('Master-Passwort'),
+    // macOS: "UwULock versucht, …"
+    reason: t('deinen Tresor zu entsperren'),
   };
 }

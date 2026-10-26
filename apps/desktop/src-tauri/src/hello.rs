@@ -17,10 +17,13 @@
 //! challenge was fixed and public; such a copy is dropped at its next use and
 //! the person switches Windows Hello on again.)
 //!
-//! Touch ID is not offered: its keychain items that only open with a finger
-//! need the app signed with an Apple Developer ID and a keychain entitlement.
-//! A Touch ID prompt alone, with the key kept elsewhere on disk, would be a
-//! door in front of an open window. Linux has no common equivalent.
+//! Touch ID only in the Mac App Store build (`touch`): its Keychain items that
+//! only open with a finger need the app signed with the developer team and a
+//! Keychain group. There it works like a phone: 32 random bytes in the
+//! Keychain, the copy kept as `t1:<the user key under their key>`. A Touch ID
+//! prompt alone, with the key kept elsewhere on disk, would be a door in front
+//! of an open window — so the other Mac builds offer none. Linux has no common
+//! equivalent.
 //!
 //! On Android and iOS the phone keeps the secret itself (`phone`, the
 //! `tauri-plugin-uwulock-mobile` plugin): 32 random bytes in the Android
@@ -190,7 +193,220 @@ mod platform {
     }
 }
 
-#[cfg(not(any(windows, mobile)))]
+/// Touch ID on a Mac, in the Mac App Store build: 32 random bytes in the
+/// data protection keychain, in the app's own Keychain group (not the one
+/// shared with the AutoFill extension), handed out only after a finger
+/// enrolled right now (`biometryCurrentSet`), on this Mac only, only while
+/// it has a login password. Like a phone's secret. A build without the
+/// developer team has no Keychain group and offers nothing.
+#[cfg(target_os = "macos")]
+pub(crate) mod touch {
+    use objc2::msg_send;
+    use objc2::rc::Retained;
+    use objc2::runtime::{AnyClass, AnyObject, Bool};
+    use rand::RngCore as _;
+    use security_framework::access_control::{ProtectionMode, SecAccessControl};
+    use security_framework::item::{ItemClass, ItemSearchOptions, SearchResult};
+    use security_framework::passwords::{
+        set_generic_password_options, AccessControlOptions, PasswordOptions,
+    };
+    use zeroize::Zeroizing;
+
+    use crate::vault::Failure;
+
+    #[link(name = "LocalAuthentication", kind = "framework")]
+    unsafe extern "C" {}
+
+    const TEAM: Option<&str> = option_env!("UWULOCK_APPLE_TEAM_ID");
+    const SERVICE: &str = "app.uwulock.unlock";
+    /// `LAPolicyDeviceOwnerAuthenticationWithBiometrics`.
+    const BIOMETRICS: isize = 1;
+    const CANCELLED: i32 = -128;
+    const NOT_FOUND: i32 = -25300;
+    const AUTH_FAILED: i32 = -25293;
+    const INTERACTION_NOT_ALLOWED: i32 = -25308;
+
+    /// The app's own Keychain group, first in its entitlements.
+    fn group() -> Option<String> {
+        TEAM.filter(|t| !t.is_empty())
+            .map(|team| format!("{team}.app.uwulock"))
+    }
+
+    fn nsstring(text: &str) -> Option<Retained<AnyObject>> {
+        let text = std::ffi::CString::new(text.replace('\0', "")).ok()?;
+        let class = AnyClass::get(c"NSString")?;
+        // SAFETY: a NUL-terminated UTF-8 string; NSString copies it.
+        unsafe { msg_send![class, stringWithUTF8String: text.as_ptr()] }
+    }
+
+    /// A fresh `LAContext`. `quiet`: a Keychain call with it fails instead of
+    /// asking for Touch ID (`interactionNotAllowed`).
+    pub(crate) fn context(quiet: bool) -> Option<Retained<AnyObject>> {
+        let class = AnyClass::get(c"LAContext")?;
+        // SAFETY: `new` returns an owned LAContext (or nil).
+        let context: Option<Retained<AnyObject>> = unsafe { msg_send![class, new] };
+        let context = context?;
+        if quiet {
+            // SAFETY: `interactionNotAllowed` is a BOOL property of LAContext.
+            unsafe {
+                let _: () = msg_send![&*context, setInteractionNotAllowed: Bool::YES];
+            }
+        }
+        Some(context)
+    }
+
+    /// Hands `context` to a Keychain call (`kSecUseAuthenticationContext`).
+    pub(crate) fn with_context(search: &mut ItemSearchOptions, context: &Retained<AnyObject>) {
+        let raw = Retained::into_raw(context.clone());
+        // SAFETY: `raw` is an owned (+1) LAContext, an NSObject and so a CFType;
+        // the search takes that reference over and releases it.
+        #[allow(deprecated)]
+        unsafe {
+            search.authentication_context(raw.cast());
+        }
+    }
+
+    /// Whether this build has its Keychain group and the Mac a finger enrolled.
+    pub fn available() -> bool {
+        if group().is_none() {
+            return false;
+        }
+        let Some(context) = context(false) else {
+            return false;
+        };
+        // SAFETY: `canEvaluatePolicy:error:` takes an LAPolicy (NSInteger) and
+        // an optional `NSError **`; nil for the latter.
+        let can: Bool = unsafe {
+            msg_send![
+                &*context,
+                canEvaluatePolicy: BIOMETRICS,
+                error: std::ptr::null_mut::<*mut AnyObject>()
+            ]
+        };
+        can.as_bool()
+    }
+
+    fn search(name: &str, group: &str) -> ItemSearchOptions {
+        let mut search = ItemSearchOptions::new();
+        search
+            .class(ItemClass::generic_password())
+            .service(SERVICE)
+            .account(name)
+            .access_group(group)
+            .ignore_legacy_keychains();
+        search
+    }
+
+    fn missing_group() -> Failure {
+        Failure::new(
+            "unsupported",
+            "Touch ID needs the Mac App Store build of UwULock.",
+        )
+    }
+
+    /// The secret, after Touch ID; `reason` completes macOS's sentence
+    /// "UwULock is trying to …", `cancel` names the way back.
+    pub fn read(name: &str, reason: &str, cancel: &str) -> Result<Zeroizing<[u8; 32]>, Failure> {
+        // The NSStrings and what the Keychain hands back autoreleased go with
+        // this pool, not with the blocking thread that lives on.
+        objc2::rc::autoreleasepool(|_| read_in_pool(name, reason, cancel))
+    }
+
+    fn read_in_pool(
+        name: &str,
+        reason: &str,
+        cancel: &str,
+    ) -> Result<Zeroizing<[u8; 32]>, Failure> {
+        let group = group().ok_or_else(missing_group)?;
+        let context = context(false).ok_or_else(|| Failure::new("hello", "No LAContext."))?;
+        // SAFETY: both are NSString properties of LAContext.
+        unsafe {
+            if let Some(reason) = nsstring(reason) {
+                let _: () = msg_send![&*context, setLocalizedReason: &*reason];
+            }
+            if let Some(cancel) = nsstring(cancel) {
+                let _: () = msg_send![&*context, setLocalizedCancelTitle: &*cancel];
+            }
+        }
+        let mut search = search(name, &group);
+        search.load_data(true).limit(1);
+        with_context(&mut search, &context);
+        let found = search.search().map_err(|error| match error.code() {
+            CANCELLED => Failure::new("biometric-cancelled", "Cancelled."),
+            // With `biometryCurrentSet` the item no longer opens once a finger
+            // is enrolled or removed.
+            NOT_FOUND => Failure::new(
+                "biometric-changed",
+                format!("Nothing is kept for Touch ID on this Mac. {}", super::AGAIN),
+            ),
+            AUTH_FAILED => Failure::new("hello", "Touch ID didn't recognise you."),
+            code => Failure::new("hello", format!("The Keychain said no ({code}).")),
+        })?;
+        let mut secret = Zeroizing::new([0u8; 32]);
+        match found.into_iter().next() {
+            Some(SearchResult::Data(mut data)) if data.len() == 32 => {
+                secret.copy_from_slice(&data);
+                zeroize::Zeroize::zeroize(&mut data);
+                Ok(secret)
+            }
+            _ => Err(Failure::new(
+                "hello",
+                "The Keychain gave back something else.",
+            )),
+        }
+    }
+
+    /// A new secret, and Touch ID once to confirm it opens.
+    pub fn create(name: &str, reason: &str, cancel: &str) -> Result<Zeroizing<[u8; 32]>, Failure> {
+        let group = group().ok_or_else(missing_group)?;
+        delete(name, true);
+        let mut secret = Zeroizing::new([0u8; 32]);
+        rand::rngs::OsRng.fill_bytes(secret.as_mut());
+        let refused = |error: security_framework::base::Error| {
+            Failure::new("hello", format!("The Keychain said no ({}).", error.code()))
+        };
+        let access = SecAccessControl::create_with_protection(
+            Some(ProtectionMode::AccessibleWhenPasscodeSetThisDeviceOnly),
+            AccessControlOptions::BIOMETRY_CURRENT_SET.bits(),
+        )
+        .map_err(refused)?;
+        let mut options = PasswordOptions::new_generic_password(SERVICE, name);
+        options.set_access_group(&group);
+        options.use_protected_keychain();
+        options.set_access_synchronized(Some(false));
+        options.set_access_control(access);
+        options.set_label("UwULock unlock");
+        set_generic_password_options(secret.as_ref(), options).map_err(refused)?;
+        let back = read(name, reason, cancel).inspect_err(|_| delete(name, false))?;
+        if *back != *secret {
+            delete(name, false);
+            return Err(Failure::new(
+                "hello",
+                "The Keychain gave back something else.",
+            ));
+        }
+        Ok(secret)
+    }
+
+    /// Removes the secret without asking; `or_ask`: with Touch ID, should
+    /// macOS want it for removing.
+    pub fn delete(name: &str, or_ask: bool) {
+        let Some(group) = group() else {
+            return;
+        };
+        let mut quiet = search(name, &group);
+        if let Some(context) = context(true) {
+            with_context(&mut quiet, &context);
+        }
+        if let Err(error) = quiet.delete() {
+            if or_ask && error.code() == INTERACTION_NOT_ALLOWED {
+                let _ = search(name, &group).delete();
+            }
+        }
+    }
+}
+
+#[cfg(not(any(windows, mobile, target_os = "macos")))]
 mod platform {
     pub fn available() -> bool {
         false
@@ -211,15 +427,15 @@ mod platform {
     }
 }
 
-#[cfg(not(mobile))]
+#[cfg(not(any(mobile, target_os = "macos")))]
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use parking_lot::RwLock;
-#[cfg(not(mobile))]
+#[cfg(not(any(mobile, target_os = "macos")))]
 use rand::RngCore as _;
 use serde::Deserialize;
 use tauri::AppHandle;
 use uwulock_bitwarden::{EncString, Error, SymmetricKey};
-#[cfg(not(mobile))]
+#[cfg(not(any(mobile, target_os = "macos")))]
 use zeroize::Zeroizing;
 
 use crate::vault::Failure;
@@ -229,10 +445,11 @@ use crate::vault::Failure;
 /// `biometric`. `None` until asked, and where there is nothing.
 static KIND: RwLock<Option<String>> = RwLock::new(None);
 
-/// The words of a phone's biometric dialog, in the page's language. Windows
-/// Hello brings its own.
+/// The words of a phone's biometric dialog, in the page's language, and on a
+/// Mac what completes "UwULock is trying to …" (`reason`). Windows Hello
+/// brings its own.
 #[derive(Debug, Clone, Default, Deserialize)]
-#[cfg_attr(not(mobile), allow(dead_code))]
+#[cfg_attr(not(any(mobile, target_os = "macos")), allow(dead_code))]
 #[serde(rename_all = "camelCase")]
 pub struct Prompt {
     #[serde(default)]
@@ -241,6 +458,8 @@ pub struct Prompt {
     pub subtitle: String,
     #[serde(default)]
     pub cancel: String,
+    #[serde(default)]
+    pub reason: String,
 }
 
 /// Seals `data` with DPAPI for this Windows user: what `account.rs` keeps
@@ -293,7 +512,12 @@ fn ask() -> Option<String> {
         .then(|| status.kind.unwrap_or_else(|| "biometric".into()))
 }
 
-#[cfg(not(mobile))]
+#[cfg(target_os = "macos")]
+fn ask() -> Option<String> {
+    touch::available().then(|| "touchId".to_string())
+}
+
+#[cfg(not(any(mobile, target_os = "macos")))]
 fn ask() -> Option<String> {
     platform::available().then(|| "windowsHello".to_string())
 }
@@ -303,7 +527,7 @@ fn name(account_id: &str) -> String {
 }
 
 /// What Hello signs: the account and the enrolment's random bytes.
-#[cfg_attr(mobile, allow(dead_code))]
+#[cfg_attr(any(mobile, target_os = "macos"), allow(dead_code))]
 fn challenge(account_id: &str, random: &[u8]) -> Vec<u8> {
     let mut out = format!("uwulock-hello-v2:{account_id}:").into_bytes();
     out.extend_from_slice(random);
@@ -320,6 +544,8 @@ fn key_from(secret: &[u8; 32]) -> SymmetricKey {
 const PREFIX: &str = "v2:";
 /// How a phone's copy is kept: `m1:<the user key under the phone's key>`.
 const PHONE: &str = "m1:";
+/// How a Mac's copy is kept: `t1:<the user key under Touch ID's key>`.
+const MAC: &str = "t1:";
 
 fn split(stored: &str) -> Option<(&str, &str)> {
     stored.strip_prefix(PREFIX)?.split_once(':')
@@ -330,6 +556,8 @@ fn split(stored: &str) -> Option<(&str, &str)> {
 pub(crate) fn is_outdated(stored: &str) -> bool {
     if cfg!(mobile) {
         !stored.starts_with(PHONE)
+    } else if cfg!(target_os = "macos") {
+        !stored.starts_with(MAC)
     } else {
         split(stored).is_none()
     }
@@ -351,7 +579,7 @@ fn opened(sealed: &str, secret: &[u8; 32]) -> Result<SymmetricKey, Failure> {
 
 /// Switching it on: a new key on the device, and the user key sealed under
 /// what it gives. Blocks while the system asks the person.
-#[cfg(not(mobile))]
+#[cfg(not(any(mobile, target_os = "macos")))]
 pub(crate) fn seal(
     account_id: &str,
     user_key: &SymmetricKey,
@@ -372,7 +600,7 @@ pub(crate) fn seal(
 }
 
 /// Unlocking: the system asks the person, and the sealed copy opens.
-#[cfg(not(mobile))]
+#[cfg(not(any(mobile, target_os = "macos")))]
 pub(crate) fn open(
     account_id: &str,
     stored: &str,
@@ -399,9 +627,60 @@ pub(crate) fn open(
     opened(sealed, &secret)
 }
 
-#[cfg(not(mobile))]
+#[cfg(not(any(mobile, target_os = "macos")))]
 pub(crate) fn forget(account_id: &str) {
     platform::delete(&name(account_id));
+}
+
+/// The sentence and button of the Touch ID sheet.
+#[cfg(target_os = "macos")]
+fn mac_prompt(prompt: &Prompt) -> (String, String) {
+    let or = |text: &str, fallback: &str| {
+        let text = text.trim();
+        if text.is_empty() {
+            fallback.to_string()
+        } else {
+            text.to_string()
+        }
+    };
+    (
+        or(&prompt.reason, "unlock your vault"),
+        or(&prompt.cancel, "Master password"),
+    )
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn seal(
+    account_id: &str,
+    user_key: &SymmetricKey,
+    prompt: &Prompt,
+) -> Result<String, Failure> {
+    let (reason, cancel) = mac_prompt(prompt);
+    let secret = touch::create(&name(account_id), &reason, &cancel)?;
+    let sealed = EncString::encrypt(&user_key.to_bytes(), &key_from(&secret));
+    Ok(format!("{MAC}{sealed}"))
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn open(
+    account_id: &str,
+    stored: &str,
+    prompt: &Prompt,
+) -> Result<SymmetricKey, Failure> {
+    let sealed = stored.strip_prefix(MAC).ok_or_else(|| {
+        Failure::new(
+            "biometric-changed",
+            format!("No copy for this Mac. {AGAIN}"),
+        )
+    })?;
+    let (reason, cancel) = mac_prompt(prompt);
+    let secret = touch::read(&name(account_id), &reason, &cancel)?;
+    opened(sealed, &secret)
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn forget(account_id: &str) {
+    touch::delete(&name(account_id), false);
 }
 
 #[cfg(mobile)]
@@ -499,6 +778,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(target_os = "macos"))]
     fn copies_from_before_the_random_challenge_are_outdated() {
         let old = EncString::encrypt(&[1; 64], &key_from(&[7; 32])).to_string();
         assert!(is_outdated(&old));

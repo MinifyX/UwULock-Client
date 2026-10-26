@@ -61,15 +61,28 @@ export function LockScreen({ status, onUnlocked, onLoggedOut, onAddAccount }: Pr
     }
   };
 
-  // On a phone the fingerprint or face is asked for right away, once per
-  // account, the way phone apps do; the master password stays below it.
+  // On a phone, and on a Mac with Touch ID, the finger or face is asked for
+  // right away, once per account, the way phone apps do; the sheet's button
+  // leads to the master password below. Only while UwULock is in front: a
+  // vault that locked in the background asks when it comes back.
+  const autoAsk = status.hello && (isMobile() || status.helloKind === 'touchId');
   const asked = useRef<string | null>(null);
   useEffect(() => {
-    if (!isMobile() || !status.hello || asked.current === status.accountId) return;
-    asked.current = status.accountId;
-    void hello();
+    const id = status.accountId;
+    if (!autoAsk || asked.current === id) return;
+    const ask = () => {
+      if (asked.current === id) return;
+      asked.current = id;
+      void hello();
+    };
+    if (document.hasFocus()) {
+      ask();
+      return;
+    }
+    window.addEventListener('focus', ask, { once: true });
+    return () => window.removeEventListener('focus', ask);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status.hello, status.accountId]);
+  }, [autoAsk, status.accountId]);
 
   return (
     <div className="lock">
@@ -88,7 +101,7 @@ export function LockScreen({ status, onUnlocked, onLoggedOut, onAddAccount }: Pr
           <PasswordInput
             value={password}
             onChange={setPassword}
-            autoFocus={!(isMobile() && status.hello)}
+            autoFocus={!autoAsk}
             disabled={busy}
           />
         </label>
