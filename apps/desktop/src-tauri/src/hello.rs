@@ -463,7 +463,7 @@ static KIND: RwLock<Option<String>> = RwLock::new(None);
 /// Mac what completes "UwULock is trying to …" (`reason`). Windows Hello
 /// brings its own.
 #[derive(Debug, Clone, Default, Deserialize)]
-#[cfg_attr(not(any(mobile, target_os = "macos")), allow(dead_code))]
+#[cfg_attr(not(mobile), allow(dead_code))]
 #[serde(rename_all = "camelCase")]
 pub struct Prompt {
     #[serde(default)]
