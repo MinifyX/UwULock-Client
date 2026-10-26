@@ -31,6 +31,8 @@
 
 mod account;
 mod autofill;
+#[cfg(target_os = "macos")]
+mod blocks;
 mod clipboard;
 mod extras;
 mod health;

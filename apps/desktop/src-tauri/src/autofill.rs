@@ -227,6 +227,7 @@ fn request(app: &AppHandle, _target: &str) -> Result<ProviderView> {
 /// thread), with a time limit.
 #[cfg(target_os = "macos")]
 pub(crate) mod mac {
+    use crate::blocks;
     use block2::RcBlock;
     use objc2::runtime::{AnyClass, AnyObject, Bool, Sel};
     use objc2::{msg_send, sel};
@@ -252,29 +253,32 @@ pub(crate) mod mac {
     pub(super) fn enabled() -> Option<bool> {
         let store_class = class(c"ASCredentialIdentityStore")?;
         let (tx, rx) = mpsc::channel();
-        let block = RcBlock::new(move |state: *mut AnyObject| {
-            let enabled = if state.is_null() {
-                false
-            } else {
-                // SAFETY: `state` is the ASCredentialIdentityStoreState the system hands the block.
-                let on: Bool = unsafe { msg_send![state, isEnabled] };
-                on.as_bool()
-            };
-            let _ = tx.send(enabled);
-        });
+        let block =
+            RcBlock::with_encoding::<_, _, _, blocks::Object>(move |state: *mut AnyObject| {
+                let enabled = if state.is_null() {
+                    false
+                } else {
+                    // SAFETY: `state` is the ASCredentialIdentityStoreState the system hands the block.
+                    let on: Bool = unsafe { msg_send![state, isEnabled] };
+                    on.as_bool()
+                };
+                let _ = tx.send(enabled);
+            });
         // SAFETY: `sharedStore` returns the shared instance; the Objective-C name of Swift's
         // `getState(_:)` is `getCredentialIdentityStoreStateWithCompletion:`, taking a block of
         // `void (^)(ASCredentialIdentityStoreState *)`, as `block` is. Checked before it is sent:
         // an unknown selector would raise and abort the app.
-        unsafe {
-            let store = shared_store(store_class)?;
+        let store = shared_store(store_class)?;
+        blocks::guarded("AutoFill state", || unsafe {
             let selector = sel!(getCredentialIdentityStoreStateWithCompletion:);
             let answers: Bool = msg_send![store, respondsToSelector: selector];
-            if !answers.as_bool() {
-                return None;
+            if answers.as_bool() {
+                let _: () =
+                    msg_send![store, getCredentialIdentityStoreStateWithCompletion: &*block];
             }
-            let _: () = msg_send![store, getCredentialIdentityStoreStateWithCompletion: &*block];
-        }
+            answers.as_bool()
+        })
+        .filter(|sent| *sent)?;
         rx.recv_timeout(Duration::from_secs(5)).ok()
     }
 
@@ -294,19 +298,21 @@ pub(crate) mod mac {
         let Some(store_class) = class(c"ASCredentialIdentityStore") else {
             return;
         };
-        let block = RcBlock::new(|_done: Bool, _error: *mut AnyObject| {});
+        let block = RcBlock::with_encoding::<_, _, _, blocks::FlagError>(
+            |_done: Bool, _error: *mut AnyObject| {},
+        );
         // SAFETY: `removeAllCredentialIdentitiesWithCompletion:` takes a block of
         // `void (^)(BOOL, NSError *)`, as `block` is; checked before it is sent.
-        unsafe {
-            let Some(store) = shared_store(store_class) else {
-                return;
-            };
+        let Some(store) = shared_store(store_class) else {
+            return;
+        };
+        blocks::guarded("AutoFill removal", || unsafe {
             let selector = sel!(removeAllCredentialIdentitiesWithCompletion:);
             let answers: Bool = msg_send![store, respondsToSelector: selector];
             if answers.as_bool() {
                 let _: () = msg_send![store, removeAllCredentialIdentitiesWithCompletion: &*block];
             }
-        }
+        });
     }
 
     /// macOS 15+: the system asks the person itself.
@@ -338,28 +344,30 @@ pub(crate) mod mac {
         let started = app.run_on_main_thread(move || {
             if direct {
                 let tx = tx.clone();
-                let block = RcBlock::new(move |_on: Bool| {
+                let block = RcBlock::with_encoding::<_, _, _, blocks::Flag>(move |_on: Bool| {
                     let _ = tx.send(());
                 });
                 // SAFETY: the class method takes a block of `void (^)(BOOL)`, as `block` is.
-                unsafe {
+                blocks::guarded("AutoFill request", || unsafe {
                     let _: () = msg_send![
                         helper,
                         requestToTurnOnCredentialProviderExtensionWithCompletionHandler: &*block
                     ];
-                }
+                });
             } else {
                 let tx = tx.clone();
-                let block = RcBlock::new(move |_error: *mut AnyObject| {
-                    let _ = tx.send(());
-                });
+                let block = RcBlock::with_encoding::<_, _, _, blocks::Object>(
+                    move |_error: *mut AnyObject| {
+                        let _ = tx.send(());
+                    },
+                );
                 // SAFETY: the class method takes a block of `void (^)(NSError *)`, as `block` is.
-                unsafe {
+                blocks::guarded("AutoFill settings", || unsafe {
                     let _: () = msg_send![
                         helper,
                         openCredentialProviderAppSettingsWithCompletionHandler: &*block
                     ];
-                }
+                });
             }
         });
         if started.is_ok() {
