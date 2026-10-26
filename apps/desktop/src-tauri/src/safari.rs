@@ -97,6 +97,7 @@ mod mac {
     use std::time::Duration;
     use tauri::AppHandle;
 
+    use crate::blocks;
     use crate::vault::{Failure, Result};
 
     #[link(name = "SafariServices", kind = "framework")]
@@ -142,23 +143,25 @@ mod mac {
         }
         let id = ns_string(id)?;
         let (tx, rx) = mpsc::channel();
-        let block = RcBlock::new(move |state: *mut AnyObject, _error: *mut AnyObject| {
-            let enabled = (!state.is_null()).then(|| {
-                // SAFETY: `state` is the SFSafariExtensionState Safari hands the block.
-                let on: Bool = unsafe { msg_send![state, isEnabled] };
-                on.as_bool()
-            });
-            let _ = tx.send(enabled);
-        });
+        let block = RcBlock::with_encoding::<_, _, _, blocks::ObjectError>(
+            move |state: *mut AnyObject, _error: *mut AnyObject| {
+                let enabled = (!state.is_null()).then(|| {
+                    // SAFETY: `state` is the SFSafariExtensionState Safari hands the block.
+                    let on: Bool = unsafe { msg_send![state, isEnabled] };
+                    on.as_bool()
+                });
+                let _ = tx.send(enabled);
+            },
+        );
         // SAFETY: the class method takes an NSString and a block of
         // `void (^)(SFSafariExtensionState *, NSError *)`, as `block` is; checked above.
-        unsafe {
+        blocks::guarded("Safari extension state", || unsafe {
             let _: () = msg_send![
                 manager,
                 getStateOfSafariExtensionWithIdentifier: &*id,
                 completionHandler: &*block
             ];
-        }
+        })?;
         rx.recv_timeout(Duration::from_secs(5)).ok().flatten()
     }
 
@@ -174,18 +177,20 @@ mod mac {
         }
         let id = ns_string(id).ok_or_else(|| Failure::new("failed", "no NSString"))?;
         let (tx, rx) = mpsc::channel();
-        let block = RcBlock::new(move |error: *mut AnyObject| {
-            let _ = tx.send(error.is_null());
-        });
+        let block =
+            RcBlock::with_encoding::<_, _, _, blocks::Object>(move |error: *mut AnyObject| {
+                let _ = tx.send(error.is_null());
+            });
         // SAFETY: the class method takes an NSString and a block of `void (^)(NSError *)`, as
         // `block` is; checked above.
-        unsafe {
+        blocks::guarded("Safari settings", || unsafe {
             let _: () = msg_send![
                 application,
                 showPreferencesForExtensionWithIdentifier: &*id,
                 completionHandler: &*block
             ];
-        }
+        })
+        .ok_or_else(|| Failure::new("failed", "Safari didn't open its settings for UwULock"))?;
         match rx.recv_timeout(Duration::from_secs(20)) {
             Ok(true) | Err(_) => Ok(()),
             Ok(false) => Err(Failure::new(

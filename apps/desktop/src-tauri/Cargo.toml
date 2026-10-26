@@ -111,6 +111,7 @@ libc = "0.2"
 # OSX_10_15: the data protection keychain, where Keychain access groups work.
 security-framework = { version = "3", features = ["OSX_10_15"] }
 # Asking macOS to make UwULock the AutoFill provider (autofill.rs: ASSettingsHelper,
-# ASCredentialIdentityStore). The objc2 and block2 Tauri's window layer already brings.
-objc2 = "0.6"
+# ASCredentialIdentityStore). The objc2 and block2 Tauri's window layer already brings;
+# `exception` catches what the system raises (blocks.rs).
+objc2 = { version = "0.6", features = ["exception"] }
 block2 = "0.6"
