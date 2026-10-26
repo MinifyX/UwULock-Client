@@ -145,6 +145,8 @@ Later on phones:
       finger, like on the iPhone). The app's side of the AutoFill key no
       longer asks for Touch ID once or twice more after unlocking. One
       verification is enough
+- [x] 0.6.0-beta.10: the security settings no longer crash the Mac app (Safari's
+      and AutoFill's answers come over XPC, which needs the blocks' signatures)
 
 ## Later · A server of its own
 

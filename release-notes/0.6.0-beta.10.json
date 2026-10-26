@@ -1,0 +1,4 @@
+{
+  "de": "- Mac: Ein Klick auf „Sicherheitseinstellungen“ hat UwULock abstürzen lassen, sobald die App nach dem Status der Safari-Erweiterung fragte. Behoben, ebenso für die Abfragen zu AutoFill",
+  "en": "- Mac: clicking “Security settings” crashed UwULock as soon as the app asked for the Safari extension's state. Fixed, and the same for the AutoFill requests"
+}
