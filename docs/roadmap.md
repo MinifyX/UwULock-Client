@@ -138,6 +138,13 @@ Later on phones:
       Not tried on devices yet; not submitted for review
 - [ ] App Store: store pages, demo account for App Review, screenshots, then the first review
 
+## Next · after 0.6.0-beta.7
+
+- [ ] Mac App Store build: signing in should take Touch ID **or** the master
+      password, as the person chooses. Today the master password is forced
+      first, and Touch ID is asked for once or twice more after it (seen in the
+      TestFlight build of 0.6.0-beta.7). One verification should be enough
+
 ## Later · A server of its own
 
 - UwULock server: Bitwarden-compatible API, so the official apps keep
