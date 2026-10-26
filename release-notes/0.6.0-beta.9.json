@@ -1,0 +1,4 @@
+{
+  "de": "- Mac (App Store): UwULock lässt sich jetzt mit Touch ID entsperren, ganz ohne Master-Passwort. Einschalten unter Einstellungen → „Mit Touch ID entsperren“. Der Sperrbildschirm fragt dann gleich nach dem Finger; über „Master-Passwort“ im Touch-ID-Fenster geht es stattdessen zum Passwort\n- Mac (App Store): Nach dem Entsperren fragt macOS nicht mehr ein- bis zweimal zusätzlich nach Touch ID. UwULock gibt den Schlüssel für die AutoFill-Erweiterung jetzt ohne Rückfrage weiter",
+  "en": "- Mac (App Store): UwULock can now be unlocked with Touch ID, without the master password. Switch it on under Settings → “Unlock with Touch ID”. The lock screen then asks for your finger right away; “Master password” in the Touch ID window leads to the password instead\n- Mac (App Store): after unlocking, macOS no longer asks for Touch ID once or twice more. UwULock now hands the key for the AutoFill extension over without asking"
+}

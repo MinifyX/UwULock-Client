@@ -242,7 +242,13 @@ export const loginSendEmail = () => invoke<void>('login_send_email');
 export const loginCancel = () => invoke<void>('login_cancel');
 export const unlock = (password: string) => invoke<Status>('unlock', { password });
 /** The words of a phone's biometric dialog; Windows Hello brings its own. */
-export type UnlockPrompt = { title: string; subtitle: string; cancel: string };
+export type UnlockPrompt = {
+  title: string;
+  subtitle: string;
+  cancel: string;
+  /** macOS's Touch ID sheet: what completes "UwULock is trying to …". */
+  reason?: string;
+};
 export const unlockWithHello = (prompt: UnlockPrompt) =>
   invoke<Status>('unlock_with_hello', { prompt });
 export const setHello = (enabled: boolean, prompt: UnlockPrompt) =>

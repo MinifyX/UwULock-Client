@@ -944,7 +944,7 @@ pub(crate) async fn set_hello(
     if !crate::hello::available() {
         return Err(Failure::new(
             "unsupported",
-            "Neither Windows Hello nor a fingerprint or face is set up on this device.",
+            "Neither Windows Hello, Touch ID nor a fingerprint or face is set up on this device.",
         ));
     }
     let user_key = state.with_unlocked(|u| Ok(u.user_key.clone()))?;

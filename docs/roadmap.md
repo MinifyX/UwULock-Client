@@ -138,12 +138,13 @@ Later on phones:
       Not tried on devices yet; not submitted for review
 - [ ] App Store: store pages, demo account for App Review, screenshots, then the first review
 
-## Next · after 0.6.0-beta.7
+## 0.6.0-beta.9 · Touch ID on the Mac
 
-- [ ] Mac App Store build: signing in should take Touch ID **or** the master
-      password, as the person chooses. Today the master password is forced
-      first, and Touch ID is asked for once or twice more after it (seen in the
-      TestFlight build of 0.6.0-beta.7). One verification should be enough
+- [x] Mac App Store build: unlocking takes Touch ID **or** the master
+      password, as the person chooses (a Keychain item that only opens with a
+      finger, like on the iPhone). The app's side of the AutoFill key no
+      longer asks for Touch ID once or twice more after unlocking. One
+      verification is enough
 
 ## Later · A server of its own
 

@@ -34,10 +34,10 @@ updates it.
 - **Entitlements** (`macos/Entitlements.mas.plist`): network client (the server, icons, live
   updates), user-selected files read/write (moving a vault in, importing a key), Downloads
   read/write (file requests, saved keys go there as in every build), the App Group
-  `TEAMID.app.uwulock`, the Keychain groups `TEAMID.app.uwulock` + `TEAMID.app.uwulock.passkeys`,
-  and the AutoFill entitlement (App Store Connect wants it on the extension's container too,
-  ITMS-90729; the App ID `app.uwulock` has the capability for that).
-  Nothing listens, nothing starts other programs.
+  `TEAMID.app.uwulock`, the Keychain groups `TEAMID.app.uwulock` + `TEAMID.app.uwulock.passkeys`
+  - `TEAMID.app.uwulock.unlock` (Touch ID's unlock secret, out of the extension's reach), and the AutoFill entitlement (App Store Connect wants it on the extension's container too,
+    ITMS-90729; the App ID `app.uwulock` has the capability for that).
+    Nothing listens, nothing starts other programs.
 - **Data** lives in the container, `~/Library/Containers/app.uwulock/Data/Library/Application
 Support/app.uwulock`, not where the DMG keeps it. Switching between the two means signing in
   again.

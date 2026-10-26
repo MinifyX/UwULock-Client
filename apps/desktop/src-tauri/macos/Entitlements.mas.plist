@@ -13,7 +13,8 @@
     every other build (extras.rs, suite.rs).
   - application-groups: the folder shared with the AutoFill extension (passkeys/apple.rs).
   - keychain-access-groups: the app's own group first (the default for its items), then the
-    one it shares with the extension for the provider key.
+    one it shares with the extension for the provider key, then the one for Touch ID's unlock
+    secret (hello.rs) — matching no app group, so the extension can't reach it.
   - autofill-credential-provider: the container of an AutoFill extension needs it as well
     (App Store Connect refuses it otherwise, ITMS-90729); the extension is the provider.
 
@@ -40,6 +41,7 @@
 	<array>
 		<string>TEAMID.app.uwulock</string>
 		<string>TEAMID.app.uwulock.passkeys</string>
+		<string>TEAMID.app.uwulock.unlock</string>
 	</array>
 </dict>
 </plist>
