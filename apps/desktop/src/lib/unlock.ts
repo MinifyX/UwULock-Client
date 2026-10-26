@@ -1,5 +1,5 @@
 /**
- * Unlocking without the master password: Windows Hello on a computer, a
+ * Unlocking without the master password: Windows Hello or Touch ID on a computer, a
  * fingerprint or face on a phone (`helloKind` in the status). The words for
  * each, and for the phone's own dialog.
  */
