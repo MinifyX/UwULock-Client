@@ -194,8 +194,9 @@ mod platform {
 }
 
 /// Touch ID on a Mac, in the Mac App Store build: 32 random bytes in the
-/// data protection keychain, in the app's own Keychain group (not the one
-/// shared with the AutoFill extension), handed out only after a finger
+/// data protection keychain, in a Keychain group of the app's alone (no app
+/// group: those are Keychain groups too, and the AutoFill extension has
+/// `app.uwulock`), handed out only after a finger
 /// enrolled right now (`biometryCurrentSet`), on this Mac only, only while
 /// it has a login password. Like a phone's secret. A build without the
 /// developer team has no Keychain group and offers nothing.
@@ -226,10 +227,10 @@ pub(crate) mod touch {
     const AUTH_FAILED: i32 = -25293;
     const INTERACTION_NOT_ALLOWED: i32 = -25308;
 
-    /// The app's own Keychain group, first in its entitlements.
+    /// The Touch ID group in the app's entitlements (Entitlements.mas.plist).
     fn group() -> Option<String> {
         TEAM.filter(|t| !t.is_empty())
-            .map(|team| format!("{team}.app.uwulock"))
+            .map(|team| format!("{team}.app.uwulock.unlock"))
     }
 
     fn nsstring(text: &str) -> Option<Retained<AnyObject>> {
@@ -268,6 +269,10 @@ pub(crate) mod touch {
 
     /// Whether this build has its Keychain group and the Mac a finger enrolled.
     pub fn available() -> bool {
+        objc2::rc::autoreleasepool(|_| available_in_pool())
+    }
+
+    fn available_in_pool() -> bool {
         if group().is_none() {
             return false;
         }
@@ -326,6 +331,11 @@ pub(crate) mod touch {
             }
             if let Some(cancel) = nsstring(cancel) {
                 let _: () = msg_send![&*context, setLocalizedCancelTitle: &*cancel];
+            }
+            // No "Enter password" after a finger that didn't fit: the
+            // master password is the way back, behind the cancel button.
+            if let Some(none) = nsstring("") {
+                let _: () = msg_send![&*context, setLocalizedFallbackTitle: &*none];
             }
         }
         let mut search = search(name, &group);
@@ -391,6 +401,10 @@ pub(crate) mod touch {
     /// Removes the secret without asking; `or_ask`: with Touch ID, should
     /// macOS want it for removing.
     pub fn delete(name: &str, or_ask: bool) {
+        objc2::rc::autoreleasepool(|_| delete_in_pool(name, or_ask))
+    }
+
+    fn delete_in_pool(name: &str, or_ask: bool) {
         let Some(group) = group() else {
             return;
         };

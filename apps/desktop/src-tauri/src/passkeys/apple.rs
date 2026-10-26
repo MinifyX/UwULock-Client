@@ -773,29 +773,35 @@ mod native {
         search
     }
 
-    fn key_there(key: &[u8; 32]) -> bool {
-        let Ok(group) = group() else {
-            return false;
-        };
-        match search(&group)
-            .label(&label(key))
-            .load_attributes(true)
-            .search()
-        {
-            Ok(found) => !found.is_empty(),
-            // Only an item with this label gets as far as wanting Touch ID.
-            Err(error) => error.code() == INTERACTION_NOT_ALLOWED,
-        }
+    /// Whether the item there is this key. An error while the Keychain is
+    /// locked (the screen locked, the Mac asleep): then nothing is written,
+    /// the list neither, and the next sync tries again.
+    fn key_there(key: &[u8; 32]) -> Result<bool, String> {
+        let group = group()?;
+        objc2::rc::autoreleasepool(|_| {
+            match search(&group)
+                .label(&label(key))
+                .load_attributes(true)
+                .search()
+            {
+                Ok(found) => Ok(!found.is_empty()),
+                Err(error) if error.code() == INTERACTION_NOT_ALLOWED => {
+                    Err("The Keychain is locked.".to_string())
+                }
+                Err(_) => Ok(false),
+            }
+        })
     }
 
     /// Removes the item, with Touch ID only if macOS insists on it for that.
     fn delete() -> Result<(), String> {
-        match search(&group()?).delete() {
+        let group = group()?;
+        objc2::rc::autoreleasepool(|_| match search(&group).delete() {
             Err(error) if error.code() == INTERACTION_NOT_ALLOWED => {
                 delete_generic_password_options(options()?).map_err(|e| e.to_string())
             }
             _ => Ok(()),
-        }
+        })
     }
 
     pub(super) fn problem(_app: &AppHandle) -> Option<String> {
@@ -815,7 +821,7 @@ mod native {
         let folder = folder()?;
         std::fs::create_dir_all(folder.join("outbox").join("unreadable"))
             .map_err(|e| e.to_string())?;
-        if !key_there(key) {
+        if !key_there(key)? {
             // Missing, or another account's key, or one from before: as on
             // iOS, only after Touch ID or the login password, this Mac only.
             let _ = delete();
