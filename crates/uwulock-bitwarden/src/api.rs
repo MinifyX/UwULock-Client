@@ -293,6 +293,56 @@ pub struct SsoLogin<'a> {
     pub remember_token: Option<&'a str>,
 }
 
+/// The SSO "organization" of an account and the master password policy that
+/// comes with it ([`Client::sso_organization`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SsoOrganization {
+    pub identifier: String,
+    pub policy: crate::sso::PasswordPolicy,
+}
+
+/// What `/api/accounts/set-password` did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SetPassword {
+    Set,
+    /// The account has a master password already.
+    AlreadySet,
+}
+
+/// The policy object of `…/policies/master-password`; switched off or
+/// unreadable means no rules beyond UwULock's floor.
+pub fn parse_password_policy(policy: &Value) -> crate::sso::PasswordPolicy {
+    let field = |value: &Value, key: &str| -> Option<Value> {
+        let map = value.as_object()?;
+        map.iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case(key))
+            .map(|(_, value)| value.clone())
+    };
+    let enabled = field(policy, "enabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let Some(data) = field(policy, "data").filter(|_| enabled) else {
+        return crate::sso::PasswordPolicy::default();
+    };
+    let number = |key| {
+        field(&data, key)
+            .and_then(|v| v.as_u64())
+            .unwrap_or_default()
+    };
+    crate::sso::PasswordPolicy::with_floor(
+        usize::try_from(number("minLength")).unwrap_or(usize::MAX),
+        u8::try_from(number("minComplexity")).unwrap_or(u8::MAX),
+    )
+}
+
+/// Whether a refusal of `set-password` says the account has a master password
+/// already (UwULock Server: "This account has a master password already.";
+/// Bitwarden: "User already has a master password.").
+fn already_has_password(message: &str) -> bool {
+    let message = message.to_lowercase();
+    message.contains("master password already") || message.contains("already has a master password")
+}
+
 /// The form of an SSO code's token request, as Bitwarden's desktop app sends it.
 pub fn sso_token_form(
     app: &App,
@@ -609,15 +659,111 @@ impl Client {
         crate::sso::authorize_url(&self.server.identity(), &self.app, start, sso_token)
     }
 
+    /// The "organization" an SSO login belongs to and its master password
+    /// policy, as Bitwarden's apps ask before an account's first master
+    /// password: the SSO identifier for the email
+    /// (`/api/organizations/domain/sso/verified`), its id
+    /// (`…/{identifier}/auto-enroll-status`) and the policy
+    /// (`…/{id}/policies/master-password`). A server that doesn't know these
+    /// (404) has no policy beyond UwULock's own floor; any other failure is
+    /// an error, so a policy is never skipped by accident.
+    pub async fn sso_organization(
+        &self,
+        access_token: &str,
+        email: &str,
+    ) -> Result<SsoOrganization, Error> {
+        let identifier = self
+            .sso_identifier(email)
+            .await
+            .unwrap_or_else(|| crate::sso::DEFAULT_IDENTIFIER.to_string());
+        let none = |identifier: String| SsoOrganization {
+            identifier,
+            policy: crate::sso::PasswordPolicy::default(),
+        };
+
+        let Some(status) = self
+            .organization_get(access_token, &[&identifier, "auto-enroll-status"])
+            .await?
+        else {
+            return Ok(none(identifier));
+        };
+        let Some(id) = text_of(&status, "id") else {
+            return Ok(none(identifier));
+        };
+        let Some(policy) = self
+            .organization_get(access_token, &[&id, "policies", "master-password"])
+            .await?
+        else {
+            return Ok(none(identifier));
+        };
+        Ok(SsoOrganization {
+            identifier,
+            policy: parse_password_policy(&policy),
+        })
+    }
+
+    /// The SSO identifier the server hands out for an address; `None` if it
+    /// has none or doesn't answer.
+    async fn sso_identifier(&self, email: &str) -> Option<String> {
+        let response = send(
+            self.request(
+                reqwest::Method::POST,
+                format!("{}/organizations/domain/sso/verified", self.server.api()),
+            )
+            .json(&serde_json::json!({ "email": email })),
+        )
+        .await
+        .ok()?;
+        if !response.ok() {
+            return None;
+        }
+        let answer: Value = response.json().ok()?;
+        let list = answer
+            .as_object()?
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case("data"))?
+            .1
+            .as_array()?;
+        list.iter()
+            .find_map(|entry| text_of(entry, "organizationIdentifier"))
+            .filter(|identifier| identifier.chars().count() <= 100)
+    }
+
+    /// `GET /api/organizations/<segments…>` with the session; `None` on 404.
+    async fn organization_get(
+        &self,
+        access_token: &str,
+        segments: &[&str],
+    ) -> Result<Option<Value>, Error> {
+        let mut url = url::Url::parse(&format!("{}/organizations", self.server.api()))
+            .map_err(|_| Error::Refused("the server address isn't a web address".into()))?;
+        url.path_segments_mut()
+            .map_err(|_| Error::Refused("the server address isn't a web address".into()))?
+            .extend(segments);
+        let response = send(
+            self.request(reqwest::Method::GET, url.into())
+                .bearer_auth(access_token),
+        )
+        .await?;
+        match response.status {
+            404 => Ok(None),
+            401 => Err(Error::SessionExpired),
+            _ if response.ok() => Ok(Some(response.json()?)),
+            _ => Err(response.error()),
+        }
+    }
+
     /// Sets the first master password of an account that came through SSO
     /// without keys (`/api/accounts/set-password`), with the keys
-    /// [`crate::sso::NewKeys::make`] made.
+    /// [`crate::sso::NewKeys::make`] made. A server that says the account has
+    /// one already ([`SetPassword::AlreadySet`]) most likely took an earlier
+    /// try whose answer got lost: only a new login tells which keys it has.
     pub async fn set_password(
         &self,
         access_token: &str,
         keys: &crate::sso::NewKeys,
         identifier: &str,
-    ) -> Result<(), Error> {
+    ) -> Result<SetPassword, Error> {
         let body = keys.set_password_body(identifier);
         let response = send(
             self.request(
@@ -629,12 +775,16 @@ impl Client {
         )
         .await?;
         if response.ok() {
-            return Ok(());
+            return Ok(SetPassword::Set);
         }
         if response.status == 401 {
             return Err(Error::SessionExpired);
         }
-        Err(response.error())
+        let error = response.error();
+        if response.status == 400 && already_has_password(&error.to_string()) {
+            return Ok(SetPassword::AlreadySet);
+        }
+        Err(error)
     }
 
     /// Asks the server to email a two-step code.

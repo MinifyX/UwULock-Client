@@ -45,8 +45,19 @@ export function errorText(error: unknown): string {
         return t('Die Anmeldung im Browser hat zu lange gedauert. Starte sie noch einmal.');
       if (/SSO is not enabled|doesn't offer SSO/.test(m))
         return t('Dieser Server bietet keine Anmeldung mit SSO an.');
-      if (m.includes('master password needs at least'))
-        return t('Das Master-Passwort braucht mindestens 12 Zeichen.');
+      {
+        const length = /master password needs at least (\d+) characters/.exec(m);
+        if (length)
+          return t('Das Master-Passwort braucht mindestens {count} Zeichen.', {
+            count: Number(length[1]),
+          });
+        const strength = /too easy to guess: this server wants strength (\d)/.exec(m);
+        if (strength)
+          return t(
+            'Das Master-Passwort ist zu leicht zu erraten. Dieser Server verlangt Stärke {level} von 4 – nimm ein längeres oder eine Passphrase aus mehreren Wörtern.',
+            { level: Number(strength[1]) },
+          );
+      }
       if (m.includes('https://'))
         return t(
           'Der Server muss per https:// erreichbar sein. Unverschlüsseltes http:// geht nur zu diesem Rechner (localhost).',
@@ -59,6 +70,10 @@ export function errorText(error: unknown): string {
       return t('Der Server hat die Anmeldung abgelehnt: {reason}', { reason: m });
     case 'cancelled':
       return t('Abgebrochen.');
+    case 'sso-restart':
+      return t(
+        'Dieses Konto hat schon ein Master-Passwort – vermutlich hat ein früherer Versuch geklappt. Melde dich noch einmal mit SSO an.',
+      );
     case 'wrong-password':
       return t('Das Master-Passwort ist falsch.');
     case 'session-expired':

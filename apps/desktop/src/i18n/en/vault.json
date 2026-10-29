@@ -219,7 +219,6 @@
   "Auch mit {keys}, von überall in UwULock.": "Also with {keys}, from anywhere in UwULock.",
   "Die Anmeldung im Browser hat zu lange gedauert. Starte sie noch einmal.": "The login in the browser took too long. Start it again.",
   "Dieser Server bietet keine Anmeldung mit SSO an.": "This server doesn't offer logging in with SSO.",
-  "Das Master-Passwort braucht mindestens 12 Zeichen.": "The master password needs at least 12 characters.",
   "Anmeldung im Browser": "Logging in in the browser",
   "Dein Browser hat sich geöffnet. Melde dich dort an – danach geht es hier von selbst weiter.": "Your browser has opened. Log in there – UwULock carries on here by itself afterwards.",
   "Mit SSO anmelden": "Log in with SSO",
@@ -228,5 +227,11 @@
   "Angemeldet als {email}. Dein Master-Passwort öffnet den Tresor.": "Logged in as {email}. Your master password opens the vault.",
   "Mindestens {count} Zeichen.": "At least {count} characters.",
   "Master-Passwort wiederholen": "Repeat the master password",
-  "Die Passwörter sind verschieden.": "The passwords don't match."
+  "Die Passwörter sind verschieden.": "The passwords don't match.",
+  "Das Master-Passwort braucht mindestens {count} Zeichen.": "The master password needs at least {count} characters.",
+  "Das Master-Passwort ist zu leicht zu erraten. Dieser Server verlangt Stärke {level} von 4 – nimm ein längeres oder eine Passphrase aus mehreren Wörtern.": "The master password is too easy to guess. This server asks for strength {level} of 4 – use a longer one or a passphrase of several words.",
+  "Dieses Konto hat schon ein Master-Passwort – vermutlich hat ein früherer Versuch geklappt. Melde dich noch einmal mit SSO an.": "This account has a master password already – an earlier try probably went through. Log in with SSO again.",
+  "Mindestens {count} Zeichen und nicht leicht zu erraten: Dein Server verlangt die Stärke „{strength}“ ({level} von 4).": "At least {count} characters and not easy to guess: your server asks for strength “{strength}” ({level} of 4).",
+  "mittel": "fair",
+  "sehr stark": "very strong"
 }

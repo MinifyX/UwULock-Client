@@ -11,7 +11,7 @@ use std::io::{Read, Write};
 use std::time::Duration;
 use uwulock_bitwarden::crypto::{self, EncString, Kdf};
 use uwulock_bitwarden::sso::{self, Loopback, NewKeys, Start};
-use uwulock_bitwarden::{Client, Device, LoginOutcome, Server, SsoLogin};
+use uwulock_bitwarden::{Client, Device, LoginOutcome, Server, SetPassword, SsoLogin};
 
 use crate::support::fake_http::{Answer, FakeHttp, Request};
 
@@ -145,11 +145,18 @@ async fn sso_login_of_a_new_account_sets_its_first_master_password() {
 
     // Cheaper rounds for the test; the KDF goes to the server as it is.
     let cheap = Kdf::Pbkdf2 { iterations: 5_000 };
-    let keys = NewKeys::make("a long first password", "nyu@example.com", cheap).unwrap();
-    client
+    let keys = NewKeys::make(
+        "a long first password",
+        "nyu@example.com",
+        cheap,
+        &sso::PasswordPolicy::default(),
+    )
+    .unwrap();
+    let set = client
         .set_password(&session.access_token, &keys, sso::DEFAULT_IDENTIFIER)
         .await
         .unwrap();
+    assert_eq!(set, SetPassword::Set);
     let request = fake.last("POST", "/api/accounts/set-password").unwrap();
     assert_eq!(
         request.headers.get("authorization").map(String::as_str),
@@ -246,4 +253,117 @@ async fn a_server_without_sso_says_so() {
         .await
         .unwrap_err();
     assert!(error.to_string().contains("SSO"), "{error}");
+}
+
+#[tokio::test]
+async fn the_servers_master_password_policy_is_found_and_kept() {
+    let fake = FakeHttp::start(
+        |request| match (request.method.as_str(), request.path.as_str()) {
+            ("POST", "/api/organizations/domain/sso/verified") => Answer::json(
+                200,
+                json!({ "object": "list", "data": [{ "organizationIdentifier": "Acme Corp" }] }),
+            ),
+            ("GET", "/api/organizations/Acme%20Corp/auto-enroll-status") => {
+                Answer::json(200, json!({ "id": "0f6e2a52-3b8e-5c1d-9a7e-4b2c1d0e9f11" }))
+            }
+            (
+                "GET",
+                "/api/organizations/0f6e2a52-3b8e-5c1d-9a7e-4b2c1d0e9f11/policies/master-password",
+            ) => Answer::json(
+                200,
+                json!({
+                    "type": 1,
+                    "enabled": true,
+                    "data": { "minLength": 14, "minComplexity": 3, "enforceOnLogin": false },
+                }),
+            ),
+            ("POST", "/api/accounts/set-password") => Answer::json(
+                400,
+                json!({ "message": "This account has a master password already." }),
+            ),
+            _ => Answer::empty(404),
+        },
+    );
+    let client = client(&fake.url);
+    let organization = client
+        .sso_organization("access", "nyu@example.com")
+        .await
+        .unwrap();
+    assert_eq!(organization.identifier, "Acme Corp");
+    assert_eq!(
+        organization.policy,
+        sso::PasswordPolicy {
+            min_length: 14,
+            min_complexity: 3
+        }
+    );
+    assert_eq!(
+        fake.last("POST", "/api/organizations/domain/sso/verified")
+            .unwrap()
+            .json()["email"],
+        "nyu@example.com"
+    );
+    let policy = fake
+        .last(
+            "GET",
+            "/api/organizations/0f6e2a52-3b8e-5c1d-9a7e-4b2c1d0e9f11/policies/master-password",
+        )
+        .unwrap();
+    assert_eq!(
+        policy.headers.get("authorization").map(String::as_str),
+        Some("Bearer access")
+    );
+
+    // An earlier try went through but its answer got lost.
+    let keys = NewKeys::make(
+        "a long first password",
+        "nyu@example.com",
+        Kdf::Pbkdf2 { iterations: 5_000 },
+        &sso::PasswordPolicy::default(),
+    )
+    .unwrap();
+    let set = client
+        .set_password("access", &keys, &organization.identifier)
+        .await
+        .unwrap();
+    assert_eq!(set, SetPassword::AlreadySet);
+}
+
+#[tokio::test]
+async fn a_server_without_a_policy_leaves_the_floor() {
+    // Vaultwarden without SSO organizations, say: everything is 404.
+    let fake = FakeHttp::start(|_| Answer::empty(404));
+    let organization = client(&fake.url)
+        .sso_organization("access", "nyu@example.com")
+        .await
+        .unwrap();
+    assert_eq!(organization.identifier, sso::DEFAULT_IDENTIFIER);
+    assert_eq!(organization.policy, sso::PasswordPolicy::default());
+
+    // A policy that is switched off asks for nothing more either.
+    assert_eq!(
+        uwulock_bitwarden::api::parse_password_policy(
+            &json!({ "enabled": false, "data": { "minLength": 30, "minComplexity": 4 } })
+        ),
+        sso::PasswordPolicy::default()
+    );
+}
+
+#[tokio::test]
+async fn a_failing_policy_lookup_is_an_error() {
+    let fake = FakeHttp::start(
+        |request| match (request.method.as_str(), request.path.as_str()) {
+            ("GET", path) if path.ends_with("/auto-enroll-status") => {
+                Answer::json(200, json!({ "id": "x" }))
+            }
+            ("GET", path) if path.ends_with("/master-password") => {
+                Answer::json(500, json!({ "message": "boom" }))
+            }
+            _ => Answer::empty(404),
+        },
+    );
+    assert!(client(&fake.url)
+        .sso_organization("access", "nyu@example.com")
+        .await
+        .is_err());
 }

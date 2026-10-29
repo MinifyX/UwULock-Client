@@ -38,6 +38,9 @@ pub use uwulock_core::{
     Error,
 };
 
-pub use api::{App, Client, Device, LoginOutcome, Server, Session, SsoLogin, TwoFactorMethod};
+pub use api::{
+    App, Client, Device, LoginOutcome, Server, Session, SetPassword, SsoLogin, SsoOrganization,
+    TwoFactorMethod,
+};
 pub use crypto::{EncString, Kdf, SymmetricKey};
 pub use vault::{Item, ItemKind, Vault};

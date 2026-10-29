@@ -73,6 +73,12 @@ export function LoginScreen({ again, adding, onDone, onCancel }: Props) {
   const [error, setError] = useState<string | null>(null);
   /** Waiting for the browser of an SSO login to come back. */
   const [ssoWaiting, setSsoWaiting] = useState(false);
+  /**
+   * Counts login flows: going back or cancelling starts a new one, and an
+   * answer that comes in for an older one (a cancelled SSO wait, a password
+   * step left with "Zurück") is dropped.
+   */
+  const flow = useRef(0);
   // SSO goes through the system browser and back to this computer: self-hosted, not on phones.
   const ssoOffered = kind === 'self-hosted' && !isMobile();
 
@@ -90,23 +96,32 @@ export function LoginScreen({ again, adding, onDone, onCancel }: Props) {
     setStep(next);
   };
 
+  /** `finish` for the current flow only. */
+  const finishFlow = (id: number) => (next: LoginStep) => {
+    if (flow.current === id) finish(next);
+  };
+
   const startSso = async () => {
     setError(null);
     if (!url.trim()) {
       setError(t('Bitte gib die Adresse deines Servers ein.'));
       return;
     }
+    const id = ++flow.current;
     setSsoWaiting(true);
     try {
-      finish(await loginSso({ kind: 'self-hosted', url: url.trim() }, email.trim() || null));
+      finishFlow(id)(
+        await loginSso({ kind: 'self-hosted', url: url.trim() }, email.trim() || null),
+      );
     } catch (e) {
-      if (failure(e).kind !== 'cancelled') setError(errorText(e));
+      if (flow.current === id && failure(e).kind !== 'cancelled') setError(errorText(e));
     } finally {
-      setSsoWaiting(false);
+      if (flow.current === id) setSsoWaiting(false);
     }
   };
 
   const cancelSso = () => {
+    flow.current++;
     void loginCancel();
     setSsoWaiting(false);
   };
@@ -131,6 +146,7 @@ export function LoginScreen({ again, adding, onDone, onCancel }: Props) {
   };
 
   const back = () => {
+    flow.current++;
     void loginCancel();
     setStep(null);
     setError(null);
@@ -292,8 +308,13 @@ export function LoginScreen({ again, adding, onDone, onCancel }: Props) {
           <SsoPassword
             email={step.email}
             newAccount={step.newAccount}
+            policy={step.policy}
             onBack={back}
-            onDone={finish}
+            onDone={finishFlow(flow.current)}
+            onRestart={(message) => {
+              back();
+              setError(message);
+            }}
           />
         )}
       </section>
@@ -532,6 +553,9 @@ export function NewDevice<S extends { step: string }>({
 /** The shortest first master password (as in uwulock-bitwarden's `sso::MIN_PASSWORD`). */
 const MIN_NEW_PASSWORD = 12;
 
+/** zxcvbn's scores, as the server's "minimum complexity" names them. */
+const STRENGTH_NAMES = ['', N_('schwach'), N_('mittel'), N_('stark'), N_('sehr stark')];
+
 /**
  * After an SSO login: SSO only said who it is. The master password opens the
  * vault — or, for an account that came through SSO and has no vault yet, is
@@ -540,20 +564,27 @@ const MIN_NEW_PASSWORD = 12;
 function SsoPassword({
   email,
   newAccount,
+  policy,
   onBack,
   onDone,
+  onRestart,
 }: {
   email: string;
   newAccount: boolean;
+  policy: { minLength: number; minComplexity: number };
   onBack: () => void;
   onDone: (step: LoginStep) => void;
+  /** The login has to start over; the message says why. */
+  onRestart: (message: string) => void;
 }) {
   useLanguage();
   const [password, setPassword] = useState('');
   const [repeat, setRepeat] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const tooShort = newAccount && [...password].length < MIN_NEW_PASSWORD;
+  const minLength = Math.max(MIN_NEW_PASSWORD, policy.minLength);
+  const minComplexity = Math.min(4, Math.max(0, policy.minComplexity));
+  const tooShort = newAccount && [...password].length < minLength;
   const mismatch = newAccount && repeat !== '' && repeat !== password;
 
   const submit = async (event: FormEvent) => {
@@ -564,6 +595,10 @@ function SsoPassword({
     try {
       onDone(await loginSsoPassword(password));
     } catch (e) {
+      if (failure(e).kind === 'sso-restart') {
+        onRestart(errorText(e));
+        return;
+      }
       setError(errorText(e));
     } finally {
       setBusy(false);
@@ -594,7 +629,16 @@ function SsoPassword({
         />
         {newAccount && (
           <small className="field-hint">
-            {t('Mindestens {count} Zeichen.', { count: MIN_NEW_PASSWORD })}
+            {minComplexity > 0
+              ? t(
+                  'Mindestens {count} Zeichen und nicht leicht zu erraten: Dein Server verlangt die Stärke „{strength}“ ({level} von 4).',
+                  {
+                    count: minLength,
+                    strength: t(STRENGTH_NAMES[minComplexity] ?? ''),
+                    level: minComplexity,
+                  },
+                )
+              : t('Mindestens {count} Zeichen.', { count: minLength })}
           </small>
         )}
       </label>

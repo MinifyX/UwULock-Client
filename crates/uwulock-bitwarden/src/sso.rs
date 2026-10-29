@@ -8,7 +8,8 @@
 //! 3. The system browser opens [`authorize_url`]; the server sends it on to the provider and,
 //!    after the login there, back to the loopback address with a code and the state.
 //! 4. [`Loopback::wait`] takes exactly that one request: the right path, the right state.
-//!    Anything else is answered with an error and ignored; after the timeout it gives up.
+//!    Each connection is read on its own; anything else is answered with an error and
+//!    ignored; after the timeout it gives up.
 //! 5. [`Client::login_sso`](crate::Client::login_sso) trades the code with the verifier.
 //!
 //! SSO only says who somebody is. The vault is still opened with the master
@@ -33,8 +34,12 @@ pub const CALLBACK_PATH: &str = "/sso-callback";
 /// What the SSO identifier is when nobody typed one: UwULock Server takes any.
 pub const DEFAULT_IDENTIFIER: &str = "uwulock";
 
-/// How long a request to the listener may take to arrive in full.
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long a request to the listener may take to arrive in full. Each
+/// connection is read on its own, so this only bounds an idle one.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// The most connections the listener reads at once; more are closed.
+const MAX_CONNECTIONS: usize = 32;
 
 /// The most a request head to the listener may have.
 const MAX_REQUEST: usize = 8 * 1024;
@@ -205,40 +210,63 @@ impl Loopback {
     }
 
     /// Waits for the browser to come back with the code, at most `timeout`.
-    /// One request at a time, each with a few seconds to arrive; a request that
-    /// isn't the one (another path, no or a wrong state) gets an error page and
-    /// the wait goes on, so a stray request can't end the login. The listener
-    /// closes when this returns.
+    /// Every connection is read in its own task, each with a couple of
+    /// seconds to send its request, so an idle one (a browser's preconnect)
+    /// doesn't hold up the one that matters. A request that isn't the one
+    /// (another path, no or a wrong state) gets an error page and the wait
+    /// goes on, so a stray request can't end the login; the first right one
+    /// wins. The listener and the other connections close when this returns.
     pub async fn wait(self, state: &str, timeout: Duration) -> Result<Zeroizing<String>, Error> {
         let deadline = tokio::time::Instant::now() + timeout;
+        let state = std::sync::Arc::new(Zeroizing::new(state.to_string()));
+        let (found, mut results) = tokio::sync::mpsc::channel::<(Callback, TcpStream)>(1);
+        let mut connections = tokio::task::JoinSet::new();
         loop {
-            let accepted = tokio::time::timeout_at(deadline, self.listener.accept()).await;
-            let Ok(accepted) = accepted else {
-                return Err(Error::Refused(
-                    "The SSO login took too long. Start it again.".into(),
-                ));
-            };
-            let Ok((mut stream, peer)) = accepted else {
-                continue;
-            };
-            if !peer.ip().is_loopback() {
-                continue;
-            }
-            let head = match tokio::time::timeout(REQUEST_TIMEOUT, read_head(&mut stream)).await {
-                Ok(Some(head)) => head,
-                _ => continue,
-            };
-            match parse_callback(&head, state) {
-                Callback::Code(code) => {
-                    answer(&mut stream, "200 OK", DONE_PAGE).await;
-                    return Ok(code);
+            tokio::select! {
+                accepted = self.listener.accept() => {
+                    let Ok((stream, peer)) = accepted else {
+                        continue;
+                    };
+                    // Reap the finished ones, and keep a flood of local
+                    // connections from piling up tasks.
+                    while connections.try_join_next().is_some() {}
+                    if !peer.ip().is_loopback() || connections.len() >= MAX_CONNECTIONS {
+                        continue;
+                    }
+                    let (state, found) = (state.clone(), found.clone());
+                    connections.spawn(async move {
+                        let mut stream = stream;
+                        let head =
+                            tokio::time::timeout(REQUEST_TIMEOUT, read_head(&mut stream)).await;
+                        let Ok(Some(head)) = head else {
+                            return;
+                        };
+                        match parse_callback(&head, &state) {
+                            Callback::Ignored => answer(&mut stream, "404 Not Found", "").await,
+                            callback => {
+                                let _ = found.send((callback, stream)).await;
+                            }
+                        }
+                    });
                 }
-                Callback::Refused(message) => {
-                    answer(&mut stream, "200 OK", REFUSED_PAGE).await;
-                    return Err(Error::Refused(message));
+                Some((callback, mut stream)) = results.recv() => {
+                    match callback {
+                        Callback::Code(code) => {
+                            answer(&mut stream, "200 OK", DONE_PAGE).await;
+                            return Ok(code);
+                        }
+                        Callback::Refused(message) => {
+                            answer(&mut stream, "200 OK", REFUSED_PAGE).await;
+                            return Err(Error::Refused(message));
+                        }
+                        // Answered in its task already; never sent here.
+                        Callback::Ignored => {}
+                    }
                 }
-                Callback::Ignored => {
-                    answer(&mut stream, "404 Not Found", "").await;
+                _ = tokio::time::sleep_until(deadline) => {
+                    return Err(Error::Refused(
+                        "The SSO login took too long. Start it again.".into(),
+                    ));
                 }
             }
         }
@@ -280,8 +308,79 @@ async fn answer(stream: &mut TcpStream, status: &str, body: &str) {
 
 // ── The first master password ─────────────────────────────
 
-/// The shortest first master password UwULock sets, as Bitwarden's apps.
+/// The shortest first master password UwULock sets, as Bitwarden's apps:
+/// the floor under whatever the server asks.
 pub const MIN_PASSWORD: usize = 12;
+
+/// The longest minimum a server may ask for and still be taken at its word;
+/// UwULock Server allows up to 128.
+const MAX_MIN_LENGTH: usize = 128;
+
+/// What a first master password has to be: the server's master password
+/// policy, never below UwULock's own floor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PasswordPolicy {
+    /// In characters, at least [`MIN_PASSWORD`].
+    pub min_length: usize,
+    /// zxcvbn's score, 0 (anything) to 4 (very hard to guess).
+    pub min_complexity: u8,
+}
+
+impl Default for PasswordPolicy {
+    fn default() -> Self {
+        PasswordPolicy {
+            min_length: MIN_PASSWORD,
+            min_complexity: 0,
+        }
+    }
+}
+
+impl PasswordPolicy {
+    /// The server's rules, raised to the floor and kept within sane bounds.
+    pub fn with_floor(min_length: usize, min_complexity: u8) -> Self {
+        PasswordPolicy {
+            min_length: min_length.clamp(MIN_PASSWORD, MAX_MIN_LENGTH),
+            min_complexity: min_complexity.min(4),
+        }
+    }
+
+    /// Refuses a password that is too short or too easy to guess. The email
+    /// counts as known to an attacker, as in Bitwarden's apps.
+    pub fn check(&self, password: &str, email: &str) -> Result<(), Error> {
+        if password.chars().count() < self.min_length {
+            return Err(Error::Refused(format!(
+                "The master password needs at least {} characters.",
+                self.min_length
+            )));
+        }
+        if self.min_complexity > 0 && strength(password, email) < self.min_complexity {
+            return Err(Error::Refused(format!(
+                "The master password is too easy to guess: this server wants strength {} of 4.",
+                self.min_complexity
+            )));
+        }
+        Ok(())
+    }
+}
+
+/// zxcvbn's score of a password, 0 to 4, with the parts of the email and the
+/// app's name as words an attacker would try first.
+pub fn strength(password: &str, email: &str) -> u8 {
+    if password.is_empty() {
+        return 0;
+    }
+    let email = crypto::normalize_email(email);
+    let mut inputs: Vec<&str> = email
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|part| part.len() >= 3)
+        .collect();
+    inputs.extend(["uwulock", "bitwarden"]);
+    // zxcvbn gets slow on very long input: only the first 100 characters are
+    // rated, which can rate a password lower than it is, never higher.
+    let password: String = password.chars().take(100).collect();
+    u8::from(zxcvbn::zxcvbn(&password, &inputs).score())
+}
 
 /// The KDF for a new master password: the server's, if it said one that is at
 /// least as strong as Bitwarden's default (PBKDF2, 600 000 rounds) or is
@@ -319,13 +418,15 @@ pub struct NewKeys {
 }
 
 impl NewKeys {
-    /// Derives the master key (Argon2 or PBKDF2: a moment) and makes the keys.
-    pub fn make(password: &str, email: &str, kdf: Kdf) -> Result<NewKeys, Error> {
-        if password.chars().count() < MIN_PASSWORD {
-            return Err(Error::Refused(format!(
-                "The master password needs at least {MIN_PASSWORD} characters."
-            )));
-        }
+    /// Checks the password against the policy, then derives the master key
+    /// (Argon2 or PBKDF2: a moment) and makes the keys.
+    pub fn make(
+        password: &str,
+        email: &str,
+        kdf: Kdf,
+        policy: &PasswordPolicy,
+    ) -> Result<NewKeys, Error> {
+        policy.check(password, email)?;
         let email = crypto::normalize_email(email);
         let master_key = crypto::master_key(password, &email, kdf)?;
         let master_password_hash =
@@ -579,7 +680,13 @@ mod tests {
     #[test]
     fn new_keys_open_with_the_password() {
         let kdf = Kdf::Pbkdf2 { iterations: 5_000 };
-        let keys = NewKeys::make("correct horse battery", " Nyu@Example.com ", kdf).unwrap();
+        let keys = NewKeys::make(
+            "correct horse battery",
+            " Nyu@Example.com ",
+            kdf,
+            &PasswordPolicy::default(),
+        )
+        .unwrap();
         assert_eq!(keys.email, "nyu@example.com");
         let master = crypto::master_key("correct horse battery", "nyu@example.com", kdf).unwrap();
         assert_eq!(
@@ -614,9 +721,72 @@ mod tests {
         assert!(!body.to_string().contains("correct horse"));
 
         assert!(matches!(
-            NewKeys::make("too short", "nyu@example.com", kdf),
+            NewKeys::make(
+                "too short",
+                "nyu@example.com",
+                kdf,
+                &PasswordPolicy::default()
+            ),
             Err(Error::Refused(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn loopback_is_not_held_up_by_an_idle_connection() {
+        let loopback = Loopback::bind().await.unwrap();
+        let port = port_of(&loopback);
+        let waiting =
+            tokio::spawn(async move { loopback.wait("st4te", Duration::from_secs(10)).await });
+        // A browser's preconnect: open, and nothing sent.
+        let idle = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        let started = std::time::Instant::now();
+        let done = send(
+            port,
+            "GET /sso-callback?code=g00d&state=st4te HTTP/1.1\r\n\r\n",
+        )
+        .await;
+        assert!(done.starts_with("HTTP/1.1 200"));
+        assert_eq!(waiting.await.unwrap().unwrap().as_str(), "g00d");
+        assert!(
+            started.elapsed() < REQUEST_TIMEOUT,
+            "{:?}",
+            started.elapsed()
+        );
+        drop(idle);
+    }
+
+    #[test]
+    fn policy_has_a_floor_and_bounds() {
+        assert_eq!(PasswordPolicy::default(), PasswordPolicy::with_floor(0, 0));
+        assert_eq!(PasswordPolicy::with_floor(8, 0).min_length, MIN_PASSWORD);
+        assert_eq!(PasswordPolicy::with_floor(16, 0).min_length, 16);
+        assert_eq!(PasswordPolicy::with_floor(usize::MAX, 9).min_length, 128);
+        assert_eq!(PasswordPolicy::with_floor(0, 9).min_complexity, 4);
+    }
+
+    #[test]
+    fn policy_checks_length_and_strength() {
+        let email = "nyu@example.com";
+        let long = PasswordPolicy::with_floor(16, 0);
+        let error = long.check("fifteen chars!!", email).unwrap_err();
+        assert!(error.to_string().contains("at least 16"), "{error}");
+        long.check("sixteen chars!!!", email).unwrap();
+
+        let strong = PasswordPolicy::with_floor(0, 4);
+        // Long enough, but a pattern zxcvbn sees through: refused.
+        let error = strong.check("aaaaaaaaaaaaaaaa", email).unwrap_err();
+        assert!(error.to_string().contains("strength 4"), "{error}");
+        // The email is a word an attacker tries first.
+        assert!(
+            strength("zorblaxquintet", "zorblaxquintet@example.com")
+                < strength("zorblaxquintet", email)
+        );
+        strong
+            .check("vivid-Otter-71-kumquat-Lantern", email)
+            .unwrap();
+        assert_eq!(strength("", email), 0);
+        // Very long input stays fast; a repeated pattern stays weak.
+        assert!(strength(&"x9!Q".repeat(10_000), email) < 4);
     }
 
     #[test]

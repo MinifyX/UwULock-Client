@@ -69,7 +69,13 @@ export type LoginStep =
   | { step: 'two-factor'; methods: TwoFactorMethod[]; message: string | null }
   | { step: 'new-device' }
   /** After an SSO login: the master password opens the vault, or — `newAccount` — is set now. */
-  | { step: 'sso-password'; email: string; newAccount: boolean };
+  | {
+      step: 'sso-password';
+      email: string;
+      newAccount: boolean;
+      /** What a new account's first master password has to be (the server's policy, at least 12). */
+      policy: { minLength: number; minComplexity: number };
+    };
 
 /** `wifi` is a secure note with UwULock's marker field (lib/wifi.ts); saved as a `note`. */
 export type ItemKind = 'login' | 'note' | 'card' | 'identity' | 'ssh-key' | 'wifi';
