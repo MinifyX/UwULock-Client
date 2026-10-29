@@ -131,6 +131,20 @@ pub struct Token {
     /// Handed out when "remember this device" was asked for with two-step login.
     #[serde(default, rename = "twofactortoken")]
     pub two_factor_token: Option<String>,
+    /// How the master key is derived. Bitwarden and Vaultwarden send it with
+    /// every login; an SSO login needs it, there was no prelogin.
+    #[serde(default, deserialize_with = "flexible_u32")]
+    pub kdf: Option<u32>,
+    #[serde(default, rename = "kdfiterations", deserialize_with = "flexible_u32")]
+    pub kdf_iterations: Option<u32>,
+    #[serde(default, rename = "kdfmemory", deserialize_with = "flexible_u32")]
+    pub kdf_memory: Option<u32>,
+    #[serde(default, rename = "kdfparallelism", deserialize_with = "flexible_u32")]
+    pub kdf_parallelism: Option<u32>,
+    /// `hasmasterpassword: false` after an SSO login to an account that has no
+    /// keys yet: the client sets the first master password.
+    #[serde(default, rename = "userdecryptionoptions")]
+    pub user_decryption_options: Option<Value>,
 }
 
 /// A refused token request.

@@ -71,6 +71,10 @@ bitwarden.com or bitwarden.eu — with the same encryption the official apps use
 >   with PBKDF2 or Argon2id accounts, old ones (from before 2019) included.
 > - Two-step login with an authenticator app, email codes and YubiKey OTP,
 >   "remember this device", and Bitwarden's new-device check.
+> - Log in with SSO on a computer (UwULock Server with UwUAuth or another
+>   OpenID Connect provider): the system browser logs in and comes back to
+>   UwULock on `127.0.0.1`; the master password still
+>   opens the vault, and an account made through SSO sets it in UwULock.
 > - Logins, cards, identities, secure notes and SSH keys; folders,
 >   organisations and collections, favourites, the trash. Items with their own
 >   key and items that ask for the master password again.
@@ -133,7 +137,7 @@ bitwarden.com or bitwarden.eu — with the same encryption the official apps use
 >
 > **What doesn't, yet.** Attachments and Sends of their own in the desktop app
 > (they move and stay intact), moving items into an organisation, Duo and
-> FIDO2 as second step, SSO, Touch ID. The [roadmap](docs/roadmap.md) has the
+> FIDO2 as second step, SSO on phones, Touch ID. The [roadmap](docs/roadmap.md) has the
 > order.
 
 ## Install
