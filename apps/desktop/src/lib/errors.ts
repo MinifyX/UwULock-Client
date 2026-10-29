@@ -41,6 +41,12 @@ export function errorText(error: unknown): string {
     case 'network':
       return t('Der Server ist nicht erreichbar: {reason}', { reason: m });
     case 'refused':
+      if (m.includes('SSO login took too long'))
+        return t('Die Anmeldung im Browser hat zu lange gedauert. Starte sie noch einmal.');
+      if (/SSO is not enabled|doesn't offer SSO/.test(m))
+        return t('Dieser Server bietet keine Anmeldung mit SSO an.');
+      if (m.includes('master password needs at least'))
+        return t('Das Master-Passwort braucht mindestens 12 Zeichen.');
       if (m.includes('https://'))
         return t(
           'Der Server muss per https:// erreichbar sein. Unverschlüsseltes http:// geht nur zu diesem Rechner (localhost).',
@@ -51,6 +57,8 @@ export function errorText(error: unknown): string {
       if (/incorrect|wrong|invalid/i.test(m) || m === 'Email or master password is wrong.')
         return t('E-Mail-Adresse oder Master-Passwort stimmt nicht.');
       return t('Der Server hat die Anmeldung abgelehnt: {reason}', { reason: m });
+    case 'cancelled':
+      return t('Abgebrochen.');
     case 'wrong-password':
       return t('Das Master-Passwort ist falsch.');
     case 'session-expired':

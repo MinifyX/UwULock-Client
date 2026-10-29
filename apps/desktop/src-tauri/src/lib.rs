@@ -129,6 +129,8 @@ pub fn run() {
             vault::login_new_device,
             vault::login_send_email,
             vault::login_cancel,
+            vault::login_sso,
+            vault::login_sso_password,
             vault::unlock,
             vault::unlock_with_hello,
             vault::set_hello,

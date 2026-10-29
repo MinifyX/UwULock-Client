@@ -139,6 +139,30 @@ struct PendingLogin {
     hash: Zeroizing<String>,
 }
 
+/// An SSO login after the browser came back with the code.
+enum PendingSso {
+    /// The code is in hand, but the account has two-step login: the code is
+    /// sent again with the second step (the server uses it up only then).
+    Code {
+        client: Arc<Client>,
+        server: Server,
+        code: Zeroizing<String>,
+        code_verifier: Zeroizing<String>,
+        redirect_uri: String,
+        /// The address typed on the login screen, if any: for the remember token.
+        email_hint: Option<String>,
+    },
+    /// Logged in at the server; the master password opens the vault — or,
+    /// for an account that came through SSO without keys, makes them.
+    Password {
+        client: Arc<Client>,
+        server: Server,
+        session: Box<Session>,
+        email: String,
+        new_account: bool,
+    },
+}
+
 #[derive(Clone, Copy, Default)]
 pub(crate) struct Security {
     auto_lock: Option<Duration>,
@@ -165,6 +189,9 @@ pub(crate) struct VaultState {
     /// from stays open until something locks it.
     pub(crate) unlocked: RwLock<HashMap<String, Unlocked>>,
     pending: Mutex<Option<PendingLogin>>,
+    pending_sso: Mutex<Option<PendingSso>>,
+    /// Ends the wait for the browser of an SSO login (cancel, or a new one).
+    sso_cancel: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
     syncing: Mutex<HashSet<String>>,
     troubles: Mutex<HashMap<String, Trouble>>,
     pub(crate) security: Mutex<Security>,
@@ -192,6 +219,8 @@ impl VaultState {
             active: Mutex::new(active),
             unlocked: RwLock::new(HashMap::new()),
             pending: Mutex::new(None),
+            pending_sso: Mutex::new(None),
+            sso_cancel: Mutex::new(None),
             syncing: Mutex::new(HashSet::new()),
             troubles: Mutex::new(HashMap::new()),
             security: Mutex::new(Security {
@@ -519,6 +548,13 @@ pub enum LoginStep {
         message: Option<String>,
     },
     NewDevice,
+    /// SSO said who it is; the master password opens the vault, or — for a
+    /// new account — is set now (`login_sso_password`).
+    #[serde(rename_all = "camelCase")]
+    SsoPassword {
+        email: String,
+        new_account: bool,
+    },
 }
 
 fn derive(password: &str, email: &str, kdf: Kdf) -> Result<Zeroizing<[u8; 32]>> {
@@ -553,6 +589,8 @@ pub(crate) async fn login(
         ));
     }
     let server = server.resolve()?;
+    // A password login replaces an SSO login that was still waiting for its second step.
+    *state.pending_sso.lock() = None;
     let client = Arc::new(state.client(server.clone())?);
     let kdf = client.prelogin(&email).await?;
     state.refuse_weaker_kdf(&server, &email, kdf)?;
@@ -582,6 +620,9 @@ pub(crate) async fn login_two_factor(
         code,
         remember,
     };
+    if matches!(*state.pending_sso.lock(), Some(PendingSso::Code { .. })) {
+        return sso_step(&state, Some(answer)).await;
+    }
     login_step(&app, &state, Some(answer), None).await
 }
 
@@ -596,6 +637,14 @@ pub(crate) async fn login_new_device(
 
 #[tauri::command]
 pub(crate) async fn login_send_email(state: State<'_, VaultState>) -> Result<()> {
+    if state.pending_sso.lock().is_some() {
+        // The server's email for the second step wants the master password
+        // hash, which an SSO login doesn't have yet.
+        return Err(Failure::new(
+            "unsupported",
+            "An SSO login can't ask for the code by email. Use another method.",
+        ));
+    }
     let (client, email, hash) = {
         let pending = state.pending.lock();
         let pending = pending
@@ -614,6 +663,263 @@ pub(crate) async fn login_send_email(state: State<'_, VaultState>) -> Result<()>
 #[tauri::command]
 pub(crate) fn login_cancel(state: State<'_, VaultState>) {
     *state.pending.lock() = None;
+    *state.pending_sso.lock() = None;
+    if let Some(cancel) = state.sso_cancel.lock().take() {
+        let _ = cancel.send(());
+    }
+}
+
+/// How long the browser has for an SSO login: the server's state lasts ten minutes.
+const SSO_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+
+/// Logs in through the server's SSO provider (UwUAuth or another): the system
+/// browser goes to the server, the provider and back to a listener on
+/// `127.0.0.1`, which takes the code. Only self-hosted servers (UwULock
+/// Server, Vaultwarden) and only on computers — a phone has no browser that
+/// comes back to a loopback address while the app sleeps.
+#[tauri::command]
+pub(crate) async fn login_sso(
+    app: AppHandle,
+    state: State<'_, VaultState>,
+    server: ServerInput,
+    email: Option<String>,
+) -> Result<LoginStep> {
+    #[cfg(mobile)]
+    {
+        let _ = (app, state, server, email);
+        Err(Failure::new(
+            "unsupported",
+            "SSO login isn't there on phones yet.",
+        ))
+    }
+    #[cfg(desktop)]
+    {
+        use tauri_plugin_opener::OpenerExt;
+        use uwulock_bitwarden::sso::{self, Loopback, Start};
+
+        let server = server.resolve()?;
+        if !matches!(server, Server::SelfHosted { .. }) {
+            return Err(Failure::new(
+                "unsupported",
+                "SSO login works with a self-hosted server.",
+            ));
+        }
+        let email_hint = email
+            .map(|email| crypto::normalize_email(&email))
+            .filter(|email| email.contains('@'));
+        *state.pending.lock() = None;
+        *state.pending_sso.lock() = None;
+        let client = Arc::new(state.client(server.clone())?);
+        let sso_token = client.sso_prevalidate(sso::DEFAULT_IDENTIFIER).await?;
+        let loopback = Loopback::bind().await?;
+        let start = Start::new(loopback.redirect_uri().to_string());
+        let url = client.sso_authorize_url(&start, &sso_token);
+
+        // A login started before ends here: one browser wait at a time.
+        let (cancel, cancelled) = tokio::sync::oneshot::channel();
+        if let Some(previous) = state.sso_cancel.lock().replace(cancel) {
+            let _ = previous.send(());
+        }
+        app.opener()
+            .open_url(url, None::<&str>)
+            .map_err(|e| Failure::new("io", format!("Couldn't open the browser: {e}")))?;
+        let code = tokio::select! {
+            code = loopback.wait(&start.state, SSO_TIMEOUT) => code,
+            _ = cancelled => {
+                return Err(Failure::new("cancelled", "The SSO login was cancelled."));
+            }
+        };
+        state.sso_cancel.lock().take();
+        let code = code?;
+        *state.pending_sso.lock() = Some(PendingSso::Code {
+            client,
+            server,
+            code,
+            code_verifier: start.code_verifier.clone(),
+            redirect_uri: start.redirect_uri.clone(),
+            email_hint,
+        });
+        sso_step(&state, None).await
+    }
+}
+
+/// Trades the code (again, with the second step when there is one).
+async fn sso_step(state: &VaultState, two_factor: Option<TwoFactorAnswer>) -> Result<LoginStep> {
+    let (client, server, code, code_verifier, redirect_uri, email_hint) = {
+        let pending = state.pending_sso.lock();
+        let Some(PendingSso::Code {
+            client,
+            server,
+            code,
+            code_verifier,
+            redirect_uri,
+            email_hint,
+        }) = pending.as_ref()
+        else {
+            return Err(Failure::new("invalid", "No SSO login in progress."));
+        };
+        (
+            client.clone(),
+            server.clone(),
+            code.clone(),
+            code_verifier.clone(),
+            redirect_uri.clone(),
+            email_hint.clone(),
+        )
+    };
+    let remember_token = email_hint
+        .as_deref()
+        .and_then(|email| state.remembered_token(&server, email));
+    let sent_remembered = two_factor.is_none() && remember_token.is_some();
+    let outcome = client
+        .login_sso(uwulock_bitwarden::SsoLogin {
+            code: &code,
+            code_verifier: &code_verifier,
+            redirect_uri: &redirect_uri,
+            two_factor,
+            remember_token: if sent_remembered {
+                remember_token.as_deref().map(|s| s.as_str())
+            } else {
+                None
+            },
+        })
+        .await;
+    let outcome = match outcome {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            // A code that was refused is used up or ran out: start again.
+            if !matches!(error, Error::Refused(_)) {
+                *state.pending_sso.lock() = None;
+            }
+            return Err(error.into());
+        }
+    };
+    match outcome {
+        LoginOutcome::LoggedIn(session) => {
+            let email = session.email().or(email_hint).ok_or_else(|| {
+                Failure::new("server", "The server didn't say which account this is.")
+            })?;
+            let new_account = !session.has_master_password || session.protected_user_key.is_none();
+            *state.pending_sso.lock() = Some(PendingSso::Password {
+                client,
+                server,
+                session: Box::new(session),
+                email: email.clone(),
+                new_account,
+            });
+            Ok(LoginStep::SsoPassword { email, new_account })
+        }
+        LoginOutcome::TwoFactor { methods, message } => {
+            if sent_remembered {
+                if let Some(email) = &email_hint {
+                    state.drop_remember_token(&server, email);
+                }
+            }
+            Ok(LoginStep::TwoFactor { methods, message })
+        }
+        LoginOutcome::NewDeviceCode => {
+            *state.pending_sso.lock() = None;
+            Err(Failure::new(
+                "unsupported",
+                "The server wants a new-device code, which an SSO login can't give.",
+            ))
+        }
+    }
+}
+
+/// The master password after an SSO login: it opens the account's key — or,
+/// for an account that has none yet, becomes its first master password and
+/// makes the keys (the server keeps only the hash and what is encrypted).
+#[tauri::command]
+pub(crate) async fn login_sso_password(
+    app: AppHandle,
+    state: State<'_, VaultState>,
+    password: String,
+) -> Result<LoginStep> {
+    use uwulock_bitwarden::sso::{self, NewKeys};
+
+    let password = Zeroizing::new(password);
+    let (client, server, email, new_account, offered_kdf, protected) = {
+        let pending = state.pending_sso.lock();
+        let Some(PendingSso::Password {
+            client,
+            server,
+            session,
+            email,
+            new_account,
+        }) = pending.as_ref()
+        else {
+            return Err(Failure::new("invalid", "No SSO login in progress."));
+        };
+        (
+            client.clone(),
+            server.clone(),
+            email.clone(),
+            *new_account,
+            session.kdf,
+            session.protected_user_key.clone(),
+        )
+    };
+
+    let (kdf, master_key, hash, new_keys) = if new_account {
+        let kdf = sso::kdf_for_new_password(offered_kdf);
+        let (password, for_email) = (password.clone(), email.clone());
+        let keys =
+            tauri::async_runtime::spawn_blocking(move || NewKeys::make(&password, &for_email, kdf))
+                .await
+                .map_err(|e| Failure::new("crypto", e.to_string()))??;
+        let access_token = match state.pending_sso.lock().as_ref() {
+            Some(PendingSso::Password { session, .. }) => session.access_token.clone(),
+            _ => return Err(Failure::new("invalid", "No SSO login in progress.")),
+        };
+        client
+            .set_password(&access_token, &keys, sso::DEFAULT_IDENTIFIER)
+            .await?;
+        (
+            kdf,
+            keys.master_key.clone(),
+            keys.master_password_hash.clone(),
+            Some(keys),
+        )
+    } else {
+        let kdf = match offered_kdf {
+            Some(kdf) => kdf,
+            None => client.prelogin(&email).await?,
+        };
+        state.refuse_weaker_kdf(&server, &email, kdf)?;
+        let master_key = derive_off_thread(password.clone(), email.clone(), kdf).await?;
+        // A wrong password is said here, and the login waits for the right one.
+        let protected = protected
+            .ok_or_else(|| Failure::new("server", "The server didn't send the account's key."))?;
+        if decrypt_user_key(&master_key, &protected.parse::<EncString>()?).is_err() {
+            return Err(Failure::new(
+                "wrong-password",
+                "The account's key didn't open with this master password.",
+            ));
+        }
+        let hash = Zeroizing::new(crypto::master_password_hash(&master_key, &password));
+        (kdf, master_key, hash, None)
+    };
+
+    let Some(PendingSso::Password { mut session, .. }) = state.pending_sso.lock().take() else {
+        return Err(Failure::new("invalid", "No SSO login in progress."));
+    };
+    if let Some(keys) = &new_keys {
+        session.protected_user_key = Some(keys.protected_user_key.clone());
+        session.protected_private_key = Some(keys.encrypted_private_key.clone());
+    }
+    let pending = PendingLogin {
+        client,
+        server,
+        email,
+        kdf,
+        master_key,
+        hash,
+    };
+    finish_login(&app, &state, pending, *session).await?;
+    Ok(LoginStep::Done {
+        status: Box::new(status_of(&state)),
+    })
 }
 
 async fn login_step(

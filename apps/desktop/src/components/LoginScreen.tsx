@@ -5,7 +5,10 @@ import {
   loginCancel,
   loginNewDevice,
   loginSendEmail,
+  loginSso,
+  loginSsoPassword,
   loginTwoFactor,
+  failure,
   type LoginStep,
   type ServerKind,
   type Status,
@@ -13,6 +16,7 @@ import {
 } from '../lib/api';
 import { errorText } from '../lib/errors';
 import { N_, t, useLanguage } from '../lib/i18n';
+import { isMobile } from '../lib/platform';
 import { updateSettings, useSettings } from '../lib/settings';
 import { NyuScene } from './nyu/scenes';
 import { PasswordInput } from './PasswordInput';
@@ -67,15 +71,44 @@ export function LoginScreen({ again, adding, onDone, onCancel }: Props) {
   const [step, setStep] = useState<LoginStep | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Waiting for the browser of an SSO login to come back. */
+  const [ssoWaiting, setSsoWaiting] = useState(false);
+  // SSO goes through the system browser and back to this computer: self-hosted, not on phones.
+  const ssoOffered = kind === 'self-hosted' && !isMobile();
 
   const finish = (next: LoginStep) => {
     setPassword('');
     if (next.step === 'done') {
-      updateSettings({ lastServerKind: kind, lastServerUrl: url.trim(), lastEmail: email.trim() });
+      updateSettings({
+        lastServerKind: kind,
+        lastServerUrl: url.trim(),
+        lastEmail: step?.step === 'sso-password' ? step.email : email.trim(),
+      });
       onDone(next.status);
       return;
     }
     setStep(next);
+  };
+
+  const startSso = async () => {
+    setError(null);
+    if (!url.trim()) {
+      setError(t('Bitte gib die Adresse deines Servers ein.'));
+      return;
+    }
+    setSsoWaiting(true);
+    try {
+      finish(await loginSso({ kind: 'self-hosted', url: url.trim() }, email.trim() || null));
+    } catch (e) {
+      if (failure(e).kind !== 'cancelled') setError(errorText(e));
+    } finally {
+      setSsoWaiting(false);
+    }
+  };
+
+  const cancelSso = () => {
+    void loginCancel();
+    setSsoWaiting(false);
   };
 
   const submit = async (event: FormEvent) => {
@@ -136,7 +169,24 @@ export function LoginScreen({ again, adding, onDone, onCancel }: Props) {
       </section>
 
       <section className="welcome-card">
-        {!step && (
+        {!step && ssoWaiting && (
+          <div className="form" aria-live="polite">
+            <h1 className="card-title">{t('Anmeldung im Browser')}</h1>
+            <p className="dialog-lead">
+              {t(
+                'Dein Browser hat sich geöffnet. Melde dich dort an – danach geht es hier von selbst weiter.',
+              )}
+            </p>
+            <div className="form-actions">
+              <span className="spacer" />
+              <Button variant="ghost" onClick={cancelSso}>
+                {t('Abbrechen')}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {!step && !ssoWaiting && (
           <form className="form" onSubmit={submit} aria-busy={Boolean(busy)}>
             <h1 className="card-title">{t('Anmelden')}</h1>
             <div className="field">
@@ -207,6 +257,14 @@ export function LoginScreen({ again, adding, onDone, onCancel }: Props) {
                 {busy ?? t('Anmelden')}
               </Button>
             </div>
+            {ssoOffered && (
+              <div className="form-actions">
+                <span className="spacer" />
+                <Button onClick={() => void startSso()} disabled={Boolean(busy)}>
+                  {t('Mit SSO anmelden')}
+                </Button>
+              </div>
+            )}
             <p className="welcome-beta">
               <Icon icon={ICONS.info} size="xs" className="mt-0.5 text-pink" />
               {t(
@@ -228,6 +286,15 @@ export function LoginScreen({ again, adding, onDone, onCancel }: Props) {
 
         {step?.step === 'new-device' && (
           <NewDevice actions={APP_LOGIN} onBack={back} onDone={finish} />
+        )}
+
+        {step?.step === 'sso-password' && (
+          <SsoPassword
+            email={step.email}
+            newAccount={step.newAccount}
+            onBack={back}
+            onDone={finish}
+          />
         )}
       </section>
     </div>
@@ -456,6 +523,111 @@ export function NewDevice<S extends { step: string }>({
         <span className="spacer" />
         <Button variant="primary" type="submit" disabled={busy || !code.trim()}>
           {busy ? t('Prüft …') : t('Weiter')}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/** The shortest first master password (as in uwulock-bitwarden's `sso::MIN_PASSWORD`). */
+const MIN_NEW_PASSWORD = 12;
+
+/**
+ * After an SSO login: SSO only said who it is. The master password opens the
+ * vault — or, for an account that came through SSO and has no vault yet, is
+ * chosen now; the keys are made here and only the hash goes to the server.
+ */
+function SsoPassword({
+  email,
+  newAccount,
+  onBack,
+  onDone,
+}: {
+  email: string;
+  newAccount: boolean;
+  onBack: () => void;
+  onDone: (step: LoginStep) => void;
+}) {
+  useLanguage();
+  const [password, setPassword] = useState('');
+  const [repeat, setRepeat] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const tooShort = newAccount && [...password].length < MIN_NEW_PASSWORD;
+  const mismatch = newAccount && repeat !== '' && repeat !== password;
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (newAccount && (tooShort || repeat !== password)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      onDone(await loginSsoPassword(password));
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form className="form" onSubmit={submit} aria-busy={busy}>
+      <h1 className="card-title">
+        {newAccount ? t('Master-Passwort festlegen') : t('Master-Passwort')}
+      </h1>
+      <p className="dialog-lead">
+        {newAccount
+          ? t(
+              'Angemeldet als {email}. Wähle jetzt dein Master-Passwort: Es öffnet deinen Tresor und verlässt dieses Gerät nie. Niemand kann es zurücksetzen – auch nicht der Server.',
+              { email },
+            )
+          : t('Angemeldet als {email}. Dein Master-Passwort öffnet den Tresor.', { email })}
+      </p>
+      <label className="field">
+        <span>{t('Master-Passwort')}</span>
+        <PasswordInput
+          value={password}
+          onChange={setPassword}
+          autoFocus
+          disabled={busy}
+          autoComplete={newAccount ? 'new-password' : 'current-password'}
+        />
+        {newAccount && (
+          <small className="field-hint">
+            {t('Mindestens {count} Zeichen.', { count: MIN_NEW_PASSWORD })}
+          </small>
+        )}
+      </label>
+      {newAccount && (
+        <label className="field">
+          <span>{t('Master-Passwort wiederholen')}</span>
+          <PasswordInput
+            value={repeat}
+            onChange={setRepeat}
+            disabled={busy}
+            autoComplete="new-password"
+          />
+          {mismatch && (
+            <small className="field-hint">{t('Die Passwörter sind verschieden.')}</small>
+          )}
+        </label>
+      )}
+      {error && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="form-actions">
+        <Button variant="ghost" onClick={onBack} disabled={busy}>
+          {t('Zurück')}
+        </Button>
+        <span className="spacer" />
+        <Button
+          variant="primary"
+          type="submit"
+          disabled={busy || !password || (newAccount && (tooShort || repeat !== password))}
+        >
+          {busy ? t('Nyu leitet deinen Schlüssel ab …') : t('Weiter')}
         </Button>
       </div>
     </form>

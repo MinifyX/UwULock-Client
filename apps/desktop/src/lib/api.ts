@@ -67,7 +67,9 @@ export type TwoFactorMethod = {
 export type LoginStep =
   | { step: 'done'; status: Status }
   | { step: 'two-factor'; methods: TwoFactorMethod[]; message: string | null }
-  | { step: 'new-device' };
+  | { step: 'new-device' }
+  /** After an SSO login: the master password opens the vault, or — `newAccount` — is set now. */
+  | { step: 'sso-password'; email: string; newAccount: boolean };
 
 /** `wifi` is a secure note with UwULock's marker field (lib/wifi.ts); saved as a `note`. */
 export type ItemKind = 'login' | 'note' | 'card' | 'identity' | 'ssh-key' | 'wifi';
@@ -240,6 +242,11 @@ export const loginTwoFactor = (provider: number, code: string, remember: boolean
 export const loginNewDevice = (code: string) => invoke<LoginStep>('login_new_device', { code });
 export const loginSendEmail = () => invoke<void>('login_send_email');
 export const loginCancel = () => invoke<void>('login_cancel');
+/** Opens the system browser and waits for it to come back (self-hosted servers, computers only). */
+export const loginSso = (server: { kind: ServerKind; url?: string }, email: string | null) =>
+  invoke<LoginStep>('login_sso', { server, email });
+export const loginSsoPassword = (password: string) =>
+  invoke<LoginStep>('login_sso_password', { password });
 export const unlock = (password: string) => invoke<Status>('unlock', { password });
 /** The words of a phone's biometric dialog; Windows Hello brings its own. */
 export type UnlockPrompt = {

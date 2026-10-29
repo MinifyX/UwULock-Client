@@ -1,0 +1,4 @@
+{
+  "de": "- Anmelden mit SSO: Bei einem UwULock Server mit UwUAuth (oder einem anderen Anbieter) meldest du dich jetzt mit „Mit SSO anmelden“ im Browser an. Entsperrt wird weiter mit dem Master-Passwort\n- Ein Konto, das über SSO neu angelegt wurde, setzt sein Master-Passwort direkt in UwULock\n- Die Zwei-Schritt-Anmeldung gilt auch nach SSO",
+  "en": "- Log in with SSO: with a UwULock Server using UwUAuth (or another provider), “Log in with SSO” now logs you in in the browser. Unlocking still takes the master password\n- An account made through SSO sets its master password right in UwULock\n- Two-step login still applies after SSO"
+}

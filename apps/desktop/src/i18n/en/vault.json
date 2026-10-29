@@ -216,5 +216,17 @@
   "Teile ihn nur, wenn das okay ist.": "Only share it if that's okay.",
   "Schlüssel mitgeben": "Include the key",
   "Lieber nicht": "Better not",
-  "Auch mit {keys}, von überall in UwULock.": "Also with {keys}, from anywhere in UwULock."
+  "Auch mit {keys}, von überall in UwULock.": "Also with {keys}, from anywhere in UwULock.",
+  "Die Anmeldung im Browser hat zu lange gedauert. Starte sie noch einmal.": "The login in the browser took too long. Start it again.",
+  "Dieser Server bietet keine Anmeldung mit SSO an.": "This server doesn't offer logging in with SSO.",
+  "Das Master-Passwort braucht mindestens 12 Zeichen.": "The master password needs at least 12 characters.",
+  "Anmeldung im Browser": "Logging in in the browser",
+  "Dein Browser hat sich geöffnet. Melde dich dort an – danach geht es hier von selbst weiter.": "Your browser has opened. Log in there – UwULock carries on here by itself afterwards.",
+  "Mit SSO anmelden": "Log in with SSO",
+  "Master-Passwort festlegen": "Set your master password",
+  "Angemeldet als {email}. Wähle jetzt dein Master-Passwort: Es öffnet deinen Tresor und verlässt dieses Gerät nie. Niemand kann es zurücksetzen – auch nicht der Server.": "Logged in as {email}. Choose your master password now: it opens your vault and never leaves this device. Nobody can reset it – not even the server.",
+  "Angemeldet als {email}. Dein Master-Passwort öffnet den Tresor.": "Logged in as {email}. Your master password opens the vault.",
+  "Mindestens {count} Zeichen.": "At least {count} characters.",
+  "Master-Passwort wiederholen": "Repeat the master password",
+  "Die Passwörter sind verschieden.": "The passwords don't match."
 }

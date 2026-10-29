@@ -200,6 +200,11 @@ pub struct Session {
     pub protected_private_key: Option<String>,
     /// A "remember this device" token for two-step login, if one was asked for.
     pub remember_token: Option<Zeroizing<String>>,
+    /// How the master key is derived, when the server said so with the token.
+    pub kdf: Option<Kdf>,
+    /// `false` after an SSO login to an account without keys yet: the first
+    /// master password is still to be set ([`Client::set_password`]).
+    pub has_master_password: bool,
 }
 
 impl std::fmt::Debug for Session {
@@ -225,8 +230,44 @@ impl Session {
             protected_user_key: token.key,
             protected_private_key: token.private_key,
             remember_token: token.two_factor_token.map(Zeroizing::new),
+            kdf: token.kdf.and_then(|kind| {
+                kdf_from(
+                    Some(kind),
+                    token.kdf_iterations,
+                    token.kdf_memory,
+                    token.kdf_parallelism,
+                )
+                .ok()
+            }),
+            has_master_password: token
+                .user_decryption_options
+                .as_ref()
+                .and_then(|options| options.get("hasmasterpassword"))
+                .and_then(Value::as_bool)
+                .unwrap_or(true),
         }
     }
+
+    /// The account's email, as the access token names it. Only the payload is
+    /// read, not checked: the token came straight from the server over TLS,
+    /// and what it says here is only the salt the server expects anyway.
+    pub fn email(&self) -> Option<String> {
+        email_of_access_token(&self.access_token)
+    }
+}
+
+/// The `email` claim of a JWT access token, normalized; `None` for anything
+/// that isn't a JWT with one.
+pub fn email_of_access_token(token: &str) -> Option<String> {
+    let mut parts = token.split('.');
+    let (_, payload, _) = (parts.next()?, parts.next()?, parts.next()?);
+    if parts.next().is_some() || payload.len() > 16 * 1024 {
+        return None;
+    }
+    let bytes = URL_SAFE_NO_PAD.decode(payload.trim_end_matches('=')).ok()?;
+    let claims: Value = serde_json::from_slice(&bytes).ok()?;
+    let email = crate::crypto::normalize_email(claims.get("email")?.as_str()?);
+    (!email.is_empty() && email.contains('@')).then_some(email)
 }
 
 #[derive(Debug)]
@@ -240,6 +281,35 @@ pub enum LoginOutcome {
     },
     /// Bitwarden's cloud doesn't know this device yet and emailed a code.
     NewDeviceCode,
+}
+
+/// The second half of an SSO login: the code the browser brought back, the
+/// PKCE verifier and the redirect address it was asked for with.
+pub struct SsoLogin<'a> {
+    pub code: &'a str,
+    pub code_verifier: &'a str,
+    pub redirect_uri: &'a str,
+    pub two_factor: Option<TwoFactorAnswer>,
+    pub remember_token: Option<&'a str>,
+}
+
+/// The form of an SSO code's token request, as Bitwarden's desktop app sends it.
+pub fn sso_token_form(
+    app: &App,
+    device: &Device,
+    login: &SsoLogin<'_>,
+) -> Vec<(&'static str, String)> {
+    vec![
+        ("grant_type", "authorization_code".into()),
+        ("code", login.code.into()),
+        ("code_verifier", login.code_verifier.into()),
+        ("redirect_uri", login.redirect_uri.into()),
+        ("scope", app.scope.clone()),
+        ("client_id", app.client_id.clone()),
+        ("deviceType", device.kind.to_string()),
+        ("deviceIdentifier", device.id.clone()),
+        ("deviceName", device.name.clone()),
+    ]
 }
 
 pub struct PasswordLogin<'a> {
@@ -383,17 +453,57 @@ impl Client {
         if let Some(code) = login.new_device_code {
             form.push(("newDeviceOtp", code.trim().into()));
         }
-
-        let response = send(
-            self.request(
-                reqwest::Method::POST,
-                format!("{}/connect/token", self.server.identity()),
-            )
-            .header("Auth-Email", URL_SAFE_NO_PAD.encode(email.as_bytes()))
-            .form(&form),
+        self.token(
+            form,
+            Some(&email),
+            answered,
+            "Email or master password is wrong.",
         )
-        .await;
-        // The form holds the password hash.
+        .await
+    }
+
+    /// Trades the code of an SSO login (see [`crate::sso`]) for a session,
+    /// with the PKCE verifier that belongs to it, and a two-step code if one
+    /// is given. The server uses the code up only once the login went
+    /// through, so the same code goes again with the two-step code.
+    pub async fn login_sso(&self, login: SsoLogin<'_>) -> Result<LoginOutcome, Error> {
+        let mut form = sso_token_form(&self.app, &self.device, &login);
+        let answered = login.two_factor.is_some();
+        if let Some(answer) = &login.two_factor {
+            form.push(("twoFactorToken", answer.code.trim().replace(' ', "")));
+            form.push(("twoFactorProvider", answer.provider.to_string()));
+            form.push(("twoFactorRemember", u8::from(answer.remember).to_string()));
+        } else if let Some(token) = login.remember_token {
+            form.push(("twoFactorToken", token.into()));
+            form.push(("twoFactorProvider", "5".into()));
+            form.push(("twoFactorRemember", "0".into()));
+        }
+        self.token(
+            form,
+            None,
+            answered,
+            "The SSO login was not accepted. Start it again.",
+        )
+        .await
+    }
+
+    /// The token request of a login, and what its answer means.
+    async fn token(
+        &self,
+        mut form: Vec<(&str, String)>,
+        email: Option<&str>,
+        answered: bool,
+        refused: &str,
+    ) -> Result<LoginOutcome, Error> {
+        let mut request = self.request(
+            reqwest::Method::POST,
+            format!("{}/connect/token", self.server.identity()),
+        );
+        if let Some(email) = email {
+            request = request.header("Auth-Email", URL_SAFE_NO_PAD.encode(email.as_bytes()));
+        }
+        let response = send(request.form(&form)).await;
+        // The form holds the password hash, or the SSO code and its verifier.
         for (_, value) in form.iter_mut() {
             zeroize::Zeroize::zeroize(value);
         }
@@ -466,10 +576,63 @@ impl Client {
             return Ok(LoginOutcome::NewDeviceCode);
         }
         if response.status == 400 || response.status == 401 {
+            return Err(Error::Refused(refusal_message(&refusal, refused)));
+        }
+        Err(response.error())
+    }
+
+    /// The short token an SSO login starts with (`/identity/sso/prevalidate`).
+    /// UwULock Server takes any identifier.
+    pub async fn sso_prevalidate(&self, identifier: &str) -> Result<Zeroizing<String>, Error> {
+        let mut url = url::Url::parse(&format!("{}/sso/prevalidate", self.server.identity()))
+            .map_err(|_| Error::Refused("the server address isn't a web address".into()))?;
+        url.query_pairs_mut().append_pair("domainHint", identifier);
+        let response = send(self.request(reqwest::Method::GET, url.into())).await?;
+        if !response.ok() {
+            let refusal: wire::TokenError = response.json().unwrap_or_default();
             return Err(Error::Refused(refusal_message(
                 &refusal,
-                "Email or master password is wrong.",
+                "This server doesn't offer SSO.",
             )));
+        }
+        let answer: Value = response.json()?;
+        text_of(&answer, "token")
+            .map(Zeroizing::new)
+            .ok_or_else(|| Error::Server {
+                status: response.status,
+                message: "the server's SSO answer has no token".into(),
+            })
+    }
+
+    /// Where the browser goes for an SSO login (`/identity/connect/authorize`).
+    pub fn sso_authorize_url(&self, start: &crate::sso::Start, sso_token: &str) -> String {
+        crate::sso::authorize_url(&self.server.identity(), &self.app, start, sso_token)
+    }
+
+    /// Sets the first master password of an account that came through SSO
+    /// without keys (`/api/accounts/set-password`), with the keys
+    /// [`crate::sso::NewKeys::make`] made.
+    pub async fn set_password(
+        &self,
+        access_token: &str,
+        keys: &crate::sso::NewKeys,
+        identifier: &str,
+    ) -> Result<(), Error> {
+        let body = keys.set_password_body(identifier);
+        let response = send(
+            self.request(
+                reqwest::Method::POST,
+                format!("{}/accounts/set-password", self.server.api()),
+            )
+            .bearer_auth(access_token)
+            .json(&body),
+        )
+        .await?;
+        if response.ok() {
+            return Ok(());
+        }
+        if response.status == 401 {
+            return Err(Error::SessionExpired);
         }
         Err(response.error())
     }
