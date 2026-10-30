@@ -7,13 +7,17 @@ that is tested without a window.
 ```
 ┌──────────────────────────── apps/desktop ────────────────────────────┐
 │  React (src/)                        Rust (src-tauri/)               │
-│  LoginScreen · LockScreen            vault.rs    commands, state,    │
-│  VaultScreen · ItemDetail   ──IPC──▶             auto-lock, sync     │
-│  Generator · Settings                account.rs  what is on disk     │
-│                                      clipboard.rs copies that clear  │
-│  names, usernames, notes             updates.rs  signed updates      │
+│  LoginScreen · LockScreen            commands.rs IPC → App methods   │
+│  VaultScreen · ItemDetail   ──IPC──▶ host.rs     TauriHost: window,  │
+│  Generator · Settings                            clipboard, Hello    │
+│                                      updates.rs  signed updates      │
+│  names, usernames, notes                                             │
 │  — secrets only on "show"                                            │
 └──────────────────────────────────────┬───────────────────────────────┘
+                                       │
+                           crates/uwulock-app
+          vault · account · extras · health · suite · passkeys · live
+               (state, auto-lock, sync, what is on disk; Host trait)
                                        │
                          crates/uwulock-bitwarden
                    api: prelogin · login · 2FA · sync · saving
@@ -24,8 +28,7 @@ that is tested without a window.
          crates/uwulock-bitwarden ── HTTPS (rustls) ──▶ Vaultwarden / Bitwarden
                                                        (identity + api)
 ```
-
-The work is split in three crates:
+The work is split in four crates:
 
 - **`uwulock-core`** — Bitwarden's crypto and data formats, without a network:
   master key, encrypted values and files, Send keys, key pairs and passkey key
@@ -37,6 +40,16 @@ The work is split in three crates:
   login, token refresh, sync, saving. It re-exports `uwulock-core` under its
   old paths (`uwulock_bitwarden::crypto`, `::vault`, …), so the desktop app
   only depends on this one.
+- **`uwulock-app`** — the app without a window: accounts on disk
+  (`account`), the open vault, auto-lock and sync (`vault`), live changes,
+  extras, health, Sends, the suite, moving and importing, passkeys for the
+  system. One method on `App` per IPC command, same names and JSON; what it
+  needs from the program around it (events to the page, clipboard,
+  biometrics, system settings and extensions) is a `Host`. The Tauri app is
+  thin `#[tauri::command]` wrappers (`src-tauri/src/commands.rs`) and a
+  `TauriHost` (`src-tauri/src/host.rs`) over it; the native Apple app will use
+  it through `uwulock-ffi`. Module map, `Host` contract and events:
+  `crates/uwulock-app/README.md`.
 - **`uwulock-wasm`** — `uwulock-core` compiled to WebAssembly for the browser
   extension's background worker: unlocking (master password, PIN, the kept
   user key), the vault as the web vault shows it, autofill values, and
@@ -126,7 +139,7 @@ Keys and decrypted values are `Zeroizing` and wiped when dropped.
   Locking — by hand, Ctrl+L or auto-lock — drops all of it and clears a
   copied secret from the clipboard. Quitting drops it with the process, but
   leaves a secret copied just before in the clipboard.
-- **Disk** (`account.rs`): one folder per account under `accounts/<id>/`, with
+- **Disk** (`crates/uwulock-app/src/account.rs`): one folder per account under `accounts/<id>/`, with
   `account.json` — server, email, KDF settings, the user key as the server
   wraps it, and the refresh token sealed under the user key — `vault.json`,
   the last sync as the server sent it, and `remember-token`, the
@@ -259,7 +272,7 @@ for all of it is UwULock-Server's `docs/uwu-api.md`.
   breached sites and 2FA Directory matched by domain, the ignore list (§15.6,
   unknown keys kept) and the review's cards, worst first.
   `uwulock-bitwarden::health` asks the server (a few prefixes at a time);
-  `apps/desktop/src-tauri/src/health.rs` puts both together and keeps the
+  `crates/uwulock-app/src/health.rs` puts both together and keeps the
   lists for the unlock. The page only gets findings, never a password.
 - **The suite vault** (`uwulock-bitwarden::suite`): UwUSSH and UwURDP log in
   as `App::suite("uwussh")` and get their space's key (under the extras key)

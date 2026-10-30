@@ -1,0 +1,7 @@
+// The Mac's disk image (DMG): its own identifier and data folder
+// (~/Library/Application Support/app.uwulock.desktop), not sandboxed, updates via Sparkle.
+#include "App.xcconfig"
+
+UWULOCK_BUNDLE_ID = app.uwulock.desktop
+UWULOCK_MAC_ENTITLEMENTS = Config/UwULock-Direct.entitlements
+UWULOCK_DIRECT = DIRECT

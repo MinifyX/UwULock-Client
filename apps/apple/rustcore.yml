@@ -1,0 +1,16 @@
+# The Rust core (crates/uwulock-ffi via UniFFI), merged into project.yml when
+# UWULOCK_RUST_CORE=YES. scripts/apple-xcframework.sh builds both inputs:
+#   Frameworks/UwuLockFFI.xcframework   the static library + the C module "UwuLockFFI"
+#   Generated/                          UniFFI's Swift bindings
+# Without them the app builds on the stub in UwULock/RustCore (no vault yet).
+targets:
+  UwULock:
+    sources:
+      - path: Generated
+        group: RustCore
+    dependencies:
+      - framework: Frameworks/UwuLockFFI.xcframework
+        embed: false
+    settings:
+      base:
+        UWULOCK_RUST_CORE_FLAG: RUST_CORE

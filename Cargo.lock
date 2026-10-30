@@ -5851,6 +5851,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "uwulock-app"
+version = "0.7.0-beta.1"
+dependencies = [
+ "base64 0.22.1",
+ "libc",
+ "parking_lot",
+ "rand 0.8.8",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
+ "uwulock-authenticator",
+ "uwulock-bitwarden",
+ "uwulock-core",
+ "windows-sys 0.61.2",
+ "zeroize",
+]
+
+[[package]]
 name = "uwulock-authenticator"
 version = "0.7.0-beta.1"
 dependencies = [
@@ -5956,6 +5978,7 @@ dependencies = [
  "url",
  "uuid",
  "uwu-macos",
+ "uwulock-app",
  "uwulock-authenticator",
  "uwulock-bitwarden",
  "uwulock-core",

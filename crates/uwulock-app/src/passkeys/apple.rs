@@ -1,0 +1,616 @@
+//! iOS 17+ and macOS 14+: the AutoFill extension's side of the vault.
+//!
+//! The extension (`apps/desktop/src-tauri/apple/PasskeyProvider`, Swift) is
+//! its own process, started by the system while UwULock may not run at all.
+//! So while the vault is open, the app keeps a **sealed list** of the
+//! account's passkeys in the App Group folder they share, and takes in the
+//! passkeys the extension made (its **outbox**) as new logins. Both are
+//! sealed with the account's provider key (uwulock_authenticator::apple): 32
+//! random bytes, kept here sealed under the account's user key
+//! (`passkeys-apple-<account>.key`), and for the extension in the shared
+//! Keychain behind Face ID / Touch ID / the device passcode, this device
+//! only.
+//!
+//! There is one list and one Keychain slot: those of the account last open
+//! on screen (`passkeys-apple.account` says which). Each sealed file names
+//! its account, so switching accounts never loses anything: an outbox entry
+//! of another account waits until that account is open here again, and one
+//! that doesn't open is set aside (`outbox/unreadable/`), never deleted.
+//! Logging out of that account, or switching the setting off, takes the
+//! list, the Keychain item and the system's entries away.
+//!
+//! None of it works before the app and the extension are signed with an
+//! Apple developer team (App Group, Keychain group, the AutoFill
+//! entitlement): until then the status says so. docs/passkeys.md has the
+//! steps.
+//!
+//! The shared places themselves — the App Group folder, the Keychain slot,
+//! the system's list — are the host's ([`Host::extension_store`](crate::host::Host::extension_store) and the
+//! rest): the mobile plugin on iOS, Rust code on the Mac.
+
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use uwulock_authenticator::apple::{self as sealed, Snapshot};
+use uwulock_bitwarden::EncString;
+use uwulock_bitwarden::SymmetricKey;
+use zeroize::Zeroizing;
+
+use super::passkeys_of;
+use crate::vault::{Failure, Result, VaultState};
+use crate::App;
+
+static REFRESHING: AtomicBool = AtomicBool::new(false);
+/// Something changed while a refresh ran: one more round after it, so the
+/// list ends up with what the vault holds last (an unlock's refresh used to
+/// swallow the sync right after it, leaving the extension an old list).
+static AGAIN: AtomicBool = AtomicBool::new(false);
+/// The last line the app put into the AutoFill protocol about its list: the
+/// same one isn't repeated on every vault event.
+static NOTED: parking_lot::Mutex<String> = parking_lot::const_mutex(String::new());
+/// Whether the system was asked if UwULock is on there, this run.
+static SYSTEM_CHECKED: AtomicBool = AtomicBool::new(false);
+
+/// Held while the list is handed to the extension and while an account's
+/// list is taken away: a refresh that began before a logout can't put the
+/// list back after it.
+static HANDING_OVER: parking_lot::Mutex<()> = parking_lot::const_mutex(());
+
+/// How many replaced provider keys of an account are kept.
+const OLD_KEYS: usize = 5;
+
+/// How many taken-in outbox entries are remembered, against one put back.
+const REMEMBERED: usize = 1000;
+
+/// A passkey or a login as the system's list shows it
+/// (ASPasskeyCredentialIdentity, ASPasswordCredentialIdentity): no secret,
+/// only what the QuickType bar and the sheet show. The extension builds the
+/// same from the list (`identities(of:)` in CredentialProviderViewController.swift).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Identity {
+    /// `passkey` or `password`.
+    pub kind: &'static str,
+    /// Passkey: the rpId. Password: the service — a domain, a host, or an
+    /// address (`service_type`).
+    pub rp_id: String,
+    pub user_name: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub credential_id: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub user_handle: String,
+    pub record_identifier: Option<String>,
+    /// Password: `domain` or `url`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub service_type: Option<&'static str>,
+}
+
+/// The system's entries for a login: one per address it can be matched by.
+fn password_identities(entry: &sealed::LoginEntry) -> Vec<Identity> {
+    let mut seen = std::collections::HashSet::new();
+    entry
+        .uris
+        .iter()
+        .filter_map(|hint| {
+            let (service, kind) = match hint.kind.as_str() {
+                "domain" | "host" => (hint.value.clone(), "domain"),
+                "startsWith" | "exact" => (hint.value.clone(), "url"),
+                _ => return None,
+            };
+            seen.insert(service.clone()).then(|| Identity {
+                kind: "password",
+                rp_id: service,
+                user_name: entry.user_name.clone().unwrap_or_default(),
+                credential_id: String::new(),
+                user_handle: String::new(),
+                record_identifier: Some(entry.item_id.clone()),
+                service_type: Some(kind),
+            })
+        })
+        .collect()
+}
+
+/// What the app remembers of an account's list (`passkeys-apple-<account>.json`).
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct State {
+    /// The last list's generation, or a later one the extension wrote.
+    #[serde(default)]
+    generation: u64,
+    /// Credential ids of outbox entries taken in, newest last.
+    #[serde(default)]
+    imported: Vec<String>,
+}
+
+pub(crate) fn start(app: &App) {
+    for event in ["vault-changed", "vault-status"] {
+        let handle = app.clone();
+        app.listen(event, move |_| refresh_soon(&handle));
+    }
+}
+
+fn enabled(app: &App) -> bool {
+    app.passkeys().settings().apple_extension
+}
+
+pub(crate) fn active(app: &App) -> bool {
+    enabled(app) && app.host().extension_problem().is_none()
+}
+
+pub(crate) fn problem(app: &App) -> Option<String> {
+    app.host().extension_problem()
+}
+
+/// Switched off: the list, the Keychain item, the system's entries and the
+/// account's provider key go.
+pub(crate) fn clear(app: &App) {
+    let _handing_over = HANDING_OVER.lock();
+    if let Err(error) = app.host().extension_clear() {
+        tracing::warn!(%error, "couldn't remove the extension's passkey list");
+    }
+    if let Some(account) = recorded(app) {
+        let _ = std::fs::remove_file(record_path(app));
+        forget_files(app, &account);
+    }
+}
+
+/// An account leaves this device: when the extension's list is that
+/// account's, it goes too (see [`clear`]), and so does the account's
+/// provider key.
+pub(crate) fn forget(app: &App, account_id: &str) {
+    if !sealed::valid_account(account_id) {
+        return;
+    }
+    let _handing_over = HANDING_OVER.lock();
+    if recorded(app).as_deref() == Some(account_id) {
+        if let Err(error) = app.host().extension_clear() {
+            tracing::warn!(%error, "couldn't remove the extension's passkey list");
+        }
+        let _ = std::fs::remove_file(record_path(app));
+    }
+    forget_files(app, account_id);
+}
+
+/// The account's provider key and state. Kept while the outbox still holds
+/// passkeys of the account: the key is sealed under its user key, so it is
+/// of use only after logging in to it again — which then takes them in.
+fn forget_files(app: &App, account_id: &str) {
+    let pending = app
+        .host()
+        .extension_outbox()
+        .unwrap_or_default()
+        .iter()
+        .any(|(_, bytes)| sealed::account_of(bytes) == Ok(account_id));
+    if pending {
+        tracing::info!(
+            "kept the account's provider key: the extension's outbox has passkeys of it"
+        );
+        return;
+    }
+    let _ = std::fs::remove_file(key_path(app, account_id));
+    let _ = std::fs::remove_file(state_path(app, account_id));
+    for old in old_key_paths(app, account_id) {
+        let _ = std::fs::remove_file(old);
+    }
+}
+
+/// Provider keys of the account that were replaced
+/// (`passkeys-apple-<account>.key.old-<ms>`), oldest first.
+fn old_key_paths(app: &App, account_id: &str) -> Vec<PathBuf> {
+    let prefix = format!("passkeys-apple-{account_id}.key.old-");
+    let mut found: Vec<PathBuf> = std::fs::read_dir(dir(app))
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|e| {
+                    e.file_name()
+                        .to_str()
+                        .is_some_and(|n| n.starts_with(&prefix))
+                })
+                .map(|e| e.path())
+                .collect()
+        })
+        .unwrap_or_default();
+    found.sort();
+    found
+}
+
+/// A provider key file opened with the user key.
+fn open_key_file(path: &Path, user_key: &SymmetricKey) -> Option<Zeroizing<[u8; 32]>> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let opened = Zeroizing::new(
+        text.trim()
+            .parse::<EncString>()
+            .and_then(|enc| enc.decrypt(user_key))
+            .ok()?,
+    );
+    let mut key = Zeroizing::new([0u8; 32]);
+    (opened.len() == 32).then(|| {
+        key.copy_from_slice(&opened);
+        key
+    })
+}
+
+/// The replaced provider keys that still open: outbox entries sealed with
+/// one of them are taken in all the same.
+fn old_keys(app: &App, account_id: &str, user_key: &SymmetricKey) -> Vec<Zeroizing<[u8; 32]>> {
+    old_key_paths(app, account_id)
+        .iter()
+        .filter_map(|path| open_key_file(path, user_key))
+        .collect()
+}
+
+pub(crate) fn refresh_soon(app: &App) {
+    if !enabled(app) {
+        note(app, "list off: UwULock's own AutoFill setting is off");
+        // Maybe the system has UwULock on: then the setting follows, and
+        // that refreshes.
+        if !SYSTEM_CHECKED.swap(true, Ordering::SeqCst) {
+            crate::autofill::check_system(app);
+        }
+        return;
+    }
+    // SeqCst on both flags, here and in the worker: a store followed by a
+    // load of the other flag on each side (Release/Acquire lets them pass
+    // each other, and an event would wait for the next one).
+    AGAIN.store(true, Ordering::SeqCst);
+    if REFRESHING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let app = app.clone();
+    crate::runtime::spawn(async move {
+        loop {
+            while AGAIN.swap(false, Ordering::SeqCst) {
+                match refresh(&app).await {
+                    Ok(Some(done)) => note(&app, &done),
+                    Ok(None) => {}
+                    // Locked or logged out: nothing to hand over, not a fault.
+                    Err(error) if error.kind() == "locked" => {}
+                    Err(error) => {
+                        tracing::debug!(
+                            error = error.message(),
+                            "the extension's passkey list wasn't refreshed"
+                        );
+                        note(
+                            &app,
+                            &format!("list not refreshed: {} ({})", error.kind(), error.message()),
+                        );
+                    }
+                }
+            }
+            REFRESHING.store(false, Ordering::SeqCst);
+            // An event between the last round and letting go: its caller
+            // saw REFRESHING still set, so this one runs it.
+            if !AGAIN.load(Ordering::SeqCst) || REFRESHING.swap(true, Ordering::SeqCst) {
+                break;
+            }
+        }
+    });
+}
+
+/// A line about the list into the AutoFill protocol (iOS), unless it is the
+/// one noted last. Counts, generations and error kinds only.
+fn note(app: &App, text: &str) {
+    {
+        let mut last = NOTED.lock();
+        if *last == text {
+            return;
+        }
+        *last = text.to_string();
+    }
+    app.host().extension_note(text);
+}
+
+fn dir(app: &App) -> PathBuf {
+    app.vault().storage().dir().to_path_buf()
+}
+
+fn key_path(app: &App, account_id: &str) -> PathBuf {
+    dir(app).join(format!("passkeys-apple-{account_id}.key"))
+}
+
+fn state_path(app: &App, account_id: &str) -> PathBuf {
+    dir(app).join(format!("passkeys-apple-{account_id}.json"))
+}
+
+fn record_path(app: &App) -> PathBuf {
+    dir(app).join("passkeys-apple.account")
+}
+
+/// The account whose list the extension has.
+fn recorded(app: &App) -> Option<String> {
+    std::fs::read_to_string(record_path(app))
+        .ok()
+        .map(|text| text.trim().to_string())
+        .filter(|id| sealed::valid_account(id))
+}
+
+fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let mut partial = path.as_os_str().to_owned();
+    partial.push(".new");
+    let partial = PathBuf::from(partial);
+    std::fs::write(&partial, bytes)?;
+    std::fs::rename(&partial, path)
+}
+
+fn load_state(app: &App, account_id: &str) -> State {
+    std::fs::read(state_path(app, account_id))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default()
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or_default()
+}
+
+/// The provider key of an open account: the one kept, or a new one. A key
+/// that no longer opens (the user key changed) is replaced; what the
+/// extension sealed with it is set aside, not lost.
+fn provider_key(
+    app: &App,
+    account_id: &str,
+    user_key: &SymmetricKey,
+) -> Result<Zeroizing<[u8; 32]>> {
+    let path = key_path(app, account_id);
+    if path.exists() {
+        if let Some(key) = open_key_file(&path, user_key) {
+            return Ok(key);
+        }
+        // Kept, not overwritten: should it open again (the user key back as
+        // it was), what the extension sealed with it is taken in then.
+        tracing::warn!(
+            "the account's provider key doesn't open any more: a new one, the old one kept"
+        );
+        let mut old = path.as_os_str().to_owned();
+        old.push(format!(".old-{:013}", now_ms()));
+        std::fs::rename(&path, PathBuf::from(old))
+            .map_err(|e| Failure::new("io", e.to_string()))?;
+        let olds = old_key_paths(app, account_id);
+        for gone in &olds[..olds.len().saturating_sub(OLD_KEYS)] {
+            let _ = std::fs::remove_file(gone);
+        }
+    }
+    let key = sealed::new_key();
+    write_atomic(
+        &path,
+        EncString::encrypt(key.as_ref(), user_key)
+            .to_string()
+            .as_bytes(),
+    )
+    .map_err(|e| Failure::new("io", e.to_string()))?;
+    Ok(key)
+}
+
+/// Whether the vault has this passkey already.
+fn in_vault(vault: &VaultState, passkey: &uwulock_core::passkey::Passkey) -> bool {
+    passkey.credential_id_bytes().is_ok_and(|id| {
+        super::matching(vault, &passkey.rp_id, &[id]).is_ok_and(|found| !found.is_empty())
+    })
+}
+
+/// The list for the extension, from the open vault; what went in, for the
+/// protocol, or `None` when this build has no extension to hand it to.
+async fn refresh(app: &App) -> Result<Option<String>> {
+    if let Some(problem) = app.host().extension_problem() {
+        tracing::debug!(%problem, "no AutoFill extension to hand the list to");
+        return Ok(None);
+    }
+    let vault = app.vault();
+    let (account_id, _) = vault.active_account()?;
+    if !sealed::valid_account(&account_id) {
+        return Err(Failure::new(
+            "invalid",
+            "an account id the extension can't take",
+        ));
+    }
+    let user_key = vault.user_key_of(&account_id)?;
+    let key = provider_key(app, &account_id, &user_key)?;
+    let old_keys = old_keys(app, &account_id, &user_key);
+    let mut state = load_state(app, &account_id);
+
+    // What the extension made: into the vault, as new logins. Never
+    // deleted unless taken in (or already there).
+    let mut taken = Vec::new();
+    let mut aside = Vec::new();
+    for (name, bytes) in app.host().extension_outbox().unwrap_or_default() {
+        let set_aside = name.starts_with("unreadable/");
+        match sealed::account_of(&bytes) {
+            // Another account's: it waits until that one is open here.
+            Ok(account) if account != account_id => continue,
+            Ok(_) => {}
+            Err(error) => {
+                if !set_aside {
+                    tracing::warn!(%error, "an outbox entry doesn't read: set aside");
+                    aside.push(name);
+                }
+                continue;
+            }
+        }
+        let opened = std::iter::once(&key)
+            .chain(&old_keys)
+            .map(|key| sealed::open_outbox(key, &bytes))
+            .find(|opened| opened.is_ok())
+            .unwrap_or_else(|| sealed::open_outbox(&key, &bytes))
+            .and_then(|(_, entry)| {
+                state.generation = state.generation.max(entry.generation);
+                Ok((entry.credential_id.clone(), entry.to_passkey()?))
+            });
+        let (id, passkey) = match opened {
+            Ok(opened) => opened,
+            Err(error) => {
+                if set_aside {
+                    tracing::debug!(%error, "a set-aside outbox entry still doesn't open");
+                } else {
+                    tracing::warn!(%error, "an outbox entry doesn't open: set aside");
+                    aside.push(name);
+                }
+                continue;
+            }
+        };
+        if state.imported.contains(&id) || in_vault(vault, &passkey) {
+            // Put back, or taken in before: not twice.
+            taken.push(name);
+            continue;
+        }
+        match super::save_passkey(app, passkey, None).await {
+            Ok(_) => {
+                state.imported.push(id);
+                taken.push(name);
+            }
+            Err(error) => {
+                tracing::warn!(
+                    error = error.message(),
+                    "couldn't save a passkey from the extension"
+                );
+            }
+        }
+    }
+    let excess = state.imported.len().saturating_sub(REMEMBERED);
+    state.imported.drain(..excess);
+    if !aside.is_empty() {
+        let _ = app.host().extension_set_aside(&aside);
+    }
+    if !taken.is_empty() {
+        let _ = app.host().extension_clear_outbox(&taken);
+    }
+
+    // The list for the extension.
+    let all_logins;
+    let (items, logins): (Vec<_>, Vec<_>) = {
+        let guard = vault.unlocked.read();
+        let unlocked = guard.get(&account_id).ok_or_else(Failure::locked)?;
+        // Not in the trash, and no login that asks for the master password
+        // again (R7 L-2): the extension only has Face ID or the device
+        // passcode.
+        let items = unlocked
+            .vault
+            .items
+            .iter()
+            .filter(|item| sealed::listed(item))
+            .cloned()
+            .collect();
+        let logins: Vec<_> = unlocked
+            .vault
+            .items
+            .iter()
+            .filter(|item| sealed::listed_login(item))
+            .cloned()
+            .collect();
+        all_logins = unlocked
+            .vault
+            .items
+            .iter()
+            .filter(|item| item.kind == uwulock_core::vault::ItemKind::Login && !item.deleted)
+            .count();
+        (items, logins)
+    };
+    state.generation = sealed::next_generation(state.generation, now_ms());
+    let mut snapshot = Snapshot::new(&account_id, state.generation);
+    let mut identities = Vec::new();
+    for item in &logins {
+        if let Some(entry) = snapshot.push_login(&key, item) {
+            identities.extend(password_identities(entry));
+        }
+    }
+    for item in &items {
+        for (_, passkey) in passkeys_of(vault, &account_id, item) {
+            // The extension can't count up a signature counter in the vault:
+            // passkeys that use one stay with the app and the browser extension.
+            if !sealed::listed_passkey(&passkey) {
+                continue;
+            }
+            let Ok(entry) = snapshot.push(&key, &passkey, Some(&item.id)) else {
+                continue;
+            };
+            identities.push(Identity {
+                kind: "passkey",
+                service_type: None,
+                rp_id: entry.rp_id.clone(),
+                user_name: entry
+                    .user_name
+                    .clone()
+                    .or_else(|| entry.user_display_name.clone())
+                    .unwrap_or_else(|| item.name.to_string()),
+                credential_id: entry.credential_id.clone(),
+                user_handle: entry.user_handle.clone().unwrap_or_default(),
+                record_identifier: Some(item.id.clone()),
+            });
+        }
+    }
+    let sealed_list = snapshot
+        .seal(&key)
+        .map_err(|e| Failure::new("invalid", e))?;
+    // Only for an account still open: a logout since this refresh began has
+    // taken the list away (under the same lock), and it stays away.
+    let _handing_over = HANDING_OVER.lock();
+    if vault.user_key_of(&account_id).is_err() {
+        return Err(Failure::locked());
+    }
+    // The state first: a list the extension saw is never followed by an
+    // older generation.
+    let json = serde_json::to_vec(&state).map_err(|e| Failure::new("io", e.to_string()))?;
+    write_atomic(&state_path(app, &account_id), &json)
+        .map_err(|e| Failure::new("io", e.to_string()))?;
+    // Which account's list it is, before it is there: a logout in between
+    // still finds it.
+    write_atomic(&record_path(app), account_id.as_bytes())
+        .map_err(|e| Failure::new("io", e.to_string()))?;
+    app.host()
+        .extension_store(&sealed_list, &key, &identities)
+        .map_err(|e| Failure::new("unsupported", e))?;
+    tracing::debug!(
+        passkeys = snapshot.entries.len(),
+        logins = snapshot.logins.len(),
+        "the extension's list is up to date"
+    );
+    Ok(Some(format!(
+        "list stored: generation {}, {} of {all_logins} logins (the others without a password, archived or asking for the master password), {} passkeys, {} system entries",
+        state.generation,
+        snapshot.logins.len(),
+        snapshot.entries.len(),
+        identities.len()
+    )))
+}
+
+/// Whether an outbox name from [`Host::extension_outbox`](crate::host::Host::extension_outbox) is one of ours: a
+/// file name in the outbox or in its `unreadable/` folder, nothing else.
+pub fn outbox_name(name: &str) -> Option<(bool, &str)> {
+    let (aside, file) = match name.strip_prefix("unreadable/") {
+        Some(file) => (true, file),
+        None => (false, name),
+    };
+    let fine = file.ends_with(".sealed")
+        && !file.starts_with('.')
+        && !file.contains(['/', '\\'])
+        && file != ".sealed";
+    fine.then_some((aside, file))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::outbox_name;
+
+    #[test]
+    fn outbox_names() {
+        assert_eq!(outbox_name("A1.sealed"), Some((false, "A1.sealed")));
+        assert_eq!(
+            outbox_name("unreadable/A1.sealed"),
+            Some((true, "A1.sealed"))
+        );
+        for bad in [
+            "../x.sealed",
+            "unreadable/../x.sealed",
+            "unreadable/unreadable/x.sealed",
+            ".sealed",
+            ".hidden.sealed",
+            "x.txt",
+            "a\\b.sealed",
+            "aside:x.sealed/",
+        ] {
+            assert_eq!(outbox_name(bad), None, "{bad}");
+        }
+    }
+}

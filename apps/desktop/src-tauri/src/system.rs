@@ -1,4 +1,6 @@
-//! App-level commands: updates and links out of the app.
+//! The commands only the Tauri app has: updates, where this copy came from,
+//! the system bars' colours. Links out of the app are uwulock-app's
+//! (commands.rs).
 //!
 //! The updater is the desktop's own (`self_update`, build.rs): a phone gets new
 //! versions as a new APK or IPA from the release page (docs/mobile.md), an App
@@ -7,9 +9,7 @@
 
 #[cfg(self_update)]
 use crate::updates::{self, Channel, UpdateInfo};
-use crate::vault::VaultState;
-use tauri::{AppHandle, State};
-use tauri_plugin_opener::OpenerExt;
+use tauri::AppHandle;
 
 #[cfg(not(self_update))]
 type Channel = serde_json::Value;
@@ -92,53 +92,6 @@ pub(crate) fn set_appearance(dark: bool) {
     });
     #[cfg(desktop)]
     let _ = dark;
-}
-
-/// The project pages the app links to. The page names one; it never hands in
-/// an address of its own.
-#[tauri::command]
-pub(crate) fn open_project_page(app: AppHandle, page: String) -> Result<(), String> {
-    let url = match page.as_str() {
-        "source" => "https://github.com/MinifyX/UwULock-Client",
-        "releases" => "https://github.com/MinifyX/UwULock-Client/releases",
-        "issues" => "https://github.com/MinifyX/UwULock-Client/issues",
-        "license" => "https://www.gnu.org/licenses/gpl-3.0.html",
-        "suite" => "https://uwu.minifyx.de",
-        _ => return Err(format!("unknown page: {page}")),
-    };
-    open(&app, url)
-}
-
-/// Opens a login's address in the browser. The page names the item and the
-/// address by position; only http and https leave the app.
-#[tauri::command]
-pub(crate) fn open_item_uri(
-    app: AppHandle,
-    state: State<'_, VaultState>,
-    id: String,
-    index: usize,
-) -> Result<(), String> {
-    let uri = state
-        .item_uri(&id, index)
-        .ok_or("This address can't be opened.")?;
-    let parsed = url::Url::parse(&uri).map_err(|_| "This address can't be opened.")?;
-    if !matches!(parsed.scheme(), "http" | "https") {
-        return Err("Only web addresses open in the browser.".into());
-    }
-    open(&app, parsed.as_str())
-}
-
-/// The account's web vault, for everything UwULock can't do yet.
-#[tauri::command]
-pub(crate) fn open_web_vault(app: AppHandle, state: State<'_, VaultState>) -> Result<(), String> {
-    let url = state.web_vault().ok_or("No account on this device.")?;
-    open(&app, &url)
-}
-
-fn open(app: &AppHandle, url: &str) -> Result<(), String> {
-    app.opener()
-        .open_url(url, None::<&str>)
-        .map_err(|e| format!("Couldn't open the browser: {e}"))
 }
 
 /// On Windows, DLLs loaded by name at runtime resolve from System32 only, never

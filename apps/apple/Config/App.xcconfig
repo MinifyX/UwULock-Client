@@ -1,0 +1,13 @@
+// Settings of every configuration. Direct.xcconfig builds on it for the Mac's disk image.
+
+// iOS/iPadOS and the Mac App Store: the Tauri builds' identifier.
+UWULOCK_BUNDLE_ID = app.uwulock
+UWULOCK_MAC_ENTITLEMENTS = Config/UwULock-macOS.entitlements
+
+// The App Group the app and the AutoFill extension share (Info.plist UwULockAppGroup): iOS
+// names it group.…, macOS by the team (Info.ios.plist, macos/Entitlements.mas.plist).
+UWULOCK_APP_GROUP[sdk=iphone*] = group.app.uwulock
+UWULOCK_APP_GROUP[sdk=macosx*] = $(TeamIdentifierPrefix)app.uwulock
+
+// DEVELOPMENT_TEAM and other per-machine settings (gitignored, see Local.xcconfig.example).
+#include? "Local.xcconfig"

@@ -150,8 +150,8 @@ system starts `PasskeyProviderService` and `PasskeyActivity`, which call into Ru
 (`PasskeyBridge`) — see [passkeys.md](passkeys.md). The app reaches the plugin through
 `phone::plugin()` in `apps/desktop/src-tauri/src/phone.rs`. Every call waits for
 the phone's answer, so it must never run on the main thread — spawn a thread
-(`std::thread::spawn`) or use `tauri::async_runtime::spawn_blocking`, as
-`hello.rs` and `clipboard.rs` do.
+(`std::thread::spawn`) or use `uwulock_app::runtime::spawn_blocking`, as
+`host.rs` and uwulock-app's `hello.rs` and `clipboard.rs` do.
 
 **Adding a feature** (for example the swipe check or joining a WiFi network):
 

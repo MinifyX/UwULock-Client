@@ -2,7 +2,7 @@
  * The import, into the vault: what the screens (components/ImportDialog.tsx,
  * mobile/pages/Import.tsx) and the system's hand-over (Apple's Credential
  * Exchange) call. Reading a file is `index.ts`; here the result goes to Rust
- * (`src-tauri/src/importing.rs`), which seals the items under the user key and
+ * (`crates/uwulock-app/src/importing.rs`), which seals the items under the user key and
  * sends them to the server in parts, then syncs.
  *
  * ── For the native side (Credential Exchange and the like) ──────────────────

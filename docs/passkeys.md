@@ -400,7 +400,7 @@ settings (phone, iPad, Mac) show the state and the same button. Windows and Linu
   `openCredentialProviderAppSettings` opens the settings page. The state comes from
   `ASCredentialIdentityStore.getState().isEnabled`. The button also turns on UwULock's own
   setting (the sealed list), without which the extension has nothing to fill.
-- macOS goes through the Objective-C runtime from Rust (`src-tauri/src/autofill.rs`, `objc2`),
+- macOS goes through the Objective-C runtime from Rust (`src-tauri/src/apple.rs`, `objc2`),
   only in the build that carries the extension (Mac App Store).
 - **Android**: see "Being the default provider" in the Android section.
 
