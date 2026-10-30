@@ -23,7 +23,9 @@ Mac App Store, TestFlight, IPA). Windows, Linux and Android stay Tauri.
 
 1. [x] `crates/uwulock-app`: app logic out of `apps/desktop/src-tauri`, `Host` trait for
        events/clipboard/biometrics/opening links; Tauri app compiles and tests pass on it.
-2. [ ] `crates/uwulock-ffi` (UniFFI) + `scripts/apple-xcframework.sh`.
+2. [x] `crates/uwulock-ffi` (UniFFI) + `scripts/apple-xcframework.sh`; Swift side in
+       `apps/apple/UwULock/Core` (typed commands, models, `AppleHost`), app starts on the
+       core's status.
 3. [x] `apps/apple` skeleton: XcodeGen, design system (tokens, font, icons), app shell.
 4. [ ] Screens: login/2FA/SSO, lock/biometrics, vault, detail, editor, generator, settings.
 5. [ ] Screens: sends, health, import/move, extras, suite, wifi, file requests, masked mail, versions.

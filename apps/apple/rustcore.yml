@@ -2,7 +2,7 @@
 # UWULOCK_RUST_CORE=YES. scripts/apple-xcframework.sh builds both inputs:
 #   Frameworks/UwuLockFFI.xcframework   the static library + the C module "UwuLockFFI"
 #   Generated/                          UniFFI's Swift bindings
-# Without them the app builds on the stub in UwULock/RustCore (no vault yet).
+# Without them the app builds without a core (UwULock/Core: every command fails "unsupported").
 targets:
   UwULock:
     sources:
@@ -14,3 +14,5 @@ targets:
     settings:
       base:
         UWULOCK_RUST_CORE_FLAG: RUST_CORE
+        # The library has the simulator for Apple silicon only (scripts/apple-xcframework.sh).
+        EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64

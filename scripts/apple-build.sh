@@ -4,14 +4,16 @@
 # With --screens it also runs the app in the simulator (and on this Mac) and saves screenshots
 # to apps/apple/docs-screens/.
 #
-# The Rust core comes in when scripts/apple-xcframework.sh has built
-# apps/apple/Frameworks/UwuLockFFI.xcframework and apps/apple/Generated/; without them the app
-# builds on its stub.
+# The Rust core: scripts/apple-xcframework.sh builds (or finds up to date)
+# apps/apple/Frameworks/UwuLockFFI.xcframework and apps/apple/Generated/ first. Without Rust
+# (no rustup) or with UWULOCK_RUST_CORE=NO the app builds without a core: every command fails
+# "unsupported".
 #
 # Usage: scripts/apple-build.sh [ios] [macos] [direct] [--screens]
 #   no targets: ios and macos. direct: the Mac's disk-image build (Debug-Direct, Sparkle).
 #   UWULOCK_SIMULATOR: the simulator for --screens (name or UDID; default: newest iPhone).
 #   UWULOCK_CONFIGURATION: Debug (default) or Release.
+#   UWULOCK_RUST_CORE: NO builds without the Rust core.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -33,12 +35,19 @@ done
 
 command -v xcodegen >/dev/null || { echo "xcodegen is missing: brew install xcodegen" >&2; exit 1; }
 
-if [ -d "$app/Frameworks/UwuLockFFI.xcframework" ] && [ -d "$app/Generated" ]; then
+if [ "${UWULOCK_RUST_CORE:-}" != NO ]; then
+  if command -v rustup >/dev/null || [ -x /opt/homebrew/opt/rustup/bin/rustup ]; then
+    "$root/scripts/apple-xcframework.sh"
+  else
+    echo "--- Rust core: no rustup, building without it"
+  fi
+fi
+if [ "${UWULOCK_RUST_CORE:-}" != NO ] && [ -d "$app/Frameworks/UwuLockFFI.xcframework" ] && [ -d "$app/Generated" ]; then
   export UWULOCK_RUST_CORE=YES
   echo "--- Rust core: on"
 else
   export UWULOCK_RUST_CORE=NO
-  echo "--- Rust core: stub (no Frameworks/UwuLockFFI.xcframework yet)"
+  echo "--- Rust core: off"
 fi
 
 echo "--- xcodegen"

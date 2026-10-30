@@ -7,8 +7,12 @@ the suite, moving and importing, and passkeys.
 
 - The Tauri app (`apps/desktop/src-tauri`) wraps each method in a
   `#[tauri::command]` (`src/commands.rs`) and implements `Host` (`src/host.rs`).
-- The native Apple app (`docs/native-apple-plan.md`) is meant to reach the
-  same methods through `uwulock-ffi`.
+- The native Apple app (`apps/apple`, `docs/native-apple-plan.md`) reaches the
+  same methods through `crates/uwulock-ffi` (UniFFI): one
+  `UwuLockCore.call(command, argsJson)` for all of them, dispatched by
+  `uwulock-ffi/src/dispatch.rs` (generated from the Tauri app's `commands.rs` by
+  `scripts/ffi-dispatch.py`), and a Swift `HostDelegate`
+  (`apps/apple/UwULock/Core/AppleHost.swift`) behind its `Host`.
 
 The protocol and the crypto are `uwulock-bitwarden`'s and `uwulock-core`'s.
 

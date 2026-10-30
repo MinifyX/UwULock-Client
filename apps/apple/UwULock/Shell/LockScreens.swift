@@ -1,8 +1,7 @@
 import SwiftUI
 import UwUDesign
 
-/// The locked vault: wordmark, a sleepy Nyu, master password or biometrics. Placeholder until
-/// the Rust core checks the password (milestone 4).
+/// The locked vault: wordmark, a sleepy Nyu, master password or biometrics.
 struct LockView: View {
     @Environment(AppModel.self) private var model
     @State private var password = ""
@@ -15,17 +14,19 @@ struct LockView: View {
 
             SecureField("Master-Passwort", text: $password)
                 .textContentType(.password)
-                .onSubmit { model.unlock() }
+                .onSubmit { model.unlock(password: password) }
                 .authField()
 
+            FailureText(failure: model.failure)
+
             VStack(spacing: UwUSpacing.sm) {
-                Button { model.unlock() } label: {
+                Button { model.unlock(password: password) } label: {
                     Text("Entsperren").frame(maxWidth: .infinity)
                 }
                 .uwuProminentButton()
                 .keyboardShortcut(.defaultAction)
 
-                Button { model.unlock() } label: {
+                Button { model.unlockWithBiometrics() } label: {
                     Label(biometricTitle, uwuIcon: biometricIcon)
                         .frame(maxWidth: .infinity)
                 }
@@ -50,7 +51,7 @@ struct LockView: View {
     private var biometricIcon: UwUIconName { .fingerprint }
 }
 
-/// Logging in: server, email, master password. Placeholder for milestone 4 (2FA, SSO).
+/// Logging in: server, email, master password. Two-step login and SSO: milestone 4.
 struct LoginView: View {
     @Environment(AppModel.self) private var model
     @State private var selfHosted = false
@@ -76,16 +77,38 @@ struct LoginView: View {
                     .authField()
                 SecureField("Master-Passwort", text: $password)
                     .textContentType(.password)
-                    .onSubmit { model.logIn() }
+                    .onSubmit(logIn)
                     .authField()
             }
 
-            Button { model.logIn() } label: {
+            FailureText(failure: model.failure)
+
+            Button(action: logIn) {
                 Text("Anmelden").frame(maxWidth: .infinity)
             }
             .uwuProminentButton()
             .controlSize(.large)
             .keyboardShortcut(.defaultAction)
+        }
+    }
+
+    private func logIn() {
+        let server = selfHosted ? ServerInput(kind: .selfHosted, url: server) : ServerInput(kind: .bitwardenEU)
+        model.logIn(server: server, email: email, password: password)
+    }
+}
+
+/// What the last attempt said, under the fields.
+private struct FailureText: View {
+    let failure: CoreFailure?
+
+    var body: some View {
+        if let failure {
+            Text(verbatim: failure.message)
+                .uwuFont(.footnote)
+                .foregroundStyle(.uwuDangerInk)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
         }
     }
 }

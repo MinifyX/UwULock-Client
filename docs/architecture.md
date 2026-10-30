@@ -47,9 +47,18 @@ The work is split in four crates:
   needs from the program around it (events to the page, clipboard,
   biometrics, system settings and extensions) is a `Host`. The Tauri app is
   thin `#[tauri::command]` wrappers (`src-tauri/src/commands.rs`) and a
-  `TauriHost` (`src-tauri/src/host.rs`) over it; the native Apple app will use
-  it through `uwulock-ffi`. Module map, `Host` contract and events:
-  `crates/uwulock-app/README.md`.
+  `TauriHost` (`src-tauri/src/host.rs`) over it; the native Apple app
+  (`apps/apple`) uses it through `uwulock-ffi`. Module map, `Host` contract and
+  events: `crates/uwulock-app/README.md`.
+- **`uwulock-ffi`** — `uwulock-app` for Swift (UniFFI): `UwuLockCore` with one
+  `call(command, argsJson)` for every IPC command (same names and JSON), the
+  lifecycle (`start`, `suspended`, `resumed`, `system_locked`) and a
+  `HostDelegate` the app implements (`AppleHost.swift`: Keychain and Face ID /
+  Touch ID, clipboard, App Group files for the AutoFill extension, Safari,
+  Wi-Fi). Events reach Swift as `emit(name, json)`.
+  `scripts/apple-xcframework.sh` builds it as `apps/apple/Frameworks/UwuLockFFI.xcframework`
+  plus the generated `apps/apple/Generated/uwulock_ffi.swift`; Swift's typed side is
+  `apps/apple/UwULock/Core/` (`Core`, `CoreCommands.swift`, `Models/`).
 - **`uwulock-wasm`** — `uwulock-core` compiled to WebAssembly for the browser
   extension's background worker: unlocking (master password, PIN, the kept
   user key), the vault as the web vault shows it, autofill values, and

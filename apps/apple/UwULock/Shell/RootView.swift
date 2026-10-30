@@ -1,5 +1,8 @@
 import SwiftUI
 import UwUDesign
+#if os(iOS)
+import AuthenticationServices
+#endif
 
 /// Login, lock screen or vault, and the privacy cover over all of them.
 struct RootView: View {
@@ -23,6 +26,20 @@ struct RootView: View {
             if scenePhase != .active {
                 PrivacyCover().transition(.opacity)
             }
+        }
+        // As the Tauri app's Suspended / Resumed: the auto-lock's clock, live updates, a sync.
+        .onChange(of: scenePhase) { old, new in
+            if new == .background {
+                model.core.suspended()
+            } else if old == .background, new != .background {
+                model.core.resumed()
+            }
+        }
+        // Apple Passwords hands credentials over (iOS 26): kept until they're taken in.
+        .onContinueUserActivity(ASCredentialExchangeActivity) { activity in
+            #if RUST_CORE && canImport(UwuLockFFI)
+            CredentialExchange.receive(activity)
+            #endif
         }
         #endif
     }
