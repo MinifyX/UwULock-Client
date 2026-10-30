@@ -67,13 +67,17 @@ impl Clipboard {
     }
 
     fn clear_if_ours(&self, generation: u64) {
-        let Some((latest, hash)) = *self.last.lock() else {
-            return;
+        // Checked and taken under one guard: a copy in between keeps its own.
+        let hash = {
+            let mut last = self.last.lock();
+            match *last {
+                Some((latest, hash)) if latest == generation => {
+                    *last = None;
+                    hash
+                }
+                _ => return,
+            }
         };
-        if latest != generation {
-            return;
-        }
-        *self.last.lock() = None;
         if let Ok(host) = self.host() {
             host.clipboard_clear(&hash);
         }

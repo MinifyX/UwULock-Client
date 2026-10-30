@@ -389,7 +389,7 @@ impl Host for Adapter {
         identities: &[uwulock_app::passkeys::apple::Identity],
     ) -> Result<(), String> {
         let identities = serde_json::to_string(identities).map_err(|error| error.to_string())?;
-        let key = Zeroizing::new(key.to_vec());
+        // UniFFI's buffers aren't wiped; the key lives on in the Keychain anyway.
         self.delegate
             .extension_store(list.to_vec(), key.to_vec(), identities)
             .map_err(HostError::message)
@@ -411,14 +411,14 @@ impl Host for Adapter {
     #[cfg(any(target_os = "ios", target_os = "macos"))]
     fn extension_clear_outbox(&self, names: &[String]) -> Result<(), String> {
         self.delegate
-            .extension_clear_outbox(names.to_vec())
+            .extension_clear_outbox(ours(names))
             .map_err(HostError::message)
     }
 
     #[cfg(any(target_os = "ios", target_os = "macos"))]
     fn extension_set_aside(&self, names: &[String]) -> Result<(), String> {
         self.delegate
-            .extension_set_aside(names.to_vec())
+            .extension_set_aside(ours(names))
             .map_err(HostError::message)
     }
 
@@ -426,6 +426,16 @@ impl Host for Adapter {
     fn extension_clear(&self) -> Result<(), String> {
         self.delegate.extension_clear().map_err(HostError::message)
     }
+}
+
+/// Only outbox names of ours go to Swift, which checks them again.
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+fn ours(names: &[String]) -> Vec<String> {
+    names
+        .iter()
+        .filter(|name| uwulock_app::passkeys::apple::outbox_name(name).is_some())
+        .cloned()
+        .collect()
 }
 
 #[cfg(test)]

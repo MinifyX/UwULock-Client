@@ -46,7 +46,8 @@ packages:
     path: Packages/UwUDesign
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
-    from: 2.7.0
+    # 2.10.1, by commit: the signed builds take exactly this code.
+    revision: ab7d71291238df6e0492143b120c9b696a35f603
 
 settings:
   base:

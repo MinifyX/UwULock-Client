@@ -151,11 +151,14 @@ final class Core {
     }
 
     /// Where the Tauri app keeps its accounts: Application Support/<bundle id> (in the sandbox
-    /// container on iOS and in the Mac App Store build), or `UWULOCK_DATA_DIR`.
+    /// container on iOS and in the Mac App Store build), or `UWULOCK_DATA_DIR` in debug builds
+    /// (a release build never lets the environment swap in another account).
     nonisolated static func defaultDataDirectory() -> URL {
+        #if DEBUG
         if let dir = ProcessInfo.processInfo.environment["UWULOCK_DATA_DIR"], !dir.isEmpty {
             return URL(fileURLWithPath: dir, isDirectory: true)
         }
+        #endif
         let support =
             FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(

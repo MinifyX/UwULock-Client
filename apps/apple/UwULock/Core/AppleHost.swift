@@ -92,11 +92,16 @@ final class AppleHost: HostDelegate, @unchecked Sendable {
             self.lock.withLock { self.lastCopy = count }
             #else
             let board = NSPasteboard.general
-            board.clearContents()
-            board.setString(text, forType: .string)
-            if sensitive {
-                board.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
+            guard sensitive else {
+                board.clearContents()
+                board.setString(text, forType: .string)
+                return
             }
+            // Not to other devices (Universal Clipboard), not into clipboard histories.
+            board.prepareForNewContents(with: .currentHostOnly)
+            board.setString(text, forType: .string)
+            board.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
+            board.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
             #endif
         }
     }
@@ -615,6 +620,9 @@ final class AppleHost: HostDelegate, @unchecked Sendable {
         #endif
     }
 
+    /// The largest outbox file read.
+    static let outboxLimit = 64 * 1024
+
     func extensionOutbox() throws -> [OutboxFile] {
         guard let groups = Self.passkeyGroups() else { return [] }
         let outbox = groups.folder.appendingPathComponent("outbox", isDirectory: true)
@@ -622,7 +630,11 @@ final class AppleHost: HostDelegate, @unchecked Sendable {
         for (folder, prefix) in [(outbox, ""), (outbox.appendingPathComponent("unreadable"), "unreadable/")] {
             let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
             for name in names.sorted() where Self.outboxFile(name) {
-                if let data = try? Data(contentsOf: folder.appendingPathComponent(name)) {
+                let file = folder.appendingPathComponent(name)
+                // A sealed passkey is a few KiB; anything far larger isn't one of ours.
+                let size = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+                guard size <= Self.outboxLimit else { continue }
+                if let data = try? Data(contentsOf: file) {
                     files.append(OutboxFile(name: prefix + name, bytes: data))
                 }
             }

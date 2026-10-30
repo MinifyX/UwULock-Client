@@ -60,7 +60,8 @@ final class SsoBrowser: NSObject, ASWebAuthenticationPresentationContextProvidin
             let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
             let windows = scenes.flatMap(\.windows)
             if let window = windows.first(where: \.isKeyWindow) ?? windows.first { return window }
-            return ASPresentationAnchor(windowScene: scenes.first!)
+            // No scene at all: a bare window, and the session fails instead of the app.
+            return scenes.first.map { ASPresentationAnchor(windowScene: $0) } ?? ASPresentationAnchor()
         }
     }
 }

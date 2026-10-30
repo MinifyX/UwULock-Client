@@ -1,8 +1,10 @@
 # Architecture
 
-UwULock is a Tauri 2 app like the rest of the UwUSuite: a React interface in
-the system's web view, a Rust shell around it, and the real work in a crate
-that is tested without a window.
+UwULock is a Tauri 2 app like the rest of the UwUSuite on Windows, Linux and
+Android: a React interface in the system's web view, a Rust shell around it,
+and the real work in a crate that is tested without a window. On iPhone, iPad
+and the Mac the same crate runs under a native SwiftUI app (`apps/apple`, see
+[Apple](#apple)).
 
 ```
 ┌──────────────────────────── apps/desktop ────────────────────────────┐
@@ -309,10 +311,32 @@ is not offered: a keychain item that only opens with a finger needs an Apple
 Developer ID signature and an entitlement, and a prompt in front of a key
 kept elsewhere would protect nothing.
 
+## Apple
+
+`apps/apple` is a SwiftUI app for iOS/iPadOS 27 and macOS 27, generated with
+XcodeGen (`project.yml`). It links `uwulock-app` as `UwuLockFFI.xcframework`
+(`uwulock-ffi`, UniFFI); `UwULock/Core/AppleHost.swift` is its `Host`: Keychain
+(the biometric unlock secret with `biometryCurrentSet`), the pasteboard with
+expiry, opening links, events into `AppModel`. The interface follows the
+suite's design (`Packages/UwUDesign`: tokens, font, Lucide icons, Nyu) on
+Liquid Glass: tabs with a search tab on the iPhone, three columns on iPad and
+Mac, plus a menu bar item on the Mac. Bundle IDs, App Group and keychain groups
+are the Tauri builds', so an update keeps accounts and unlock.
+
+Targets: the app, `CredentialProvider` (AutoFill for passwords and passkeys,
+the sealed list in the App Group, [passkeys.md](passkeys.md)),
+`SafariExtension` (the web extension from `apps/extension/dist/safari`) and
+`UwULockPasskeysTests`. Builds: App Store (iOS, Mac, sandboxed) and on the Mac a
+Developer ID disk image (`app.uwulock.desktop`, configuration `*-Direct`) that
+updates with Sparkle (`appcast-stable.xml`/`appcast-beta.xml`). Tauri's Mac
+users reach it once through a migration setup. Plan and status:
+[native-apple-plan.md](native-apple-plan.md); releases:
+[app-store.md](app-store.md).
+
 ## Phones
 
-The same app builds for Android and iOS (`cfg(mobile)` in
-`apps/desktop/src-tauri`); updater, tray and the computer's lock signals are
+The Tauri app builds for Android (`cfg(mobile)` in `apps/desktop/src-tauri`;
+iOS is the native app above); updater, tray and the computer's lock signals are
 desktop only. `phone.rs` locks after a minute in the background (Tauri's
 `Suspended`/`Resumed`). What needs the phone's own APIs goes through the local
 plugin `crates/tauri-plugin-uwulock-mobile` (Kotlin and Swift): biometric

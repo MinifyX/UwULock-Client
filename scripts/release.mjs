@@ -12,6 +12,7 @@
 //   pnpm release --no-build       take the Windows x64 setup already in
 //                                 target/installers instead of CI's
 //   pnpm release --windows-only   only Windows x64, built here, when CI can't
+//   pnpm release --allow-adhoc    an ad-hoc signed disk image into the Sparkle appcasts too
 //                                 help (with --no-build: the one already built)
 //
 // Needs a clean tree whose HEAD carries the pushed tag v<version>,
@@ -85,6 +86,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 let token; // GitHub token for the API, looked up once
 const noBuild = process.argv.includes('--no-build');
 const windowsOnly = process.argv.includes('--windows-only');
+// An ad-hoc signed disk image goes into the Sparkle appcasts only when asked for.
+const allowAdhoc = process.argv.includes('--allow-adhoc');
 // The Windows x64 setup from this machine rather than from CI.
 const localWindows = windowsOnly || noBuild || process.argv.includes('--build-windows');
 const build = localWindows && !noBuild;
@@ -270,12 +273,18 @@ try {
     );
 
     // Sparkle checks every update against the key the installed app carries; the key stays on
-    // this machine like the Tauri one.
-    console.log('\n▸ Signing the disk image for Sparkle');
-    const dmg = files.get(MAC_DMG);
-    const { signature, length } = sparkleSign(dmg);
-    sparkle = { name: MAC_DMG, signature, length, build: mac.build };
-    console.log(`  ✓ ${MAC_DMG}: ${length} bytes, signature checked against the app's key`);
+    // this machine like the Tauri one. Installed apps only get a notarized disk image.
+    if (macNotarized || allowAdhoc) {
+      console.log('\n▸ Signing the disk image for Sparkle');
+      const dmg = files.get(MAC_DMG);
+      const { signature, length } = sparkleSign(dmg);
+      sparkle = { name: MAC_DMG, signature, length, build: mac.build };
+      console.log(`  ✓ ${MAC_DMG}: ${length} bytes, signature checked against the app's key`);
+    } else {
+      console.log(
+        '  ! the appcasts stay as they are (ad-hoc disk image; --allow-adhoc to publish it)',
+      );
+    }
 
     console.log('\n▸ Fetching the Android APK of this tag');
     for (const phone of PHONES) {
@@ -667,7 +676,7 @@ async function ciRun(sha, workflow, ref) {
         ],
         { encoding: 'utf8' },
       ),
-    ).filter((run) => !ref || run.headBranch === ref);
+    ).filter((run) => !ref || (run.headBranch === ref && run.event === 'push'));
     const done = runs.find((run) => run.status === 'completed' && run.conclusion === 'success');
     if (done) return done.databaseId;
     const running = runs.find((run) => run.status !== 'completed');

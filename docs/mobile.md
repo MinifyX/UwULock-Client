@@ -2,8 +2,11 @@
 
 [Deutsch weiter unten](#uwulock-auf-android-und-iphone)
 
-The phone app is the desktop app: the same Rust core, the same React UI from
-`apps/desktop`, built by Tauri 2 for Android and iOS. On a phone it shows one
+On Android the phone app is the desktop app: the same Rust core, the same React
+UI from `apps/desktop`, built by Tauri 2. On iPhone and iPad UwULock is the
+native SwiftUI app from `apps/apple` on the same Rust core
+([native-apple-plan.md](native-apple-plan.md)); it fills passwords and passkeys
+into other apps and Safari. On an Android phone the app shows one
 pane at a time — the list, an item, the editor — with the folders in a drawer
 and dialogs filling the screen. Vault, search, copying, one-time codes, the
 generator and the password check work as on the desktop; its review goes card
@@ -14,9 +17,9 @@ by card with a swipe ([uwu-extras.md](uwu-extras.md#password-check)).
 | Android 10 or newer (arm64) | `UwULock-android.apk`                  |
 | iPhone with iOS 27 or newer | `UwULock-ios.ipa` (unsigned, sideload) |
 
-**Not in this release:** UwULock doesn't fill logins into other apps yet — no
-Android autofill service, no iOS password provider. Copy and paste works; filling
-comes later ([roadmap](roadmap.md)).
+**Not in this release:** on Android UwULock doesn't fill passwords into other
+apps yet (no autofill service; passkeys do work, [passkeys.md](passkeys.md)).
+Copy and paste works; filling comes later ([roadmap](roadmap.md)).
 
 ## Installing
 
@@ -40,7 +43,8 @@ iPad and Mac go to TestFlight for now, not yet to the App Store
 with your own Apple ID on the way to the phone. With a free Apple ID the app has
 to be signed again every 7 days (AltStore does that by itself while the phone is
 on the same network). Then allow it under **Settings → General → VPN & Device
-Management**.
+Management**. A sideloaded IPA lacks the entitlements of the signed build: no
+AutoFill, no Safari extension, no Wi-Fi _Connect_.
 
 ## What's different on a phone
 
@@ -77,10 +81,10 @@ Management**.
   pinning, as UwULock Server offers).
 - **File requests** save into Downloads on Android and into UwULock's folder in
   the Files app on the iPhone.
-- **Wi-Fi networks** have a **Connect** button on Android: Android 11+ asks in
-  its own sheet whether to add the network, Android 10 suggests it. Not on the
-  iPhone (see [The phone plugin](#the-phone-plugin)); there the QR code and
-  copying remain.
+- **Wi-Fi networks** have a **Connect** button: Android 11+ asks in its own
+  sheet whether to add the network, Android 10 suggests it; on the iPhone iOS
+  asks in its own sheet (signed builds only, see
+  [The phone plugin](#the-phone-plugin)). The QR code and copying work everywhere.
 
 ## Building
 
@@ -128,20 +132,18 @@ UwULock once to switch.
 
 ## The phone plugin
 
-Everything that needs Android's or iOS's own APIs lives in one local Tauri
+Everything that needs Android's own APIs lives in one local Tauri
 plugin, `crates/tauri-plugin-uwulock-mobile`:
 
 | Part                                           | What it is                                                  |
 | ---------------------------------------------- | ----------------------------------------------------------- |
 | `src/lib.rs`                                   | The Rust side: `Mobile<R>`, one method per command          |
 | `android/src/main/java/UwuLockMobilePlugin.kt` | Kotlin, `@Command` functions (package `app.uwulock.mobile`) |
-| `ios/Sources/UwuLockMobilePlugin.swift`        | Swift, `@objc` functions                                    |
 
 Commands today: `unlockStatus`, `unlockCreate`, `unlockOpen`, `unlockDelete`
 (biometric unlock), `copySecret`, `clearClipboard`, `setAppearance` (system bar
-colours), `saveToDownloads`, `connectWifi`, `openWifiSettings` (Android), and for the AutoFill
-extension on iOS `passkeysStatus`, `passkeysStore`, `passkeysOutbox`, `passkeysClearOutbox`,
-`passkeysClear` (`ios/Sources/Passkeys.swift`). Android's passkey provider isn't a command: the
+colours), `saveToDownloads`, `connectWifi`, `openWifiSettings`. The native iOS app does the
+same through `AppleHost.swift` in `apps/apple`. Android's passkey provider isn't a command: the
 system starts `PasskeyProviderService` and `PasskeyActivity`, which call into Rust through JNI
 (`PasskeyBridge`) — see [passkeys.md](passkeys.md). The app reaches the plugin through
 `phone::plugin()` in `apps/desktop/src-tauri/src/phone.rs`. Every call waits for
@@ -155,11 +157,9 @@ the phone's answer, so it must never run on the main thread — spawn a thread
    `self.0.run_mobile_plugin("yourCommand", args)`, with `#[derive(Serialize)]`
    args in camelCase.
 2. `@Command fun yourCommand(invoke: Invoke)` in the Kotlin file with an
-   `@InvokeArg class YourCommandArgs`, and `@objc public func yourCommand(_ invoke: Invoke)`
-   in the Swift file. Answer with `invoke.resolve(...)`, fail with
+   `@InvokeArg class YourCommandArgs`. Answer with `invoke.resolve(...)`, fail with
    `invoke.reject(message, code)` — codes the Rust side maps (`Error::is`).
-3. Android permissions go into the plugin's `android/src/main/AndroidManifest.xml`,
-   iOS usage strings into `apps/desktop/src-tauri/Info.ios.plist`.
+3. Android permissions go into the plugin's `android/src/main/AndroidManifest.xml`.
 4. A Tauri command in the app (`cfg(mobile)`, with a desktop stub when the UI
    calls it everywhere), and in the UI behind `isMobile()` from
    `apps/desktop/src/lib/platform.ts`.
@@ -179,14 +179,11 @@ Rust to Kotlin and never through the page. The only permission is
 suggestion); no location, no `ACCESS_WIFI_STATE`, so UwULock can't see which
 network the phone is on and doesn't claim to have connected.
 
-iOS has no _Connect_ button. Its API, `NEHotspotConfiguration`, works only with
-the _Hotspot Configuration_ entitlement in the app's provisioning profile. The
-IPA is built unsigned and gets its signature from whoever sideloads it — with
-a free Apple ID (AltStore, Sideloadly) the profile can't carry that
-entitlement, and without it iOS rejects every call. A paid developer account
-could re-sign with it, but UwULock can't rely on that, so the button stays
-hidden on iOS; the QR code and copying the password remain (iOS joins a
-network from the camera's QR scan).
+The native iOS app has its own _Connect_ (`AppleHost.swift`,
+`NEHotspotConfiguration`), which needs the _Hotspot Configuration_ entitlement
+of the signed TestFlight/App Store build; a sideloaded IPA signed with a free
+Apple ID can't carry it, so there iOS rejects the call and the app says why and
+copies the password for the Wi-Fi settings.
 In the UI the button goes into the Wi-Fi details' slot, `ItemDetail`'s
 `wifiActions`, which `VaultScreen` fills only when `platform()` is `android`.
 
@@ -194,8 +191,10 @@ In the UI the button goes into the Wi-Fi details' slot, `ItemDetail`'s
 
 # UwULock auf Android und iPhone
 
-Die Handy-App ist die Desktop-App: derselbe Rust-Kern, dieselbe Oberfläche aus
-`apps/desktop`, von Tauri 2 für Android und iOS gebaut. Auf dem Handy zeigt sie
+Auf Android ist die Handy-App die Desktop-App: derselbe Rust-Kern, dieselbe
+Oberfläche aus `apps/desktop`, von Tauri 2 gebaut. Auf iPhone und iPad ist
+UwULock die native SwiftUI-App aus `apps/apple` auf demselben Rust-Kern; sie
+füllt Passwörter und Passkeys in anderen Apps und Safari aus. Auf Android zeigt sie
 eine Ansicht auf einmal — Liste, Eintrag, Bearbeiten —, die Ordner in einer
 Seitenleiste zum Aufziehen, Dialoge über den ganzen Bildschirm. Tresor, Suche,
 Kopieren, Einmalcodes, der Generator und die Passwortprüfung funktionieren wie
@@ -204,11 +203,11 @@ am Computer; ihr Durchgehen läuft Karte für Karte per Wischen.
 | Handy                         | Datei unter **Assets**                   |
 | ----------------------------- | ---------------------------------------- |
 | Android 10 oder neuer (arm64) | `UwULock-android.apk`                    |
-| iPhone mit iOS 17 oder neuer  | `UwULock-ios.ipa` (unsigniert, Sideload) |
+| iPhone mit iOS 27 oder neuer  | `UwULock-ios.ipa` (unsigniert, Sideload) |
 
-**Noch nicht dabei:** UwULock füllt Logins noch nicht in anderen Apps aus —
-kein Android-Autofill, kein iOS-Passwortanbieter. Kopieren und Einfügen geht;
-das Ausfüllen kommt später.
+**Noch nicht dabei:** Auf Android füllt UwULock Passwörter noch nicht in
+anderen Apps aus (kein Autofill-Dienst; Passkeys gehen). Kopieren und Einfügen
+geht; das Ausfüllen kommt später.
 
 ## Installieren
 
@@ -223,7 +222,9 @@ iPhone, iPad und Mac gehen vorerst nach TestFlight, noch nicht in den App Store
 Sideloadly signiert sie auf dem Weg aufs Handy mit deiner eigenen Apple-ID. Mit
 einer kostenlosen Apple-ID muss die App alle 7 Tage neu signiert werden
 (AltStore macht das selbst, solange das Handy im selben Netz ist). Danach unter
-**Einstellungen → Allgemein → VPN und Geräteverwaltung** erlauben.
+**Einstellungen → Allgemein → VPN und Geräteverwaltung** erlauben. Einer
+selbst signierten IPA fehlen die Berechtigungen des signierten Builds: kein
+Autofill, keine Safari-Erweiterung, kein WLAN-_Verbinden_.
 
 ## Was auf dem Handy anders ist
 
@@ -240,10 +241,10 @@ einer kostenlosen Apple-ID muss die App alle 7 Tage neu signiert werden
 - **Updates** kommen als neue Datei von der Release-Seite.
 - **Zertifikate:** UwULock vertraut auf dem Handy den üblichen öffentlichen
   Zertifizierungsstellen, nicht selbst hinzugefügten.
-- **WLAN verbinden** (nur Android): _Verbinden_ in einem WLAN-Eintrag übergibt das
+- **WLAN verbinden:** _Verbinden_ in einem WLAN-Eintrag übergibt das
   Netz an Android – ab Android 11 bestätigst du es im Fenster des Systems,
   Android 10 schlägt es vor. Dafür braucht UwULock nur die Berechtigung
-  `CHANGE_WIFI_STATE`, keinen Standort. Auf dem iPhone gibt es den Knopf nicht:
-  iOS erlaubt das nur Apps mit einer Berechtigung (_Hotspot Configuration_), die
-  eine selbst signierte App mit kostenloser Apple-ID nicht bekommt. QR-Code und
-  Kopieren gehen überall.
+  `CHANGE_WIFI_STATE`, keinen Standort. Auf dem iPhone fragt iOS im eigenen
+  Fenster; das braucht die Berechtigung _Hotspot Configuration_ des signierten
+  Builds, eine selbst signierte IPA bekommt sie nicht. QR-Code und Kopieren
+  gehen überall.

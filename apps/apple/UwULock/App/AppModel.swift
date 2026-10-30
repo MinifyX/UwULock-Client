@@ -67,7 +67,12 @@ final class AppModel {
     let pinned: Bool
 
     init() {
+        #if DEBUG
         let requested = UserDefaults.standard.string(forKey: "UwULockPhase").flatMap(AppPhase.init(rawValue:))
+        #else
+        // Release builds never pin: nothing outside may fake an unlocked vault.
+        let requested: AppPhase? = nil
+        #endif
         pinned = requested != nil
         // Until the core answers: locked, never the vault.
         phase = requested ?? .locked

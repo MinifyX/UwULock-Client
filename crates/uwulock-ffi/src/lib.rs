@@ -65,6 +65,8 @@ impl UwuLockCore {
     /// Runs `command` with `args_json` (an object; empty for none) and answers with its JSON:
     /// the Tauri app's commands, names and arguments as the page sends them.
     pub async fn call(&self, command: String, args_json: String) -> Result<String, CoreError> {
+        // Master passwords and passphrases come this way: gone once read.
+        let args_json = zeroize::Zeroizing::new(args_json);
         let app = self.app.clone();
         let task = match dispatch::parse(&command, &args_json)? {
             dispatch::Call::Now(call) => {

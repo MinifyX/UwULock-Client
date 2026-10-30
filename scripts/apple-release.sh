@@ -42,7 +42,8 @@
 #       Uploads to App Store Connect; TestFlight has it once Apple has processed it.
 #
 #   scripts/apple-release.sh xcode
-#       Selects the newest Xcode 27 on a GitHub runner (/Applications/Xcode_27*.app).
+#       Selects the newest Xcode 27 on a GitHub runner (/Applications/Xcode_27*.app) and puts
+#       XcodeGen on the PATH (GITHUB_PATH): a fixed release, checked by its SHA-256.
 #
 # The CI-only steps (GitHub runner, RUNNER_TEMP + GITHUB_ENV):
 #   keychain       a keychain with APPLE_DISTRIBUTION_P12 and, when set, APPLE_INSTALLER_P12
@@ -371,6 +372,14 @@ cmd_xcode() {
   [ -n "$xcode" ] || { ls -d /Applications/Xcode*.app >&2 || true; die "No Xcode 27 on this runner"; }
   sudo xcode-select --switch "$xcode"
   xcodebuild -version
+
+  local version=2.46.0 sum=4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806
+  local dir="${RUNNER_TEMP:?}/xcodegen"
+  curl -sSLf -o "$dir.zip" "https://github.com/yonaskolb/XcodeGen/releases/download/$version/xcodegen.zip"
+  echo "$sum  $dir.zip" | shasum -a 256 -c - >/dev/null || die "xcodegen.zip doesn't match its checksum"
+  rm -rf "$dir" && mkdir -p "$dir" && unzip -q "$dir.zip" -d "$dir" && rm -f "$dir.zip"
+  echo "$dir/xcodegen/bin" >>"${GITHUB_PATH:?}"
+  "$dir/xcodegen/bin/xcodegen" --version
 }
 
 cmd_dmg() {
@@ -400,6 +409,7 @@ cmd_upload() {
 cmd_keychain() {
   ci
   new_keychain
+  umask 077
   for name in APPLE_DISTRIBUTION_P12 APPLE_INSTALLER_P12; do
     [ -n "${!name:-}" ] || continue
     printf '%s' "${!name}" | base64 --decode >"$RUNNER_TEMP/certificate.p12"

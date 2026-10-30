@@ -353,7 +353,12 @@ impl VaultState {
     /// The system locked or slept: locks everything, if the settings want
     /// that and anything is open. Whether it did.
     pub(crate) fn lock_for_system(&self) -> bool {
-        if !self.security.lock().with_system || self.unlocked.read().is_empty() {
+        if !self.security.lock().with_system {
+            return false;
+        }
+        if self.unlocked.read().is_empty() {
+            // An unlock under way must not open the vault after this.
+            self.note_lock();
             return false;
         }
         self.lock_now();
@@ -362,8 +367,12 @@ impl VaultState {
 
     /// Locks every account: no key, no session, no clipboard.
     fn lock_now(&self) {
-        self.unlocked.write().clear();
-        self.note_lock();
+        {
+            // Counted under the guard, so `open_unlocked` sees it before it inserts.
+            let mut unlocked = self.unlocked.write();
+            unlocked.clear();
+            self.note_lock();
+        }
         *self.pending.lock() = None;
         self.clipboard.clear_now();
         self.moves.forget();
@@ -1245,6 +1254,7 @@ impl App {
         let app = self.clone();
         let state = self.vault();
         let password = Zeroizing::new(password);
+        let locks = *state.locks().borrow();
         let (id, account) = state.active_account()?;
         let protected: EncString = account.protected_user_key.parse()?;
 
@@ -1281,14 +1291,21 @@ impl App {
             }
         };
 
-        open_unlocked(&app, state, id, user_key);
+        open_unlocked(&app, state, id, user_key, locks)?;
         Ok(status_of(state))
     }
 }
 
 /// The user key is open: the vault comes from the copy on this device, the
-/// sync follows in the back.
-fn open_unlocked(app: &App, state: &VaultState, id: String, user_key: SymmetricKey) {
+/// sync follows in the back. `locks`: the lock count when unlocking began; a
+/// lock since (the screen locked while the key was derived) wins, and the key goes.
+fn open_unlocked(
+    app: &App,
+    state: &VaultState,
+    id: String,
+    user_key: SymmetricKey,
+    locks: u64,
+) -> Result<()> {
     state.adopt_sealed_remember_token(&id, &user_key);
     let cached = state.storage.load_cache(&id);
     let vault = match &cached {
@@ -1308,11 +1325,18 @@ fn open_unlocked(app: &App, state: &VaultState, id: String, user_key: SymmetricK
     {
         unlocked.uwu = synced.uwu;
     }
-    state.unlocked.write().insert(id, unlocked);
+    {
+        let mut open = state.unlocked.write();
+        if *state.locks().borrow() != locks {
+            return Err(Failure::locked());
+        }
+        open.insert(id, unlocked);
+    }
     state.touch();
     tracing::info!("unlocked");
     emit_status(app);
     spawn_sync(app.clone());
+    Ok(())
 }
 
 impl App {
@@ -1321,6 +1345,7 @@ impl App {
     pub async fn unlock_with_hello(&self, prompt: Option<crate::hello::Prompt>) -> Result<Status> {
         let app = self.clone();
         let state = self.vault();
+        let locks = *state.locks().borrow();
         let (id, account) = state.active_account()?;
         let sealed = account.hello_user_key.clone().ok_or_else(|| {
             Failure::new(
@@ -1380,7 +1405,7 @@ impl App {
                 ));
             }
         }
-        open_unlocked(&app, state, id, user_key);
+        open_unlocked(&app, state, id, user_key, locks)?;
         Ok(status_of(state))
     }
 }
@@ -1553,8 +1578,11 @@ impl VaultState {
                 crate::hello::forget(host.as_ref(), id);
             }
         }
-        self.unlocked.write().remove(id);
-        self.note_lock();
+        {
+            let mut unlocked = self.unlocked.write();
+            unlocked.remove(id);
+            self.note_lock();
+        }
         *self.pending.lock() = None;
         self.clipboard.clear_now();
         let on_screen = self.active.lock().as_deref() == Some(id);

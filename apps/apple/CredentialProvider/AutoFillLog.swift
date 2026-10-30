@@ -100,12 +100,13 @@ final class AutoFillLog: @unchecked Sendable {
   }
 }
 
-/// One step: into the unified log (public: nothing secret goes in) and the protocol.
+/// One step: into the unified log (private: hosts and item ids are nobody else's) and the
+/// protocol.
 func logStep(_ text: String, error: Bool = false) {
   if error {
-    providerLog.error("\(text, privacy: .public)")
+    providerLog.error("\(text, privacy: .private)")
   } else {
-    providerLog.info("\(text, privacy: .public)")
+    providerLog.info("\(text, privacy: .private)")
   }
   AutoFillLog.shared.write(error ? "ERROR " + text : text)
 }

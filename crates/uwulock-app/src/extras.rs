@@ -1774,21 +1774,48 @@ pub(crate) fn safe_file_name(name: &str) -> String {
     clean
 }
 
-/// `name`, or `name (2)`, … — whichever doesn't exist in `dir` yet.
+/// `name`, then `name (2)`, … in `dir`.
 #[cfg_attr(target_os = "android", allow(dead_code))]
-fn free_path(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
-    let first = dir.join(name);
-    if !first.exists() {
-        return first;
-    }
+fn free_paths(dir: &std::path::Path, name: &str) -> impl Iterator<Item = std::path::PathBuf> {
     let (stem, ext) = match name.rsplit_once('.') {
         Some((s, e)) if !s.is_empty() => (s.to_string(), format!(".{e}")),
         _ => (name.to_string(), String::new()),
     };
-    (2..10_000)
-        .map(|n| dir.join(format!("{stem} ({n}){ext}")))
-        .find(|p| !p.exists())
-        .unwrap_or(first)
+    let dir = dir.to_path_buf();
+    std::iter::once(dir.join(name))
+        .chain((2..10_000).map(move |n| dir.join(format!("{stem} ({n}){ext}"))))
+}
+
+/// Writes `contents` into a new file under the first free name of
+/// [`free_paths`]. Created with `create_new`, which never follows a link
+/// someone left there, so the file can't land elsewhere.
+#[cfg_attr(target_os = "android", allow(dead_code))]
+fn write_new(
+    dir: &std::path::Path,
+    name: &str,
+    contents: &[u8],
+    options: &std::fs::OpenOptions,
+) -> std::io::Result<std::path::PathBuf> {
+    use std::io::Write as _;
+    for path in free_paths(dir, name) {
+        match options.open(&path) {
+            Ok(mut file) => {
+                file.write_all(contents)?;
+                return Ok(path);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Err(std::io::ErrorKind::AlreadyExists.into())
+}
+
+/// `OpenOptions` for a new file only.
+#[cfg_attr(target_os = "android", allow(dead_code))]
+fn new_file() -> std::fs::OpenOptions {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    options
 }
 
 /// Whether a file of this name runs something when it is opened: programs,
@@ -1917,8 +1944,7 @@ fn download_dir(app: &App) -> Result<std::path::PathBuf> {
 #[cfg(desktop)]
 pub(crate) async fn save_download(app: &App, file_name: &str, contents: &[u8]) -> Result<String> {
     let dir = download_dir(app)?;
-    let path = free_path(&dir, file_name);
-    std::fs::write(&path, contents)
+    let path = write_new(&dir, file_name, contents, &new_file())
         .map_err(|e| Failure::new("io", format!("Couldn't save the file: {e}")))?;
     mark_downloaded(&path);
     Ok(path.display().to_string())
@@ -1932,16 +1958,11 @@ pub(crate) async fn save_download_private(
     file_name: &str,
     contents: &[u8],
 ) -> Result<String> {
-    use std::io::Write as _;
     use std::os::unix::fs::OpenOptionsExt as _;
     let dir = download_dir(app)?;
-    let path = free_path(&dir, file_name);
-    std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&path)
-        .and_then(|mut file| file.write_all(contents))
+    let mut options = new_file();
+    options.mode(0o600);
+    let path = write_new(&dir, file_name, contents, &options)
         .map_err(|e| Failure::new("io", format!("Couldn't save the file: {e}")))?;
     mark_downloaded(&path);
     Ok(path.display().to_string())
@@ -1988,8 +2009,7 @@ pub(crate) async fn save_download(app: &App, file_name: &str, contents: &[u8]) -
     let dir = download_dir(app)?;
     std::fs::create_dir_all(&dir)
         .map_err(|e| Failure::new("io", format!("Couldn't save the file: {e}")))?;
-    let path = free_path(&dir, file_name);
-    std::fs::write(&path, contents)
+    let path = write_new(&dir, file_name, contents, &new_file())
         .map_err(|e| Failure::new("io", format!("Couldn't save the file: {e}")))?;
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned());
     Ok(format!("UwULock/{}", name.unwrap_or_default()))
@@ -2696,9 +2716,20 @@ mod tests {
 
         let dir = std::env::temp_dir().join(format!("uwulock-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        assert_eq!(free_path(&dir, "a.txt"), dir.join("a.txt"));
-        std::fs::write(dir.join("a.txt"), b"x").unwrap();
-        assert_eq!(free_path(&dir, "a.txt"), dir.join("a (2).txt"));
+        let first = write_new(&dir, "a.txt", b"x", &new_file()).unwrap();
+        assert_eq!(first, dir.join("a.txt"));
+        let second = write_new(&dir, "a.txt", b"y", &new_file()).unwrap();
+        assert_eq!(second, dir.join("a (2).txt"));
+        assert_eq!(std::fs::read(&first).unwrap(), b"x");
+        #[cfg(unix)]
+        {
+            // A link left in the way is skipped, not followed.
+            let target = dir.join("elsewhere");
+            std::os::unix::fs::symlink(&target, dir.join("b.txt")).unwrap();
+            let saved = write_new(&dir, "b.txt", b"z", &new_file()).unwrap();
+            assert_eq!(saved, dir.join("b (2).txt"));
+            assert!(!target.exists());
+        }
         std::fs::remove_dir_all(dir).unwrap();
     }
 

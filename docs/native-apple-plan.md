@@ -45,4 +45,5 @@ Mac App Store, TestFlight, IPA). Windows, Linux and Android stay Tauri.
        payload, actionlint. Release configuration compiles (iOS, macOS, Direct). Still open: no signed run through
        CI/TestFlight/notarization yet; register the Developer ID identifiers
        `app.uwulock.desktop(.passkeys)` with AutoFill + App Groups.
-8. [ ] Docs (architecture, mobile, app-store, install), security review.
+8. [x] Docs (architecture, mobile, roadmap), security review `docs/security-review-0.7.md`
+       (no High/Medium; Low fixed, Info fixed or accepted).

@@ -421,7 +421,10 @@ final class PasskeyVault: Sendable {
     switch length {
     case 0..<24: return Data([major | UInt8(length)])
     case 24..<256: return Data([major | 24, UInt8(length)])
-    default: return Data([major | 25, UInt8(length >> 8), UInt8(length & 0xff)])
+    case 256..<65536: return Data([major | 25, UInt8(length >> 8), UInt8(length & 0xff)])
+    default:
+      let wide = UInt64(length)
+      return Data([major | 27] + (0..<8).reversed().map { UInt8(truncatingIfNeeded: wide >> ($0 * 8)) })
     }
   }
 

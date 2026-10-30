@@ -273,7 +273,23 @@ pub(crate) const COMMANDS: &[&str] = &[
 
 fn args<T: serde::de::DeserializeOwned>(command: &str, json: &str) -> Result<T, Failure> {
     let json = if json.trim().is_empty() { "{}" } else { json };
-    serde_json::from_str(json).map_err(|error| Failure::new("args", format!("{command}: {error}")))
+    // serde's message may quote the value (a password), so only where it went wrong;
+    // a missing field names just the field.
+    serde_json::from_str(json).map_err(|error| {
+        let text = error.to_string();
+        let detail = match text.strip_prefix("missing field ") {
+            Some(rest) => format!("missing field {}", rest.split(' ').next().unwrap_or("")),
+            None => format!("{:?}", error.classify()),
+        };
+        Failure::new(
+            "args",
+            format!(
+                "{command}: {detail} at line {} column {}",
+                error.line(),
+                error.column()
+            ),
+        )
+    })
 }
 
 fn json<T: Serialize>(value: T) -> Result<String, Failure> {
