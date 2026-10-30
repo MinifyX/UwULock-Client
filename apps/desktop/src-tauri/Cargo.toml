@@ -1,6 +1,6 @@
 [package]
 name = "uwulock-desktop"
-description = "UwULock app for desktop, Android and iOS"
+description = "UwULock app for Windows, Linux and Android"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,18 +10,15 @@ rust-version.workspace = true
 [lib]
 name = "uwulock_desktop_lib"
 # Only the one main.rs links against — one library less to link for every desktop build
-# and test. Android wants a cdylib and iOS a staticlib: scripts/mobile.mjs adds them in
-# the mobile builds (CI and `pnpm mobile:prepare` before a local one).
+# and test. Android wants a cdylib: scripts/mobile.mjs adds it in the Android builds
+# (CI and `pnpm mobile:prepare` before a local one).
 crate-type = ["rlib"]
 
 [features]
 # What every download from GitHub is: a copy that looks for its own updates and installs them
-# (updates.rs). The App Store builds go without — `--no-default-features --features store` for the
-# Mac App Store (scripts/build-mas.mjs): no updater plugin, no feed, no setup. See docs/app-store.md.
+# (updates.rs). Phones have no updater either way (build.rs).
 default = ["self-update"]
 self-update = ["dep:minisign-verify", "dep:semver", "dep:tauri-plugin-updater"]
-# A build for the App Store or TestFlight: the page says new versions come from there.
-store = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -30,6 +27,7 @@ tauri-build = { version = "2", features = [] }
 uwulock-bitwarden.workspace = true
 uwulock-core.workspace = true
 uwulock-authenticator.workspace = true
+uwulock-app.workspace = true
 
 base64.workspace = true
 parking_lot.workspace = true
@@ -45,9 +43,6 @@ tracing.workspace = true
 uuid.workspace = true
 zeroize.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-# macOS: ⌘Q, the Dock and logging out quit through the page (lib.rs). Nothing
-# off macOS; the tag matches the @uwusuite/design version in package.json.
-uwu-macos = { git = "https://github.com/MinifyX/UwUSuite-Design", tag = "v1.8.0" }
 
 # The desktop's clipboard and its own updater. Phones copy through the plugin below, and
 # get new versions from the release page (docs/mobile.md).
@@ -57,17 +52,15 @@ minisign-verify = { version = "0.2", optional = true }
 semver = { version = "1", optional = true }
 tauri-plugin-updater = { version = "2", optional = true }
 
-# Unlocking with a fingerprint or face (Android Keystore, iOS Keychain), copying secrets.
+# Unlocking with a fingerprint or face (Android Keystore), copying secrets.
 # Haptics: the page's taps and ticks (@uwusuite/design's `haptic()` calls the plugin directly).
 # 2.4 wants Tauri 2.12; it moves together with Tauri and @tauri-apps/api.
-[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
-tauri-plugin-uwulock-mobile = { path = "../../../crates/tauri-plugin-uwulock-mobile" }
-tauri-plugin-haptics = "~2.3.3"
-
 # Credential Manager's provider calls into the app over JNI (passkeys/android.rs), and a
 # site's Digital Asset Links are fetched for an app that asks. Both crates (and their
 # features) are already in the Android build through Tauri and uwulock-bitwarden.
 [target.'cfg(target_os = "android")'.dependencies]
+tauri-plugin-uwulock-mobile = { path = "../../../crates/tauri-plugin-uwulock-mobile" }
+tauri-plugin-haptics = "~2.3.3"
 jni = "0.21"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots"] }
 
@@ -102,16 +95,3 @@ tempfile = "3"
 # logind and the screen saver say when the screen locks or the system sleeps.
 # The same zbus (and features) tauri-plugin-opener already brings.
 zbus = { version = "5", default-features = false, features = ["async-io", "blocking-api"] }
-
-# Files saved from a file request get `com.apple.quarantine` (setxattr). The provider key
-# for the AutoFill extension goes into the shared Keychain (passkeys/apple.rs); the same
-# security-framework rustls already brings.
-[target.'cfg(target_os = "macos")'.dependencies]
-libc = "0.2"
-# OSX_10_15: the data protection keychain, where Keychain access groups work.
-security-framework = { version = "3", features = ["OSX_10_15"] }
-# Asking macOS to make UwULock the AutoFill provider (autofill.rs: ASSettingsHelper,
-# ASCredentialIdentityStore). The objc2 and block2 Tauri's window layer already brings;
-# `exception` catches what the system raises (blocks.rs).
-objc2 = { version = "0.6", features = ["exception"] }
-block2 = "0.6"

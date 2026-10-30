@@ -1,6 +1,6 @@
 /**
  * The calls into Rust for the sections "SSH (UwUSSH)" and "Remote Desktop
- * (UwURDP)" (`src-tauri/src/suite.rs`). Rust opens and seals the records,
+ * (UwURDP)" (`crates/uwulock-app/src/suite.rs`). Rust opens and seals the records,
  * keeps the secrets and checks every change; the page gets the records' JSON
  * and a secret only when someone asks to see it.
  */

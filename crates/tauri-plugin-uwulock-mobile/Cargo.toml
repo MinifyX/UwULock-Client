@@ -1,12 +1,12 @@
 [package]
 name = "tauri-plugin-uwulock-mobile"
-description = "UwULock's own Android and iOS code: unlocking with fingerprint or face through the Android Keystore and the iOS Keychain, copying secrets, and joining Wi-Fi networks on Android"
+description = "UwULock's own Android code: unlocking with fingerprint or face through the Android Keystore, copying secrets, and joining Wi-Fi networks"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-# Tauri finds the plugin's Android and iOS projects through this.
+# Tauri finds the plugin's Android project through this.
 links = "tauri-plugin-uwulock-mobile"
 
 [lib]

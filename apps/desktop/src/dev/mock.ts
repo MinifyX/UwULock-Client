@@ -623,6 +623,13 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   update_status: () => null,
   distribution: () => 'direct',
   passkey_provider_status: () => ({ warning: null }),
+  mello_link: () => ({
+    enabled: false,
+    running: false,
+    url: 'http://127.0.0.1:8748',
+    token: null,
+    problem: null,
+  }),
   sends: () => sends,
   send_options: () => ({ emails: true, domains: [], defaultDomainId: null }),
   file_requests: () => requests,

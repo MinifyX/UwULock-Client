@@ -52,7 +52,7 @@ Rules for every app that reads or writes networks:
   every save the item stays a note (type 2), so nothing about Bitwarden compatibility changes.
   `tests/integration/wifi.rs` seals a network and opens it again: still a note, every field in
   its order.
-- `apps/desktop/src-tauri/src/vault.rs` and `crates/uwulock-wasm/src/view.rs` (the extension) —
+- `crates/uwulock-app/src/vault.rs` and `crates/uwulock-wasm/src/view.rs` (the extension) —
   the list shows such a note with the kind `wifi` and the SSID as its subtitle. A draft is
   always a `note`; `wifi` as a draft's kind is refused.
 - `apps/desktop/src/lib/wifi.ts` — reading and writing the fields and the QR code's text. It is
@@ -76,7 +76,7 @@ Rules for every app that reads or writes networks:
 
 ## Connecting on the phone
 
-On Android a network's details have **Connect**. `apps/desktop/src-tauri/src/wifi.rs` reads the
+On Android a network's details have **Connect**. `crates/uwulock-app/src/wifi.rs` reads the
 item in Rust and turns it into what Android takes (`wifi::network`, tested there); the plugin
 builds a `WifiNetworkSuggestion` from it ([mobile.md](mobile.md#the-phone-plugin)).
 

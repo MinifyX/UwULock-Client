@@ -1,0 +1,36 @@
+[package]
+name = "uwulock-app"
+description = "UwULock's app logic without a window: accounts, the vault, sync, extras, passkeys"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+uwulock-bitwarden.workspace = true
+uwulock-core.workspace = true
+uwulock-authenticator.workspace = true
+
+base64.workspace = true
+parking_lot.workspace = true
+rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tokio = { workspace = true, features = ["net", "io-util"] }
+tracing.workspace = true
+url = "2"
+uuid.workspace = true
+zeroize.workspace = true
+
+# Files saved from a file request get `com.apple.quarantine` (setxattr).
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+
+# Hello's sealed copy and the account's protected keys (DPAPI).
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = [
+  "Win32_Foundation",
+  "Win32_Security_Cryptography",
+] }

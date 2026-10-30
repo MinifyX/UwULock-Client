@@ -1,5 +1,5 @@
-// What keeps the phone apps safe lives in Android and iOS files no test runs on this machine
-// (the Kotlin and Swift plugin, the manifest, the capabilities). These checks read them and
+// What keeps the Android app safe lives in files no test runs on this machine (the Kotlin
+// plugin, the manifest, the capabilities). These checks read them and
 // fail when one of the properties of docs/security-review-0.4.md goes missing:
 //
 //   node --test apps/desktop/test/
@@ -23,7 +23,6 @@ const code = (path: string) =>
 
 const PLUGIN = 'crates/tauri-plugin-uwulock-mobile';
 const KOTLIN = `${PLUGIN}/android/src/main/java/UwuLockMobilePlugin.kt`;
-const SWIFT = `${PLUGIN}/ios/Sources/UwuLockMobilePlugin.swift`;
 const ANDROID = 'apps/desktop/src-tauri/gen/android/app/src/main';
 
 test('Android: no backups, no screenshots, no cleartext in release builds', () => {
@@ -80,35 +79,22 @@ test("Android: a Wi-Fi network's password only goes to the system's own sheet", 
   );
 });
 
-test('iOS: Face ID key on this device only, cover in the app switcher, no backups', () => {
-  const swift = code(SWIFT);
-  assert.match(swift, /kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly/);
-  assert.match(swift, /\.biometryCurrentSet/);
-  assert.match(swift, /kSecAttrSynchronizable as String: false/);
-  assert.match(swift, /\.localOnly: true/);
-  assert.match(swift, /UIApplication\.willResignActiveNotification/);
-  assert.match(swift, /isExcludedFromBackup = true/);
-});
-
 test('the phone plugin is reachable from Rust only, and window controls only on computers', () => {
   assert.match(read(`${PLUGIN}/build.rs`), /const COMMANDS: &\[&str\] = &\[\];/);
-  const caps = ['default.json', 'desktop.json', 'macos.json'].map((name) =>
+  const caps = ['default.json', 'desktop.json', 'mobile.json'].map((name) =>
     JSON.parse(read(`apps/desktop/src-tauri/capabilities/${name}`)),
   );
   for (const cap of caps) {
     for (const permission of cap.permissions as string[])
       assert.ok(!permission.startsWith('uwulock-mobile:'), permission);
   }
-  const [all, desktop, mac] = caps;
+  const [all, desktop, phone] = caps;
   assert.deepEqual(all.permissions, ['core:default']);
   assert.equal(all.platforms, undefined);
-  // The app's own title bar on Windows and Linux; macOS draws its own and gets the menu bar.
+  // The app's own title bar on Windows and Linux (macOS has the native app, apps/apple).
   assert.deepEqual(desktop.platforms, ['linux', 'windows']);
   assert.ok((desktop.permissions as string[]).every((p) => p.startsWith('core:window:')));
-  assert.deepEqual(mac.platforms, ['macOS']);
-  assert.deepEqual(mac.permissions, [
-    'core:window:allow-hide',
-    'core:window:allow-show',
-    'core:window:allow-set-title',
-  ]);
+  // Android only gets the haptics plugin's feedback.
+  assert.deepEqual(phone.platforms, ['android']);
+  assert.ok((phone.permissions as string[]).every((p) => p.startsWith('haptics:')));
 });

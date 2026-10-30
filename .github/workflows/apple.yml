@@ -1,0 +1,411 @@
+name: Apple
+
+# The native Apple app (apps/apple, docs/native-apple-plan.md): iPhone/iPad, the Mac App Store and
+# the Mac's disk image from one Xcode project. scripts/apple-release.sh does the work, here and on
+# a Mac at hand alike.
+#
+# Pull requests and main: the Rust core (cached until a crate changes), then in parallel the iOS
+# Simulator build, the Mac build with its unit tests (UwULockPasskeysTests) and the disk image's
+# Direct build, all unsigned.
+#
+# A tag v*: what `pnpm release` and the stores take, built on machines that hold no secret and
+# signed on machines that build nothing:
+#
+#   core → archive (ios, mas, direct; ad-hoc, with the team's entitlements)
+#        → sign (ios: TestFlight; mas: .pkg → TestFlight; direct: Developer ID, notarized and
+#          stapled disk image, artifact `apple-macos`)
+#        → migration (the setup the Tauri app's updater runs on the Mac, carrying the signed
+#          native app, artifact `apple-migration`)
+#   archive ios also leaves the unsigned .ipa for sideloading (artifact `apple-ios`).
+#
+# Secrets (docs/app-store.md): APPLE_TEAM_ID; APPLE_DISTRIBUTION_P12, APPLE_INSTALLER_P12 and
+# APPLE_P12_PASSWORD (the stores); APPLE_DEVELOPER_ID_KEY and APPLE_DEVELOPER_ID_CERT (the disk
+# image); APPLE_ASC_KEY_P8, APPLE_ASC_KEY_ID and APPLE_ASC_ISSUER_ID (profiles, notarization,
+# uploads). Without them a tag still builds: the stores are skipped and the disk image is ad-hoc
+# signed. The Sparkle key is not among them: `pnpm release` signs the disk image locally.
+#
+# Runner: macos-27 with Xcode 27 (the app needs the macOS/iOS 27 SDK and runs its tests on 27).
+# actionlint doesn't know that label yet: .github/actionlint.yaml.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - 'apps/apple/**'
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'scripts/apple-*.sh'
+      - '.github/workflows/apple.yml'
+  pull_request:
+    paths:
+      - 'apps/apple/**'
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'scripts/apple-*.sh'
+      - '.github/workflows/apple.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # scripts/wait-artifact.sh looks for the Safari extension of this run.
+  actions: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # A release run is never cut short by a newer push.
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: '0'
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+  RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
+
+jobs:
+  # crates/uwulock-ffi as UwuLockFFI.xcframework + its Swift bindings, universal for the Mac.
+  # Cached by everything it is built from: a run that changes no crate builds no Rust. A tag finds
+  # main's cache.
+  core:
+    name: Rust core
+    runs-on: macos-27
+    outputs:
+      build: ${{ steps.build.outputs.build }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      # CFBundleVersion for every product of this run: grows with each build, by date first
+      # (App Store Connect refuses one it has seen). A rerun of a later job keeps it.
+      - id: build
+        run: echo "build=$(date -u +%Y%m%d).${{ github.run_number }}.${{ github.run_attempt }}" >>"$GITHUB_OUTPUT"
+      - id: cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            apps/apple/Frameworks
+            apps/apple/Generated
+          key: apple-ffi-universal-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**', 'scripts/apple-xcframework.sh') }}
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,aarch64-apple-darwin,x86_64-apple-darwin
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: apple-ffi
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: scripts/apple-xcframework.sh --universal --force
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: apple-core
+          path: |
+            apps/apple/Frameworks
+            apps/apple/Generated
+          if-no-files-found: error
+          retention-days: 1
+
+  # ── Pull requests and main: unsigned builds and the tests ─────────────────
+  build:
+    name: ${{ matrix.name }}
+    if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+    needs: core
+    runs-on: macos-27
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: iOS Simulator
+            targets: ios
+          - name: macOS + tests
+            targets: macos test
+          - name: macOS Direct (Sparkle)
+            targets: direct
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - run: scripts/apple-release.sh xcode
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: apple-core
+          path: apps/apple
+      # Swift packages (Sparkle's binary among them), not the build: DerivedData of another run
+      # saves less than it costs to move.
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: apps/apple/build/DerivedData/SourcePackages
+          key: apple-spm-${{ hashFiles('apps/apple/project.yml', 'apps/apple/Packages/*/Package.swift') }}
+      - name: Build
+        env:
+          UWULOCK_FFI_PREBUILT: '1'
+          UWULOCK_SAFARI_SKIP: '1'
+          TARGETS: ${{ matrix.targets }}
+        run: |
+          # shellcheck disable=SC2086 # one target per word
+          scripts/apple-build.sh $TARGETS
+
+  # ── A tag: archives, signing, the stores, the disk image ─────────────────
+  # The Safari extension's files for the apps, as artifact `extension-safari`.
+  extension:
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/extension.yml
+    with:
+      package-only: true
+
+  archive:
+    name: Archive (${{ matrix.product }})
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: core
+    runs-on: macos-27
+    strategy:
+      matrix:
+        product: [ios, mas, direct]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - run: scripts/apple-release.sh xcode
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: apple-core
+          path: apps/apple
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: apps/apple/build/DerivedData/SourcePackages
+          key: apple-spm-${{ hashFiles('apps/apple/project.yml', 'apps/apple/Packages/*/Package.swift') }}
+      # The extension job runs beside this one; its files are needed only now.
+      - name: Wait for the Safari extension
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/wait-artifact.sh extension-safari 'Build, test and package'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: extension-safari
+          path: ${{ runner.temp }}/extension
+      - run: |
+          mkdir -p "$RUNNER_TEMP/safari"
+          unzip -q "$RUNNER_TEMP/extension/UwULock-extension-safari.zip" -d "$RUNNER_TEMP/safari"
+          echo "UWULOCK_SAFARI_EXTENSION=$RUNNER_TEMP/safari" >>"$GITHUB_ENV"
+      - name: Archive
+        env:
+          UWULOCK_FFI_PREBUILT: '1'
+          UWULOCK_VERSION: ${{ github.ref_name }}
+          BUILD_NUMBER: ${{ needs.core.outputs.build }}
+          # Not a secret, it is in every signed app; the entitlements need it at build time.
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          PRODUCT: ${{ matrix.product }}
+        run: |
+          export UWULOCK_VERSION="${UWULOCK_VERSION#v}"
+          scripts/apple-release.sh archive "$PRODUCT" "$RUNNER_TEMP/UwULock.xcarchive"
+          mkdir -p out
+          # `ditto` keeps what a bundle is made of (links, modes); upload-artifact doesn't.
+          ditto -c -k --keepParent "$RUNNER_TEMP/UwULock.xcarchive" "out/UwULock-$PRODUCT.xcarchive.zip"
+          if [ "$PRODUCT" = ios ]; then
+            scripts/apple-release.sh ipa "$RUNNER_TEMP/UwULock.xcarchive" sideload/UwULock-ios.ipa
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: apple-archive-${{ matrix.product }}
+          path: out/*
+          if-no-files-found: error
+          retention-days: 3
+      - if: matrix.product == 'ios'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: apple-ios
+          path: sideload/UwULock-ios.ipa
+          if-no-files-found: error
+          retention-days: 14
+
+  sign:
+    name: Sign (${{ matrix.product }})
+    needs: [core, archive]
+    runs-on: macos-27
+    strategy:
+      fail-fast: false
+      matrix:
+        product: [ios, mas, direct]
+    env:
+      PRODUCT: ${{ matrix.product }}
+      ASC: ${{ secrets.APPLE_ASC_KEY_P8 != '' && secrets.APPLE_ASC_KEY_ID != '' && secrets.APPLE_ASC_ISSUER_ID != '' && secrets.APPLE_TEAM_ID != '' }}
+      STORE: ${{ secrets.APPLE_DISTRIBUTION_P12 != '' && secrets.APPLE_P12_PASSWORD != '' }}
+      DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID_KEY != '' && secrets.APPLE_DEVELOPER_ID_CERT != '' }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.APPLE_ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.APPLE_ASC_ISSUER_ID }}
+    steps:
+      # Only the scripts: nothing from the build machine but the archive comes here.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/apple-release.sh
+            scripts/asc.mjs
+          sparse-checkout-cone-mode: false
+      - name: What gets signed
+        id: mode
+        run: |
+          case "$PRODUCT" in
+            ios | mas) [ "$ASC" = true ] && [ "$STORE" = true ] && mode=store || mode=skip ;;
+            direct) [ "$ASC" = true ] && [ "$DEVELOPER_ID" = true ] && mode=developer-id || mode=ad-hoc ;;
+          esac
+          echo "mode=$mode" >>"$GITHUB_OUTPUT"
+          echo "$PRODUCT: $mode"
+      - if: steps.mode.outputs.mode != 'skip'
+        run: scripts/apple-release.sh xcode
+      - if: steps.mode.outputs.mode != 'skip'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: apple-archive-${{ matrix.product }}
+      - if: steps.mode.outputs.mode != 'skip'
+        run: ditto -x -k "UwULock-$PRODUCT.xcarchive.zip" "$RUNNER_TEMP"
+
+      - name: Certificates and the App Store Connect key
+        if: steps.mode.outputs.mode == 'store' || steps.mode.outputs.mode == 'developer-id'
+        env:
+          MODE: ${{ steps.mode.outputs.mode }}
+          APPLE_DISTRIBUTION_P12: ${{ secrets.APPLE_DISTRIBUTION_P12 }}
+          APPLE_INSTALLER_P12: ${{ secrets.APPLE_INSTALLER_P12 }}
+          APPLE_P12_PASSWORD: ${{ secrets.APPLE_P12_PASSWORD }}
+          APPLE_DEVELOPER_ID_KEY: ${{ secrets.APPLE_DEVELOPER_ID_KEY }}
+          APPLE_DEVELOPER_ID_CERT: ${{ secrets.APPLE_DEVELOPER_ID_CERT }}
+          APPLE_ASC_KEY_P8: ${{ secrets.APPLE_ASC_KEY_P8 }}
+        run: |
+          if [ "$MODE" = store ]; then scripts/apple-release.sh keychain; else scripts/apple-release.sh developer-id; fi
+          scripts/apple-release.sh api-key
+      - name: Profiles and export
+        if: steps.mode.outputs.mode == 'store' || steps.mode.outputs.mode == 'developer-id'
+        run: |
+          case "$PRODUCT" in ios) kind=ios ;; mas) kind=macos ;; direct) kind=direct ;; esac
+          node scripts/asc.mjs profiles "$kind" "$SIGNING_CERT" "$RUNNER_TEMP/profiles"
+          scripts/apple-release.sh export "$RUNNER_TEMP/UwULock.xcarchive" "$PRODUCT" "$RUNNER_TEMP/profiles" export
+
+      - name: TestFlight
+        if: steps.mode.outputs.mode == 'store'
+        run: |
+          if [ "$PRODUCT" = ios ]; then
+            scripts/apple-release.sh upload export/UwULock.ipa ios
+          else
+            scripts/apple-release.sh upload export/UwULock.pkg macos
+          fi
+
+      - name: Notarize the app
+        if: steps.mode.outputs.mode == 'developer-id'
+        run: scripts/apple-release.sh notarize export/UwULock.app
+      - name: Without a Developer ID, ad-hoc
+        if: steps.mode.outputs.mode == 'ad-hoc'
+        run: |
+          mkdir -p export
+          ditto "$RUNNER_TEMP/UwULock.xcarchive/Products/Applications/UwULock.app" export/UwULock.app
+          scripts/apple-release.sh adhoc export/UwULock.app
+      - name: The disk image
+        if: matrix.product == 'direct'
+        env:
+          MODE: ${{ steps.mode.outputs.mode }}
+          BUILD_NUMBER: ${{ needs.core.outputs.build }}
+        run: |
+          mkdir -p out
+          [ "$MODE" = developer-id ] || unset APPLE_SIGNING_IDENTITY
+          scripts/apple-release.sh dmg export/UwULock.app out/UwULock-macos-universal.dmg
+          if [ "$MODE" = developer-id ]; then scripts/apple-release.sh notarize out/UwULock-macos-universal.dmg; fi
+          plist=export/UwULock.app/Contents/Info.plist
+          # What `pnpm release` needs for the appcast and the notes (scripts/release.mjs).
+          cat >out/UwULock-macos.json <<EOF
+          {
+            "version": "$(plutil -extract CFBundleShortVersionString raw "$plist")",
+            "build": "$(plutil -extract CFBundleVersion raw "$plist")",
+            "minimumSystemVersion": "$(plutil -extract LSMinimumSystemVersion raw "$plist")",
+            "signing": "$MODE"
+          }
+          EOF
+          cat out/UwULock-macos.json
+          test "$(plutil -extract CFBundleVersion raw "$plist")" = "$BUILD_NUMBER"
+          ditto -c -k --keepParent export/UwULock.app out-app/UwULock.app.zip
+      - name: Remove the keychain and the key
+        if: always()
+        run: scripts/apple-release.sh cleanup
+      - if: matrix.product == 'direct'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: apple-macos
+          path: out/*
+          if-no-files-found: error
+          retention-days: 14
+      - if: matrix.product == 'direct'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: apple-macos-app
+          path: out-app/UwULock.app.zip
+          if-no-files-found: error
+          retention-days: 3
+
+  # The Tauri app's updater on the Mac runs UwULock-update-macos-universal (`pnpm release` signs
+  # it with the Tauri update key): a setup that carries the signed native app and puts it in the
+  # Tauri app's place (docs/install.md, "From the Tauri app"). Also the macOS check of the setup.
+  migration:
+    name: Migration setup (macOS universal)
+    needs: sign
+    runs-on: macos-27
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @uwulock/setup...
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          components: clippy
+      # Saved only by a run on main (workflow_dispatch before a release).
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: macos-setup
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: apple-macos-app
+      - run: ditto -x -k UwULock.app.zip "$RUNNER_TEMP/payload"
+      - name: Clippy (setup, macOS)
+        env:
+          UWULOCK_SETUP_PAYLOAD: ${{ runner.temp }}/payload
+        run: cargo clippy -p uwulock-setup --locked -- -D warnings
+      - name: Build the setup
+        run: node scripts/build-setup.mjs --target universal-apple-darwin --part setup --payload "$RUNNER_TEMP/payload"
+      # The setup unpacks what it carries into a scratch folder: universal, signed, with the
+      # Safari extension, and notarized when it was.
+      - name: Check what the setup carries
+        run: |
+          set -e
+          # Apple silicon and Intel (Xcode 27's `lipo -verify_arch` takes one at a time).
+          universal() { lipo -archs "$1" | tr ' ' '\n' | grep -cxE 'arm64|x86_64' | grep -qx 2; }
+          setup=target/installers/UwULock-update-macos-universal
+          universal "$setup"
+          codesign --verify --strict "$setup"
+          check="$RUNNER_TEMP/payload-check"
+          "$setup" --check-payload "$check"
+          app="$check/UwULock.app"
+          codesign --verify --deep --strict "$app"
+          universal "$app/Contents/MacOS/UwULock"
+          test -f "$app/Contents/PlugIns/UwULockSafari.appex/Contents/Resources/manifest.json"
+          if codesign -dv "$app" 2>&1 | grep -q 'Authority=Developer ID Application'; then
+            xcrun stapler validate "$app"
+            spctl --assess --type execute --verbose=2 "$app"
+          fi
+          mkdir -p out
+          cp "$setup" out/
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: apple-migration
+          path: out/UwULock-update-macos-universal
+          if-no-files-found: error
+          retention-days: 14

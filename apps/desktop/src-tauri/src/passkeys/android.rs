@@ -31,17 +31,17 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Manager};
+use uwulock_app::App;
 use uwulock_authenticator::ctap2::ES256;
 use uwulock_authenticator::rpid;
 use uwulock_authenticator::webauthn::{self, b64, from_b64};
 use uwulock_core::passkey::attestation_object;
 
-use super::{matching, VaultState};
+use super::matching;
 
-static APP: OnceLock<AppHandle> = OnceLock::new();
+static APP: OnceLock<App> = OnceLock::new();
 
-pub(crate) fn init(app: &AppHandle) {
+pub(crate) fn init(app: &App) {
     let _ = APP.set(app.clone());
 }
 
@@ -66,12 +66,12 @@ pub extern "system" fn Java_app_uwulock_mobile_PasskeyBridge_nativeCall<'local>(
         .unwrap_or(std::ptr::null_mut())
 }
 
-fn app() -> Result<&'static AppHandle, String> {
+fn app() -> Result<&'static App, String> {
     APP.get().ok_or_else(|| "not-running".to_string())
 }
 
-fn unlocked(app: &AppHandle) -> bool {
-    super::is_open(&app.state::<VaultState>())
+fn unlocked(app: &App) -> bool {
+    super::is_open(app.vault())
 }
 
 #[derive(Deserialize)]
@@ -144,8 +144,8 @@ fn call(method: &str, argument: &str) -> Result<Value, String> {
                 .filter_map(|d| d.get("id").and_then(Value::as_str))
                 .filter_map(|id| from_b64(id).ok())
                 .collect();
-            let vault = app.state::<VaultState>();
-            let found = matching(&vault, &rp_id, &allow).map_err(|f| f.message().to_string())?;
+            let vault = app.vault();
+            let found = matching(vault, &rp_id, &allow).map_err(|f| f.message().to_string())?;
             Ok(json!({
                 "locked": false,
                 "passkeys": found.iter().map(|f| json!({
@@ -316,7 +316,7 @@ fn asset_links(rp_id: &str) -> Result<String, String> {
         return Err("not a host".into());
     }
     let url = format!("https://{rp_id}/.well-known/assetlinks.json");
-    tauri::async_runtime::block_on(async {
+    uwulock_app::runtime::block_on(async {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(10))
             .redirect(reqwest::redirect::Policy::none())
@@ -337,16 +337,16 @@ fn asset_links(rp_id: &str) -> Result<String, String> {
 /// The login a new passkey goes into: the one the person picked, else a
 /// login for the site with the same user name that has no passkey yet,
 /// else a new one.
-fn target_login(app: &AppHandle, rp_id: &str, user_name: Option<&str>) -> Option<String> {
+fn target_login(app: &App, rp_id: &str, user_name: Option<&str>) -> Option<String> {
     let user_name = user_name?;
-    let vault = app.state::<VaultState>();
-    super::logins_for_site(&vault, rp_id)
+    let vault = app.vault();
+    super::logins_for_site(vault, rp_id)
         .into_iter()
         .find(|login| !login.has_passkey && login.user_name.as_deref() == Some(user_name))
         .map(|login| login.item_id)
 }
 
-fn create(app: &AppHandle, caller: &Caller) -> Result<Value, String> {
+fn create(app: &App, caller: &Caller) -> Result<Value, String> {
     let rp_hint = rp_hint(caller);
     let creation = webauthn::parse_creation(&caller.request_json, Vec::new(), rp_hint.as_deref())?;
     if creation.wants_verification && !caller.verified {
@@ -363,9 +363,9 @@ fn create(app: &AppHandle, caller: &Caller) -> Result<Value, String> {
         &creation.challenge,
     )?;
     request.client_data_hash = data.hash;
-    let vault = app.state::<VaultState>();
+    let vault = app.vault();
     if !request.exclude_list.is_empty()
-        && matching(&vault, &request.rp.id, &request.exclude_list).is_ok_and(|f| !f.is_empty())
+        && matching(vault, &request.rp.id, &request.exclude_list).is_ok_and(|f| !f.is_empty())
     {
         return Err("excluded".into());
     }
@@ -373,7 +373,7 @@ fn create(app: &AppHandle, caller: &Caller) -> Result<Value, String> {
         .item_id
         .clone()
         .or_else(|| target_login(app, &request.rp.id, request.user.name.as_deref()));
-    let made = tauri::async_runtime::block_on(super::create(
+    let made = uwulock_app::runtime::block_on(super::create(
         app,
         &request,
         item_id.as_deref(),
@@ -396,7 +396,7 @@ fn create(app: &AppHandle, caller: &Caller) -> Result<Value, String> {
     }))
 }
 
-fn get(app: &AppHandle, caller: &Caller) -> Result<Value, String> {
+fn get(app: &App, caller: &Caller) -> Result<Value, String> {
     let rp_hint = rp_hint(caller);
     let assertion = webauthn::parse_request(&caller.request_json, Vec::new(), rp_hint.as_deref())?;
     if assertion.wants_verification && !caller.verified {
@@ -416,7 +416,7 @@ fn get(app: &AppHandle, caller: &Caller) -> Result<Value, String> {
     {
         return Err("the site didn't ask for this passkey".into());
     }
-    let signed = tauri::async_runtime::block_on(super::sign(
+    let signed = uwulock_app::runtime::block_on(super::sign(
         app,
         &rp_id,
         item_id,

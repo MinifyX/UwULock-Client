@@ -1,0 +1,5 @@
+# actionlint (1.7.12) doesn't know the macos-27 runner label yet, which apple.yml needs (the
+# native app builds against the macOS/iOS 27 SDK). Drop this once it does.
+self-hosted-runner:
+  labels:
+    - macos-27

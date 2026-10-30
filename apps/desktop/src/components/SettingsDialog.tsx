@@ -36,6 +36,7 @@ import { textSizeOptions } from '../lib/appearance';
 import { Modal } from './Modal';
 import { ImportSetting } from './ImportDialog';
 import { MoveSetting } from './MoveDialog';
+import { MelloSettings } from './MelloSettings';
 import { PasskeySettings } from './PasskeySettings';
 
 export type SettingsSection = 'appearance' | 'security' | 'account' | 'updates' | 'about';
@@ -290,6 +291,7 @@ function Security({ status, onClose }: { status: Status; onClose: () => void }) 
         </Row>
       )}
       <PasskeySettings Row={Row} Toggle={Toggle} />
+      <MelloSettings Row={Row} Toggle={Toggle} />
       <Row
         label={t('Jetzt sperren')}
         description={
