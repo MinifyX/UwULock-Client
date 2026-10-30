@@ -108,7 +108,6 @@ private struct MoveActionBar<Secondary: View, Primary: View>: View {
                 Spacer(minLength: 0)
                 primary
                     .uwuProminentButton()
-                    .foregroundStyle(Color.uwuOnPink)
                     .keyboardShortcut(.defaultAction)
             }
             .controlSize(.large)

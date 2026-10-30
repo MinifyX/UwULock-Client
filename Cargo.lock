@@ -6185,14 +6185,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "uwu-macos"
-version = "1.8.0"
-source = "git+https://github.com/MinifyX/UwUSuite-Design?tag=v1.8.0#415ea2b21954d2a6b2d99bc3e608c63e832b24fa"
-dependencies = [
- "objc2",
-]
-
-[[package]]
 name = "uwulock-app"
 version = "0.7.0-beta.1"
 dependencies = [
@@ -6294,15 +6286,11 @@ version = "0.7.0-beta.1"
 dependencies = [
  "arboard",
  "base64 0.22.1",
- "block2",
  "jni 0.21.1",
- "libc",
  "minisign-verify",
- "objc2",
  "parking_lot",
  "rand 0.8.8",
  "reqwest 0.12.28",
- "security-framework",
  "semver",
  "serde",
  "serde_json",
@@ -6319,7 +6307,6 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
- "uwu-macos",
  "uwulock-app",
  "uwulock-authenticator",
  "uwulock-bitwarden",

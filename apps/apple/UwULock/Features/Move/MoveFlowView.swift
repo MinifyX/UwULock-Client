@@ -137,7 +137,6 @@ struct MoveFlowView: View {
                     Text(features: "Schließen")
                 }
                 .uwuProminentButton()
-                .foregroundStyle(Color.uwuOnPink)
             }
         case .login(let target):
             MoveSourceLogin(target: target, onDone: loggedIn)

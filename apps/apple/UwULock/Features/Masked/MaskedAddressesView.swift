@@ -8,6 +8,7 @@ struct MaskedAddressesView: View {
     @Environment(AppModel.self) private var model
     @Environment(VaultModel.self) private var vault: VaultModel?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openVaultItem) private var openVaultItem
     @State private var store = UwuStore.shared
 
     @State private var connection: MaskedConnection?
@@ -187,7 +188,6 @@ struct MaskedAddressesView: View {
                         Label(features: "Neue Adresse", uwuIcon: .add)
                     }
                     .uwuProminentButton()
-                    .foregroundStyle(Color.uwuOnPink)
                 }
             } else if shown.isEmpty {
                 ContentUnavailableView.search(text: query)
@@ -412,7 +412,7 @@ struct MaskedAddressesView: View {
                 createdAt: FeatureDate.iso(.now), lastMessageAt: nil, cipherId: cipherId,
                 itemName: items.first { $0.id == cipherId }?.name)
             withUwUAnimation(reduceMotion: reduceMotion) { addresses?.insert(made, at: 0) }
-            FeatureToasts.shared.show(featureString("Adresse kopiert ✧"))
+            FeatureToasts.shared.show(copiedAddressText())
             return
         }
         #endif
@@ -446,6 +446,7 @@ struct MaskedAddressesView: View {
 
     /// Shows the linked item in the vault (MaskedDialog `onOpenItem`).
     private func openItem(_ id: String) {
+        if let openVaultItem { return openVaultItem(id) }
         guard let vault else { return }
         model.selection = .all
         vault.selectedItemId = id
@@ -458,13 +459,13 @@ enum MaskedClipboard {
     static func copy(_ email: String, core: Core) async {
         #if DEBUG
         if FeatureFixtures.isOn {
-            FeatureToasts.shared.show(featureString("Adresse kopiert ✧"))
+            FeatureToasts.shared.show(copiedAddressText())
             return
         }
         #endif
         do {
             try await core.copyText(text: email)
-            FeatureToasts.shared.show(featureString("Adresse kopiert ✧"))
+            FeatureToasts.shared.show(copiedAddressText())
         } catch {
             FeatureToasts.shared.show(error: error)
         }
@@ -589,7 +590,6 @@ struct MaskedNotConnectedView: View {
                 Label(features: "Im Web-Tresor verbinden", uwuIcon: .openExternal)
             }
             .uwuProminentButton()
-            .foregroundStyle(Color.uwuOnPink)
         }
     }
 }

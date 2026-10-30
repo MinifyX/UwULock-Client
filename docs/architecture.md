@@ -28,6 +28,7 @@ that is tested without a window.
          crates/uwulock-bitwarden ── HTTPS (rustls) ──▶ Vaultwarden / Bitwarden
                                                        (identity + api)
 ```
+
 The work is split in four crates:
 
 - **`uwulock-core`** — Bitwarden's crypto and data formats, without a network:

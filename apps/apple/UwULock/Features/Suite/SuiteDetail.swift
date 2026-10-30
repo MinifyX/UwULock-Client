@@ -119,7 +119,6 @@ struct SuiteDetail: View {
                         Label(features: "Bearbeiten", uwuIcon: .edit)
                     }
                     .uwuProminentButton()
-                    .foregroundStyle(Color.uwuOnPink)
                 }
                 if siblings.count > 1 {
                     Button {

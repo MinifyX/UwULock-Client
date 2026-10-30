@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- The Safari extension's Info.plist (docs/extension.md). iOS: Xcode fills in the $(…) values
-     (scripts/ios-build.sh adds the target). macOS: scripts/macos-safari.sh fills them in itself.
+<!-- The Safari extension's Info.plist (docs/extension.md). Xcode fills in the $(…) values
+     (project.yml).
      The extension's files (apps/extension/dist/safari) go next to it: Resources on macOS, the
      bundle's top on iOS. -->
 <plist version="1.0">

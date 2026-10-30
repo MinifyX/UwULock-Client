@@ -21,54 +21,74 @@ struct VaultSplitView: View {
     var body: some View {
         @Bindable var model = model
         @Bindable var vault = vault
-        NavigationSplitView(columnVisibility: $columns) {
-            VaultSidebar(selection: $model.selection)
-                .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
-        } content: {
-            ItemListView(place: listPlace, selection: $vault.selectedItemId)
-                .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 440)
-        } detail: {
-            detail
+        Group {
+            if showsList {
+                NavigationSplitView(columnVisibility: $columns) {
+                    sidebar
+                } content: {
+                    ItemListView(place: listPlace, selection: $vault.selectedItemId)
+                        .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 440)
+                } detail: {
+                    detail
+                }
+            } else {
+                // A page that isn't a list takes list and detail together, the sidebar stays.
+                NavigationSplitView(columnVisibility: $columns) {
+                    sidebar
+                } detail: {
+                    NavigationStack { VaultFeaturePage(place: place) }
+                }
+            }
         }
         .searchable(text: $vault.query, placement: .sidebar, prompt: Text(vt("Im Tresor suchen")))
         .searchFocused($searchFocused)
         .toolbar { toolbar }
         .background { shortcuts }
-        .onChange(of: model.selection) { _, _ in
-            vault.query = ""
-            columns = showsList ? .all : .doubleColumn
-        }
-        .onChange(of: showsList) { _, list in
-            columns = list ? .all : .doubleColumn
-        }
-        .onAppear { columns = showsList ? .all : .doubleColumn }
+        .onChange(of: model.selection) { _, _ in vault.query = "" }
+        // The search started on a page keeps its field when the list comes in.
+        .onChange(of: showsList) { _, list in if list, !vault.query.isEmpty { searchFocused = true } }
         .vaultDialogs(place: $model.selection)
+        #if DEBUG
+        .task {
+            // After the first load, which picks its own selection.
+            while !vault.loaded { try? await Task.sleep(for: .milliseconds(100)) }
+            if let place = DebugLaunch.place { model.selection = place }
+            if let item = DebugLaunch.item { vault.selectedItemId = item }
+            if let query = DebugLaunch.query { vault.query = query }
+            DebugLaunch.openSheet(vault)
+        }
+        #endif
+    }
+
+    private var sidebar: some View {
+        @Bindable var model = model
+        return VaultSidebar(selection: $model.selection)
+            .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
     }
 
     @ViewBuilder
     private var detail: some View {
-        if showsList {
-            if let id = vault.selectedItemId, vault.item(id) != nil {
-                NavigationStack {
-                    ItemDetailView(itemId: id).id(id)
-                }
-            } else {
-                ContentUnavailableView {
-                    VStack(spacing: UwUSpacing.sm) {
-                        NyuView(mood: .sleepy).frame(width: 96)
-                        Text(vt("Nichts ausgewählt")).uwuFont(.headline)
-                    }
-                } description: {
-                    Text(vt("Wähle links einen Eintrag."))
-                }
+        if let id = vault.selectedItemId, vault.item(id) != nil {
+            NavigationStack {
+                ItemDetailView(itemId: id).id(id)
             }
         } else {
-            NavigationStack { VaultFeaturePage(place: place) }
+            ContentUnavailableView {
+                VStack(spacing: UwUSpacing.sm) {
+                    NyuView(mood: .sleepy).frame(width: 96)
+                    Text(vt("Nichts ausgewählt")).uwuFont(.headline)
+                }
+            } description: {
+                Text(vt("Wähle links einen Eintrag."))
+            }
         }
     }
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
+        if UwuStore.shared.status.travel.enabled {
+            ToolbarItem(placement: .primaryAction) { TravelModeBadge() }
+        }
         ToolbarItemGroup(placement: .primaryAction) {
             Button {
                 vault.showGenerator = true
@@ -76,7 +96,6 @@ struct VaultSplitView: View {
                 Label(vt("Generator"), uwuIcon: .generate)
             }
             .help(vt("Passwort-Generator"))
-            .keyboardShortcut("g", modifiers: [.command, .shift])
             Button {
                 vault.sync()
             } label: {
@@ -89,29 +108,18 @@ struct VaultSplitView: View {
         }
     }
 
-    /// Keyboard shortcuts with no button of their own: a new item, the search, and copying the
-    /// selected login's username, password and code (VaultScreen.tsx's Ctrl+U/P/T).
+    /// Keyboard shortcuts with no button of their own: a new item and the search. Copying and
+    /// the generator are the menu bar's (AppCommands).
     private var shortcuts: some View {
         Group {
             Button(vt("Neuer Eintrag")) { vault.newItem(in: place) }
                 .keyboardShortcut("n", modifiers: .command)
             Button(vt("Suchen")) { searchFocused = true }
                 .keyboardShortcut("f", modifiers: .command)
-            Button(vt("Benutzername kopieren")) { copySelected("username") }
-                .keyboardShortcut("u", modifiers: [.command, .shift])
-            Button(vt("Passwort kopieren")) { copySelected("password") }
-                .keyboardShortcut("p", modifiers: [.command, .shift])
-            Button(vt("Code kopieren")) { copySelected("totp") }
-                .keyboardShortcut("t", modifiers: [.command, .shift])
         }
         .frame(width: 0, height: 0)
         .opacity(0)
         .accessibilityHidden(true)
-    }
-
-    private func copySelected(_ field: String) {
-        guard let item = vault.item(vault.selectedItemId), item.kind == .login, !item.deleted else { return }
-        vault.copy(item.id, field: field)
     }
 }
 

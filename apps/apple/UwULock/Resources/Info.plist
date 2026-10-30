@@ -26,7 +26,12 @@
 	<!-- Apple Passwords' "Export data to another app" (credential exchange). -->
 	<key>NSUserActivityTypes</key>
 	<array>
-		<string>ASCredentialExchangeActivityType</string>
+		<string>ASCredentialExchangeActivity</string>
 	</array>
+	<!-- Sparkle, the disk image's updates: set in Config/Direct.xcconfig only, empty elsewhere. -->
+	<key>SUFeedURL</key>
+	<string>$(SPARKLE_FEED_URL)</string>
+	<key>SUPublicEDKey</key>
+	<string>$(SPARKLE_PUBLIC_KEY)</string>
 </dict>
 </plist>

@@ -27,8 +27,22 @@ Mac App Store, TestFlight, IPA). Windows, Linux and Android stay Tauri.
        `apps/apple/UwULock/Core` (typed commands, models, `AppleHost`), app starts on the
        core's status.
 3. [x] `apps/apple` skeleton: XcodeGen, design system (tokens, font, icons), app shell.
-4. [ ] Screens: login/2FA/SSO, lock/biometrics, vault, detail, editor, generator, settings.
-5. [ ] Screens: sends, health, import/move, extras, suite, wifi, file requests, masked mail, versions.
-6. [ ] Extensions: credential provider (passwords + passkeys), Safari web extension.
+4. [x] Screens: login/2FA/SSO, lock/biometrics, vault, detail, editor, generator, settings.
+       iPhone: tabs with the search tab (field pinned under the title); iPad/Mac: three columns.
+5. [x] Screens: sends, health, import/move, extras, suite, wifi, file requests, masked mail, versions.
+6. [x] Extensions: credential provider (passwords + passkeys), Safari web extension.
+       `apps/apple/CredentialProvider` (UwULockPasskeys, UwUDesign sheet, de/en catalog,
+       `UwULockPasskeysTests`), `apps/apple/SafariExtension` (UwULockSafari; web extension files
+       from `apps/extension/dist/safari` by a build phase). Old sources in
+       `apps/desktop/src-tauri/apple` stay until the Tauri Apple builds go (milestone 7).
 7. [ ] Build/CI/release: IPA, DMG (signed, Sparkle), MAS/TestFlight; Tauri mac/iOS paths removed.
+       Done: `.github/workflows/apple.yml` (PR/main: cached xcframework, xcodegen, iOS Simulator,
+       macOS and Direct builds, `UwULockPasskeysTests`; tags: archive → sign/TestFlight/notarize →
+       migration setup), `scripts/apple-release.sh`, Sparkle signing + appcasts in `pnpm release`
+       (`scripts/sparkle.mjs`, `release-feeds.mjs`), old `ios.yml`, `mas.yml`, the macOS jobs of
+       `installers.yml` and their scripts removed. Verified locally: unsigned iOS archive + IPA,
+       Direct archive with team entitlements, ad-hoc DMG (starts), migration setup with the native
+       payload, actionlint. Release configuration compiles (iOS, macOS, Direct). Still open: no signed run through
+       CI/TestFlight/notarization yet; register the Developer ID identifiers
+       `app.uwulock.desktop(.passkeys)` with AutoFill + App Groups.
 8. [ ] Docs (architecture, mobile, app-store, install), security review.

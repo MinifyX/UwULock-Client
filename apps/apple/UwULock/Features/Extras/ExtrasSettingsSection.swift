@@ -115,7 +115,6 @@ struct ExtrasSettingsSection: View {
                     Text(features: "Verstanden")
                 }
                 .uwuProminentButton()
-                .foregroundStyle(Color.uwuOnPink)
             }
             .padding(.top, UwUSpacing.xxs)
         }

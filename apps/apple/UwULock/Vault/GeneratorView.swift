@@ -351,7 +351,7 @@ struct MaskedGenerator: View {
     private func copy(_ email: String) {
         vault.perform {
             try await vault.backend.copyText(text: email)
-            vault.say(vt("Adresse kopiert ✧"), tone: .success)
+            vault.say(copiedAddressText(), tone: .success)
         }
     }
 }

@@ -25,13 +25,22 @@ struct LockView: View {
         #endif
     }
 
+    /// Name and server under the email, each once: a label is often just the server's name.
+    static func details(_ label: String?, _ server: String?, email: String) -> String {
+        var parts: [String] = []
+        for part in [label, server].compactMap({ $0 }) where !part.isEmpty && part != email && !parts.contains(part) {
+            parts.append(part)
+        }
+        return parts.joined(separator: " · ")
+    }
+
     var body: some View {
         AuthScaffold(mood: model.failure == nil ? .sleepy : .puzzled) {
             AuthCardTitle(authStr("Dein Tresor ist gesperrt"))
             if let status, let email = status.email {
                 VStack(alignment: .leading, spacing: UwUSpacing.xxs) {
                     Text(verbatim: email).uwuFont(.headline)
-                    Text(verbatim: [status.label, status.serverName].compactMap { $0 }.filter { !$0.isEmpty && $0 != email }.joined(separator: " · "))
+                    Text(verbatim: Self.details(status.label, status.serverName, email: email))
                         .uwuFont(.subheadline)
                         .foregroundStyle(.secondary)
                 }

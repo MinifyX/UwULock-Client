@@ -52,15 +52,22 @@ struct VaultShell: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
     @State private var vault: VaultModel?
+    @AppStorage(AppSettingsKey.siteIcons) private var siteIcons = true
 
     var body: some View {
         Group {
             if let vault {
-                layout.environment(vault)
+                layout
+                    .environment(\.openVaultItem, PasswordCheckOpenItem { open($0, in: vault) })
+                    .environment(\.passwordCheckOpenItem, PasswordCheckOpenItem { open($0, in: vault) })
+                    .environment(vault)
+                    .focusedSceneValue(\.vaultModel, vault)
             } else {
                 Color.clear
             }
         }
+        .uwuExtrasNotices()
+        .onChange(of: siteIcons) { vault?.loadIcons() }
         .task {
             let vault = VaultModel(backend: Self.backend(model.core))
             self.vault = vault
@@ -79,6 +86,14 @@ struct VaultShell: View {
         #else
         VaultSplitView()
         #endif
+    }
+
+    /// iPad and Mac: the item in the detail column, among all items. The iPhone's tabs push it
+    /// themselves (PhoneTabs overrides both values).
+    private func open(_ id: String, in vault: VaultModel) {
+        vault.query = ""
+        model.selection = .all
+        vault.selectedItemId = id
     }
 
     private static func backend(_ core: Core) -> VaultBackend {

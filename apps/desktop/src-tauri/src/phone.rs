@@ -1,4 +1,4 @@
-//! Android and iOS: the plugin with UwULock's own phone code
+//! Android: the plugin with UwULock's own phone code
 //! (`tauri-plugin-uwulock-mobile`). Locking after a while in the background
 //! is the app's (uwulock-app's phone.rs); lib.rs tells it when UwULock leaves
 //! the screen and comes back.

@@ -1,9 +1,12 @@
 // App Store Connect, from CI and from a terminal: the provisioning profiles the
 // store builds are signed with, and the builds TestFlight has.
 //
-//   node scripts/asc.mjs profiles <ios|macos> <certificate.pem> <folder>
+//   node scripts/asc.mjs profiles <ios|macos|direct> <certificate.pem> <folder>
 //       The App Store profiles for app.uwulock, app.uwulock.passkeys and
-//       app.uwulock.safari, made for that certificate, written to
+//       app.uwulock.safari (ios, macos), or the Developer ID profiles for the
+//       disk image's app.uwulock.desktop, .desktop.passkeys and .desktop.safari
+//       (direct: AutoFill, the App Group and the Keychain groups need one even
+//       outside the store), made for that certificate, written to
 //       <folder>/<bundle id>.mobileprovision (iOS) or .provisionprofile
 //       (macOS). An identifier that isn't registered yet and needs no
 //       capability (the Safari extension) is registered on the way. A
@@ -25,12 +28,27 @@ import { join } from 'node:path';
 
 const API = 'https://api.appstoreconnect.apple.com';
 const APP = 'app.uwulock';
-const BUNDLES = [APP, `${APP}.passkeys`, `${APP}.safari`];
+const DIRECT = `${APP}.desktop`;
+const identifiers = (app) => [app, `${app}.passkeys`, `${app}.safari`];
 /** Identifiers this script may register itself: they need no capability set by hand. */
-const REGISTER = { [`${APP}.safari`]: 'UwULock Safari Extension' };
+const REGISTER = {
+  [`${APP}.safari`]: 'UwULock Safari Extension',
+  [`${DIRECT}.safari`]: 'UwULock Direct Safari Extension',
+};
 const PLATFORMS = {
-  ios: { type: 'IOS_APP_STORE', name: 'iOS', extension: 'mobileprovision' },
-  macos: { type: 'MAC_APP_STORE', name: 'macOS', extension: 'provisionprofile' },
+  ios: { type: 'IOS_APP_STORE', name: 'iOS App Store', extension: 'mobileprovision', app: APP },
+  macos: {
+    type: 'MAC_APP_STORE',
+    name: 'macOS App Store',
+    extension: 'provisionprofile',
+    app: APP,
+  },
+  direct: {
+    type: 'MAC_APP_DIRECT',
+    name: 'macOS Developer ID',
+    extension: 'provisionprofile',
+    app: DIRECT,
+  },
 };
 
 function fail(message) {
@@ -82,7 +100,7 @@ const query = (params) => new URLSearchParams(params).toString();
 async function profiles(platform, certificatePem, folder) {
   const kind = PLATFORMS[platform];
   if (!kind || !certificatePem || !folder)
-    fail('Usage: node scripts/asc.mjs profiles <ios|macos> <certificate.pem> <folder>');
+    fail('Usage: node scripts/asc.mjs profiles <ios|macos|direct> <certificate.pem> <folder>');
 
   // The certificate by its serial number: the team may have more than one
   // distribution certificate (Xcode makes its own), this is the one we hold.
@@ -96,7 +114,7 @@ async function profiles(platform, certificatePem, folder) {
   console.log(`Certificate: ${certificate.attributes.name} (${certificate.id})`);
 
   mkdirSync(folder, { recursive: true });
-  for (const identifier of BUNDLES) {
+  for (const identifier of identifiers(kind.app)) {
     const bundles = await api(
       'GET',
       `/v1/bundleIds?${query({ 'filter[identifier]': identifier, limit: '200' })}`,
@@ -113,7 +131,7 @@ async function profiles(platform, certificatePem, folder) {
     }
     if (!bundle) fail(`The identifier ${identifier} isn't registered (developer portal).`);
 
-    const name = `UwULock ${kind.name} App Store ${identifier}`;
+    const name = `UwULock ${kind.name} ${identifier}`;
     const found = await api(
       'GET',
       `/v1/profiles?${query({ 'filter[name]': name, include: 'certificates', limit: '50' })}`,
@@ -185,5 +203,5 @@ if (command === 'profiles') await profiles(...args);
 else if (command === 'builds') await builds(...args);
 else
   fail(
-    'Usage: node scripts/asc.mjs profiles <ios|macos> <certificate.pem> <folder> | builds [count]',
+    'Usage: node scripts/asc.mjs profiles <ios|macos|direct> <certificate.pem> <folder> | builds [count]',
   );

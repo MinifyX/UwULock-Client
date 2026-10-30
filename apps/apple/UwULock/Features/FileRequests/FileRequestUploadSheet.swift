@@ -338,6 +338,7 @@ struct FileRequestTakeOverSheet: View {
     var onDone: () -> Void = {}
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openVaultItem) private var openVaultItem
     @State private var name: String
     @State private var busy = false
     @State private var error: String?
@@ -420,11 +421,13 @@ struct FileRequestTakeOverSheet: View {
         Task {
             defer { busy = false }
             do {
-                _ = try await store.takeOver(
+                let id = try await store.takeOver(
                     request, submission, name: name.trimmingCharacters(in: .whitespacesAndNewlines))
                 FeatureToasts.shared.show(featureString("Als Eintrag übernommen ✧"))
                 dismiss()
                 onDone()
+                // VaultScreen.tsx's `onTakenOver`: the new item, selected.
+                openVaultItem?(id)
             } catch {
                 self.error = Core.failure(error).message
             }

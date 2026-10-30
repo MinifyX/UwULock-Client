@@ -2,9 +2,9 @@
 
 [Deutsch weiter unten](#uwulock-installieren)
 
-UwULock runs on **Windows 10 and 11** (x64 and ARM), **macOS 11 or newer**
-(Apple silicon and Intel) and **Linux** (x86_64 and arm64). On Windows and
-macOS the setup installs for your user only — no admin rights. UwULock speaks
+UwULock runs on **Windows 10 and 11** (x64 and ARM), **macOS 27 or newer**
+(Apple silicon and Intel) and **Linux** (x86_64 and arm64). On Windows the
+setup installs for your user only — no admin rights. UwULock speaks
 English or German, following the system; **Settings → Appearance → Language**
 switches.
 
@@ -12,25 +12,25 @@ It is a first beta. I use it every day on Windows; the macOS and Linux builds
 come out of CI and haven't been tried by hand yet, so expect more rough edges
 there.
 
-Windows and macOS get UwULock's own setup with Nyu in it, Linux a package for
-your distribution or a portable folder. Download from the
+Windows gets UwULock's own setup with Nyu in it, the Mac a native app on a
+disk image, Linux a package for your distribution or a portable folder. Download from the
 [releases](https://github.com/MinifyX/UwULock-Client/releases): take the newest
 one at the top. Betas are marked **Pre-release**; the newest version without
 that mark is the stable one. The file names carry no version, so
 `https://github.com/MinifyX/UwULock-Client/releases/latest/download/<file>`
 always gets the newest stable one.
 
-| System                     | File under **Assets**                                                |
-| -------------------------- | -------------------------------------------------------------------- |
-| Windows 10/11 (x64)        | `UwULock-windows-x64-setup.exe`                                      |
-| Windows 11 on ARM          | `UwULock-windows-arm64-setup.exe`                                    |
-| macOS (Intel & Apple chip) | `UwULock-macos-universal.dmg`                                        |
-| Ubuntu / Debian            | `UwULock-linux-x64.deb` · ARM: `UwULock-linux-arm64.deb`             |
-| Fedora / openSUSE          | `UwULock-linux-x64.rpm` · ARM: `UwULock-linux-arm64.rpm`             |
-| Linux, portable            | `UwULock-linux-x64-portable.tar.gz` · ARM: `…-arm64-portable.tar.gz` |
-| Arch Linux                 | `PKGBUILD` (`makepkg -si`); an AUR package `uwulock-bin` is planned  |
-| Android 10 or newer        | `UwULock-android.apk`                                                |
-| iPhone (iOS 17 or newer)   | `UwULock-ios.ipa` (unsigned, sideload)                               |
+| System                        | File under **Assets**                                                |
+| ----------------------------- | -------------------------------------------------------------------- |
+| Windows 10/11 (x64)           | `UwULock-windows-x64-setup.exe`                                      |
+| Windows 11 on ARM             | `UwULock-windows-arm64-setup.exe`                                    |
+| macOS 27 (Intel & Apple chip) | `UwULock-macos-universal.dmg`                                        |
+| Ubuntu / Debian               | `UwULock-linux-x64.deb` · ARM: `UwULock-linux-arm64.deb`             |
+| Fedora / openSUSE             | `UwULock-linux-x64.rpm` · ARM: `UwULock-linux-arm64.rpm`             |
+| Linux, portable               | `UwULock-linux-x64-portable.tar.gz` · ARM: `…-arm64-portable.tar.gz` |
+| Arch Linux                    | `PKGBUILD` (`makepkg -si`); an AUR package `uwulock-bin` is planned  |
+| Android 10 or newer           | `UwULock-android.apk`                                                |
+| iPhone (iOS 17 or newer)      | `UwULock-ios.ipa` (unsigned, sideload)                               |
 
 The `UwULock-update-…` files next to them are for the in-app updater; you
 don't need them. Phones: see [UwULock on Android and iPhone](mobile.md).
@@ -59,26 +59,31 @@ Uninstall from **Windows Settings → Apps → Installed apps → UwULock**.
 
 ## macOS
 
-Open the `.dmg` and double-click **UwULock Setup**. From 0.6.0-beta.3 on the
-disk image, the setup and the app are signed with Apple's Developer ID and
-notarized by Apple: macOS opens them without asking. The release notes say so
-for each version; the app also brings the [Safari extension](extension.md#safari-mac-iphone-ipad).
+Open the `.dmg` and drag **UwULock** into **Applications**. UwULock for the Mac
+is a native app (macOS 27 or newer, Apple silicon and Intel) and brings the
+[Safari extension](extension.md#safari-mac-iphone-ipad) and the AutoFill
+extension for passwords and passkeys (turn it on under **System Settings →
+General → AutoFill & Passwords**). The disk image and the app are signed with
+Apple's Developer ID and notarized: macOS opens them without asking. The
+release notes say so for each version.
 
-Older versions (and ones you build yourself) aren't notarized, so the first
-time macOS says it can't check the app. Then:
+A build without a Developer ID (the release notes say when, or one you build
+yourself) isn't notarized, and it runs without AutoFill and the shared
+keychain. The first time macOS says it can't check the app. Then:
 
 1. Open **System Settings → Privacy & Security**.
-2. Scroll down: next to "UwULock Setup was blocked", click **Open Anyway** and
+2. Scroll down: next to "UwULock was blocked", click **Open Anyway** and
    confirm.
 
-(On macOS 14 and older, right-clicking the setup and choosing **Open** works
-too.) The setup installs **UwULock** into `/Applications`, or into
-`~/Applications` if your user may not write to `/Applications`. The installed
-app starts without that question.
+**Coming from the older UwULock** (the one with **UwULock Setup**, up to
+0.7): it moves over by itself with its next update. The update puts the native
+app in its place under the same name; the login, the accounts and the
+settings stay, since both use the same data folder. Downloading the new
+`.dmg` and replacing the app in **Applications** does the same.
 
-To uninstall, run the setup again and choose **Uninstall …** — it asks whether
-to keep your login and settings. Dragging the app to the Trash works too, but
-leaves the data in `~/Library/Application Support/app.uwulock.desktop`.
+To uninstall, drag the app to the Trash. That leaves the data in
+`~/Library/Application Support/app.uwulock.desktop`; delete that folder too to
+remove the login.
 
 ## Linux
 
@@ -137,6 +142,9 @@ offers a restart. **Settings → Updates** switches between the Beta and Stable
 channels. Stable only gets versions without a beta mark; as long as there are
 only betas, stay on Beta.
 
+On the Mac the native app updates itself the same way (Sparkle): it asks
+before installing, and the Beta channel in its settings gets betas too.
+
 A newer setup can also simply be run over an installed UwULock, a newer package
 installed over the old one. The login and settings stay. The portable
 folder doesn't update itself.
@@ -146,7 +154,7 @@ folder doesn't update itself.
 | What                                          | Windows                               | macOS                                               | Linux                                |
 | --------------------------------------------- | ------------------------------------- | --------------------------------------------------- | ------------------------------------ |
 | Login, encrypted copy of the vault, device id | `%APPDATA%\app.uwulock.desktop\`      | `~/Library/Application Support/app.uwulock.desktop` | `~/.local/share/app.uwulock.desktop` |
-| App settings (look, security, …)              | `%LOCALAPPDATA%\app.uwulock.desktop\` | `~/Library/WebKit/app.uwulock.desktop`              | `~/.local/share/app.uwulock.desktop` |
+| App settings (look, security, …)              | `%LOCALAPPDATA%\app.uwulock.desktop\` | `~/Library/Preferences/app.uwulock.desktop.plist`   | `~/.local/share/app.uwulock.desktop` |
 | The program                                   | `%LOCALAPPDATA%\Programs\UwULock\`    | `/Applications/UwULock.app`                         | `/usr/bin/uwulock-desktop`           |
 
 Every account has a folder of its own under `accounts/`. Its `account.json`
@@ -165,7 +173,7 @@ that one folder; the other accounts stay.
   certificate as SmartScreen's warning. The source of every release is in this
   repository, and the checksums tell you the file is the published one.
 - **macOS says the app is damaged**: that happens when the quarantine mark
-  survives on the installed app, which the setup avoids. Running
+  survives on a build that isn't notarized. Running
   `xattr -dr com.apple.quarantine /Applications/UwULock.app` clears it.
 - **Windows on ARM** has its own setup (`UwULock-windows-arm64-setup.exe`); the
   x64 one runs there too, emulated and slower.
@@ -190,9 +198,9 @@ Building it yourself instead: [Development](../README.md#development).
 
 # UwULock installieren
 
-UwULock läuft unter **Windows 10 und 11** (x64 und ARM), **macOS 11 oder
+UwULock läuft unter **Windows 10 und 11** (x64 und ARM), **macOS 27 oder
 neuer** (Apple-Chip und Intel) und **Linux** (x86_64 und arm64). Unter Windows
-und macOS installiert das Setup nur für deinen Benutzer — ohne Adminrechte.
+installiert das Setup nur für deinen Benutzer — ohne Adminrechte.
 UwULock spricht Deutsch oder Englisch, je nach System; **Einstellungen →
 Darstellung → Sprache** schaltet um.
 
@@ -200,25 +208,26 @@ Es ist eine erste Beta. Ich nutze sie jeden Tag unter Windows; die Versionen
 für macOS und Linux baut die CI, von Hand ausprobiert hat sie noch niemand —
 dort also mit mehr Ecken und Kanten rechnen.
 
-Windows und macOS bekommen UwULocks eigenes Setup mit Nyu, Linux ein Paket für
-deine Distribution oder einen portablen Ordner. Lade von den
+Windows bekommt UwULocks eigenes Setup mit Nyu, der Mac eine native App auf
+einem Disk-Image, Linux ein Paket für deine Distribution oder einen portablen
+Ordner. Lade von den
 [Releases](https://github.com/MinifyX/UwULock-Client/releases) herunter: das
 neueste ganz oben. Betas sind als **Pre-release** markiert; die neueste
 Version ohne diese Markierung ist die stabile. Die Dateinamen enthalten keine
 Version, `https://github.com/MinifyX/UwULock-Client/releases/latest/download/<Datei>`
 holt also immer die neueste stabile.
 
-| System                     | Datei unter **Assets**                                               |
-| -------------------------- | -------------------------------------------------------------------- |
-| Windows 10/11 (x64)        | `UwULock-windows-x64-setup.exe`                                      |
-| Windows 11 auf ARM         | `UwULock-windows-arm64-setup.exe`                                    |
-| macOS (Intel & Apple-Chip) | `UwULock-macos-universal.dmg`                                        |
-| Ubuntu / Debian            | `UwULock-linux-x64.deb` · ARM: `UwULock-linux-arm64.deb`             |
-| Fedora / openSUSE          | `UwULock-linux-x64.rpm` · ARM: `UwULock-linux-arm64.rpm`             |
-| Linux, portabel            | `UwULock-linux-x64-portable.tar.gz` · ARM: `…-arm64-portable.tar.gz` |
-| Arch Linux                 | `PKGBUILD` (`makepkg -si`); ein AUR-Paket `uwulock-bin` ist geplant  |
-| Android 10 oder neuer      | `UwULock-android.apk`                                                |
-| iPhone (ab iOS 17)         | `UwULock-ios.ipa` (unsigniert, Sideload)                             |
+| System                        | Datei unter **Assets**                                               |
+| ----------------------------- | -------------------------------------------------------------------- |
+| Windows 10/11 (x64)           | `UwULock-windows-x64-setup.exe`                                      |
+| Windows 11 auf ARM            | `UwULock-windows-arm64-setup.exe`                                    |
+| macOS 27 (Intel & Apple-Chip) | `UwULock-macos-universal.dmg`                                        |
+| Ubuntu / Debian               | `UwULock-linux-x64.deb` · ARM: `UwULock-linux-arm64.deb`             |
+| Fedora / openSUSE             | `UwULock-linux-x64.rpm` · ARM: `UwULock-linux-arm64.rpm`             |
+| Linux, portabel               | `UwULock-linux-x64-portable.tar.gz` · ARM: `…-arm64-portable.tar.gz` |
+| Arch Linux                    | `PKGBUILD` (`makepkg -si`); ein AUR-Paket `uwulock-bin` ist geplant  |
+| Android 10 oder neuer         | `UwULock-android.apk`                                                |
+| iPhone (ab iOS 17)            | `UwULock-ios.ipa` (unsigniert, Sideload)                             |
 
 Die `UwULock-update-…`-Dateien daneben sind für den Updater in der App; du
 brauchst sie nicht. Handys: siehe [UwULock auf Android und iPhone](mobile.md#uwulock-auf-android-und-iphone).
@@ -250,27 +259,32 @@ UwULock**.
 
 ## macOS
 
-Die `.dmg` öffnen und **UwULock Setup** doppelklicken. Ab 0.6.0-beta.3 sind
-Disk-Image, Setup und App mit Apples Developer ID signiert und von Apple
+Die `.dmg` öffnen und **UwULock** in den Ordner **Programme** ziehen. UwULock
+für den Mac ist eine native App (macOS 27 oder neuer, Apple-Chip und Intel) und
+bringt die [Safari-Erweiterung](extension.md#safari-mac-iphone-ipad-1) und die
+Erweiterung für Automatisches Ausfüllen von Passwörtern und Passkeys mit
+(einschalten unter **Systemeinstellungen → Allgemein → Automatisches Ausfüllen
+& Passwörter**). Disk-Image und App sind mit Apples Developer ID signiert und
 notarisiert: macOS öffnet sie ohne Rückfrage. Die Release-Notizen sagen es pro
-Version; die App bringt außerdem die [Safari-Erweiterung](extension.md#safari-mac-iphone-ipad-1) mit.
+Version.
 
-Ältere Versionen (und selbst gebaute) sind nicht notarisiert, deshalb sagt macOS
-beim ersten Mal, es könne die App nicht prüfen. Dann:
+Ein Build ohne Developer ID (die Release-Notizen sagen es, oder selbst gebaut)
+ist nicht notarisiert und läuft ohne Automatisches Ausfüllen und geteilten
+Schlüsselbund. Beim ersten Mal sagt macOS, es könne die App nicht prüfen. Dann:
 
 1. **Systemeinstellungen → Datenschutz & Sicherheit** öffnen.
-2. Nach unten scrollen: neben „UwULock Setup wurde blockiert“ auf **Trotzdem
+2. Nach unten scrollen: neben „UwULock wurde blockiert“ auf **Trotzdem
    öffnen** klicken und bestätigen.
 
-(Unter macOS 14 und älter geht auch Rechtsklick auf das Setup → **Öffnen**.) Das
-Setup installiert **UwULock** nach `/Applications`, oder nach `~/Applications`,
-wenn dein Benutzer nicht in `/Applications` schreiben darf. Die installierte
-App startet ohne diese Rückfrage.
+**Vom älteren UwULock** (dem mit **UwULock Setup**, bis 0.7): Es wechselt mit
+seinem nächsten Update von selbst. Das Update setzt die native App unter
+demselben Namen an seine Stelle; Anmeldung, Konten und Einstellungen bleiben,
+weil beide denselben Datenordner nutzen. Die neue `.dmg` laden und die App in
+**Programme** ersetzen geht genauso.
 
-Deinstallieren: das Setup noch einmal starten und **Deinstallieren …** wählen —
-es fragt, ob Anmeldung und Einstellungen bleiben sollen. Die App in den Papierkorb ziehen
-geht auch, lässt aber die Daten in
-`~/Library/Application Support/app.uwulock.desktop` liegen.
+Deinstallieren: die App in den Papierkorb ziehen. Die Daten bleiben in
+`~/Library/Application Support/app.uwulock.desktop`; diesen Ordner auch
+löschen, um die Anmeldung zu entfernen.
 
 ## Linux
 
@@ -333,6 +347,9 @@ alle sechs Stunden sucht es nach einer neuen Version, lädt sie still herunter
 wechselt zwischen den Kanälen Beta und Stabil. Stabil bekommt nur Versionen
 ohne Beta-Markierung; solange es nur Betas gibt, bleib bei Beta.
 
+Auf dem Mac aktualisiert sich die native App genauso (Sparkle): Sie fragt vor
+dem Installieren, und der Kanal Beta in ihren Einstellungen bekommt auch Betas.
+
 Ein neueres Setup kann auch einfach über ein installiertes UwULock laufen, ein
 neueres Paket über das alte installiert werden. Anmeldung und Einstellungen
 bleiben. Der portable Ordner aktualisiert sich nicht selbst.
@@ -342,7 +359,7 @@ bleiben. Der portable Ordner aktualisiert sich nicht selbst.
 | Was                                                    | Windows                               | macOS                                               | Linux                                |
 | ------------------------------------------------------ | ------------------------------------- | --------------------------------------------------- | ------------------------------------ |
 | Anmeldung, verschlüsselte Kopie des Tresors, Geräte-ID | `%APPDATA%\app.uwulock.desktop\`      | `~/Library/Application Support/app.uwulock.desktop` | `~/.local/share/app.uwulock.desktop` |
-| App-Einstellungen (Aussehen, Sicherheit, …)            | `%LOCALAPPDATA%\app.uwulock.desktop\` | `~/Library/WebKit/app.uwulock.desktop`              | `~/.local/share/app.uwulock.desktop` |
+| App-Einstellungen (Aussehen, Sicherheit, …)            | `%LOCALAPPDATA%\app.uwulock.desktop\` | `~/Library/Preferences/app.uwulock.desktop.plist`   | `~/.local/share/app.uwulock.desktop` |
 | Das Programm                                           | `%LOCALAPPDATA%\Programs\UwULock\`    | `/Applications/UwULock.app`                         | `/usr/bin/uwulock-desktop`           |
 
 Jedes Konto hat einen eigenen Ordner unter `accounts/`. Dessen
@@ -363,8 +380,7 @@ anderen Konten bleiben.
   wie bei SmartScreen. Der Quellcode jedes Releases liegt in diesem Repository,
   und die Prüfsummen zeigen dir, dass die Datei die veröffentlichte ist.
 - **macOS sagt, die App sei beschädigt**: Das passiert, wenn die
-  Quarantäne-Markierung an der installierten App hängen bleibt, was das Setup
-  vermeidet. `xattr -dr com.apple.quarantine /Applications/UwULock.app` entfernt
+  Quarantäne-Markierung an einem nicht notarisierten Build hängen bleibt. `xattr -dr com.apple.quarantine /Applications/UwULock.app` entfernt
   sie.
 - **Windows auf ARM** hat ein eigenes Setup
   (`UwULock-windows-arm64-setup.exe`); das x64-Setup läuft dort auch, emuliert

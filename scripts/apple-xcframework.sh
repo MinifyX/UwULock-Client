@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the Rust core for the native Apple app (docs/native-apple-plan.md): crates/uwulock-ffi
-# as a static library for iPhones, the iOS Simulator (Apple silicon) and the Mac (Apple silicon
-# and Intel in one), the Swift bindings UniFFI generates from it, and both packed as
+# as a static library for iPhones, the iOS Simulator (Apple silicon) and the Mac (Apple silicon;
+# with UWULOCK_FFI_UNIVERSAL=1 also Intel, both in one library), the Swift bindings UniFFI generates from it, and both packed as
 #
 #   apps/apple/Frameworks/UwuLockFFI.xcframework   the library + the C module "UwuLockFFI"
 #   apps/apple/Generated/uwulock_ffi.swift          the Swift side, compiled into the app
@@ -9,7 +9,10 @@
 # scripts/apple-build.sh runs it first. It does nothing while both are newer than the Rust
 # sources they come from (the crates, Cargo.toml, Cargo.lock, this script); --force builds anyway.
 #
-# Usage: scripts/apple-xcframework.sh [--force]
+# Usage: scripts/apple-xcframework.sh [--force] [--universal]
+#   --universal / UWULOCK_FFI_UNIVERSAL=1: the Mac slice for Apple silicon and Intel (x86_64), as
+#   the disk image and the Mac App Store need it (CI's release builds). Without it the Mac gets
+#   Apple silicon only, which is quicker to build locally.
 #   UWULOCK_FFI_PROFILE: release (default; the workspace's: LTO, one codegen unit) or dev
 #   (quicker to build, a far bigger and slower library: only for trying things out).
 set -euo pipefail
@@ -20,13 +23,16 @@ framework="$app/Frameworks/UwuLockFFI.xcframework"
 generated="$app/Generated"
 stamp="$app/Frameworks/.UwuLockFFI.stamp"
 profile="${UWULOCK_FFI_PROFILE:-release}"
+universal="${UWULOCK_FFI_UNIVERSAL:-0}"
 force=false
 for arg in "$@"; do
   case "$arg" in
     --force) force=true ;;
-    *) echo "Usage: $0 [--force]" >&2; exit 2 ;;
+    --universal) universal=1 ;;
+    *) echo "Usage: $0 [--force] [--universal]" >&2; exit 2 ;;
   esac
 done
+[ "$universal" = 1 ] && flavor="$profile universal" || flavor="$profile"
 
 # The sources the library is built from: uwulock-ffi and the workspace crates it uses.
 sources=(
@@ -36,7 +42,7 @@ sources=(
   "$root/crates/uwulock-authenticator/src" "$root/crates/uwulock-authenticator/Cargo.toml"
 )
 if ! $force && [ -f "$stamp" ] && [ -d "$framework" ] && [ -f "$generated/uwulock_ffi.swift" ] &&
-  [ "$(cat "$stamp")" = "$profile" ] &&
+  [ "$(cat "$stamp")" = "$flavor" ] &&
   [ -z "$(find "${sources[@]}" -newer "$stamp" -type f -not -path '*/tests/*' -print -quit)" ]; then
   echo "--- Rust core: up to date ($framework)"
   exit 0
@@ -49,7 +55,8 @@ export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-3}"
 export IPHONEOS_DEPLOYMENT_TARGET=17.0
 export MACOSX_DEPLOYMENT_TARGET=14.0
 
-targets=(aarch64-apple-ios aarch64-apple-ios-sim aarch64-apple-darwin x86_64-apple-darwin)
+targets=(aarch64-apple-ios aarch64-apple-ios-sim aarch64-apple-darwin)
+[ "$universal" = 1 ] && targets+=(x86_64-apple-darwin)
 installed="$(rustup target list --installed)"
 for target in "${targets[@]}"; do
   grep -qx "$target" <<<"$installed" || rustup target add "$target"
@@ -77,8 +84,12 @@ cargo run -p uwulock-ffi --features bindgen --bin uniffi-bindgen-swift --quiet -
 mv "$staging/swift/"*.h "$staging/swift/module.modulemap" "$staging/headers/"
 
 echo "--- XCFramework"
-lipo -create "$(lib aarch64-apple-darwin)" "$(lib x86_64-apple-darwin)" \
-  -output "$staging/macos/libuwulock_ffi.a"
+if [ "$universal" = 1 ]; then
+  lipo -create "$(lib aarch64-apple-darwin)" "$(lib x86_64-apple-darwin)" \
+    -output "$staging/macos/libuwulock_ffi.a"
+else
+  cp "$(lib aarch64-apple-darwin)" "$staging/macos/libuwulock_ffi.a"
+fi
 rm -rf "$framework"
 mkdir -p "$app/Frameworks" "$generated"
 xcodebuild -create-xcframework \
@@ -88,6 +99,6 @@ xcodebuild -create-xcframework \
   -output "$framework" >/dev/null
 rm -f "$generated/"*.swift
 cp "$staging/swift/"*.swift "$generated/"
-echo "$profile" >"$stamp"
+echo "$flavor" >"$stamp"
 echo "$framework"
 echo "$generated/$(cd "$staging/swift" && ls *.swift)"

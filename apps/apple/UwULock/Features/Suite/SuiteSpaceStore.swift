@@ -133,14 +133,14 @@ final class SuiteSpaceStore {
     func copySecret(_ id: String, password: Bool) async {
         #if DEBUG
         if FeatureFixtures.isOn {
-            FeatureToasts.shared.show(password ? featureString("Passwort kopiert ✧") : featureString("Kopiert ✧"))
+            FeatureToasts.shared.show(password ? copiedText("password") : copiedText("text"))
             return
         }
         #endif
         guard let core else { return }
         do {
             try await core.suiteCopy(space: space, id: id)
-            FeatureToasts.shared.show(password ? featureString("Passwort kopiert ✧") : featureString("Kopiert ✧"))
+            FeatureToasts.shared.show(password ? copiedText("password") : copiedText("text"))
         } catch {
             FeatureToasts.shared.show(suiteFailureText(Core.failure(error)), danger: true)
         }
@@ -150,14 +150,14 @@ final class SuiteSpaceStore {
     func copyText(_ text: String) async {
         #if DEBUG
         if FeatureFixtures.isOn {
-            FeatureToasts.shared.show(featureString("Kopiert ✧"))
+            FeatureToasts.shared.show(copiedText("text"))
             return
         }
         #endif
         guard let core else { return }
         do {
             try await core.copyGenerated(text: text)
-            FeatureToasts.shared.show(featureString("Kopiert ✧"))
+            FeatureToasts.shared.show(copiedText("text"))
         } catch {
             FeatureToasts.shared.show(error: error)
         }

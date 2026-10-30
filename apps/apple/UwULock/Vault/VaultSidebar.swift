@@ -9,16 +9,48 @@ struct VaultSidebar: View {
     var pushes = false
     @Environment(VaultModel.self) private var vault
     @Environment(AppModel.self) private var model
+    @AppStorage(AppSettingsKey.showTrash) private var showTrash = true
+    @State private var cards = PromptCards()
 
     var body: some View {
         Group {
             // A selection binding would swallow the taps that should push (iPhone).
             if pushes {
-                List { places }
+                List {
+                    if cards.visible {
+                        Section {
+                            VaultPromptCards(cards: cards)
+                                .listRowInsets(EdgeInsets())
+                                .listRowBackground(Color.clear)
+                        }
+                    }
+                    places
+                }
             } else {
                 List(selection: $selection) { places }
+                    // The account in the sidebar's bottom left (VaultScreen.tsx's AccountCard),
+                    // the cards after an unlock above it.
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        VStack(alignment: .leading, spacing: UwUSpacing.sm) {
+                            VaultPromptCards(cards: cards)
+                            HStack(spacing: UwUSpacing.xs) {
+                                if let status = model.status { AccountAvatar(status: status, size: 22) }
+                                AccountMenu(nameOnly: true)
+                                    .menuStyle(.button)
+                                    .buttonStyle(.borderless)
+                                    .menuIndicator(.hidden)
+                                    .foregroundStyle(.primary)
+                                Spacer(minLength: 0)
+                            }
+                                .padding(.horizontal, UwUSpacing.sm)
+                                .padding(.vertical, UwUSpacing.xs)
+                                .uwuGlass(in: RoundedRectangle(cornerRadius: UwURadius.control, style: .continuous))
+                        }
+                        .padding(UwUSpacing.sm)
+                    }
             }
         }
+        .promptCards(cards)
         .navigationTitle(vt("Tresor"))
         .toolbar {
             ToolbarItem {
@@ -32,16 +64,35 @@ struct VaultSidebar: View {
         }
     }
 
+    /// The iPhone overview's favourites (Overview.tsx): the items themselves, or a note.
+    @ViewBuilder
+    private var favorites: some View {
+        let list = vault.visible(.favorites, query: "")
+        Section(vt("Favoriten")) {
+            if list.isEmpty {
+                Text(vt("Noch keine Favoriten")).foregroundStyle(.secondary)
+            } else {
+                ForEach(list) { item in
+                    NavigationLink(value: item.id) { ItemRow(item: item) }
+                }
+            }
+        }
+    }
+
     @ViewBuilder
     private var places: some View {
             Section {
                 row(.all)
-                row(.favorites)
+                if !pushes { row(.favorites) }
                 if vault.uwu.has(.reminders), vault.count(.due) > 0 || selection == .due {
                     row(.due)
                 }
-                row(.passwordCheck, count: false)
+                // The iPhone has the check as a tab.
+                if !pushes { row(.passwordCheck, count: false) }
+                if pushes { TravelModeBadge(row: true) }
             }
+
+            if pushes { favorites }
 
             Section(vt("Typen")) {
                 ForEach(ItemKind.ordered.filter { $0 == .login || vault.count(.type($0)) > 0 }, id: \.self) { kind in
@@ -61,7 +112,7 @@ struct VaultSidebar: View {
                             }
                         }
                 }
-                if !vault.sortedFolders.isEmpty, vault.count(.folder(nil)) > 0 {
+                if pushes || (!vault.sortedFolders.isEmpty && vault.count(.folder(nil)) > 0) {
                     row(.folder(nil))
                 }
             } header: {
@@ -117,8 +168,16 @@ struct VaultSidebar: View {
                 }
             }
 
-            if vault.showTrash, vault.count(.trash) > 0 || selection == .trash {
+            if showTrash, vault.count(.trash) > 0 || selection == .trash {
                 Section { row(.trash) }
+            }
+
+            if pushes {
+                Section {
+                } footer: {
+                    Text(vt("Zum Synchronisieren nach unten ziehen"))
+                        .frame(maxWidth: .infinity)
+                }
             }
     }
 

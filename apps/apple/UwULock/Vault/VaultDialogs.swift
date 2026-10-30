@@ -17,6 +17,9 @@ struct VaultDialogs: ViewModifier {
             .sheet(isPresented: $vault.showGenerator) {
                 GeneratorSheet(onUse: nil)
             }
+            .sheet(isPresented: $vault.showImport) {
+                ImportFlowView()
+            }
             .alert(
                 vault.folderRequest?.folder == nil ? vt("Neuer Ordner") : vt("Ordner umbenennen"),
                 isPresented: Binding(
@@ -51,25 +54,23 @@ struct VaultDialogs: ViewModifier {
             .alert(
                 vt("Endgültig löschen?"),
                 isPresented: Binding(
-                    get: { vault.itemToDelete != nil },
+                    get: { vault.itemToDelete.map { vault.uwu.masked[$0.id] == nil } ?? false },
                     set: { if !$0 { vault.itemToDelete = nil } }),
                 presenting: vault.itemToDelete
             ) { item in
-                if let masked = vault.uwu.masked[item.id] {
-                    Button(vt("Löschen und \(masked.email) abschalten"), role: .destructive) {
-                        vault.deleteForever(item, disableMasked: true)
-                    }
-                    Button(vt("Nur löschen"), role: .destructive) {
-                        vault.deleteForever(item, disableMasked: false)
-                    }
-                } else {
-                    Button(vt("Endgültig löschen"), role: .destructive) {
-                        vault.deleteForever(item, disableMasked: false)
-                    }
+                Button(vt("Endgültig löschen"), role: .destructive) {
+                    vault.deleteForever(item, disableMasked: false)
                 }
                 Button(vt("Abbrechen"), role: .cancel) {}
             } message: { item in
-                Text(vt("„\(item.name)“ wird auf dem Server gelöscht. Das lässt sich nicht rückgängig machen – auch nicht im Web-Tresor."))
+                Text(deleteText(item))
+            }
+            // With a linked masked address: ItemDetail.tsx's ConfirmDelete, its switch on.
+            .sheet(item: Binding(
+                get: { vault.itemToDelete.flatMap { vault.uwu.masked[$0.id] == nil ? nil : $0 } },
+                set: { if $0 == nil { vault.itemToDelete = nil } })
+            ) { item in
+                ConfirmDeleteSheet(item: item, email: vault.uwu.masked[item.id]?.email ?? "", text: deleteText(item))
             }
             .overlay(alignment: .bottom) { VaultToastView() }
             .sensoryFeedback(trigger: vault.toast) { _, toast in
@@ -79,6 +80,53 @@ struct VaultDialogs: ViewModifier {
                 default: nil
                 }
             }
+    }
+}
+
+private func deleteText(_ item: ItemSummary) -> String {
+    vt("„\(item.name)“ wird auf dem Server gelöscht. Das lässt sich nicht rückgängig machen – auch nicht im Web-Tresor.")
+}
+
+/// Deleting an item for good that has a masked address (ItemDetail.tsx's ConfirmDelete): the
+/// switch turns the address off first, on by default.
+private struct ConfirmDeleteSheet: View {
+    let item: ItemSummary
+    let email: String
+    let text: String
+    @Environment(VaultModel.self) private var vault
+    @Environment(\.dismiss) private var dismiss
+    @State private var disableMasked = true
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text(text)
+                    Toggle(vt("Die maskierte Adresse \(email) abschalten"), isOn: $disableMasked)
+                }
+            }
+            .formStyle(.grouped)
+            .navigationTitle(vt("Endgültig löschen?"))
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(vt("Abbrechen"), role: .cancel) { dismiss() }
+                }
+                ToolbarItem(placement: .destructiveAction) {
+                    Button(vt("Endgültig löschen"), role: .destructive) {
+                        vault.deleteForever(item, disableMasked: disableMasked)
+                        dismiss()
+                    }
+                }
+            }
+        }
+        #if os(iOS)
+        .presentationDetents([.medium])
+        #else
+        .frame(width: 440, height: 260)
+        #endif
     }
 }
 

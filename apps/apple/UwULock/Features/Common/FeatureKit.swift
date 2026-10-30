@@ -15,6 +15,17 @@ func featureString(_ key: String.LocalizationValue) -> String {
     String(localized: key, table: FeatureStrings.table)
 }
 
+/// The toast after copying a link (SendsDialog.tsx, FileRequestsDialog.tsx): when it leaves the
+/// clipboard again.
+func copiedLinkText(seconds: Int = SecurityPrefs.current.clipboardClear) -> String {
+    seconds > 0 ? featureString("Link kopiert ✧ – wird nach \(seconds) s geleert") : featureString("Link kopiert ✧")
+}
+
+/// The toast after copying a masked address (MaskedDialog.tsx's `copyAddress`).
+func copiedAddressText(seconds: Int = SecurityPrefs.current.clipboardClear) -> String {
+    seconds > 0 ? featureString("Adresse kopiert ✧ – wird nach \(seconds) s geleert") : featureString("Adresse kopiert ✧")
+}
+
 extension Text {
     /// `Text` from Features.xcstrings: `Text(features: "Sends")`.
     init(features key: LocalizedStringKey) {

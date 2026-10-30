@@ -18,28 +18,28 @@ The protocol and the crypto are `uwulock-bitwarden`'s and `uwulock-core`'s.
 
 ## Modules
 
-| Module | What | Commands |
-| --- | --- | --- |
-| `vault` | logging in (password, 2FA, new device, SSO), unlocking, locking, accounts, sync, items, folders, reveal and copy, the generator, an item's passkeys; `VaultState`, `Failure`, `Result` | 37 |
-| `account` | what is kept on disk and where (`Storage`, `Account`); unchanged format | – |
-| `extras` | UwULock Server's extras: travel mode, icons, versions, reminders, file requests, masked addresses, share as Send | 33 |
-| `health` | the password check, its review one login at a time, the breach-mail opt-in | 7 |
-| `importing` | another app's export file, KeePass KDFs | 4 |
-| `moving` | moving a vault in from Bitwarden or Vaultwarden | 8 |
-| `sends` | Sends | 5 |
-| `suite` (+ `suite/plan`) | UwUSSH's and UwURDP's hosts, logins and keys | 10 |
-| `wifi` | Wi-Fi networks to the phone | 2 |
-| `autofill` | the system's AutoFill/credential provider, iOS 26 credential exchange, the extension's protocol | 6 |
-| `passkeys` (+ `logins`, `apple`) | the vault's passkeys and logins for the system's providers: requests, answers, settings (`Provider`); the Apple extension's sealed list and outbox | 4 |
-| `safari` | the Safari extension: switched on? | 2 |
-| `system` | links out of the app | 3 |
-| `clipboard` | copies that clear themselves (on top of the host's clipboard) | – |
-| `live` | changes from other devices as they happen | – |
-| `session_lock` | locking when the screen locks or the computer sleeps (`App::system_locked`) | – |
-| `hello` | unlocking with Windows Hello, Touch ID or a phone's biometrics, over `Host::biometric_*` | – |
-| `phone` | locking in the background (`App::suspended`, `App::resumed`) | – |
-| `host` | the `Host` trait | – |
-| `runtime` | the shared Tokio runtime: `shared`, `spawn`, `spawn_blocking`, `block_on` | – |
+| Module                           | What                                                                                                                                                                                   | Commands |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `vault`                          | logging in (password, 2FA, new device, SSO), unlocking, locking, accounts, sync, items, folders, reveal and copy, the generator, an item's passkeys; `VaultState`, `Failure`, `Result` | 37       |
+| `account`                        | what is kept on disk and where (`Storage`, `Account`); unchanged format                                                                                                                | –        |
+| `extras`                         | UwULock Server's extras: travel mode, icons, versions, reminders, file requests, masked addresses, share as Send                                                                       | 33       |
+| `health`                         | the password check, its review one login at a time, the breach-mail opt-in                                                                                                             | 7        |
+| `importing`                      | another app's export file, KeePass KDFs                                                                                                                                                | 4        |
+| `moving`                         | moving a vault in from Bitwarden or Vaultwarden                                                                                                                                        | 8        |
+| `sends`                          | Sends                                                                                                                                                                                  | 5        |
+| `suite` (+ `suite/plan`)         | UwUSSH's and UwURDP's hosts, logins and keys                                                                                                                                           | 10       |
+| `wifi`                           | Wi-Fi networks to the phone                                                                                                                                                            | 2        |
+| `autofill`                       | the system's AutoFill/credential provider, iOS 26 credential exchange, the extension's protocol                                                                                        | 6        |
+| `passkeys` (+ `logins`, `apple`) | the vault's passkeys and logins for the system's providers: requests, answers, settings (`Provider`); the Apple extension's sealed list and outbox                                     | 4        |
+| `safari`                         | the Safari extension: switched on?                                                                                                                                                     | 2        |
+| `system`                         | links out of the app                                                                                                                                                                   | 3        |
+| `clipboard`                      | copies that clear themselves (on top of the host's clipboard)                                                                                                                          | –        |
+| `live`                           | changes from other devices as they happen                                                                                                                                              | –        |
+| `session_lock`                   | locking when the screen locks or the computer sleeps (`App::system_locked`)                                                                                                            | –        |
+| `hello`                          | unlocking with Windows Hello, Touch ID or a phone's biometrics, over `Host::biometric_*`                                                                                               | –        |
+| `phone`                          | locking in the background (`App::suspended`, `App::resumed`)                                                                                                                           | –        |
+| `host`                           | the `Host` trait                                                                                                                                                                       | –        |
+| `runtime`                        | the shared Tokio runtime: `shared`, `spawn`, `spawn_blocking`, `block_on`                                                                                                              | –        |
 
 That makes 121 commands. The Tauri app adds seven of its own: the updater,
 appearance, distribution and quitting.
@@ -81,13 +81,13 @@ app.unlock(password).await?;
 
 **Required:**
 
-| Method | Does |
-| --- | --- |
-| `emit` | sends an event to the page |
-| `open_url` | opens a page in the browser |
-| `clipboard_copy` | copies, with sensitive and expiry hints |
+| Method            | Does                                                |
+| ----------------- | --------------------------------------------------- |
+| `emit`            | sends an event to the page                          |
+| `open_url`        | opens a page in the browser                         |
+| `clipboard_copy`  | copies, with sensitive and expiry hints             |
 | `clipboard_clear` | clears the clipboard if it still holds that SHA-256 |
-| `download_dir` | gives the folder for saved files |
+| `download_dir`    | gives the folder for saved files                    |
 
 **Defaulted:**
 
@@ -112,19 +112,19 @@ app.unlock(password).await?;
 Every event goes through `App::emit`, then to the listeners, then to
 `Host::emit`. Names and payloads are the page's (`apps/desktop/src/lib`).
 
-| Event | From | Payload |
-| --- | --- | --- |
-| `vault-status` | `vault`, `passkeys/apple` | the status, as `vault_status` returns it |
-| `vault-changed` | `vault`, `extras`, `passkeys`, `passkeys/apple` | none |
-| `auth-request` | `live` | `{ id }` |
-| `suite-changed` | `live` | none |
-| `uwu-notice` | `live` | `{ kind, id }` |
-| `uwu-changed` | `extras` | the status, as `uwu_status` returns it |
-| `health-progress` | `health` | `{ done, total }` |
-| `import-progress` | `importing` | `{ done, total }` |
-| `move-progress`, `move-finished`, `move-failed` | `moving` | the progress, the summary, the `Failure` |
-| `passkey-request` | `passkeys` | the request the window answers |
-| `passkey-provider-warning` | `passkeys` | the warning |
+| Event                                           | From                                            | Payload                                  |
+| ----------------------------------------------- | ----------------------------------------------- | ---------------------------------------- |
+| `vault-status`                                  | `vault`, `passkeys/apple`                       | the status, as `vault_status` returns it |
+| `vault-changed`                                 | `vault`, `extras`, `passkeys`, `passkeys/apple` | none                                     |
+| `auth-request`                                  | `live`                                          | `{ id }`                                 |
+| `suite-changed`                                 | `live`                                          | none                                     |
+| `uwu-notice`                                    | `live`                                          | `{ kind, id }`                           |
+| `uwu-changed`                                   | `extras`                                        | the status, as `uwu_status` returns it   |
+| `health-progress`                               | `health`                                        | `{ done, total }`                        |
+| `import-progress`                               | `importing`                                     | `{ done, total }`                        |
+| `move-progress`, `move-finished`, `move-failed` | `moving`                                        | the progress, the summary, the `Failure` |
+| `passkey-request`                               | `passkeys`                                      | the request the window answers           |
+| `passkey-provider-warning`                      | `passkeys`                                      | the warning                              |
 
 The Tauri app emits one event of its own: the macOS quit event
 (`uwu_macos::QUIT_EVENT`).

@@ -29,7 +29,6 @@ struct SendsDetailView: View {
                             Label(features: "Link kopieren", uwuIcon: .copy)
                         }
                         .uwuProminentButton()
-                        .foregroundStyle(Color.uwuOnPink)
                         .keyboardShortcut("c", modifiers: [.command, .shift])
                         .help(Text(features: "Link kopieren"))
                         if let url = URL(string: send.link) {

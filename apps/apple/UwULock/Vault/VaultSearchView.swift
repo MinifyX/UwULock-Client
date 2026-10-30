@@ -5,7 +5,9 @@ import UwUDesign
 /// opened last and a few lists to jump to, then the hits.
 struct VaultSearchView: View {
     @Environment(VaultModel.self) private var vault
-    @State private var query = ""
+    /// The field is PhoneTabs' `.searchable` on this page.
+    let query: String
+    @State private var place: SidebarItem?
 
     private static let suggestions: [(label: String, place: SidebarItem)] = [
         (vt("Logins"), .type(.login)),
@@ -30,19 +32,15 @@ struct VaultSearchView: View {
                     }
                 }
                 Section(vt("Vorschläge")) {
-                    FlowLayout(spacing: UwUSpacing.xs) {
-                        ForEach(Self.suggestions, id: \.label) { suggestion in
-                            NavigationLink(value: suggestion.place) {
-                                Label(suggestion.label, uwuIcon: suggestion.place.icon)
-                                    .uwuFont(.subheadline, weight: .medium)
-                                    .padding(.horizontal, UwUSpacing.sm)
-                                    .padding(.vertical, UwUSpacing.xs)
-                                    .uwuGlass(in: Capsule())
-                            }
-                            .buttonStyle(.plain)
+                    ForEach(Self.suggestions, id: \.label) { suggestion in
+                        Button {
+                            place = suggestion.place
+                        } label: {
+                            Label(suggestion.label, uwuIcon: suggestion.place.icon)
+                                .uwuFont(.body)
                         }
+                        .foregroundStyle(.primary)
                     }
-                    .listRowBackground(Color.clear)
                 }
             } else if !found.isEmpty {
                 Section(found.count == 1 ? vt("1 Treffer") : vt("\(found.count) Treffer")) {
@@ -65,8 +63,7 @@ struct VaultSearchView: View {
             }
         }
         .navigationTitle(vt("Suche"))
-        .searchable(text: $query, prompt: Text(vt("Im Tresor suchen")))
-        .navigationDestination(for: SidebarItem.self) { place in
+        .navigationDestination(item: $place) { place in
             ItemListView(place: place, selection: .constant(nil), pushes: true)
         }
         .navigationDestination(for: String.self) { ItemDetailView(itemId: $0) }

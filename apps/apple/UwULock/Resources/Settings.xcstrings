@@ -1360,6 +1360,23 @@
           }
         }
       }
+    },
+    "Dieselbe Erweiterung wie in Chrome und Firefox, mit eigener Anmeldung. Einschalten unter Einstellungen → Apps → Safari → Erweiterungen → UwULock. Passkeys und Passwörter kommen in Safari aus dieser App.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieselbe Erweiterung wie in Chrome und Firefox, mit eigener Anmeldung. Einschalten unter Einstellungen → Apps → Safari → Erweiterungen → UwULock. Passkeys und Passwörter kommen in Safari aus dieser App."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The same extension as in Chrome and Firefox, with its own sign-in. Turn it on under Settings → Apps → Safari → Extensions → UwULock. In Safari, passkeys and passwords come from this app."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

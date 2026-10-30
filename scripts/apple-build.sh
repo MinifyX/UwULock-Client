@@ -9,16 +9,20 @@
 # (no rustup) or with UWULOCK_RUST_CORE=NO the app builds without a core: every command fails
 # "unsupported".
 #
-# Usage: scripts/apple-build.sh [ios] [macos] [direct] [--screens]
-#   no targets: ios and macos. direct: the Mac's disk-image build (Debug-Direct, Sparkle).
+# Usage: scripts/apple-build.sh [ios] [macos] [direct] [test] [--screens]
+#   no targets: ios and macos. test: the Mac's unit tests. direct: the Mac's disk-image build (Debug-Direct, Sparkle).
 #   UWULOCK_SIMULATOR: the simulator for --screens (name or UDID; default: newest iPhone).
 #   UWULOCK_CONFIGURATION: Debug (default) or Release.
 #   UWULOCK_RUST_CORE: NO builds without the Rust core.
+#   UWULOCK_DERIVED_DATA: the DerivedData folder (default apps/apple/build/DerivedData).
+#   UWULOCK_FFI_PREBUILT=1: use the Rust core in apps/apple/Frameworks + Generated as it is,
+#   without asking scripts/apple-xcframework.sh (CI: the core comes from its own job).
+#   test: also runs the macOS unit tests (UwULockPasskeysTests, scheme UwULock).
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 app="$root/apps/apple"
-derived="$app/build/DerivedData"
+derived="${UWULOCK_DERIVED_DATA:-$app/build/DerivedData}"
 screens="$app/docs-screens"
 config="${UWULOCK_CONFIGURATION:-Debug}"
 
@@ -26,16 +30,18 @@ targets=()
 take_screens=false
 for arg in "$@"; do
   case "$arg" in
-    ios | macos | direct) targets+=("$arg") ;;
+    ios | macos | direct | test) targets+=("$arg") ;;
     --screens) take_screens=true ;;
-    *) echo "Usage: $0 [ios] [macos] [direct] [--screens]" >&2; exit 2 ;;
+    *) echo "Usage: $0 [ios] [macos] [direct] [test] [--screens]" >&2; exit 2 ;;
   esac
 done
 [ ${#targets[@]} -gt 0 ] || targets=(ios macos)
 
 command -v xcodegen >/dev/null || { echo "xcodegen is missing: brew install xcodegen" >&2; exit 1; }
 
-if [ "${UWULOCK_RUST_CORE:-}" != NO ]; then
+if [ "${UWULOCK_RUST_CORE:-}" != NO ] && [ "${UWULOCK_FFI_PREBUILT:-}" = 1 ]; then
+  echo "--- Rust core: prebuilt"
+elif [ "${UWULOCK_RUST_CORE:-}" != NO ]; then
   if command -v rustup >/dev/null || [ -x /opt/homebrew/opt/rustup/bin/rustup ]; then
     "$root/scripts/apple-xcframework.sh"
   else
@@ -55,19 +61,19 @@ xcodegen generate --spec "$app/project.yml" --project "$app" --quiet
 
 # Prints only errors, warnings from our own sources and the result: the full log is long.
 build() {
-  local scheme="$1" configuration="$2" destination="$3" log
+  local scheme="$1" configuration="$2" destination="$3" action="${4:-build}" log
   log="$(mktemp)"
-  echo "--- build: $scheme ($configuration) for $destination"
+  echo "--- $action: $scheme ($configuration) for $destination"
   if ! xcodebuild -project "$app/UwULock.xcodeproj" -scheme "$scheme" \
     -configuration "$configuration" -destination "$destination" \
     -derivedDataPath "$derived" -skipPackagePluginValidation -skipMacroValidation \
-    CODE_SIGNING_ALLOWED=NO build >"$log" 2>&1; then
-    grep -E "error:|\*\* BUILD" "$log" | sort -u | head -50
+    CODE_SIGNING_ALLOWED=NO "$action" >"$log" 2>&1; then
+    grep -E "error:|\*\* (BUILD|TEST)|Test Case .* failed" "$log" | sort -u | head -50
     echo "Full log: $log" >&2
     return 1
   fi
   grep -E "^$app/.*(warning|error):" "$log" | sort -u | head -30 || true
-  grep -E "\*\* BUILD" "$log"
+  grep -E "\*\* (BUILD|TEST)|Executed [0-9]+ test" "$log" | tail -3
   rm -f "$log"
 }
 
@@ -76,6 +82,7 @@ for target in "${targets[@]}"; do
     ios) build UwULock "$config" "generic/platform=iOS Simulator" ;;
     macos) build UwULock "$config" "generic/platform=macOS" ;;
     direct) build "UwULock Direct" "$config-Direct" "generic/platform=macOS" ;;
+    test) build UwULock Debug "platform=macOS" test ;;
   esac
 done
 

@@ -104,8 +104,15 @@ final class FileRequestsModel {
 
     func save(_ request: FileRequest?, input: FileRequestInput, newLink: Bool, removePassword: Bool) async throws -> FileRequest {
         let saved: FileRequest
-        if usesFixtures {
-            saved = FileRequestFixtures.apply(input, to: request, newLink: newLink, removePassword: removePassword)
+        #if DEBUG
+        let fixture: FileRequest? = usesFixtures
+            ? FileRequestFixtures.apply(input, to: request, newLink: newLink, removePassword: removePassword)
+            : nil
+        #else
+        let fixture: FileRequest? = nil
+        #endif
+        if let fixture {
+            saved = fixture
         } else if let request {
             saved = try await requireCore().updateFileRequest(
                 id: request.id, input: input, newLink: newLink, removePassword: removePassword)
@@ -140,7 +147,7 @@ final class FileRequestsModel {
             if !usesFixtures {
                 try await requireCore().copyGenerated(text: link)
             }
-            FeatureToasts.shared.show(featureString("Link kopiert ✧"))
+            FeatureToasts.shared.show(copiedLinkText())
         } catch {
             FeatureToasts.shared.show(error: error)
         }

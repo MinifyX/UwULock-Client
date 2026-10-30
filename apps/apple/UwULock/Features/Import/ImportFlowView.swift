@@ -174,7 +174,6 @@ private struct ImportPickStep: View {
                             Text(features: "Ansehen").frame(maxWidth: .infinity)
                         }
                         .uwuProminentButton()
-                        .foregroundStyle(Color.uwuOnPink)
                     }
                     .disabled(flow.busy)
                 }
@@ -221,7 +220,6 @@ private struct ImportPickStep: View {
                     .frame(maxWidth: .infinity)
                 }
                 .uwuProminentButton()
-                .foregroundStyle(Color.uwuOnPink)
                 .controlSize(.large)
                 .disabled(reading)
                 .keyboardShortcut("o", modifiers: .command)
@@ -320,7 +318,6 @@ private struct ImportPasswordStep: View {
                         .frame(maxWidth: .infinity)
                     }
                     .uwuProminentButton()
-                    .foregroundStyle(Color.uwuOnPink)
                     .disabled(flow.busy || (password.isEmpty && keyFile == nil))
                     .keyboardShortcut(.defaultAction)
                 }

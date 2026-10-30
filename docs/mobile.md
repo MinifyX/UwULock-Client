@@ -12,7 +12,7 @@ by card with a swipe ([uwu-extras.md](uwu-extras.md#password-check)).
 | Phone                       | File under **Assets**                  |
 | --------------------------- | -------------------------------------- |
 | Android 10 or newer (arm64) | `UwULock-android.apk`                  |
-| iPhone with iOS 17 or newer | `UwULock-ios.ipa` (unsigned, sideload) |
+| iPhone with iOS 27 or newer | `UwULock-ios.ipa` (unsigned, sideload) |
 
 **Not in this release:** UwULock doesn't fill logins into other apps yet — no
 Android autofill service, no iOS password provider. Copy and paste works; filling
@@ -87,13 +87,13 @@ Management**.
 Requirements on top of the desktop ones: for Android JDK 21, the Android SDK
 (platform 36, build tools) and NDK 28, with `JAVA_HOME`, `ANDROID_HOME` and
 `NDK_HOME` set, and `rustup target add aarch64-linux-android`; for iOS a Mac
-with Xcode, `xcodegen` and `rustup target add aarch64-apple-ios aarch64-apple-ios-sim`.
+with Xcode 27 and `xcodegen`: the iPhone app is the native one in `apps/apple`
+(`scripts/apple-build.sh ios`, [native-apple-plan.md](native-apple-plan.md)).
 
 ```bash
 pnpm mobile:prepare          # once: the app library also as cdylib/staticlib
 pnpm tauri android build --apk --target aarch64
 pnpm tauri android dev       # on a connected phone or an emulator
-pnpm tauri ios init && pnpm tauri ios dev
 ```
 
 `pnpm mobile:prepare` changes `crate-type` in
@@ -102,9 +102,7 @@ and tests stay faster without it. Don't commit it
 (`git checkout apps/desktop/src-tauri/Cargo.toml`).
 
 `apps/desktop/src-tauri/gen/android` is in the repository (MainActivity, theme,
-icons, signing in `app/build.gradle.kts`). The Xcode project isn't:
-`tauri ios init` writes it fresh, and `scripts/ios-build.sh` switches signing
-off and merges `Info.ios.plist` into it.
+icons, signing in `app/build.gradle.kts`).
 
 ## CI and releases
 
@@ -112,12 +110,10 @@ off and merges `Info.ios.plist` into it.
   separate job (release key only for a `v*` tag, otherwise the CI key; the
   release certificate's fingerprint above is checked in both directions), and
   starts it in an emulator (`scripts/android-smoke.sh`).
-- `.github/workflows/ios.yml` builds for the simulator and starts that build
-  (`scripts/ios-smoke.sh`), and in a second job side by side builds for the
-  iPhone and packs the unsigned IPA (artifact `UwULock-iOS-<sha>`). Pull
-  requests only get the simulator job.
-- On a tag and by hand, `ios.yml`'s job `testflight` signs that same IPA for the
-  App Store and uploads it to TestFlight ([app-store.md](app-store.md)).
+- `.github/workflows/apple.yml` builds the native app for the iOS Simulator on
+  pull requests and main; on a tag it archives it, packs the unsigned IPA
+  (artifact `apple-ios`) and signs the same archive for the App Store and
+  uploads it to TestFlight ([app-store.md](app-store.md)).
 - Both run for pull requests that touch the app, for main and for tags.
   `pnpm release` takes the APK and the IPA of the tag's runs, checks the APK's
   certificate (`scripts/apk-cert.mjs`) and publishes them as

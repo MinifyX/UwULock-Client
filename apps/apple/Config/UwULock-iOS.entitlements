@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- iOS/iPadOS (scripts/ios-sign.sh, Info.ios.plist). The first Keychain group is the default
+<!-- iOS/iPadOS, the Tauri build's groups. The first Keychain group is the default
      one: the biometric unlock secret lives there. -->
 <plist version="1.0">
 <dict>

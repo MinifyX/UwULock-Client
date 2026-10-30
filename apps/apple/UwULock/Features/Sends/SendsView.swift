@@ -107,7 +107,6 @@ struct SendsView: View {
                                 Label(features: "Text", uwuIcon: .add)
                             }
                             .uwuProminentButton()
-                            .foregroundStyle(Color.uwuOnPink)
                             Button { editing = .new(.file) } label: {
                                 Label(features: "Datei", uwuIcon: .add)
                             }

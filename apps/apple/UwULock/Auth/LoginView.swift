@@ -87,14 +87,9 @@ private struct LoginForm: View {
     private var busy: Bool { model.busy }
     private var locked: Bool { mode == .again }
 
-    /// SSO goes through the system browser and back to this computer: self-hosted, Mac only.
-    private var ssoOffered: Bool {
-        #if os(macOS)
-        kind == .selfHosted
-        #else
-        false
-        #endif
-    }
+    /// SSO comes back to a listener on this device: self-hosted servers only. The Mac uses the
+    /// system browser, iOS the page in the app (SsoBrowser).
+    private var ssoOffered: Bool { kind == .selfHosted }
 
     var body: some View {
         VStack(alignment: .leading, spacing: UwUSpacing.md) {

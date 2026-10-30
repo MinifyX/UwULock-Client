@@ -89,23 +89,32 @@ struct TravelModeBadge: View {
     private var travel: UwuTravel { store.status.travel }
     private var count: Int? { travel.hiddenCount ?? hidden }
 
+    /// A row of the iPhone's vault overview (Overview.tsx) instead of the toolbar's pill.
+    var row = false
+
     var body: some View {
         if travel.enabled {
             Button {
                 open = true
             } label: {
-                Label {
-                    title
-                } icon: {
-                    UwUIcon(.travelMode, size: .sm)
+                if row {
+                    Label {
+                        title.foregroundStyle(Color.uwuInk)
+                    } icon: {
+                        UwUIcon(.travelMode).foregroundStyle(Color.uwuWarningInk)
+                    }
+                } else {
+                    Label {
+                        title
+                    } icon: {
+                        UwUIcon(.travelMode, size: .sm)
+                    }
+                    .uwuFont(.subheadline, weight: .semibold)
+                    .foregroundStyle(Color.uwuWarningInk)
+                    .padding(.horizontal, UwUSpacing.xs)
                 }
-                .uwuFont(.subheadline, weight: .semibold)
-                .foregroundStyle(Color.uwuWarningInk)
             }
             .buttonStyle(.borderless)
-            .padding(.horizontal, UwUSpacing.sm)
-            .padding(.vertical, UwUSpacing.xxs + 2)
-            .uwuGlass(in: Capsule(), interactive: true)
             .help(Text(features: "Reisemodus ist an"))
             .accessibilityLabel(title)
             .accessibilityHint(Text(features: "Reisemodus ist an"))

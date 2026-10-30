@@ -1,6 +1,6 @@
 //! iOS 17+ and macOS 14+: the AutoFill extension's side of the vault.
 //!
-//! The extension (`apps/desktop/src-tauri/apple/PasskeyProvider`, Swift) is
+//! The extension (`apps/apple/CredentialProvider`, Swift) is
 //! its own process, started by the system while UwULock may not run at all.
 //! So while the vault is open, the app keeps a **sealed list** of the
 //! account's passkeys in the App Group folder they share, and takes in the

@@ -42,7 +42,9 @@ struct AuthScaffold<Content: View>: View {
         }
         .scrollBounceBehavior(.basedOnSize)
         .scrollDismissesKeyboardIfPhone()
-        .defaultScrollAnchor(.center)
+        // Centred when it fits; taller (phone, keyboard up) it starts at the top, clear of the island.
+        .defaultScrollAnchor(.center, for: .alignment)
+        .defaultScrollAnchor(.top, for: .initialOffset)
         .background(.uwuCanvas)
     }
 }

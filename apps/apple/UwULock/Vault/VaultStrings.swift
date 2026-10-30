@@ -131,14 +131,15 @@ func spacedCode(_ code: String) -> String {
     return "\(code.prefix(half)) \(code.dropFirst(half))"
 }
 
-/// `copiedText`: what the toast says after a copy.
-func copiedText(_ field: String) -> String {
-    switch field {
-    case "username": vt("Benutzername kopiert ✧")
-    case "password": vt("Passwort kopiert ✧")
-    case "totp", "totp-next": vt("Code kopiert ✧")
-    default: vt("Kopiert ✧")
+/// `copiedText`: what the toast says after a copy, and when the clipboard is cleared again.
+func copiedText(_ field: String, seconds: Int = SecurityPrefs.current.clipboardClear) -> String {
+    let what = switch field {
+    case "username": vt("Benutzername kopiert")
+    case "password": vt("Passwort kopiert")
+    case "totp", "totp-next": vt("Code kopiert")
+    default: vt("Kopiert")
     }
+    return seconds > 0 ? vt("\(what) ✧ – wird nach \(seconds) s geleert") : "\(what) ✧"
 }
 
 /// A password with letters, digits and symbols in their own colours (`charClasses`).

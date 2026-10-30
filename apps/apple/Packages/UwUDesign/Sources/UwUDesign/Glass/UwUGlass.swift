@@ -17,9 +17,12 @@ extension View {
         return glassEffect(glass, in: shape)
     }
 
-    /// The main action: `.glassProminent` in the accent colour.
+    /// The main action: `.glassProminent` in the accent colour, its label in the ink that reads
+    /// on pink (the system's white would fail contrast on the light accent).
     public func uwuProminentButton() -> some View {
-        buttonStyle(.glassProminent).tint(.uwuPinkSolid)
+        buttonStyle(.glassProminent)
+            .tint(.uwuPinkSolid)
+            .foregroundStyle(Color.uwuOnPink)
     }
 
     /// A secondary action: `.glass`.

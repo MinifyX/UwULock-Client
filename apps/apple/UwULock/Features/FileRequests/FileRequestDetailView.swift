@@ -205,7 +205,6 @@ struct FileRequestDetailView: View {
                             .frame(maxWidth: .infinity)
                     }
                     .uwuProminentButton()
-                    .foregroundStyle(Color.uwuOnPink)
                     .keyboardShortcut("c", modifiers: [.command, .shift])
                     .help(Text(features: "Link kopieren"))
                     if let url = URL(string: link) {

@@ -1,10 +1,12 @@
 // Publishes the UwULock version in tauri.conf.json, for Windows, macOS,
-// Linux, Android and iOS, from the machine that holds the update signing key.
+// Linux, Android and iOS, from the machine that holds the update signing keys.
 //
 //   pnpm release                  fetch what CI built for the tag (Windows x64
-//                                 and ARM, macOS, Linux, the browser extension,
-//                                 the Android APK and the iPhone IPA), sign what
-//                                 the updater runs, check everything, publish it
+//                                 and ARM, Linux, the browser extension, the
+//                                 native Mac app's disk image and migration
+//                                 setup, the Android APK and the iPhone IPA),
+//                                 sign what the updaters run, check everything,
+//                                 publish it
 //   pnpm release --build-windows  the same, but build the Windows x64 setup here
 //                                 (on Windows) instead of taking CI's
 //   pnpm release --no-build       take the Windows x64 setup already in
@@ -23,11 +25,20 @@
 // downloads it and signs the files the updater runs here. Only a Windows x64
 // setup built here (--build-windows, --windows-only) needs Windows.
 //
-// The phones come from their own workflows: android.yml signs the APK of a tag
-// with the Android release key (a GitHub secret; never on this machine), and
-// this script checks it carries UwULock's certificate. ios.yml builds the IPA
-// unsigned; a sideloading tool signs it with the user's own Apple ID. Neither
-// is in the update feed: phones update by installing the new file.
+// The Mac and the iPhone get the native app (apps/apple), from apple.yml's run
+// for the tag: the disk image (Developer ID and notarized when CI has the
+// certificate, else ad-hoc), the IPA for sideloading (unsigned; the store build
+// went to TestFlight from CI) and the migration setup. The native app updates
+// itself with Sparkle: this script signs the disk image with the Sparkle key
+// (scripts/sparkle.mjs: the login keychain of this Mac, or SPARKLE_PRIVATE_KEY /
+// SPARKLE_KEY_FILE) and writes appcast-stable.xml / appcast-beta.xml. The Tauri
+// app still installed on a Mac finds the migration setup under darwin-* in the
+// JSON feeds, signed with the Tauri key like every setup; it puts the native
+// app in the Tauri app's place (docs/install.md).
+//
+// android.yml signs the APK of a tag with the Android release key (a GitHub
+// secret; never on this machine), and this script checks it carries UwULock's
+// certificate. Phones update by installing the new file (or from TestFlight).
 //
 // The release's files carry no version in their names (UwULock-windows-x64-setup.exe,
 // UwULock-linux-arm64.deb, …), so a link to the newest one never changes.
@@ -61,6 +72,7 @@ import { fileURLToPath } from 'node:url';
 import { apkCertificates } from './apk-cert.mjs';
 import { aurFiles, writeAur } from './aur.mjs';
 import { FEED_BRANCH, REPOSITORY, releaseFeeds } from './release-feeds.mjs';
+import { signFile as sparkleSign, verifyFile as sparkleVerify } from './sparkle.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const git = (args, cwd = root) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
@@ -82,10 +94,12 @@ const tag = `v${version}`;
 const installers = join(root, 'target', 'installers');
 const windowsName = 'UwULock-windows-x64-setup.exe';
 const windowsSetup = join(installers, windowsName);
+const MAC_DMG = 'UwULock-macos-universal.dmg';
 
 /**
  * What the release carries: each file under its published name, the CI
- * artifact it comes from (none: from this machine), and for the ones an installed app
+ * artifact it comes from (none: from this machine) and its workflow (default
+ * installers.yml), and for the ones an installed app
  * updates itself with, `sign`: the feed's platform key → the versioned name the
  * signature has to carry. Those names are what installed apps check
  * (`setup_name` in apps/desktop/src-tauri/src/updates.rs); never change one,
@@ -115,10 +129,13 @@ const PLATFORMS = [
     file: 'UwULock-windows-arm64-setup.exe',
     sign: { 'windows-aarch64': `UwULock-Setup-${version}-windows-arm64.exe` },
   },
-  { artifact: 'installers-macos-universal', file: 'UwULock-macos-universal.dmg' },
+  // The native app (apple.yml): the disk image, signed for Sparkle below.
+  { workflow: 'apple.yml', artifact: 'apple-macos', file: MAC_DMG },
   {
+    // What the Tauri app on a Mac updates to: the setup that replaces it with the native app.
     // One universal program for both Mac platforms, signed once under each name.
-    artifact: 'installers-macos-universal',
+    workflow: 'apple.yml',
+    artifact: 'apple-migration',
     file: 'UwULock-update-macos-universal',
     sign: {
       'darwin-aarch64': `UwULock-Setup-${version}-macos-arm64-update`,
@@ -137,11 +154,16 @@ const PLATFORMS = [
   // install by hand, nothing an updater runs, so nothing to sign.
   { artifact: 'extension', file: 'UwULock-extension-chromium.zip' },
   { artifact: 'extension', file: 'UwULock-extension-firefox.xpi' },
+  // The native iPhone/iPad app, unsigned, for sideloading (TestFlight has the store build).
+  { workflow: 'apple.yml', artifact: 'apple-ios', file: 'UwULock-ios.ipa' },
 ].filter((entry) => !windowsOnly || entry.file === windowsName);
+const WORKFLOWS = [
+  ...new Set(PLATFORMS.filter((p) => p.artifact).map((p) => p.workflow ?? 'installers.yml')),
+];
 
 /**
- * The phones: each from its own workflow's run for the tag, the file found by
- * its versioned name and published under a plain one. The APK must carry the
+ * Android, from its own workflow's run for the tag, the file found by its
+ * versioned name and published under a plain one. The APK must carry the
  * certificate of every released UwULock APK (as in android.yml).
  */
 const APK_CERTIFICATE_SHA256 = 'fd6323aea832996ed56a55d11cfcd26a61ecb159b3f9b980f1429b5de6500a1c';
@@ -153,12 +175,6 @@ const PHONES = windowsOnly
         artifact: (sha) => `UwULock-Android-${sha}`,
         pattern: new RegExp(`^UwULock-${version.replaceAll('.', '\\.')}-\\d+\\.apk$`),
         file: 'UwULock-android.apk',
-      },
-      {
-        workflow: 'ios.yml',
-        artifact: (sha) => `UwULock-iOS-${sha}`,
-        pattern: new RegExp(`^UwULock-${version.replaceAll('.', '\\.')}-unsigned\\.ipa$`),
-        file: 'UwULock-ios.ipa',
       },
     ];
 
@@ -208,39 +224,60 @@ if (build) {
   fail('The setup in target/installers is older than the release commit. Run without --no-build.');
 }
 
-/** Whether CI signed the disk image with the Developer ID and Apple notarized it (installers.yml). */
+/** Whether CI signed the disk image with the Developer ID and Apple notarized it (apple.yml). */
 let macNotarized = false;
+/** The disk image's Sparkle signature, for the appcasts. */
+let sparkle;
 
 const work = mkdtempSync(join(tmpdir(), 'uwulock-release-'));
 try {
   const files = new Map(localWindows ? [[windowsName, windowsSetup]] : []);
   if (!windowsOnly) {
     console.log(
-      `\n▸ Fetching what CI built for this tag: ${localWindows ? '' : 'Windows x64, '}Windows ARM, macOS, Linux, the browser extension`,
+      `\n▸ Fetching what CI built for this tag: ${localWindows ? '' : 'Windows x64, '}Windows ARM, Linux, the browser extension (installers.yml); macOS, iPhone (apple.yml)`,
     );
     const ci = join(work, 'ci');
-    const run = await ciRun(head, 'installers.yml');
-    execFileSync('gh', ['run', 'download', String(run), '--repo', REPOSITORY, '--dir', ci], {
-      stdio: 'inherit',
-    });
+    for (const workflow of WORKFLOWS) {
+      // The tag's own run (apple.yml also runs for main).
+      const run = await ciRun(head, workflow, tag);
+      execFileSync(
+        'gh',
+        ['run', 'download', String(run), '--repo', REPOSITORY, '--dir', join(ci, workflow)],
+        { stdio: 'inherit' },
+      );
+    }
     for (const entry of PLATFORMS.filter((p) => p.artifact)) {
-      const from = join(ci, entry.artifact, entry.file);
+      const from = join(ci, entry.workflow ?? 'installers.yml', entry.artifact, entry.file);
       if (!existsSync(from)) fail(`CI left no ${entry.file} in ${entry.artifact}.`);
       const to = join(installers, entry.file);
       mkdirSync(installers, { recursive: true });
       copyFileSync(from, to);
       files.set(entry.file, to);
     }
-    const macSigning = join(ci, 'installers-macos-universal', 'UwULock-macos-signing.txt');
-    macNotarized =
-      existsSync(macSigning) && readFileSync(macSigning, 'utf8').trim() === 'developer-id';
+    // What apple.yml's sign job read from the app it put into the disk image.
+    const macInfo = join(ci, 'apple.yml', 'apple-macos', 'UwULock-macos.json');
+    if (!existsSync(macInfo)) fail('apple.yml left no UwULock-macos.json in apple-macos.');
+    const mac = JSON.parse(readFileSync(macInfo, 'utf8'));
+    if (mac.version !== version)
+      fail(`The disk image holds UwULock ${mac.version}, not ${version}.`);
+    if (!/^\d+(\.\d+)*$/.test(mac.build ?? ''))
+      fail(`The disk image's build number is ${mac.build}.`);
+    macNotarized = mac.signing === 'developer-id';
     console.log(
       macNotarized
-        ? '  ✓ the disk image is signed with the Developer ID and notarized'
-        : '  ! the disk image is only ad-hoc signed (no Developer ID in CI)',
+        ? `  ✓ the disk image is signed with the Developer ID and notarized (build ${mac.build})`
+        : `  ! the disk image is only ad-hoc signed (no Developer ID in CI; build ${mac.build})`,
     );
 
-    console.log('\n▸ Fetching the Android APK and the iPhone IPA of this tag');
+    // Sparkle checks every update against the key the installed app carries; the key stays on
+    // this machine like the Tauri one.
+    console.log('\n▸ Signing the disk image for Sparkle');
+    const dmg = files.get(MAC_DMG);
+    const { signature, length } = sparkleSign(dmg);
+    sparkle = { name: MAC_DMG, signature, length, build: mac.build };
+    console.log(`  ✓ ${MAC_DMG}: ${length} bytes, signature checked against the app's key`);
+
+    console.log('\n▸ Fetching the Android APK of this tag');
     for (const phone of PHONES) {
       const dir = join(work, phone.workflow);
       // The tag's own run: a push to main of the same commit is signed with the CI key.
@@ -354,7 +391,7 @@ try {
     { stdio: 'inherit' },
   );
 
-  const feeds = releaseFeeds({ version, notes, setups: signed });
+  const feeds = releaseFeeds({ version, notes, setups: signed, sparkle });
   console.log(`\n▸ Updating ${Object.keys(feeds).join(', ')} on ${FEED_BRANCH}`);
   const dir = join(work, 'feeds');
   const remote = `https://github.com/${REPOSITORY}.git`;
@@ -368,11 +405,16 @@ try {
     writeFileSync(
       join(dir, 'README.md'),
       '# Update feeds\n\nWritten by `pnpm release` on the main branch. Installed UwULock apps read ' +
-        '`stable.json` or `beta.json` from here, depending on their update channel.\n',
+        '`stable.json` or `beta.json` from here, depending on their update channel; the native ' +
+        'Mac app reads `appcast-stable.xml` or `appcast-beta.xml` (Sparkle).\n',
     );
   }
   for (const [name, feed] of Object.entries(feeds)) {
-    writeFileSync(join(dir, name), `${JSON.stringify(feed, null, 2)}\n`);
+    // The appcasts come as XML text, the Tauri feeds as objects.
+    writeFileSync(
+      join(dir, name),
+      typeof feed === 'string' ? feed : `${JSON.stringify(feed, null, 2)}\n`,
+    );
   }
   git(['add', '--all'], dir);
   git(
@@ -410,10 +452,23 @@ try {
     if (entry.url !== asset.browser_download_url)
       fail(`${feedName} points elsewhere for ${platform}.`);
   }
+  if (sparkle) {
+    const appcastName = version.includes('-') ? 'appcast-beta.xml' : 'appcast-stable.xml';
+    const appcast = await github(`contents/${appcastName}?ref=${FEED_BRANCH}`);
+    const xml = appcast && Buffer.from(appcast.content, 'base64').toString('utf8');
+    const asset = release.assets.find((a) => a.name === sparkle.name);
+    if (!xml?.includes(`sparkle:edSignature="${sparkle.signature}"`))
+      fail(`${appcastName} wasn't updated.`);
+    if (!xml.includes(`url="${asset.browser_download_url}"`))
+      fail(`${appcastName} points elsewhere.`);
+    if (!sparkleVerify(files.get(sparkle.name), sparkle.signature))
+      fail(`The Sparkle signature doesn't match ${sparkle.name}.`);
+  }
   console.log(`\n✧ UwULock ${version} is out: ${release.html_url}`);
   console.log(
     `  ${feedName} updated for ${Object.keys(signed).join(', ')}${version.includes('-') ? ' (Beta channel)' : ''}`,
   );
+  if (sparkle) console.log(`  appcast for the native Mac app updated (build ${sparkle.build})`);
 
   if (!windowsOnly) aur(readFileSync(sums, 'utf8'));
 } finally {
@@ -430,11 +485,7 @@ function releaseBody(aurLive) {
   const rows = [
     ['Windows (x64)', 'Windows (x64)', code(windowsName)],
     ['Windows auf ARM', 'Windows on ARM', code('UwULock-windows-arm64-setup.exe')],
-    [
-      'macOS (Intel & Apple-Chip)',
-      'macOS (Intel & Apple chip)',
-      code('UwULock-macos-universal.dmg'),
-    ],
+    ['macOS 27 (Intel & Apple-Chip)', 'macOS 27 (Intel & Apple chip)', code(MAC_DMG)],
     [
       'Ubuntu / Debian',
       'Ubuntu / Debian',
@@ -470,8 +521,8 @@ function releaseBody(aurLive) {
     ],
     ['Android (ab 10)', 'Android (10 and later)', code('UwULock-android.apk')],
     [
-      'iPhone (ab iOS 17, unsigniert)',
-      'iPhone (iOS 17 and later, unsigned)',
+      'iPhone & iPad (ab iOS 27): TestFlight, oder unsigniert',
+      'iPhone & iPad (iOS 27 and later): TestFlight, or unsigned',
       code('UwULock-ios.ipa'),
     ],
   ].filter(([, , files]) => {
@@ -480,9 +531,10 @@ function releaseBody(aurLive) {
   });
   const table = (column) =>
     ['| | |', '|---|---|', ...rows.map((row) => `| ${row[column]} | ${row[2]} |`)].join('\n');
-  const mac = has('UwULock-macos-universal.dmg');
+  const mac = has(MAC_DMG);
   const extension = has('UwULock-extension-chromium.zip');
   const phones = has('UwULock-android.apk');
+  const iphone = has('UwULock-ios.ipa');
   const mobileGuide = `https://github.com/${REPOSITORY}/blob/main/docs/mobile.md`;
   const extensionGuide = `https://github.com/${REPOSITORY}/blob/main/docs/extension.md`;
   const de = [
@@ -491,8 +543,8 @@ function releaseBody(aurLive) {
     ...(mac
       ? [
           macNotarized
-            ? `macOS: die \`.dmg\` öffnen und **UwULock Setup** starten (von Apple notarisiert). Die Safari-Erweiterung kommt mit: in Safari unter **Einstellungen → Erweiterungen** einschalten ([Anleitung](${extensionGuide})).`
-            : 'macOS: die `.dmg` öffnen und **UwULock Setup** starten. UwULock ist nicht bei Apple notarisiert (keine Developer ID): sagt macOS, es könne das Programm nicht prüfen, unter **Systemeinstellungen → Datenschutz & Sicherheit → Trotzdem öffnen** freigeben.',
+            ? `macOS: die \`.dmg\` öffnen und **UwULock** in den Ordner **Programme** ziehen (von Apple notarisiert, aktualisiert sich selbst). Die Safari-Erweiterung kommt mit: in Safari unter **Einstellungen → Erweiterungen** einschalten ([Anleitung](${extensionGuide})). Ein installiertes älteres UwULock wechselt mit seinem nächsten Update von selbst zur neuen App.`
+            : 'macOS: die `.dmg` öffnen und **UwULock** in den Ordner **Programme** ziehen. Diese Ausgabe ist nicht bei Apple notarisiert (keine Developer ID): sagt macOS, es könne die App nicht prüfen, unter **Systemeinstellungen → Datenschutz & Sicherheit → Trotzdem öffnen** freigeben. Ohne Developer ID fehlen Automatisches Ausfüllen und der geteilte Schlüsselbund.',
         ]
       : []),
     ...(windowsOnly
@@ -507,7 +559,12 @@ function releaseBody(aurLive) {
       : []),
     ...(phones
       ? [
-          `Android: die \`.apk\` auf dem Handy öffnen und die Installation aus dieser Quelle erlauben; neue Versionen genauso darüber installieren. iPhone: die \`.ipa\` ist unsigniert und lässt sich nur mit einem Sideloading-Werkzeug wie AltStore oder Sideloadly und der eigenen Apple-ID installieren ([Anleitung](${mobileGuide})).`,
+          'Android: die `.apk` auf dem Handy öffnen und die Installation aus dieser Quelle erlauben; neue Versionen genauso darüber installieren.',
+        ]
+      : []),
+    ...(iphone
+      ? [
+          `iPhone und iPad: über TestFlight. Die \`.ipa\` ist unsigniert und lässt sich nur mit einem Sideloading-Werkzeug wie AltStore oder Sideloadly und der eigenen Apple-ID installieren ([Anleitung](${mobileGuide})).`,
         ]
       : []),
   ];
@@ -517,8 +574,8 @@ function releaseBody(aurLive) {
     ...(mac
       ? [
           macNotarized
-            ? `macOS: open the \`.dmg\` and start **UwULock Setup** (notarized by Apple). The Safari extension comes with it: turn it on in Safari under **Settings → Extensions** ([guide](${extensionGuide})).`
-            : "macOS: open the `.dmg` and start **UwULock Setup**. UwULock isn't notarized by Apple (no developer ID): if macOS says it can't check the app, allow it under **System Settings → Privacy & Security → Open Anyway**.",
+            ? `macOS: open the \`.dmg\` and drag **UwULock** into **Applications** (notarized by Apple, updates itself). The Safari extension comes with it: turn it on in Safari under **Settings → Extensions** ([guide](${extensionGuide})). An older UwULock already installed moves over to the new app with its next update.`
+            : "macOS: open the `.dmg` and drag **UwULock** into **Applications**. This build isn't notarized by Apple (no developer ID): if macOS says it can't check the app, allow it under **System Settings → Privacy & Security → Open Anyway**. Without a developer ID, AutoFill and the shared keychain are missing.",
         ]
       : []),
     ...(windowsOnly
@@ -533,7 +590,12 @@ function releaseBody(aurLive) {
       : []),
     ...(phones
       ? [
-          `Android: open the \`.apk\` on the phone and allow installing from that source; install new versions over it the same way. iPhone: the \`.ipa\` is unsigned and only installs through a sideloading tool such as AltStore or Sideloadly with your own Apple ID ([guide](${mobileGuide})).`,
+          'Android: open the `.apk` on the phone and allow installing from that source; install new versions over it the same way.',
+        ]
+      : []),
+    ...(iphone
+      ? [
+          `iPhone and iPad: through TestFlight. The \`.ipa\` is unsigned and only installs through a sideloading tool such as AltStore or Sideloadly with your own Apple ID ([guide](${mobileGuide})).`,
         ]
       : []),
   ];

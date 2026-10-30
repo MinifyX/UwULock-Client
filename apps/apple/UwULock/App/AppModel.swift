@@ -186,7 +186,8 @@ final class AppModel {
         }
     }
 
-    /// SSO in the system browser (self-hosted servers on the Mac only, as on the desktop).
+    /// SSO for self-hosted servers: the system browser on the Mac (as on the desktop), the page
+    /// in the app on iOS (SsoBrowser).
     func logInWithSso(server: ServerInput, email: String?) {
         guard core.isAvailable, !pinned else { return }
         loginNotice = nil
@@ -194,11 +195,23 @@ final class AppModel {
         flow += 1
         let id = flow
         loginStage = .browser
+        #if os(iOS)
+        SsoBrowser.shared.begin { [weak self] in
+            guard let self, self.flow == id else { return }
+            self.backToForm()
+        }
+        #endif
         Task {
             do {
                 let step = try await core.loginSso(server: server, email: email)
+                #if os(iOS)
+                SsoBrowser.shared.finish()
+                #endif
                 advance(step, flow: id, remember: (server, email ?? ""))
             } catch {
+                #if os(iOS)
+                SsoBrowser.shared.finish()
+                #endif
                 guard flow == id else { return }
                 loginStage = .form
                 let failure = Core.failure(error)
@@ -260,6 +273,9 @@ final class AppModel {
         flow += 1
         failure = nil
         loginStage = .form
+        #if os(iOS)
+        SsoBrowser.shared.finish()
+        #endif
         if core.isAvailable, !pinned {
             Task { try? await core.loginCancel() }
         }

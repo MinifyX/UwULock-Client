@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- The AutoFill extension's Info.plist (passwords and passkeys). iOS: Xcode fills in the $(…) values (scripts/ios-build.sh
-     adds the target). macOS: scripts/macos-passkeys.sh fills them in itself. -->
+<!-- The AutoFill extension's Info.plist (passwords and passkeys). Xcode fills in
+     the $(…) values (project.yml). -->
 <plist version="1.0">
 <dict>
 	<key>CFBundleDevelopmentRegion</key>

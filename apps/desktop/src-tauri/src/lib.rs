@@ -9,33 +9,26 @@
 //! - [`host`] — events to the page, the window, the clipboard, biometrics,
 //!   the phone's plugin
 //! - [`system`] — what only the Tauri app has: updates, the system bars
-//! - [`hello`] — Windows Hello's signature, Touch ID's Keychain item
+//! - [`hello`] — Windows Hello's signature
 //! - [`session_lock`] — whether the screen is locked; Linux's logind and
 //!   screen saver
-//! - [`phone`] — Android and iOS: the plugin
+//! - [`phone`] — Android: the plugin
 //! - [`passkeys`] — the providers that live with the platform: a virtual
 //!   security key (Linux), a plugin passkey manager (Windows), Credential
 //!   Manager (Android)
-//! - [`apple`] — the AutoFill extension's system half (iOS, macOS)
-//! - [`safari`] — Safari, asked about the Mac builds' extension
 //!
-//! The same app runs on Android and iOS (docs/mobile.md); what only a
-//! desktop has — the updater, Windows Hello, the screen lock — is left out
-//! there by `#[cfg(desktop)]`/`#[cfg(mobile)]`. The updater is `#[cfg(self_update)]`
-//! (build.rs): the Mac App Store build has none either (docs/app-store.md).
+//! This app is for Windows, Linux and Android; macOS and iOS have the native
+//! app (apps/apple). The same app runs on Android (docs/mobile.md); what only
+//! a desktop has — the updater, Windows Hello, the screen lock — is left out
+//! there by `#[cfg(desktop)]`/`#[cfg(mobile)]`. The updater is
+//! `#[cfg(self_update)]` (build.rs).
 
-#[cfg(any(target_os = "ios", target_os = "macos"))]
-mod apple;
-#[cfg(target_os = "macos")]
-mod blocks;
 mod commands;
 mod hello;
 mod host;
 mod passkeys;
 #[cfg(mobile)]
 mod phone;
-#[cfg(target_os = "macos")]
-mod safari;
 mod session_lock;
 mod system;
 #[cfg(self_update)]
@@ -56,7 +49,7 @@ pub fn run() {
         .with_env_filter(std::env::var("UWULOCK_LOG").unwrap_or_else(|_| {
             "uwulock=debug,uwulock_bitwarden=debug,uwulock_core=debug,warn".to_string()
         }))
-        // Android's log and Xcode's console show no colours, only their codes.
+        // Android's log shows no colours, only their codes.
         .with_ansi(cfg!(desktop))
         .init();
 
@@ -70,18 +63,6 @@ pub fn run() {
 
     builder
         .setup(|app| {
-            // macOS ends an app without asking the window; this asks the page
-            // first (`onMacQuit` in App.tsx, answered through `finish_quit`).
-            #[cfg(target_os = "macos")]
-            {
-                use tauri::Emitter;
-                let handle = app.handle().clone();
-                if let Err(error) = uwu_macos::install_quit_guard(move || {
-                    handle.emit(uwu_macos::QUIT_EVENT, ()).is_ok()
-                }) {
-                    tracing::warn!(%error, "quit guard");
-                }
-            }
             #[cfg(self_update)]
             if updates::apply_pending_on_start(app.handle()) {
                 // The downloaded setup replaces this version and starts UwULock again.
@@ -113,7 +94,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            finish_quit,
             commands::vault::vault_status,
             commands::vault::login,
             commands::vault::login_two_factor,
@@ -253,27 +233,7 @@ pub fn run() {
                     _ => {}
                 }
             }
-            // macOS: ⌘W only hid the window (App.tsx); a click on the Dock
-            // icon brings it back.
-            #[cfg(target_os = "macos")]
-            if let tauri::RunEvent::Reopen {
-                has_visible_windows: false,
-                ..
-            } = event
-            {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
-            }
-            #[cfg(all(desktop, not(target_os = "macos")))]
+            #[cfg(desktop)]
             let _ = (app, event);
         });
-}
-
-/// The page's answer to a quit from the Dock, ⌘Q or a logout (macOS): go ahead
-/// or stay. Does nothing elsewhere.
-#[tauri::command]
-fn finish_quit(proceed: bool) {
-    uwu_macos::reply_quit(proceed);
 }

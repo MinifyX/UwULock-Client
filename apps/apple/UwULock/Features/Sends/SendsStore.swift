@@ -122,7 +122,7 @@ enum SendsLink {
                 return
             }
         }
-        FeatureToasts.shared.show(featureString("Link kopiert ✧"))
+        FeatureToasts.shared.show(copiedLinkText())
     }
 
     /// Copies a new Send's link without a toast; true when it worked.

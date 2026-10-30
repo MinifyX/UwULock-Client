@@ -2,82 +2,104 @@
 
 [Deutsch weiter unten](#uwulock-im-app-store-testflight)
 
-UwULock comes in two forms on Apple's systems. The **GitHub builds** stay what they were: the
-DMG for the Mac (updates itself) and the unsigned IPA for sideloading on the iPhone
-([mobile.md](mobile.md)). The **App Store builds** are the same app, signed by the developer
-team and uploaded to App Store Connect, one app for iPhone, iPad and Mac (bundle ID
+UwULock comes to Apple's systems as one native app (apps/apple, SwiftUI over the Rust core;
+[native-apple-plan.md](native-apple-plan.md)), built three ways from the same Xcode project. The
+**GitHub builds**: the disk image for the Mac (updates itself with Sparkle) and the unsigned IPA
+for sideloading on the iPhone ([mobile.md](mobile.md)). The **App Store builds**: signed by the
+developer team and uploaded to App Store Connect, one app for iPhone, iPad and Mac (bundle ID
 `app.uwulock`, universal purchase). For now they go to **TestFlight only**: nothing has been
 submitted for review, and nothing in CI ever submits.
 
-## What is different in the store builds
+## What is different between the builds
 
-|                  | iPhone/iPad: sideload IPA     | iPhone/iPad: TestFlight                            | Mac: DMG (GitHub)                   | Mac: App Store                                  |
-| ---------------- | ----------------------------- | -------------------------------------------------- | ----------------------------------- | ----------------------------------------------- |
-| Bundle ID        | `app.uwulock`                 | `app.uwulock`                                      | `app.uwulock.desktop`               | `app.uwulock`                                   |
-| Signed by        | whoever sideloads it          | Apple Distribution, App Store profile              | ad hoc (no Developer ID)            | Apple Distribution + Mac Installer Distribution |
-| Passkeys         | extension inside, can't work  | AutoFill extension with App Group + Keychain group | extension left out                  | AutoFill extension (macOS 14+), sandboxed       |
-| Updates          | new IPA from the release page | TestFlight / App Store                             | own updater (feature `self-update`) | the store; no updater compiled in               |
-| Cargo features   | default                       | default (the same build as the sideload IPA)       | default (`self-update`)             | `--no-default-features --features store`        |
-| Sandbox          | iOS's                         | iOS's                                              | no                                  | yes, `macos/Entitlements.mas.plist`             |
-| Privacy manifest | `apple/PrivacyInfo.xcprivacy` | same                                               | —                                   | same, in `Contents/Resources`                   |
+|                  | iPhone/iPad: sideload IPA     | iPhone/iPad: TestFlight                            | Mac: DMG (GitHub)                                   | Mac: App Store                                  |
+| ---------------- | ----------------------------- | -------------------------------------------------- | --------------------------------------------------- | ----------------------------------------------- |
+| Scheme / config  | `UwULock` / Release           | `UwULock` / Release                                | `UwULock Direct` / Release-Direct                   | `UwULock` / Release                             |
+| Bundle ID        | `app.uwulock`                 | `app.uwulock`                                      | `app.uwulock.desktop`                               | `app.uwulock`                                   |
+| Signed by        | whoever sideloads it          | Apple Distribution, App Store profile              | Developer ID + Developer ID profiles, notarized     | Apple Distribution + Mac Installer Distribution |
+| Passkeys         | extension inside, can't work  | AutoFill extension with App Group + Keychain group | AutoFill extension (needs the Developer ID)         | AutoFill extension, sandboxed                   |
+| Updates          | new IPA from the release page | TestFlight / App Store                             | Sparkle (`appcast-stable.xml` / `appcast-beta.xml`) | the store; Sparkle not linked                   |
+| Sandbox          | iOS's                         | iOS's                                              | no, hardened runtime                                | yes (`Config/UwULock-macOS.entitlements`)       |
+| Architectures    | arm64                         | arm64                                              | universal (Apple silicon + Intel)                   | universal                                       |
+| Privacy manifest | `PrivacyInfo.xcprivacy`       | same                                               | same                                                | same                                            |
 
-The TestFlight IPA is the sideload IPA of the same run, signed afterwards: one build for both.
-That is also why the iPhone's settings still say new versions come from the release page; the
-Mac App Store build knows it is one (`distribution` command, feature `store`) and says the store
-updates it.
+The TestFlight IPA and the sideload IPA come from the same archive: one build for both. The disk
+image without a Developer ID in CI is ad-hoc signed instead (`apple-release.sh adhoc`): it starts,
+but without AutoFill, the App Group and the shared Keychain groups, which only a profile allows.
 
-### The Mac App Store build in the sandbox
+## How CI builds, signs and uploads
 
-- **No updater, no setup**: `tauri-plugin-updater`, the feed and the setup hand-over are not
-  compiled in (`#[cfg(self_update)]`, set by `build.rs` from the feature). `scripts/build-mas.mjs`
-  fails if the feed's address is still in the program.
-- **Entitlements** (`macos/Entitlements.mas.plist`): network client (the server, icons, live
-  updates), user-selected files read/write (moving a vault in, importing a key), Downloads
-  read/write (file requests, saved keys go there as in every build), the App Group
-  `TEAMID.app.uwulock`, the Keychain groups `TEAMID.app.uwulock` + `TEAMID.app.uwulock.passkeys`
-  - `TEAMID.app.uwulock.unlock` (Touch ID's unlock secret, out of the extension's reach), and the AutoFill entitlement (App Store Connect wants it on the extension's container too,
-    ITMS-90729; the App ID `app.uwulock` has the capability for that).
-    Nothing listens, nothing starts other programs.
-- **Data** lives in the container, `~/Library/Containers/app.uwulock/Data/Library/Application
-Support/app.uwulock`, not where the DMG keeps it. Switching between the two means signing in
-  again.
-- **Passkeys**: the App Group folder is found through the real home folder (`HOME` is the
-  container in the sandbox, `passkeys/apple.rs`). The extension `app.uwulock.passkeys` now sits
-  under an app whose ID it extends; in the DMG (`app.uwulock.desktop`) it doesn't, which is one
-  more reason the DMG leaves it out.
-- Nothing else needed a change: no tray, no autostart, the Linux uhid broker isn't built for
-  macOS, the clipboard (NSPasteboard), the screen-lock check and the quit guard work sandboxed.
+Everything Apple is in `.github/workflows/apple.yml` (Xcode 27, `macos-27` runners), driven by
+`scripts/apple-release.sh`:
 
-## How CI signs and uploads
+| Job         | Runs on                | What it does                                                                                                                                                                                                                        |
+| ----------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `core`      | PRs, `main`, `v*` tags | the Rust core as xcframework (`scripts/apple-xcframework.sh --universal`), cached on `Cargo.lock`, `crates/**` and the script; built only on a cache miss                                                                           |
+| `build`     | PRs, `main`            | xcodegen, then unsigned iOS Simulator, macOS (with `UwULockPasskeysTests`) and Direct builds side by side (`scripts/apple-build.sh`)                                                                                                |
+| `archive`   | `v*` tags              | `apple-release.sh archive` per product (`ios`, `mas`, `direct`), unsigned, then ad-hoc signed with each bundle's entitlements; holds no secret. The `ios` leg also packs the sideload IPA (artifact `apple-ios`)                    |
+| `sign`      | `v*` tags              | on a fresh runner that builds nothing: keychain, profiles (`scripts/asc.mjs profiles`), `xcodebuild -exportArchive`; `ios`/`mas` upload to TestFlight, `direct` is notarized, packed into the DMG and the DMG notarized and stapled |
+| `migration` | `v*` tags              | the universal setup that replaces the old Tauri app with the native one (`scripts/build-setup.mjs --payload`, artifact `apple-migration`)                                                                                           |
 
-| Platform    | Workflow → job           | Runs on                       | What it does                                                                                                                                                                                                                                       |
-| ----------- | ------------------------ | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| iPhone/iPad | `ios.yml` → `testflight` | `v*` tags, Run workflow       | takes the run's unsigned IPA (`App (iphone)`), sets the build number and the Keychain/App Group keys, embeds the App Store profiles, signs extension and app (`scripts/ios-sign.sh`), uploads with `altool`; artifact `UwULock-iOS-appstore-<sha>` |
-| Mac         | `mas.yml` → `build`      | tags, Run workflow, PRs on it | builds the universal store app with the extension, unsigned, and checks it (`scripts/build-mas.mjs`)                                                                                                                                               |
-| Mac         | `mas.yml` → `testflight` | `v*` tags, Run workflow       | signs extension and app with their profiles and entitlements, packs a signed `.pkg` (`build-mas.mjs --sign`), uploads it; artifact `UwULock-mas-<sha>`                                                                                             |
+The signing jobs use a keychain of their own that is deleted at the end (`apple-release.sh
+cleanup`). Without the store secrets the `ios`/`mas` legs are skipped; without the Developer ID
+the disk image is ad-hoc signed. `scripts/release.mjs` (`pnpm release`) then takes the disk
+image, the IPA and the migration setup from the tag's run, signs the disk image for Sparkle and
+the migration setup for the Tauri updater, and publishes.
 
-Both signing jobs run on a fresh runner that builds and installs nothing, with a keychain of their
-own that is deleted at the end (`scripts/apple-ci.sh`). The build jobs hold no secret.
-
-- **Version**: App Store Connect takes three numbers, so `0.5.0-beta.2` goes up as `0.5.0`.
-- **Build number** (`CFBundleVersion`): `<run number>.<attempt>` of the workflow (`ios.yml`
-  for the iPhone, `mas.yml` for the Mac). It grows with every run and every re-run, separately
-  per platform, as App Store Connect wants. A new version starts no new count; that's fine.
-- **Profiles**: `scripts/asc.mjs profiles` asks the App Store Connect API for
-  `UwULock <iOS|macOS> App Store <bundle id>`, made for the certificate in the secret. A missing or
-  invalid one (a capability changed, the certificate was renewed) is made anew in the same run.
+- **Version**: App Store Connect takes three numbers, so `0.8.0-beta.1` goes up as `0.8.0`; the
+  disk image keeps the full version (`CFBundleShortVersionString`).
+- **Build number** (`CFBundleVersion`): `<UTC date>.<run number>.<attempt>` of the tag's run, the
+  same for all three products. It grows with every run and every re-run, as App Store Connect and
+  Sparkle (`sparkle:version`) want.
+- **Profiles**: `scripts/asc.mjs profiles <ios|macos|direct>` asks the App Store Connect API for
+  `UwULock <iOS App Store|macOS App Store|macOS Developer ID> <bundle id>`, made for the
+  certificate in the secret. A missing or invalid one (a capability changed, the certificate was
+  renewed) is made anew in the same run. The Safari extension's identifiers
+  (`app.uwulock.safari`, `app.uwulock.desktop.safari`) are registered on the way.
+- **Developer ID identifiers**: `app.uwulock.desktop` and `app.uwulock.desktop.passkeys` need
+  the AutoFill Credential Provider and App Groups capabilities (group
+  `TEAMID.app.uwulock`, as in the store app); register them once by hand in the developer portal
+  (Identifiers → +, App IDs), `asc.mjs` won't set capabilities.
 - **Seeing the builds**: `node scripts/asc.mjs builds` lists the newest builds with their
   processing state (with `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_PATH` set). Processing takes
   5–30 minutes after the upload; Apple mails problems with a build.
 
-Starting an upload by hand: Actions → **iOS** or **Mac App Store** → Run workflow → `main`.
-With **upload** unticked, the run signs everything (profiles included) but uploads nothing: the
-way to try a branch.
+Trying it on a Mac at hand: `UWULOCK_VERSION=0.8.0 BUILD_NUMBER=1 APPLE_TEAM_ID=… scripts/apple-release.sh
+archive direct /path/direct.xcarchive`, then `adhoc` on a copy of the app and `dmg`
+(`UWULOCK_SKIP_NOTARIZE=1` skips notarizing).
 
-**Safari extension**: both store apps carry it (`PlugIns/UwULockSafari.appex`, bundle id
-`app.uwulock.safari`, docs/extension.md), built from the run's `extension-safari` artifact.
-`scripts/asc.mjs profiles` registers that bundle id when it is missing (platform UNIVERSAL) and
-makes its profiles like the others'. The Safari extension needs no App Group or keychain group.
+**Safari extension**: all three Mac/iOS apps carry it (`PlugIns/UwULockSafari.appex`,
+docs/extension.md), built from the tag's `extension-safari` artifact (`extension.yml`). It needs no
+App Group or keychain group.
+
+### Sparkle (the disk image's updates)
+
+The Direct build carries `SUFeedURL` and `SUPublicEDKey` from `apps/apple/Config/Direct.xcconfig`
+(public key `7/6Acto3RlDtF9AS1XBDGVM6oMtCYPTySpFX+u6TZAI=`). The **private key** never goes to
+CI: it lives in the **login keychain** of the release Mac (Sparkle's `generate_keys`, account
+`app.uwulock`), and `pnpm release` signs the disk image there (`scripts/sparkle.mjs`, through
+Sparkle's `sign_update`; macOS asks once to allow it), the way it signs the Tauri setups with
+their key. It checks every signature against the public key in `Direct.xcconfig` before
+publishing and writes `appcast-stable.xml` (stable releases) and `appcast-beta.xml` (every
+release) to the `updates` branch, with `minimumSystemVersion` 27.0 and the notes in German and
+English.
+
+- **Backup / another Mac**: `generate_keys --account app.uwulock -x sparkle-key.txt` exports it
+  (base64); `generate_keys --account app.uwulock -f sparkle-key.txt` imports it. Keep the file
+  offline. A lost key means no installed app accepts an update anymore.
+- **As a secret** (only if signing should ever move to CI; nothing uses it now): the exported
+  text as `SPARKLE_PRIVATE_KEY`. `scripts/sparkle.mjs` also takes it from that variable or from
+  `SPARKLE_KEY_FILE`.
+- `node scripts/sparkle.mjs public-key` shows which key is in use and whether it matches.
+
+### The way over from the Tauri app
+
+The Tauri app installed on a Mac reads `stable.json` / `beta.json`. Their `darwin-aarch64` and
+`darwin-x86_64` entries point to `UwULock-update-macos-universal`, the migration setup, signed
+with the Tauri key as before. It puts the native app (the Developer ID build from the same run)
+in the old app's place; from then on Sparkle updates it. Both use the same bundle ID
+(`app.uwulock.desktop`) and the same data folder and format, so the login, the vault copy and the
+biometric keys carry over (docs/install.md).
 
 ### Secrets (MinifyX/UwULock-Client)
 
@@ -90,8 +112,9 @@ makes its profiles like the others'. The Safari extension needs no App Group or 
 | `APPLE_DISTRIBUTION_P12`  | base64 of a .p12 with the **Apple Distribution** certificate and its key (iOS and Mac)        |
 | `APPLE_INSTALLER_P12`     | base64 of a .p12 with the **Mac Installer Distribution** certificate and its key (the `.pkg`) |
 | `APPLE_P12_PASSWORD`      | the password of both .p12                                                                     |
-| `APPLE_DEVELOPER_ID_KEY`  | the disk image's signing key (PEM, `installers.yml`, release-notes/README.md)                 |
+| `APPLE_DEVELOPER_ID_KEY`  | the disk image's signing key (PEM, `apple.yml` job `sign`)                                    |
 | `APPLE_DEVELOPER_ID_CERT` | its **Developer ID Application** certificate (PEM or base64 DER)                              |
+| `SPARKLE_PRIVATE_KEY`     | optional, unused: the Sparkle key, only if signing moves to CI (see above)                    |
 
 Both certificates were made through the App Store Connect API from a key that never left Lorin's
 machine (a copy is kept offline). They run out on **2027-10-06**. To renew: a new key and CSR
@@ -112,7 +135,7 @@ follow by themselves on the next run.
    your app implement?": **Standard encryption algorithms instead of, or in addition to, using or
    accessing the encryption within Apple's operating system**, then follow the questions; for
    France, App Store Connect asks whether the app is distributed there. Once the answer is settled,
-   `ITSAppUsesNonExemptEncryption = false` in `Info.ios.plist` and `tauri.mas.conf.json` stops the
+   `ITSAppUsesNonExemptEncryption = false` in the app's Info.plist stops the
    question per build — left out on purpose until then.
 3. **macOS on the app record**: nothing to do. The record has an iOS and a macOS version, and
    the first Mac build was accepted.
@@ -136,16 +159,16 @@ follow by themselves on the next run.
   13" 2064×2752 (or 2048×2732) — needed because the app runs on iPad; Mac 16:10, one of 1280×800,
   1440×900, 2560×1600, 2880×1800.
 - **iPhone text**: the update row in the settings must not point to the release page in a store
-  build (App Review, guideline 2.5.2/2.3): build the store IPA with feature `store` or tell the
-  sideload build apart at run time before the first review.
+  build (App Review, guideline 2.5.2/2.3): tell the sideload build apart at run time before the
+  first review.
 - **Guidelines to keep in mind**: 2.5.2 (no downloading code — the extension packs nothing), 3.1
   (no purchases), 4.8 (no third-party sign-in), 5.1.1 (privacy policy, account deletion: the account
   lives on the user's own server; say so in the review notes).
 
 ## Not tried yet
 
-No Mac and no iPhone were at hand while this was set up: the builds were made, signed and
-accepted by App Store Connect, but not started on a device. On the first TestFlight install:
+The native builds were archived and the disk image packed ad-hoc on a Mac (milestone 7), but no
+signed native build has gone through CI, TestFlight or notarization yet. On the first tag:
 
 - iPhone/iPad: sign in, unlock with Face ID, turn on UwULock under AutoFill & Passwords and
   sign in with a passkey in Safari (App Group and Keychain group work);
@@ -158,23 +181,25 @@ accepted by App Store Connect, but not started on a device. On the first TestFli
 
 # UwULock im App Store (TestFlight)
 
-UwULock gibt es auf Apples Systemen zweimal. Die **GitHub-Builds** bleiben, wie sie sind: DMG
-für den Mac (aktualisiert sich selbst) und die unsignierte IPA zum Sideloaden aufs iPhone. Die
-**App-Store-Builds** sind dieselbe App, vom Entwicklerteam signiert und zu App Store Connect
-hochgeladen — eine App für iPhone, iPad und Mac (`app.uwulock`). Vorerst landen sie **nur in
-TestFlight**: Zur Prüfung eingereicht ist nichts, und CI reicht nie etwas ein.
+UwULock kommt auf Apples Systeme als eine native App (apps/apple), aus einem Xcode-Projekt
+dreifach gebaut: **GitHub-Builds** sind das DMG für den Mac (aktualisiert sich per Sparkle) und
+die unsignierte IPA zum Sideloaden; die **App-Store-Builds** (`app.uwulock`, iPhone, iPad und Mac)
+landen vorerst **nur in TestFlight**. Zur Prüfung eingereicht ist nichts, und CI reicht nie etwas
+ein.
 
-- **iPhone/iPad**: `ios.yml` → Job `testflight` (bei `v*`-Tags und per Run workflow) signiert die
-  unsignierte IPA desselben Laufs mit Apple-Distribution-Zertifikat und App-Store-Profilen (App und
-  AutoFill-Erweiterung mit App Group und Keychain-Gruppe) und lädt sie hoch.
-- **Mac**: `mas.yml` baut eine sandboxed Universal-App `app.uwulock` ohne Updater (Feature
-  `store`) mit der Erweiterung, signiert sie auf einem frischen Runner, packt das `.pkg` und lädt
-  es hoch.
-- **Version** `0.5.0-beta.2` → `0.5.0`; **Build-Nummer** = Laufnummer.Versuch des Workflows, pro
-  Plattform steigend.
-- **Safari-Erweiterung**: beide Store-Apps tragen sie (`app.uwulock.safari`, aus dem Artefakt
-  `extension-safari` desselben Laufs); `scripts/asc.mjs` legt die Bundle-ID bei Bedarf an. Run
-  workflow ohne **upload** signiert nur, zum Ausprobieren eines Branches.
+- **CI**: `.github/workflows/apple.yml` (Xcode 27). Bei PRs und auf `main`: xcframework (gecacht),
+  xcodegen, unsignierte Builds für iOS-Simulator, macOS und Direct, `UwULockPasskeysTests`. Bei
+  `v*`-Tags: `archive` (ohne Secrets), `sign` (signiert per `exportArchive` auf frischem Runner,
+  lädt IPA und `.pkg` zu TestFlight, notarisiert App und DMG) und `migration` (Setup, das die alte
+  Tauri-App durch die native ersetzt). Alles über `scripts/apple-release.sh`.
+- **Version** `0.8.0-beta.1` → `0.8.0` für die Stores, das DMG behält sie ganz; **Build-Nummer**
+  = `<Datum>.<Laufnummer>.<Versuch>`, für alle drei Produkte gleich.
+- **Sparkle-Schlüssel**: privat nur im Schlüsselbund des Release-Macs (Konto `app.uwulock`);
+  `pnpm release` signiert das DMG lokal und schreibt `appcast-stable.xml` / `appcast-beta.xml`.
+  Export: `generate_keys --account app.uwulock -x datei`; als Secret `SPARKLE_PRIVATE_KEY` nur,
+  falls das Signieren je nach CI wandert.
+- **Developer-ID-Bundle-IDs** `app.uwulock.desktop` und `.desktop.passkeys` einmal von Hand mit
+  AutoFill Credential Provider und App Groups registrieren; die Profile macht `scripts/asc.mjs`.
 - **Profile** holt bzw. erneuert `scripts/asc.mjs` über die App-Store-Connect-API; die
   Zertifikate (gültig bis 2027-10-06) liegen als Secrets im Repo, Erneuern siehe oben.
 

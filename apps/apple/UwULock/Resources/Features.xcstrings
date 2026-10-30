@@ -10131,6 +10131,40 @@
           }
         }
       }
+    },
+    "Link kopiert ✧ – wird nach %lld s geleert": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Link kopiert ✧ – wird nach %lld s geleert"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Link copied ✧ – cleared after %lld s"
+          }
+        }
+      }
+    },
+    "Adresse kopiert ✧ – wird nach %lld s geleert": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adresse kopiert ✧ – wird nach %lld s geleert"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Address copied ✧ – cleared after %lld s"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

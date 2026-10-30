@@ -3,8 +3,11 @@
 // Face ID, Touch ID or the device passcode. The same format as
 // crates/uwulock-authenticator/src/apple.rs — change both.
 //
-// iOS 17+ and macOS 14+. Nothing here works before the app and the extension are signed with an
-// Apple developer team (App Group, Keychain group): docs/passkeys.md.
+// Moved from apps/desktop/src-tauri/apple/PasskeyProvider (milestone 6 of
+// docs/native-apple-plan.md); the format is unchanged, so lists and outbox entries written by the
+// Tauri builds and by the native app read alike. Nothing here works before the app and the
+// extension are signed with an Apple developer team (App Group, Keychain group): docs/passkeys.md.
+// No UI and no localized text: the unit tests (CredentialProviderTests) build it on its own.
 
 import AuthenticationServices
 import CryptoKit
@@ -12,7 +15,7 @@ import Foundation
 import LocalAuthentication
 import Security
 
-enum PasskeyVaultError: Error {
+enum PasskeyVaultError: Error, Equatable {
   /// The build isn't signed with a team: no App Group, no Keychain group.
   case notSetUp
   /// UwULock never left a list here (switched off, logged out, or never unlocked since).
@@ -33,7 +36,7 @@ enum PasskeyVaultError: Error {
 
 /// One passkey in the list, as apple.rs `ListEntry`: binary values URL-safe base64; the private key
 /// (the raw P-256 scalar) sealed on its own in `sealedKey`, opened only to sign with it.
-struct PasskeyListEntry: Codable {
+struct PasskeyListEntry: Codable, Sendable {
   var credentialId: String
   var rpId: String
   var rpName: String?
@@ -49,7 +52,7 @@ struct PasskeyListEntry: Codable {
 
 /// A passkey made here, for the app's outbox, as apple.rs `Entry`: the private key as the raw P-256
 /// scalar, and the generation of the list written with it.
-struct PasskeyEntry: Codable {
+struct PasskeyEntry: Codable, Sendable {
   var credentialId: String
   var rpId: String
   var rpName: String?
@@ -64,14 +67,14 @@ struct PasskeyEntry: Codable {
 /// How a login's address is matched, as apple.rs / autofill.rs `UriHint`: `domain` (the
 /// registrable domain: the page's host is it or below it), `host` (host, with `:port` when the
 /// address had one), `startsWith` or `exact` (the full address).
-struct PasskeyUriHint: Codable {
+struct PasskeyUriHint: Codable, Sendable {
   var kind: String
   var value: String
 }
 
 /// One login for password AutoFill, as apple.rs `LoginEntry`: the password sealed on its own in
 /// `sealedPassword`, opened only to fill it.
-struct PasskeyLoginEntry: Codable {
+struct PasskeyLoginEntry: Codable, Sendable {
   var itemId: String
   var name: String
   var userName: String?
@@ -84,7 +87,7 @@ struct PasskeyLoginEntry: Codable {
 
 /// As apple.rs `Snapshot`; the account comes from the file's header. `logins` is missing in lists
 /// from before password AutoFill.
-struct PasskeySnapshot: Codable {
+struct PasskeySnapshot: Codable, Sendable {
   var version: Int
   var generation: UInt64
   var entries: [PasskeyListEntry]
@@ -92,7 +95,7 @@ struct PasskeySnapshot: Codable {
 }
 
 /// The list as opened: whose it is, and what is in it.
-struct PasskeyList {
+struct PasskeyList: Sendable {
   let account: String
   var snapshot: PasskeySnapshot
 }
@@ -112,7 +115,7 @@ enum Base64URL {
   }
 }
 
-final class PasskeyVault {
+final class PasskeyVault: Sendable {
   static let domain = "uwulock-passkeys-v2"
   static let version: UInt8 = 2
   static let service = "app.uwulock.passkeys"
@@ -144,6 +147,13 @@ final class PasskeyVault {
     appGroup = group
     keychainGroup = keychain
     folder = container.appendingPathComponent("Passkeys", isDirectory: true)
+  }
+
+  /// A vault in `folder` (the tests: a temporary folder instead of the App Group's).
+  init(folder: URL, keychainGroup: String) {
+    appGroup = ""
+    self.keychainGroup = keychainGroup
+    self.folder = folder
   }
 
   #if os(iOS)
@@ -204,7 +214,7 @@ final class PasskeyVault {
   // 0x02 ‖ n ‖ account id (n bytes) ‖ nonce ‖ ciphertext ‖ tag, AES-256-GCM, authenticating
   // "uwulock-passkeys-v2:<list|outbox>:<account id>".
 
-  enum Kind: String {
+  enum Kind: String, Sendable {
     case list
     case outbox
   }

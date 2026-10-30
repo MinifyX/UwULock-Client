@@ -231,7 +231,7 @@ private struct ExtrasMaskedRow: View {
         Task {
             do {
                 try await backend.copyText(masked.email)
-                FeatureToasts.shared.show(featureString("Adresse kopiert ✧"))
+                FeatureToasts.shared.show(copiedAddressText())
             } catch {
                 FeatureToasts.shared.show(error: error)
             }

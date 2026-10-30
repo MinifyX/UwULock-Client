@@ -6,8 +6,7 @@
 //! - **Screen lock**: on Linux logind's `Lock` signal and `LockedHint`, and
 //!   the desktop's screen saver (`ActiveChanged`, freedesktop and GNOME); on
 //!   Windows the input desktop can't be switched to while the workstation is
-//!   locked; on macOS the session dictionary has `CGSSessionScreenIsLocked`.
-//!   Sleep is the app's: a gap between the clocks. On Linux, logind also
+//!   locked. Sleep is the app's: a gap between the clocks. On Linux, logind also
 //!   says so before it happens (`PrepareForSleep`).
 //!
 //! None of this needs a signed app or any permission.
@@ -27,49 +26,6 @@ pub(crate) fn screen_locked() -> bool {
         let switched = SwitchDesktop(desktop);
         CloseDesktop(desktop);
         switched == 0
-    }
-}
-
-#[cfg(target_os = "macos")]
-pub(crate) fn screen_locked() -> bool {
-    use std::ffi::{c_char, c_void};
-
-    #[link(name = "CoreGraphics", kind = "framework")]
-    extern "C" {
-        fn CGSessionCopyCurrentDictionary() -> *const c_void;
-    }
-    #[link(name = "CoreFoundation", kind = "framework")]
-    extern "C" {
-        fn CFStringCreateWithCString(
-            alloc: *const c_void,
-            text: *const c_char,
-            encoding: u32,
-        ) -> *const c_void;
-        fn CFDictionaryGetValue(dictionary: *const c_void, key: *const c_void) -> *const c_void;
-        fn CFGetTypeID(value: *const c_void) -> usize;
-        fn CFBooleanGetTypeID() -> usize;
-        fn CFBooleanGetValue(value: *const c_void) -> u8;
-        fn CFRelease(value: *const c_void);
-    }
-    const UTF8: u32 = 0x0800_0100;
-
-    unsafe {
-        let session = CGSessionCopyCurrentDictionary();
-        if session.is_null() {
-            return false;
-        }
-        let key =
-            CFStringCreateWithCString(std::ptr::null(), c"CGSSessionScreenIsLocked".as_ptr(), UTF8);
-        let mut locked = false;
-        if !key.is_null() {
-            let value = CFDictionaryGetValue(session, key);
-            locked = !value.is_null()
-                && CFGetTypeID(value) == CFBooleanGetTypeID()
-                && CFBooleanGetValue(value) != 0;
-            CFRelease(key);
-        }
-        CFRelease(session);
-        locked
     }
 }
 

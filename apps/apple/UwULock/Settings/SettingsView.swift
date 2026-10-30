@@ -59,6 +59,9 @@ private struct PhoneSettings: View {
     @State private var confirmLogout = false
     @State private var importing = false
     @State private var provider: ProviderView?
+    #if DEBUG
+    @State private var debugPage = DebugLaunch.settings
+    #endif
 
     var body: some View {
         let status = model.status
@@ -132,6 +135,17 @@ private struct PhoneSettings: View {
         .sheet(isPresented: $showAccounts) { AccountsSheet() }
         .sheet(isPresented: $importing) { ImportFlowView() }
         .logoutConfirmation(isPresented: $confirmLogout, email: nil) { model.logOut() }
+        #if DEBUG
+        .navigationDestination(item: $debugPage) { page in
+            switch page {
+            case "appearance": AppearanceSettings()
+            case "security": SecuritySettings()
+            case "autofill": AutofillSettings()
+            case "account": AccountSettings()
+            default: AboutSettings()
+            }
+        }
+        #endif
         .task {
             guard model.core.isAvailable else { return }
             provider = try? await model.core.autofillProviderStatus()

@@ -33,6 +33,7 @@ struct ItemDetailView: View {
         }
         .task(id: "\(itemId)-\(vault.revision)-\(unlocked)") { await load() }
         .onAppear { vault.opened(itemId) }
+        .shareAsSendHost()
     }
 
     private func load() async {

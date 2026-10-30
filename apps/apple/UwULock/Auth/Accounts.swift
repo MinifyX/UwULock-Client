@@ -47,6 +47,8 @@ extension AccountBrief {
 /// The account menu (AccountCard.tsx) for the Mac's sidebar or toolbar: other accounts, add,
 /// rename, lock, log out.
 struct AccountMenu: View {
+    /// Only the name: a Mac menu button shows a Label's icon alone, the avatar goes beside it.
+    var nameOnly = false
     @Environment(AppModel.self) private var model
     @State private var renaming: AccountBrief?
     @State private var loggingOut: AccountBrief?
@@ -57,7 +59,9 @@ struct AccountMenu: View {
         Menu {
             AccountMenuItems(renaming: $renaming, loggingOut: $loggingOut)
         } label: {
-            if let active {
+            if let active, nameOnly {
+                Text(verbatim: active.title).lineLimit(1)
+            } else if let active {
                 Label {
                     Text(verbatim: active.title)
                 } icon: {

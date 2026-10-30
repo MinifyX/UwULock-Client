@@ -58,6 +58,8 @@ final class AppleHost: HostDelegate, @unchecked Sendable {
         }
         let opened = onMain { () -> Bool in
             #if os(iOS)
+            // An SSO login: the provider's page in the app (SsoBrowser), not in Safari.
+            if SsoBrowser.shared.open(target) { return true }
             UIApplication.shared.open(target)
             return true
             #else

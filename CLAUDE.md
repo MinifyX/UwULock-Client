@@ -8,9 +8,11 @@ Passwortmanager der UwUSuite (Tauri 2): Client für Vaultwarden/Bitwarden, v0.7.
 - `crates/uwulock-core`: gemeinsame Kernlogik
 - `crates/uwulock-authenticator`: Passkeys; `crates/uwulock-uhid-broker`: UHID-Broker
 - `crates/uwulock-wasm`: Krypto für die Browser-Extension (wasm-bindgen)
-- `crates/tauri-plugin-uwulock-mobile`: Mobile-Plugin (iOS/Android)
-- `apps/desktop` (React/Vite + `src-tauri`), `apps/setup` (Installer-UI + `src-tauri`), `apps/extension` (Browser-Extension)
-- `scripts/`: Release-, Signier-, Mobile- und Smoke-Skripte; `packaging/aur`, `brand/`
+- `crates/uwulock-app`: App-Logik ohne Tauri; `crates/uwulock-ffi`: UniFFI für Swift (`scripts/apple-xcframework.sh`)
+- `crates/tauri-plugin-uwulock-mobile`: Mobile-Plugin (Android)
+- `apps/desktop` (React/Vite + `src-tauri`, Windows/Linux/Android), `apps/setup` (Installer-UI + `src-tauri`; auf dem Mac nur noch das Migrations-Setup), `apps/extension` (Browser-Extension)
+- `apps/apple`: native App für iOS/macOS (SwiftUI, XcodeGen `project.yml`, Sparkle im Direct-Build); Plan `docs/native-apple-plan.md`
+- `scripts/`: Release-, Signier-, Mobile- und Smoke-Skripte (Apple: `apple-build.sh`, `apple-release.sh`, `sparkle.mjs`, `asc.mjs`); `packaging/aur`, `brand/`
 
 ## Befehle
 
@@ -33,8 +35,8 @@ Passwortmanager der UwUSuite (Tauri 2): Client für Vaultwarden/Bitwarden, v0.7.
 
 ## Release
 
-- Version überall setzen, `release-notes/<version>.json` anlegen, committen, Tag `v<version>` pushen: `.github/workflows/installers.yml` baut alle Setups unsigniert
-- Danach `pnpm release` (`scripts/release.mjs`): holt CI-Artefakte, signiert den Updater lokal (Schlüssel via `TAURI_SIGNING_PRIVATE_KEY*` oder `UWULOCK_UPDATE_KEY_DIR`), veröffentlicht. Braucht sauberen Tree, gepushten Tag, `gh`
+- Version überall setzen, `release-notes/<version>.json` anlegen, committen, Tag `v<version>` pushen: `.github/workflows/installers.yml` baut Windows/Linux-Setups unsigniert, `.github/workflows/apple.yml` baut IPA (+ TestFlight), MAS-`.pkg` (TestFlight), DMG (Developer ID, notarisiert) und das Mac-Migrations-Setup
+- Danach `pnpm release` (`scripts/release.mjs`) auf dem Mac: holt CI-Artefakte beider Workflows, signiert den Tauri-Updater lokal (Schlüssel via `TAURI_SIGNING_PRIVATE_KEY*` oder `UWULOCK_UPDATE_KEY_DIR`) und das DMG für Sparkle (Schlüssel im Login-Schlüsselbund, Konto `app.uwulock`; `docs/app-store.md`), schreibt `stable.json`/`beta.json` + `appcast-*.xml`, veröffentlicht. Braucht sauberen Tree, gepushten Tag, `gh`
 
 ## Security
 

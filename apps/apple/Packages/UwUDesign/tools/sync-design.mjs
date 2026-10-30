@@ -44,7 +44,56 @@ function fresh(dir) {
   writeFileSync(join(dir, 'Contents.json'), json({ info: INFO }));
 }
 
-const SWIFT_KEYWORDS = new Set(['import', 'repeat', 'default', 'case', 'return', 'in', 'is', 'as', 'func', 'let', 'var', 'class', 'struct', 'enum', 'protocol', 'extension', 'switch', 'for', 'while', 'if', 'else', 'do', 'try', 'throw', 'self', 'super', 'init', 'deinit', 'operator', 'where', 'break', 'continue', 'guard', 'defer', 'static', 'public', 'private', 'internal', 'fileprivate', 'true', 'false', 'nil', 'subscript', 'typealias', 'associatedtype', 'inout', 'any', 'some']);
+const SWIFT_KEYWORDS = new Set([
+  'import',
+  'repeat',
+  'default',
+  'case',
+  'return',
+  'in',
+  'is',
+  'as',
+  'func',
+  'let',
+  'var',
+  'class',
+  'struct',
+  'enum',
+  'protocol',
+  'extension',
+  'switch',
+  'for',
+  'while',
+  'if',
+  'else',
+  'do',
+  'try',
+  'throw',
+  'self',
+  'super',
+  'init',
+  'deinit',
+  'operator',
+  'where',
+  'break',
+  'continue',
+  'guard',
+  'defer',
+  'static',
+  'public',
+  'private',
+  'internal',
+  'fileprivate',
+  'true',
+  'false',
+  'nil',
+  'subscript',
+  'typealias',
+  'associatedtype',
+  'inout',
+  'any',
+  'some',
+]);
 const camel = (name) => name.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
 const pascal = (name) => camel(name).replace(/^./, (c) => c.toUpperCase());
 
@@ -63,7 +112,8 @@ function block(selector) {
   if (start < 0) throw new Error(`tokens.css has no "${selector}" block`);
   const body = css.slice(css.indexOf('{', start) + 1, css.indexOf('}', start));
   const out = {};
-  for (const [, name, value] of body.matchAll(/--uwu-([a-z0-9-]+):\s*([^;]+);/g)) out[name] = value.trim();
+  for (const [, name, value] of body.matchAll(/--uwu-([a-z0-9-]+):\s*([^;]+);/g))
+    out[name] = value.trim();
   return out;
 }
 
@@ -133,7 +183,10 @@ import SwiftUI
 /// \`-Ink\` token; pink means selected or focus, never "ok".
 extension ShapeStyle where Self == Color {
 ${colorNames
-  .map((n) => `    /// \`--uwu-${n}\`\n    public static var uwu${pascal(n)}: Color { Color("${n}", bundle: .module) }`)
+  .map(
+    (n) =>
+      `    /// \`--uwu-${n}\`\n    public static var uwu${pascal(n)}: Color { Color("${n}", bundle: .module) }`,
+  )
   .join('\n')}
 }
 
@@ -149,7 +202,16 @@ ${colorNames.map((n) => `    case ${camel(n)} = "${n}"`).join('\n')}
 // ---------------------------------------------------------------------------------------------
 // Icons: what the desktop UI uses (ICONS.<name> in apps/desktop/src), plus the native shell's own.
 
-const SHELL_ICONS = ['add', 'more', 'settings', 'search', 'locked', 'unlocked', 'favorite', 'delete'];
+const SHELL_ICONS = [
+  'add',
+  'more',
+  'settings',
+  'search',
+  'locked',
+  'unlocked',
+  'favorite',
+  'delete',
+];
 
 function walk(dir, out = []) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -161,7 +223,8 @@ function walk(dir, out = []) {
 }
 const used = new Set(SHELL_ICONS);
 for (const file of walk(join(desktop, 'src')))
-  for (const [, name] of readFileSync(file, 'utf8').matchAll(/ICONS\.([A-Za-z0-9_]+)/g)) used.add(name);
+  for (const [, name] of readFileSync(file, 'utf8').matchAll(/ICONS\.([A-Za-z0-9_]+)/g))
+    used.add(name);
 
 const { ICONS, ICON_SIZES } = await load('@uwusuite/design');
 const { createElement } = await load('react');
@@ -176,11 +239,15 @@ fresh(iconsDir);
 // trailing "Image" gets a suffix (Xcode drops it, so addImage would clash with add).
 const iconAsset = (name) => `icon-${name}${name.endsWith('Image') ? 'Glyph' : ''}`;
 const iconNames = [...used].filter((n) => ICONS[n]).sort();
-for (const missing of [...used].filter((n) => !ICONS[n])) console.warn(`! ICONS.${missing} doesn't exist`);
+for (const missing of [...used].filter((n) => !ICONS[n]))
+  console.warn(`! ICONS.${missing} doesn't exist`);
 for (const name of iconNames) {
   let svg = renderToStaticMarkup(createElement(ICONS[name], { size: 24, strokeWidth: STROKE }));
   // CoreSVG knows no currentColor; a template image takes its colour from the tint anyway.
-  svg = svg.replaceAll('currentColor', '#000000').replace(/ class="[^"]*"/, '').replace(/ aria-hidden="true"/, '');
+  svg = svg
+    .replaceAll('currentColor', '#000000')
+    .replace(/ class="[^"]*"/, '')
+    .replace(/ aria-hidden="true"/, '');
   const set = join(iconsDir, `${iconAsset(name)}.imageset`);
   mkdirSync(set);
   writeFileSync(join(set, `${name}.svg`), svg);
@@ -189,7 +256,10 @@ for (const name of iconNames) {
     json({
       images: [{ filename: `${name}.svg`, idiom: 'universal' }],
       info: INFO,
-      properties: { 'preserves-vector-representation': true, 'template-rendering-intent': 'template' },
+      properties: {
+        'preserves-vector-representation': true,
+        'template-rendering-intent': 'template',
+      },
     }),
   );
 }
@@ -332,7 +402,10 @@ for (const [pkg, file] of [
   // The picker's fonts come with @uwusuite/design (its dependencies, not the desktop app's).
   const licence = designRequire.resolve(`@fontsource-variable/${pkg}/LICENSE`);
   const dir = dirname(licence);
-  copyFileSync(join(dir, 'files', `${pkg}-latin-wght-normal.woff2`), join(fontsDir, `${file}.woff2`));
+  copyFileSync(
+    join(dir, 'files', `${pkg}-latin-wght-normal.woff2`),
+    join(fontsDir, `${file}.woff2`),
+  );
   copyFileSync(licence, join(fontsDir, `${file}-LICENSE.txt`));
 }
 

@@ -7,9 +7,8 @@
 #                                   Sparkle updates). On iOS they build like Debug / Release.
 # Schemes: "UwULock" (Debug/Release) and "UwULock Direct" (Debug-Direct/Release-Direct).
 #
-# Bundle IDs, App Group and Keychain groups are the Tauri builds' (Info.ios.plist,
-# macos/Entitlements.mas.plist, scripts/ios-sign.sh, macos-passkeys.sh, macos-safari.sh), so
-# existing data and biometric keychain items stay reachable.
+# Bundle IDs, App Group and Keychain groups are the Tauri builds' (up to 0.7), so existing data
+# and biometric keychain items stay reachable.
 #
 # The Rust core (crates/uwulock-ffi) comes in with UWULOCK_RUST_CORE=YES (rustcore.yml), which
 # scripts/apple-build.sh sets when Frameworks/UwuLockFFI.xcframework exists.
@@ -19,11 +18,11 @@ options:
   bundleIdPrefix: app.uwulock
   developmentLanguage: de
   deploymentTarget:
-    iOS: "27.0"
-    macOS: "27.0"
+    iOS: '27.0'
+    macOS: '27.0'
   createIntermediateGroups: true
   groupSortPosition: top
-  xcodeVersion: "27.2"
+  xcodeVersion: '27.2'
 
 configs:
   Debug: debug
@@ -51,14 +50,14 @@ packages:
 
 settings:
   base:
-    SWIFT_VERSION: "6.0"
+    SWIFT_VERSION: '6.0'
     SWIFT_STRICT_CONCURRENCY: complete
     SWIFT_EMIT_LOC_STRINGS: YES
     LOCALIZATION_PREFERS_STRING_CATALOGS: YES
     ENABLE_USER_SCRIPT_SANDBOXING: NO
     DEAD_CODE_STRIPPING: YES
     MARKETING_VERSION: 0.7.0
-    CURRENT_PROJECT_VERSION: "1"
+    CURRENT_PROJECT_VERSION: '1'
     CODE_SIGN_STYLE: Automatic
 
 targets:
@@ -92,7 +91,7 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
-        TARGETED_DEVICE_FAMILY: "1,2"
+        TARGETED_DEVICE_FAMILY: '1,2'
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         CODE_SIGN_ENTITLEMENTS[sdk=iphone*]: Config/UwULock-iOS.entitlements
@@ -117,12 +116,13 @@ targets:
             exit 1
           fi
 
-  # AutoFill for passwords and passkeys. Placeholder: the sources move here from
-  # apps/desktop/src-tauri/apple/PasskeyProvider in milestone 6. App Store (iOS, Mac):
-  # app.uwulock.passkeys, as in the Tauri builds. Disk image: app.uwulock.desktop.passkeys, because
-  # an embedded extension's ID must start with its app's (macos-passkeys.sh put
-  # app.uwulock.passkeys into app.uwulock.desktop, which Xcode refuses; that DMG was never
-  # team-signed, so no installed copy carries it). The keychain group stays app.uwulock.passkeys.
+  # AutoFill for passwords and passkeys (iOS and macOS), from
+  # apps/desktop/src-tauri/apple/PasskeyProvider: same shared store (PasskeyVault.swift), sheet in
+  # UwUDesign. App Store (iOS, Mac): app.uwulock.passkeys, as in the Tauri builds. Disk image:
+  # app.uwulock.desktop.passkeys, because an embedded extension's ID must start with its app's
+  # (the Tauri DMG put app.uwulock.passkeys into app.uwulock.desktop, which Xcode refuses; that
+  # DMG was never team-signed, so no installed copy carries it). The keychain group stays
+  # app.uwulock.passkeys.
   CredentialProvider:
     type: app-extension
     supportedDestinations: [iOS, macOS]
@@ -131,6 +131,8 @@ targets:
       - path: CredentialProvider
         excludes:
           - Info.plist
+    dependencies:
+      - package: UwUDesign
     settings:
       base:
         PRODUCT_NAME: UwULockPasskeys
@@ -138,14 +140,43 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: $(UWULOCK_BUNDLE_ID).passkeys
         INFOPLIST_FILE: CredentialProvider/Info.plist
         GENERATE_INFOPLIST_FILE: NO
-        TARGETED_DEVICE_FAMILY: "1,2"
+        TARGETED_DEVICE_FAMILY: '1,2'
         CODE_SIGN_ENTITLEMENTS[sdk=iphone*]: CredentialProvider/UwULockPasskeys-iOS.entitlements
         CODE_SIGN_ENTITLEMENTS[sdk=macosx*]: CredentialProvider/UwULockPasskeys-macOS.entitlements
         ENABLE_HARDENED_RUNTIME[sdk=macosx*]: YES
         SKIP_INSTALL: YES
+        # The phase below edits the processed Info.plist.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    postBuildScripts:
+      # Taking in Apple Passwords' data (credential exchange) is the iPhone's and iPad's: the Mac
+      # doesn't offer UwULock as a target (nor did the Tauri build).
+      - name: No credential exchange on the Mac
+        basedOnDependencyAnalysis: false
+        script: |
+          [ "$PLATFORM_NAME" = macosx ] || exit 0
+          plist="${TARGET_BUILD_DIR:?}/${INFOPLIST_PATH:?}"
+          for key in SupportsCredentialExchange SupportedCredentialExchangeVersions; do
+            plutil -remove "NSExtension.NSExtensionAttributes.ASCredentialProviderExtensionCapabilities.$key" "$plist" 2>/dev/null || true
+          done
 
-  # The Safari web extension. Placeholder: handler and the web extension's files
-  # (apps/extension/dist/safari) arrive in milestone 6.
+  # Reads what the app and the extension share (PasskeyVault.swift: seal format, list, outbox,
+  # matching, WebAuthn bytes) against a temporary folder; no host app, no Keychain. Fast.
+  UwULockPasskeysTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: CredentialProviderTests
+      - path: CredentialProvider/PasskeyVault.swift
+      - path: CredentialProvider/AutoFillLog.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.uwulock.passkeys-tests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: '-'
+
+  # The Safari web extension: the handler (no native messaging) and the web extension's files
+  # from apps/extension (dist/safari), copied in by the phase below.
   SafariExtension:
     type: app-extension
     supportedDestinations: [iOS, macOS]
@@ -161,10 +192,40 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: $(UWULOCK_BUNDLE_ID).safari
         INFOPLIST_FILE: SafariExtension/Info.plist
         GENERATE_INFOPLIST_FILE: NO
-        TARGETED_DEVICE_FAMILY: "1,2"
+        TARGETED_DEVICE_FAMILY: '1,2'
         CODE_SIGN_ENTITLEMENTS[sdk=macosx*]: SafariExtension/UwULockSafari-macOS.entitlements
         ENABLE_HARDENED_RUNTIME[sdk=macosx*]: YES
         SKIP_INSTALL: YES
+        # The phase below reads apps/extension and writes into the bundle.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    preBuildScripts:
+      # Where the files come from, first that has a manifest.json:
+      #   $UWULOCK_SAFARI_EXTENSION (CI's artifact), apps/extension/dist/safari;
+      #   else, with pnpm and the built wasm (src/wasm/pkg), pnpm --filter @uwulock/extension build.
+      # None: a warning in Debug (the extension then has no files), an error in Release unless
+      # UWULOCK_SAFARI_SKIP=1. UWULOCK_SAFARI_SKIP=1 also skips it outright.
+      - name: Web extension files
+        basedOnDependencyAnalysis: false
+        script: |
+          set -eu
+          [ "${UWULOCK_SAFARI_SKIP:-}" = 1 ] && { echo "note: UWULOCK_SAFARI_SKIP=1, no web extension files"; exit 0; }
+          ext="${SRCROOT:?}/../extension"
+          src="${UWULOCK_SAFARI_EXTENSION:-$ext/dist/safari}"
+          if [ ! -f "$src/manifest.json" ] && [ -z "${UWULOCK_SAFARI_EXTENSION:-}" ]; then
+            export PATH="$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/Library/pnpm:$HOME/.local/share/pnpm"
+            if command -v pnpm >/dev/null && [ -d "$ext/src/wasm/pkg" ]; then
+              (cd "$ext" && pnpm --filter @uwulock/extension build)
+            fi
+          fi
+          if [ ! -f "$src/manifest.json" ]; then
+            case "$CONFIGURATION" in
+              Release*) echo "error: no Safari web extension in $src (pnpm --filter @uwulock/extension build:all, or UWULOCK_SAFARI_SKIP=1)" >&2; exit 1 ;;
+              *) echo "warning: no Safari web extension in $src; UwULockSafari has no files (pnpm --filter @uwulock/extension build:all)"; exit 0 ;;
+            esac
+          fi
+          out="${TARGET_BUILD_DIR:?}/${UNLOCALIZED_RESOURCES_FOLDER_PATH:?}"
+          mkdir -p "$out"
+          rsync -a --exclude Info.plist --exclude '*.lproj' --exclude _CodeSignature "$src/" "$out/"
 
 schemes:
   UwULock:
@@ -175,6 +236,8 @@ schemes:
       config: Debug
     test:
       config: Debug
+      targets:
+        - UwULockPasskeysTests
     profile:
       config: Release
     analyze:

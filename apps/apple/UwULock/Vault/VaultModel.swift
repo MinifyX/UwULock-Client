@@ -69,6 +69,8 @@ final class VaultModel {
     var itemToDelete: ItemSummary?
     /// The Mac's generator popover / sheet.
     var showGenerator = false
+    /// The import's sheet (the Mac's menu "Tresor → Importieren …").
+    var showImport = false
     /// The last items opened (mobile Search's "Zuletzt geöffnet"), in memory only.
     private(set) var recent: [String] = []
 
@@ -81,9 +83,8 @@ final class VaultModel {
         self.backend = backend
     }
 
-    /// Settings of the desktop (lib/settings.ts) the vault reads.
-    var siteIcons: Bool { UserDefaults.standard.object(forKey: "vault.siteIcons") as? Bool ?? true }
-    var showTrash: Bool { UserDefaults.standard.object(forKey: "vault.showTrash") as? Bool ?? true }
+    /// The website icons setting (lib/settings.ts); the shell reloads the icons when it changes.
+    var siteIcons: Bool { UserDefaults.standard.object(forKey: AppSettingsKey.siteIcons) as? Bool ?? true }
 
     // MARK: Loading
 
@@ -141,8 +142,9 @@ final class VaultModel {
         if let status = try? await backend.uwuStatus() { uwu = status }
     }
 
-    /// The icons of the first live items (the desktop asks for the first 400–600).
-    private func loadIcons() {
+    /// The icons of the first live items (the desktop asks for the first 400–600); again when
+    /// the website icons setting changes.
+    func loadIcons() {
         iconTask?.cancel()
         let ids = items.filter { !$0.deleted }.prefix(600).map(\.id)
         guard !ids.isEmpty else { return }
@@ -231,7 +233,7 @@ final class VaultModel {
         } else {
             let trash = filter == .trash
             list = items.filter { item in
-                guard item.deleted == trash else { return false }
+                guard !item.deleted || trash else { return false }
                 let text = "\(item.name) \(item.subtitle ?? "") \(item.host ?? "")".lowercased()
                 return words.allSatisfy { text.contains($0) }
             }
@@ -318,13 +320,14 @@ final class VaultModel {
         }
     }
 
-    /// Deletes for good; turns the linked masked address off when asked to.
+    /// Deletes for good; first turns the linked masked address off when asked to (ItemDetail.tsx's
+    /// ConfirmDelete: a failure there doesn't stop the delete).
     func deleteForever(_ item: ItemSummary, disableMasked: Bool) {
         perform {
-            try await self.backend.deleteItem(id: item.id, permanent: true)
             if disableMasked, let masked = self.uwu.masked[item.id] {
                 _ = try? await self.backend.setMaskedState(id: masked.id, state: .disabled)
             }
+            try await self.backend.deleteItem(id: item.id, permanent: true)
             if self.selectedItemId == item.id { self.selectedItemId = nil }
             self.say(vt("Gelöscht."))
         }

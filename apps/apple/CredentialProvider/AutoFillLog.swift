@@ -1,3 +1,6 @@
+// Moved from apps/desktop/src-tauri/apple/PasskeyProvider: the same file, so the app's
+// "AutoFill-Protokoll" (AppleHost.autofillLog) reads it unchanged.
+//
 // The AutoFill protocol: each step of the extension, as in the unified log (providerLog), also
 // into a small file in the App Group folder (Passkeys/autofill.log), so UwULock can show it in
 // its settings (Einstellungen → AutoFill → AutoFill-Protokoll) without a Mac and Console.app.
@@ -12,7 +15,8 @@ import os
 
 let providerLog = Logger(subsystem: "app.uwulock.passkeys", category: "provider")
 
-final class AutoFillLog {
+/// Its state is written only on `queue` (the formatter, the file), the rest is constant.
+final class AutoFillLog: @unchecked Sendable {
   static let shared = AutoFillLog()
 
   /// Past this size the file is cut back to its last lines.

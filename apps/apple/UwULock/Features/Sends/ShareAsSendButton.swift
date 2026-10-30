@@ -224,7 +224,6 @@ struct ShareSendSheet: View {
                         Task { await SendsLink.copy(model.core, made.link) }
                     } label: { Label(features: "Link kopieren", uwuIcon: .copy) }
                     .uwuProminentButton()
-                    .foregroundStyle(Color.uwuOnPink)
                     if let url = URL(string: made.link) {
                         ShareLink(item: url) { Label(features: "Teilen", uwuIcon: .share) }
                             .uwuGlassButton()

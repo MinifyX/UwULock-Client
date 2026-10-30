@@ -32,19 +32,22 @@ const NATIVE_ONLY = {
   'Wähle links einen Eintrag.': 'Pick an item on the left.',
   'Nichts ausgewählt': 'Nothing selected',
   'Über UwULock': 'About UwULock',
-  'Kleiner': 'Smaller',
-  'Größer': 'Larger',
+  Kleiner: 'Smaller',
+  Größer: 'Larger',
   'Sehr groß': 'Largest',
-  'Textgröße': 'Text size',
-  'Schrift': 'Font',
-  'Prüfung': 'Check',
+  Textgröße: 'Text size',
+  Schrift: 'Font',
+  Prüfung: 'Check',
 };
 
 /** Literals that are not user-facing text (names, keys) and need no warning. */
-const NOT_TEXT = /^(UwU|UwU Sans|UwULockPhase|SUFeedURL|Fonts|Lock|Manrope|Rubik|DM Sans|System|Regular|Light|Medium|Bold|ExtraBold|ExtraLight|SemiBold|Sends|Generator|Logins|Extras|WLAN|SSH \(UwUSSH\)|Remote Desktop \(UwURDP\)|Already registered|UwUDesign: .*|.*[@/].*|.*\\\(.*|[A-Za-z0-9]+-[A-Za-z0-9_]+)$/;
+const NOT_TEXT =
+  /^(UwU|UwU Sans|UwULockPhase|SUFeedURL|Fonts|Lock|Manrope|Rubik|DM Sans|System|Regular|Light|Medium|Bold|ExtraBold|ExtraLight|SemiBold|Sends|Generator|Logins|Extras|WLAN|SSH \(UwUSSH\)|Remote Desktop \(UwURDP\)|Already registered|UwUDesign: .*|.*[@/].*|.*\\\(.*|[A-Za-z0-9]+-[A-Za-z0-9_]+)$/;
 
 const en = {};
-for (const file of readdirSync(enDir).filter((f) => f.endsWith('.json')).sort()) {
+for (const file of readdirSync(enDir)
+  .filter((f) => f.endsWith('.json'))
+  .sort()) {
   Object.assign(en, JSON.parse(readFileSync(join(enDir, file), 'utf8')));
 }
 Object.assign(en, NATIVE_ONLY);
@@ -58,8 +61,13 @@ function swiftFiles(dir) {
 }
 
 const literals = new Set();
-for (const file of [...swiftFiles(join(apple, 'UwULock')), ...swiftFiles(join(apple, 'Packages/UwUDesign/Sources'))]) {
-  for (const [, before, text] of readFileSync(file, 'utf8').matchAll(/(verbatim: )?"((?:[^"\\\n]|\\.)*)"/g)) {
+for (const file of [
+  ...swiftFiles(join(apple, 'UwULock')),
+  ...swiftFiles(join(apple, 'Packages/UwUDesign/Sources')),
+]) {
+  for (const [, before, text] of readFileSync(file, 'utf8').matchAll(
+    /(verbatim: )?"((?:[^"\\\n]|\\.)*)"/g,
+  )) {
     if (!before && text) literals.add(text);
   }
 }
@@ -75,6 +83,9 @@ for (const key of [...literals].sort((a, b) => a.localeCompare(b, 'de'))) {
   strings[key] = { localizations: { en: { stringUnit: { state: 'translated', value: english } } } };
 }
 
-writeFileSync(catalogPath, `${JSON.stringify({ sourceLanguage: 'de', strings, version: '1.0' }, null, 2)}\n`);
+writeFileSync(
+  catalogPath,
+  `${JSON.stringify({ sourceLanguage: 'de', strings, version: '1.0' }, null, 2)}\n`,
+);
 console.log(`${Object.keys(strings).length} strings → ${catalogPath}`);
 if (missing.length) console.log(`No English yet (add to NATIVE_ONLY):\n  ${missing.join('\n  ')}`);

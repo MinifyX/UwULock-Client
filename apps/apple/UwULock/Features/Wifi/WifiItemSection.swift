@@ -285,7 +285,7 @@ private struct WifiConnectRow: View {
         Task {
             do {
                 try await backend.copy(itemId, field: field)
-                FeatureToasts.shared.show(featureString("Passwort kopiert ✧"))
+                FeatureToasts.shared.show(copiedText("password"))
                 _ = await backend.settings()
             } catch {
                 FeatureToasts.shared.show(error: error)

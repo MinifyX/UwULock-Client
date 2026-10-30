@@ -1,6 +1,7 @@
-// Builds UwULock's downloads for the system it runs on: on Windows and macOS
-// the app packed into the setup with Nyu in it, on Linux the app as .deb,
-// .rpm and a portable folder.
+// Builds UwULock's downloads for the system it runs on: on Windows the app
+// packed into the setup with Nyu in it, on Linux the app as .deb, .rpm and a
+// portable folder. On macOS only the setup that moves the last Tauri builds
+// over to the native app (apps/apple), see below.
 //
 //   pnpm build:setup                       for this machine
 //   pnpm build:setup --target <triple>     another architecture (macOS:
@@ -14,20 +15,25 @@
 //
 //   Windows  UwULock-windows-x64-setup.exe           what people run, and what updates run
 //            UwULock-windows-arm64-setup.exe         the same for ARM
-//   macOS    UwULock-macos-universal.dmg             what people open
-//            UwULock-update-macos-universal          the setup program inside it, for updates
-//            (both made anew, signed and notarized, by scripts/macos-sign.mjs
-//            in CI when there is a Developer ID)
+//   macOS    UwULock-update-macos-universal          the setup program, with the native
+//                                                   UwULock.app inside, for the Tauri
+//                                                   builds' updater (needs --payload)
 //   Linux    UwULock-linux-<arch>.deb                the app for apt/dpkg, updates itself
 //            UwULock-linux-<arch>.rpm                the app for dnf/zypper/rpm, updates itself
 //            UwULock-linux-<arch>-portable.tar.gz    unpack and run, no updates
 //            UwULock-update-linux-x64.AppImage       x64 only: the setup, for copies an
 //                                                   earlier setup installed; not a download
 //
-// Nothing here signs anything: `pnpm release` signs what the updater runs,
-// under the versioned names installed apps expect, on the machine that holds
-// the key. The builds below never see it. Apple's Developer ID signature for
-// macOS is scripts/macos-sign.mjs, on machines that build nothing.
+// Nothing here signs anything (but macOS's ad-hoc seal): `pnpm release` signs
+// what the updater runs, under the versioned names installed apps expect, on
+// the machine that holds the key. The builds below never see it.
+//
+// macOS: the Mac's app is the native one now (apps/apple, .github/workflows/
+// apple.yml). The Tauri builds still out there update by running
+// UwULock-update-macos-<arch> with --update (apps/desktop/src-tauri/src/
+// updates.rs); with the native, signed and notarized UwULock.app as its
+// payload that setup replaces them with the native app in place. So on macOS
+// this only builds that setup: `--payload <folder with UwULock.app>`.
 
 import { execFileSync, execSync, spawn } from 'node:child_process';
 import {
@@ -76,18 +82,15 @@ const fail = (message) => {
 
 // Linux: `--part packages` builds just the .deb and .rpm, `--part setup`
 // everything else (AppImage, portable folder, setup), so CI can build the two
-// on separate machines at the same time. macOS: `--part app` builds UwULock.app
-// alone, into target/installers/macos/, and `--part setup --payload <folder
-// with UwULock.app>` the setup around it (and the disk image), so CI can sign
-// the app in between (installers.yml). Without it, everything.
+// on separate machines at the same time. Without it, everything. macOS:
+// `--payload <folder with UwULock.app>` (the native app) is required.
 const partIndex = process.argv.indexOf('--part');
 const part = partIndex > 0 ? process.argv[partIndex + 1] : 'all';
-if (!['all', 'packages', 'setup', 'app'].includes(part)) fail(`Unknown --part ${part}`);
-if (part === 'app' && process.platform !== 'darwin') fail('--part app is for macOS.');
+if (!['all', 'packages', 'setup'].includes(part)) fail(`Unknown --part ${part}`);
 const payloadIndex = process.argv.indexOf('--payload');
 const payloadDir = payloadIndex > 0 ? resolve(process.argv[payloadIndex + 1]) : undefined;
-if (process.platform === 'darwin' && part === 'setup' && !payloadDir)
-  fail('--part setup on macOS needs --payload <folder with UwULock.app>.');
+if (process.platform === 'darwin' && !payloadDir)
+  fail('On macOS this builds the migration setup only: --payload <folder with UwULock.app>.');
 const targetIndex = process.argv.indexOf('--target');
 const target = targetIndex > 0 ? process.argv[targetIndex + 1] : undefined;
 const targetArg = target ? ` --target ${target}` : '';
@@ -136,9 +139,9 @@ const produced = [];
  * codegen unit, fat LTO), which runs on a single core. Side by side they take
  * little longer than one. The Intel half gets a target folder of its own, as
  * two Cargo builds can't share one. Then the two programs are joined with
- * `lipo`, as Tauri does, and bundled from there with the same configuration.
+ * `lipo`, as Tauri does.
  */
-async function universalMac(pkg, binary, bundles, config, env = {}) {
+async function universalMac(pkg, binary, config, env = {}) {
   // The pages once, before both builds: `pnpm build` twice at the same time
   // would write into the same folder.
   run(`pnpm --filter ${pkg} build`);
@@ -169,10 +172,6 @@ async function universalMac(pkg, binary, bundles, config, env = {}) {
     ],
     { stdio: 'inherit' },
   );
-  run(
-    `pnpm --filter ${pkg} tauri bundle --bundles ${bundles} --target universal-apple-darwin --config "${noHook}"`,
-    env,
-  );
 }
 
 if (process.platform === 'win32') {
@@ -189,89 +188,47 @@ if (process.platform === 'win32') {
   copyFileSync(join(release, 'uwulock-setup.exe'), setup);
   produced.push(setup);
 } else if (process.platform === 'darwin') {
-  // Ad-hoc signed: a sealed bundle, which Apple silicon insists on and which
-  // keeps the app intact through the setup. With a Developer ID, CI signs and
-  // notarizes on machines of their own, between the parts below
-  // (scripts/macos-sign.mjs, installers.yml).
-  const macOS = { signingIdentity: '-', minimumSystemVersion: '11.0' };
-  const universal = target === 'universal-apple-darwin';
-  // What the parts hand on: target/installers/macos/UwULock.app (`--part app`),
-  // UwULock Setup.app next to it (`--part setup`).
-  const handOver = join(out, 'macos');
+  // The setup around the native app, for the Tauri builds' updater: just the
+  // program (`--no-bundle`), which is what UwULock-update-macos-* always was.
+  // Ad-hoc sealed (Apple silicon runs nothing unsigned); the updater checks
+  // its minisign signature before it runs it, and it is never quarantined.
+  // The app inside keeps its own Developer ID signature and notarization.
+  const app = join(payloadDir, 'UwULock.app');
+  if (!existsSync(join(app, 'Contents', 'Info.plist'))) fail(`No UwULock.app in ${payloadDir}.`);
+  const identifier = execFileSync(
+    'plutil',
+    ['-extract', 'CFBundleIdentifier', 'raw', join(app, 'Contents', 'Info.plist')],
+    { encoding: 'utf8' },
+  ).trim();
+  if (identifier !== 'app.uwulock.desktop')
+    fail(`${app} is ${identifier}, not the disk image's app (app.uwulock.desktop).`);
 
-  let apps = payloadDir;
-  const extensions = mkdtempSync(join(tmpdir(), 'uwulock-appex-'));
-  if (part !== 'setup') {
-    // The AutoFill extension for passkeys: always built, so its Swift stays
-    // sound; inside the app only in a build signed with an Apple developer
-    // team, the only one where it can reach the vault (docs/passkeys.md).
-    console.log('\n▸ Building the AutoFill extension');
-    run(`bash scripts/macos-passkeys.sh "${version}" "${extensions}"`);
-    // The Safari extension, always (docs/extension.md). Its id starts with the
-    // app's, app.uwulock.desktop. Its files come from apps/extension/dist/safari.
-    console.log('\n▸ Building the Safari extension');
-    run(`bash scripts/macos-safari.sh "${version}" "${extensions}" app.uwulock.desktop.safari`, {
-      APPLE_SIGNING_IDENTITY: '',
-    });
-    const files = { 'PlugIns/UwULockSafari.appex': join(extensions, 'UwULockSafari.appex') };
-    if (process.env.UWULOCK_APPLE_TEAM_ID)
-      files['PlugIns/UwULockPasskeys.appex'] = join(extensions, 'UwULockPasskeys.appex');
-
-    console.log(`\n▸ Building UwULock ${version}`);
-    const appConfig = { bundle: { macOS: { ...macOS, files } } };
-    if (universal) {
-      await universalMac('@uwulock/desktop', 'uwulock-desktop', 'app', appConfig);
-    } else {
-      run(
-        `pnpm --filter @uwulock/desktop tauri build --bundles app${targetArg} --config "${configFile('app', appConfig)}"`,
-      );
-    }
-    apps = mkdtempSync(join(tmpdir(), 'uwulock-apps-'));
-    execFileSync('ditto', [join(bundles, 'macos', 'UwULock.app'), join(apps, 'UwULock.app')]);
-    if (part === 'app') {
-      rmSync(handOver, { recursive: true, force: true });
-      mkdirSync(handOver, { recursive: true });
-      execFileSync('ditto', [join(apps, 'UwULock.app'), join(handOver, 'UwULock.app')]);
-      produced.push(join(handOver, 'UwULock.app'));
-    }
-  }
-
-  if (part !== 'app') {
-    if (!existsSync(join(apps, 'UwULock.app'))) fail(`No UwULock.app in ${apps}.`);
-    console.log('\n▸ Packing it into the setup');
-    // The disk image as Tauri makes it, and the setup app on its own for a
-    // signed one (scripts/macos-sign.mjs makes that disk image anew).
-    const setupConfig = { bundle: { active: true, targets: ['app', 'dmg'], macOS } };
-    if (universal) {
-      await universalMac('@uwulock/setup', 'uwulock-setup', 'app,dmg', setupConfig, {
-        UWULOCK_SETUP_PAYLOAD: apps,
-      });
-    } else {
-      run(
-        `pnpm --filter @uwulock/setup tauri build --bundles app,dmg${targetArg} --config "${configFile('setup', setupConfig)}"`,
-        {
-          UWULOCK_SETUP_PAYLOAD: apps,
-        },
-      );
-    }
-    const dmg = join(out, `UwULock-macos-${arch()}.dmg`);
-    copyFileSync(
-      only(join(bundles, 'dmg'), (name) => name.endsWith('.dmg'), 'disk image'),
-      dmg,
+  console.log(`\n▸ Packing ${app} into the setup`);
+  const env = { UWULOCK_SETUP_PAYLOAD: payloadDir };
+  const config = { bundle: { active: false } };
+  if (target === 'universal-apple-darwin') {
+    await universalMac('@uwulock/setup', 'uwulock-setup', config, env);
+  } else {
+    run(
+      `pnpm --filter @uwulock/setup tauri build --no-bundle${targetArg} --config "${configFile('setup', config)}"`,
+      env,
     );
-    const update = join(out, `UwULock-update-macos-${arch()}`);
-    copyFileSync(join(release, 'uwulock-setup'), update);
-    produced.push(dmg, update);
-    if (part === 'setup') {
-      mkdirSync(handOver, { recursive: true });
-      const setupApp = join(handOver, 'UwULock Setup.app');
-      rmSync(setupApp, { recursive: true, force: true });
-      execFileSync('ditto', [join(bundles, 'macos', 'UwULock Setup.app'), setupApp]);
-      produced.push(setupApp);
-    }
   }
-  if (apps !== payloadDir) rmSync(apps, { recursive: true, force: true });
-  rmSync(extensions, { recursive: true, force: true });
+  const update = join(out, `UwULock-update-macos-${arch()}`);
+  copyFileSync(join(release, 'uwulock-setup'), update);
+  chmodSync(update, 0o755);
+  execFileSync(
+    'codesign',
+    ['--force', '--sign', '-', '--identifier', 'app.uwulock.setup', update],
+    {
+      stdio: 'inherit',
+    },
+  );
+  // What it carries unpacks to an app with a program in it.
+  const check = join(mkdtempSync(join(tmpdir(), 'uwulock-check-')), 'payload');
+  execFileSync(update, ['--check-payload', check], { stdio: 'inherit' });
+  rmSync(dirname(check), { recursive: true, force: true });
+  produced.push(update);
 } else {
   // The AppImage, unpacked, is both the portable folder and what the setup
   // installs: it runs from its AppDir, brings its own WebKit and needs no FUSE.

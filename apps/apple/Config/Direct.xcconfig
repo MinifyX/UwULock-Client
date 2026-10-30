@@ -5,3 +5,11 @@
 UWULOCK_BUNDLE_ID = app.uwulock.desktop
 UWULOCK_MAC_ENTITLEMENTS = Config/UwULock-Direct.entitlements
 UWULOCK_DIRECT = DIRECT
+
+// Sparkle: the Stable appcast on the updates branch (scripts/release-feeds.mjs writes it and
+// appcast-beta.xml); the app switches to Beta itself when its update channel says so. `$()`
+// keeps the URL's `//` from starting a comment. The public half of the EdDSA key whose private
+// half is in the release machine's login keychain (account app.uwulock; docs/app-store.md);
+// scripts/sparkle.mjs checks every signature against it.
+SPARKLE_FEED_URL = https:/$()/raw.githubusercontent.com/MinifyX/UwULock-Client/updates/appcast-stable.xml
+SPARKLE_PUBLIC_KEY = 7/6Acto3RlDtF9AS1XBDGVM6oMtCYPTySpFX+u6TZAI=

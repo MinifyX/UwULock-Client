@@ -3,9 +3,9 @@
 //! (commands.rs).
 //!
 //! The updater is the desktop's own (`self_update`, build.rs): a phone gets new
-//! versions as a new APK or IPA from the release page (docs/mobile.md), an App
-//! Store build from the store. There the update commands answer that nothing
-//! is waiting, so the page needs no second code path.
+//! versions as a new APK from the release page (docs/mobile.md). There the
+//! update commands answer that nothing is waiting, so the page needs no second
+//! code path.
 
 #[cfg(self_update)]
 use crate::updates::{self, Channel, UpdateInfo};
@@ -16,15 +16,12 @@ type Channel = serde_json::Value;
 #[cfg(not(self_update))]
 type UpdateInfo = serde_json::Value;
 
-/// Where this copy came from, for the page's words about updates: `"store"` for
-/// an App Store build (feature `store`), `"direct"` for everything else.
+/// Where this copy came from, for the page's words about updates: always
+/// `"direct"` (a download from GitHub). The page also knows `"store"`, which
+/// only the App Store builds — now the native app (apps/apple) — answered.
 #[tauri::command]
 pub(crate) fn distribution() -> &'static str {
-    if cfg!(feature = "store") {
-        "store"
-    } else {
-        "direct"
-    }
+    "direct"
 }
 
 #[tauri::command]
@@ -67,11 +64,7 @@ pub(crate) async fn install_update(app: AppHandle) -> Result<(), String> {
     #[cfg(not(self_update))]
     {
         let _ = app;
-        Err(if cfg!(feature = "store") {
-            "This copy gets new versions from the App Store.".into()
-        } else {
-            "A phone gets new versions from the release page.".into()
-        })
+        Err("A phone gets new versions from the release page.".into())
     }
 }
 

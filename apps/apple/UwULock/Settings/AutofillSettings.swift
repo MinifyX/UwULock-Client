@@ -38,7 +38,7 @@ struct AutofillSettings: View {
                     Text(prefStr("Was die AutoFill-Erweiterung zuletzt getan hat, ohne Passwörter – für eine Fehlermeldung."))
                 }
             }
-            if provider == nil && passkeys == nil && problem == nil {
+            if model.core.isAvailable, provider == nil, passkeys == nil, problem == nil {
                 Section { ProgressView().frame(maxWidth: .infinity) }
             }
             if let problem {
@@ -119,15 +119,16 @@ struct AutofillSettings: View {
                     Text(prefStr("Eingeschaltet"))
                 } else if view.platform == .macos {
                     Button(prefStr("In Safari aktivieren")) { openSafari() }.disabled(busy)
-                } else {
-                    Text(view.enabled == false ? prefStr("Ausgeschaltet") : prefStr("Unbekannt"))
+                } else if view.enabled == false {
+                    Text(prefStr("Ausgeschaltet"))
                 }
             }
         } footer: {
             if view.enabled == true {
                 Text(prefStr("In Safari eingeschaltet. Melde dich in der Erweiterung an; Passkeys kommen in Safari aus dieser App."))
             } else if view.platform == .ios {
-                Text(prefStr("In Einstellungen → Apps → Safari → Erweiterungen einschalten. Passkeys kommen in Safari aus dieser App."))
+                // iOS doesn't say whether the extension is on: how to turn it on (mobile/pages/Settings.tsx).
+                Text(prefStr("Dieselbe Erweiterung wie in Chrome und Firefox, mit eigener Anmeldung. Einschalten unter Einstellungen → Apps → Safari → Erweiterungen → UwULock. Passkeys und Passwörter kommen in Safari aus dieser App."))
             } else {
                 Text(prefStr("Dieselbe Erweiterung wie in Chrome und Firefox, mit eigener Anmeldung. Passkeys kommen in Safari aus dieser App."))
             }

@@ -266,8 +266,13 @@ comes back — on Android 14 right away (a pending intent gives no result), so t
 
 ## iOS 17+ and macOS 14+: the AutoFill extension
 
-`apps/desktop/src-tauri/apple/PasskeyProvider` (Swift): an `ASCredentialProviderViewController`
-for passkeys and passwords, the same code for both. It is its own process, started by the system while UwULock
+`apps/apple/CredentialProvider` (Swift, target `CredentialProvider` → `UwULockPasskeys.appex` in
+the native app, `apps/apple/project.yml`): an `ASCredentialProviderViewController` for passkeys and
+passwords, the same code for iOS and macOS, its sheet in SwiftUI with UwUDesign
+(`PasskeySheet.swift`, German and English in `Localizable.xcstrings`). The shared-store side
+(`PasskeyVault.swift`) is unchanged from the Tauri builds' `apps/desktop/src-tauri/apple/PasskeyProvider`,
+which those builds still compile until milestone 7; `UwULockPasskeysTests` checks the seal
+format, the list, matching and the WebAuthn bytes against a temporary folder. It is its own process, started by the system while UwULock
 may not run, so it never sees the open vault. Instead:
 
 - While the vault is open and the setting is on, the app writes a **sealed list** of the
@@ -370,20 +375,22 @@ Nothing of this works unsigned: the App Group, the Keychain group and the AutoFi
 come from a developer team. The App Store builds have them ([app-store.md](app-store.md)); the
 GitHub builds don't, and there the setting says so:
 
-- **iOS**: `scripts/ios-build.sh` adds the extension as target `UwULockPasskeys`
-  (`app.uwulock.passkeys`, iOS 17) to the generated Xcode project and embeds it in the app's
-  PlugIns, unsigned like the app. For TestFlight, `scripts/ios-sign.sh` signs both with the App
-  Store profiles: App Group `group.app.uwulock`, Keychain groups `TEAMID.app.uwulock` (the app's
-  own) and `TEAMID.app.uwulock.passkeys` (shared), the AutoFill entitlement on both (App Store
-  Connect wants it on the container too); it also writes the team into `UwULockKeychainGroup`, which the unsigned build leaves without
-  prefix.
-- **macOS**: `scripts/macos-passkeys.sh` compiles it into `UwULockPasskeys.appex` (universal,
-  ad-hoc signed) on every macOS build, so the Swift can't rot. The Mac App Store build
-  (`scripts/build-mas.mjs`, bundle ID `app.uwulock`) carries it, built with
-  `UWULOCK_APPLE_TEAM_ID` (Rust reads it at build time for the group paths) and signed with
-  `apple/PasskeyProvider/UwULockPasskeys-macOS.entitlements` (App Group `TEAMID.app.uwulock`). The
-  DMG (`app.uwulock.desktop`) leaves it out: an extension's ID has to extend its app's, and the
-  DMG has no developer signature anyway.
+- **Native app** (`apps/apple`, `scripts/apple-build.sh`): Xcode builds and embeds
+  `UwULockPasskeys.appex` for every configuration — `app.uwulock.passkeys` in the iOS and Mac App
+  Store builds, `app.uwulock.desktop.passkeys` in the Mac's disk image (an embedded extension's ID
+  must extend its app's). Entitlements: `CredentialProvider/UwULockPasskeys-iOS.entitlements`
+  (App Group `group.app.uwulock`, Keychain group `$(AppIdentifierPrefix)app.uwulock.passkeys`) and
+  `UwULockPasskeys-macOS.entitlements` (sandboxed, App Group `$(TeamIdentifierPrefix)app.uwulock`,
+  Keychain group `$(TeamIdentifierPrefix)app.uwulock.passkeys`), the AutoFill entitlement on both.
+  On the Mac a build phase drops the credential-exchange keys from the extension's Info.plist,
+  as before.
+- **Signing** (`scripts/apple-release.sh`, docs/app-store.md): the archive is built unsigned and
+  each bundle ad-hoc signed with its entitlements, `$(TeamIdentifierPrefix)` /
+  `$(AppIdentifierPrefix)` filled in with the team; `xcodebuild -exportArchive` then signs app and
+  extension with the App Store profiles (iOS, Mac App Store) or the Developer ID profiles (the
+  disk image, `app.uwulock.desktop.passkeys`), which carry the AutoFill entitlement, the App Group
+  and the Keychain groups. The disk image without a Developer ID drops those (`adhoc`), so its
+  extension can't reach the vault there.
 
 Turning it on: iOS Settings → General → AutoFill & Passwords, macOS System Settings → General →
 AutoFill & Passwords; then UwULock's own setting.
@@ -408,8 +415,7 @@ settings (phone, iPad, Mac) show the state and the same button. Windows and Linu
 
 Apple Passwords → "Export data to another app" → UwULock, the FIDO Credential Exchange Format
 (CXF). The extension declares `SupportsCredentialExchange` (version 1.0); the app lists the
-`ASCredentialExchangeActivity` activity type in `NSUserActivityTypes` (`scripts/ios-build.sh`
-reads its value from the SDK). The system starts UwULock with that activity; the mobile plugin
+`ASCredentialExchangeActivity` activity type in `NSUserActivityTypes`. The system starts UwULock with that activity; the mobile plugin
 (`CredentialExchange.swift`) keeps only its token. Once the vault is open, the page asks whether
 one waits, and after the person said yes the plugin calls
 `ASCredentialImportManager.importCredentials(token:)` (only then, only once) and hands the data

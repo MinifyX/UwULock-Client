@@ -272,7 +272,6 @@ private struct HealthReviewCard: View {
                                 .frame(maxWidth: .infinity)
                         }
                         .uwuProminentButton()
-                        .foregroundStyle(Color.uwuOnPink)
                         .keyboardShortcut(.defaultAction)
                     }
                     Button(action: onGenerate) {

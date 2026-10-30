@@ -113,7 +113,6 @@ private struct HealthReportList: View {
                                     .frame(maxWidth: .infinity)
                             }
                             .uwuProminentButton()
-                            .foregroundStyle(Color.uwuOnPink)
                             .controlSize(.large)
                             .disabled(store.busy != nil)
                         }

@@ -144,7 +144,7 @@ struct PendingLogin {
 enum PendingSso {
     /// The code is in hand, but the account has two-step login: the code is
     /// sent again with the second step (the server uses it up only then).
-    #[cfg_attr(mobile, allow(dead_code))]
+    #[cfg_attr(target_os = "android", allow(dead_code))]
     Code {
         client: Arc<Client>,
         server: Server,
@@ -706,7 +706,7 @@ impl App {
 }
 
 /// How long the browser has for an SSO login: the server's state lasts ten minutes.
-#[cfg_attr(mobile, allow(dead_code))]
+#[cfg_attr(target_os = "android", allow(dead_code))]
 const SSO_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
 fn sso_cancelled() -> Failure {
@@ -716,7 +716,7 @@ fn sso_cancelled() -> Failure {
 impl VaultState {
     /// Starts an SSO attempt, which ends the one before. Before any await,
     /// so a cancel right after the click is never lost.
-    #[cfg_attr(mobile, allow(dead_code))]
+    #[cfg_attr(target_os = "android", allow(dead_code))]
     fn sso_begin(&self) -> u64 {
         self.sso_attempt.send_modify(|attempt| *attempt += 1);
         *self.pending_sso.lock() = None;
@@ -736,7 +736,7 @@ impl VaultState {
     }
 
     /// Resolves once `attempt` is no longer the current one.
-    #[cfg_attr(mobile, allow(dead_code))]
+    #[cfg_attr(target_os = "android", allow(dead_code))]
     async fn sso_ended(&self, attempt: u64) {
         let mut attempts = self.sso_attempt.subscribe();
         let _ = attempts.wait_for(|current| *current != attempt).await;
@@ -757,21 +757,21 @@ impl VaultState {
 impl App {
     /// Logs in through the server's SSO provider (UwUAuth or another): the system
     /// browser goes to the server, the provider and back to a listener on
-    /// `127.0.0.1`, which takes the code. Only self-hosted servers and only on
-    /// computers — a phone has no browser that comes back to a loopback address
-    /// while the app sleeps.
+    /// `127.0.0.1`, which takes the code. Only self-hosted servers. Computers and
+    /// iOS (the native app shows the page in an `ASWebAuthenticationSession`,
+    /// which keeps the app awake); not Android yet.
     pub async fn login_sso(&self, server: ServerInput, email: Option<String>) -> Result<LoginStep> {
         let app = self.clone();
         let state = self.vault();
-        #[cfg(mobile)]
+        #[cfg(target_os = "android")]
         {
             let _ = (app, state, server, email);
             Err(Failure::new(
                 "unsupported",
-                "SSO login isn't there on phones yet.",
+                "SSO login isn't there on Android yet.",
             ))
         }
-        #[cfg(desktop)]
+        #[cfg(not(target_os = "android"))]
         {
             use uwulock_bitwarden::sso::{self, Loopback, Start};
 

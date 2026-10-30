@@ -79,7 +79,6 @@ struct FileRequestsView: View {
                     Label(features: "Neue Dateianfrage", uwuIcon: .add)
                 }
                 .uwuProminentButton()
-                .foregroundStyle(Color.uwuOnPink)
                 if store.error != nil {
                     Button {
                         Task { await store.load() }

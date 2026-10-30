@@ -1,0 +1,435 @@
+{
+  "sourceLanguage": "de",
+  "strings": {
+    "Abbrechen": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel"
+          }
+        }
+      }
+    },
+    "Alle Logins": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All logins"
+          }
+        }
+      }
+    },
+    "Anmelden bei %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signing in to %@"
+          }
+        }
+      }
+    },
+    "Anmelden bei %@ …": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signing in to %@ …"
+          }
+        }
+      }
+    },
+    "Das System hat Face ID, Touch ID oder den Code gerade nicht von selbst zugelassen.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The system didn't allow asking for Face ID, Touch ID or the passcode by itself just now."
+          }
+        }
+      }
+    },
+    "Das System hat Face ID, Touch ID oder den Code nicht von selbst gestartet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The system didn't start Face ID, Touch ID or the passcode by itself."
+          }
+        }
+      }
+    },
+    "Das ging nicht. Öffne UwULock und entsperre den Tresor, dann versuche es noch einmal.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That didn't work. Open UwULock and unlock the vault, then try again."
+          }
+        }
+      }
+    },
+    "Das hat zu lange gedauert. Brich ab und versuche es noch einmal.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That took too long. Cancel and try again."
+          }
+        }
+      }
+    },
+    "Der Schlüssel ließ sich nach der Bestätigung nicht öffnen. Tippe, um es noch einmal zu versuchen.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The key didn't open after the verification. Tap to try again."
+          }
+        }
+      }
+    },
+    "Die Liste ist älter als eine, die schon hier war. Öffne UwULock und entsperre den Tresor.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The list is older than one seen here before. Open UwULock and unlock the vault."
+          }
+        }
+      }
+    },
+    "Diese Art Anmeldung kann UwULock nicht ausfüllen.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "UwULock can't fill in this kind of sign-in."
+          }
+        }
+      }
+    },
+    "Diese UwULock-Version ist nicht mit einem Apple-Entwicklerkonto signiert; die AutoFill-Erweiterung kann den Tresor nicht erreichen.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This UwULock build isn't signed with an Apple developer account; the AutoFill extension can't reach the vault."
+          }
+        }
+      }
+    },
+    "Face ID, Touch ID oder der Code kam nicht. Tippe, um es noch einmal zu versuchen.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Face ID, Touch ID or the passcode didn't come up. Tap to try again."
+          }
+        }
+      }
+    },
+    "Face ID, Touch ID oder der Code wurde vom System unterbrochen.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The system interrupted Face ID, Touch ID or the passcode."
+          }
+        }
+      }
+    },
+    "Im Tresor ist kein Passkey für diese Seite.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "There's no passkey for this site in the vault."
+          }
+        }
+      }
+    },
+    "In UwULocks Liste für AutoFill sind keine Logins. Öffne UwULock und entsperre den Tresor – danach sind sie hier.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "UwULock's AutoFill list has no logins. Open UwULock and unlock the vault, then they're here."
+          }
+        }
+      }
+    },
+    "Kein Login passt zu dieser Seite. Wähle einen aus allen Logins.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No login fits this site. Pick one of all logins."
+          }
+        }
+      }
+    },
+    "Mit Code entsperren": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unlock with passcode"
+          }
+        }
+      }
+    },
+    "Mit Face ID entsperren": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unlock with Face ID"
+          }
+        }
+      }
+    },
+    "Mit Optic ID entsperren": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unlock with Optic ID"
+          }
+        }
+      }
+    },
+    "Mit Touch ID entsperren": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unlock with Touch ID"
+          }
+        }
+      }
+    },
+    "Mit UwULock anmelden bei %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in to %@ with UwULock"
+          }
+        }
+      }
+    },
+    "Name, Benutzer oder Adresse": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Name, user or address"
+          }
+        }
+      }
+    },
+    "Nichts gefunden für „%@“.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing found for “%@”."
+          }
+        }
+      }
+    },
+    "Passend zu dieser Seite": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "For this site"
+          }
+        }
+      }
+    },
+    "Passkey für %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passkey for %@"
+          }
+        }
+      }
+    },
+    "Passkey für %@ in UwULock sichern": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save a passkey for %@ in UwULock"
+          }
+        }
+      }
+    },
+    "Passkey sichern": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save passkey"
+          }
+        }
+      }
+    },
+    "Passkeys": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passkeys"
+          }
+        }
+      }
+    },
+    "Passwort für %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Password for %@"
+          }
+        }
+      }
+    },
+    "Suche leeren": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear search"
+          }
+        }
+      }
+    },
+    "UwULock braucht einen Gerätecode (und Face ID oder Touch ID, falls gesperrt: einmal mit dem Code entsperren).": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "UwULock needs a device passcode (and if Face ID or Touch ID is locked out, unlock once with the passcode)."
+          }
+        }
+      }
+    },
+    "UwULock fügt hier keinen Text ein. Tippe in ein Anmeldefeld und wähle dort UwULock.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "UwULock doesn't insert text here. Tap a sign-in field and pick UwULock there."
+          }
+        }
+      }
+    },
+    "UwULock füllt keine Einmalcodes aus. Öffne UwULock und kopiere den Code dort.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "UwULock doesn't fill in one-time codes. Open UwULock and copy the code there."
+          }
+        }
+      }
+    },
+    "UwULock-AutoFill": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "UwULock AutoFill"
+          }
+        }
+      }
+    },
+    "UwULocks Passwörter und Passkeys für das System freigeben": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Let the system list UwULock's passwords and passkeys"
+          }
+        }
+      }
+    },
+    "Weitere Treffer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "More results"
+          }
+        }
+      }
+    },
+    "Wird geladen …": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading …"
+          }
+        }
+      }
+    },
+    "Öffne UwULock einmal und entsperre den Tresor, mit eingeschaltetem AutoFill für andere Apps.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open UwULock once and unlock the vault, with AutoFill for other apps switched on."
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

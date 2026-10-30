@@ -231,7 +231,6 @@ struct SuiteScreen: View {
                         }
                     }
                     .uwuProminentButton()
-                    .foregroundStyle(Color.uwuOnPink)
                     .disabled(store.creating)
                 }
             }
@@ -336,7 +335,6 @@ struct SuiteScreen: View {
         .accessibilityAddTraits(on ? .isSelected : [])
         if on {
             button.uwuProminentButton()
-                .foregroundStyle(Color.uwuOnPink)
         } else {
             button.uwuGlassButton()
         }
