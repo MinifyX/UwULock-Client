@@ -586,12 +586,12 @@ extension Core {
     // MARK: SSH and Remote Desktop (suite)
 
     /// The records of a suite space.
-    func suiteView(space: SuiteSpace) async throws -> SuiteView {
+    func suiteView(space: SuiteSpace) async throws -> SuiteSpaceView {
         try await call("suite_view", ["space": space])
     }
 
     /// Makes a suite space that no app has made yet.
-    func suiteCreate(space: SuiteSpace) async throws -> SuiteView {
+    func suiteCreate(space: SuiteSpace) async throws -> SuiteSpaceView {
         try await call("suite_create", ["space": space])
     }
 

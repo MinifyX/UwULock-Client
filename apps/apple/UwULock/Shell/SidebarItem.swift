@@ -1,56 +1,24 @@
 import SwiftUI
 import UwUDesign
 
-/// The item types of the vault (sidebar "Typen").
-enum ItemType: String, CaseIterable, Hashable, Sendable {
-    case login, card, identity, note, sshKey, wifi
-
-    var title: LocalizedStringResource {
-        switch self {
-        case .login: "Logins"
-        case .card: "Karten"
-        case .identity: "Identitäten"
-        case .note: "Notizen"
-        case .sshKey: "SSH-Schlüssel"
-        case .wifi: "WLAN"
-        }
-    }
-
-    var icon: UwUIconName {
-        switch self {
-        case .login: .website
-        case .card: .card
-        case .identity: .identity
-        case .note: .note
-        case .sshKey: .sshKey
-        case .wifi: .wifi
-        }
-    }
-}
-
-/// One place in the sidebar, as on the desktop (components/VaultScreen.tsx).
+/// One place in the sidebar, as on the desktop (components/VaultScreen.tsx, lib/filters.ts):
+/// the item filters, plus the pages that aren't item lists (password check, apps, extras).
 enum SidebarItem: Hashable, Sendable {
-    case all, favorites, passwordDue, passwordCheck
-    case type(ItemType)
-    case noFolder
+    case all, favorites, due, passwordCheck
+    case type(ItemKind)
+    /// A folder of the own vault; nil: the items without one.
+    case folder(String?)
+    case organization(String)
+    case collection(String)
     case uwuSSH, uwuRDP
     case sends, fileRequests, maskedAddresses
     case trash
 
-    var title: LocalizedStringResource {
+    /// Whether the place is a list of items (`Filter` of lib/filters.ts).
+    var isItemFilter: Bool {
         switch self {
-        case .all: "Alle Einträge"
-        case .favorites: "Favoriten"
-        case .passwordDue: "Neues Passwort fällig"
-        case .passwordCheck: "Passwortprüfung"
-        case .type(let type): type.title
-        case .noFolder: "Ohne Ordner"
-        case .uwuSSH: "SSH (UwUSSH)"
-        case .uwuRDP: "Remote Desktop (UwURDP)"
-        case .sends: "Sends"
-        case .fileRequests: "Dateianfragen"
-        case .maskedAddresses: "Maskierte Adressen"
-        case .trash: "Papierkorb"
+        case .passwordCheck, .uwuSSH, .uwuRDP, .sends, .fileRequests, .maskedAddresses: false
+        default: true
         }
     }
 
@@ -58,10 +26,12 @@ enum SidebarItem: Hashable, Sendable {
         switch self {
         case .all: .vault
         case .favorites: .favorite
-        case .passwordDue: .reminder
+        case .due: .reminder
         case .passwordCheck: .securityCheck
-        case .type(let type): type.icon
-        case .noFolder: .folder
+        case .type(let kind): kind.icon
+        case .folder: .folder
+        case .organization: .organization
+        case .collection: .collection
         case .uwuSSH: .terminal
         case .uwuRDP: .computer
         case .sends: .send
@@ -70,20 +40,23 @@ enum SidebarItem: Hashable, Sendable {
         case .trash: .delete
         }
     }
-}
 
-/// The sidebar's sections, in the desktop's order.
-struct SidebarSection: Identifiable {
-    let id: String
-    let title: LocalizedStringResource?
-    let items: [SidebarItem]
-
-    static let all: [SidebarSection] = [
-        SidebarSection(id: "vault", title: nil, items: [.all, .favorites, .passwordDue, .passwordCheck]),
-        SidebarSection(id: "types", title: "Typen", items: ItemType.allCases.map(SidebarItem.type)),
-        SidebarSection(id: "folders", title: "Ordner", items: [.noFolder]),
-        SidebarSection(id: "apps", title: "UwU-Apps", items: [.uwuSSH, .uwuRDP]),
-        SidebarSection(id: "extras", title: "Extras", items: [.sends, .fileRequests, .maskedAddresses]),
-        SidebarSection(id: "trash", title: nil, items: [.trash]),
-    ]
+    /// The title of a place that doesn't need the vault's data to be named.
+    var fixedTitle: String? {
+        switch self {
+        case .all: vt("Alle Einträge")
+        case .favorites: vt("Favoriten")
+        case .due: vt("Neues Passwort fällig")
+        case .passwordCheck: vt("Passwortprüfung")
+        case .type(let kind): kind.plural
+        case .folder(nil): vt("Ohne Ordner")
+        case .uwuSSH: vt("SSH (UwUSSH)")
+        case .uwuRDP: vt("Remote Desktop (UwURDP)")
+        case .sends: vt("Sends")
+        case .fileRequests: vt("Dateianfragen")
+        case .maskedAddresses: vt("Maskierte Adressen")
+        case .trash: vt("Papierkorb")
+        case .folder, .organization, .collection: nil
+        }
+    }
 }

@@ -7,92 +7,66 @@ import UwUDesign
 struct PhoneTabs: View {
     enum Page: Hashable { case vault, check, generator, settings, search }
 
+    @Environment(AppModel.self) private var model
     @State private var page = Page.vault
-    @State private var search = ""
 
     var body: some View {
+        @Bindable var model = model
         TabView(selection: $page) {
             Tab(value: Page.vault) {
                 NavigationStack { PhoneVaultOverview() }
             } label: {
-                Label("Tresor", uwuIcon: .vault)
+                Label(vt("Tresor"), uwuIcon: .vault)
             }
             Tab(value: Page.check) {
-                NavigationStack { PhonePlaceholder(title: "Passwortprüfung", mood: .happy) }
+                NavigationStack { PasswordCheckView() }
             } label: {
-                Label("Prüfung", uwuIcon: .securityCheck)
+                Label(vt("Prüfung"), uwuIcon: .securityCheck)
             }
             Tab(value: Page.generator) {
-                NavigationStack { PhonePlaceholder(title: "Passwort-Generator", mood: .sparkle) }
+                NavigationStack { GeneratorView() }
             } label: {
-                Label("Generator", uwuIcon: .generate)
+                Label(vt("Generator"), uwuIcon: .generate)
             }
             Tab(value: Page.settings) {
                 NavigationStack { SettingsView() }
             } label: {
-                Label("Einstellungen", uwuIcon: .settings)
+                Label(vt("Einstellungen"), uwuIcon: .settings)
             }
             Tab(value: Page.search, role: .search) {
-                NavigationStack {
-                    PhonePlaceholder(title: "Suchen", mood: .puzzled)
-                        .searchable(text: $search, prompt: Text("Im Tresor suchen"))
-                }
+                NavigationStack { VaultSearchView() }
+            } label: {
+                Label(vt("Suchen"), systemImage: "magnifyingglass")
             }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
+        .sensoryFeedback(.selection, trigger: page)
+        .vaultDialogs(place: $model.selection)
     }
 }
 
-/// The vault tab's first page: the sidebar's places as a list.
+/// The vault tab's first page: the sidebar's places, then a list, then an item.
 struct PhoneVaultOverview: View {
     @Environment(AppModel.self) private var model
+    @Environment(VaultModel.self) private var vault
 
     var body: some View {
-        List {
-            ForEach(SidebarSection.all) { section in
-                Section {
-                    ForEach(section.items, id: \.self) { item in
-                        NavigationLink(value: item) {
-                            Label {
-                                Text(item.title)
-                            } icon: {
-                                UwUIcon(item.icon).foregroundStyle(.tint)
-                            }
-                        }
-                    }
-                } header: {
-                    if let title = section.title { Text(title) }
+        @Bindable var model = model
+        VaultSidebar(selection: $model.selection, pushes: true)
+            .navigationDestination(for: SidebarItem.self) { place in
+                if place.isItemFilter {
+                    ItemListView(place: place, selection: .constant(nil), pushes: true)
+                } else {
+                    VaultFeaturePage(place: place)
                 }
             }
-        }
-        .navigationTitle(Text("Tresor"))
-        .navigationDestination(for: SidebarItem.self) { ItemListPlaceholder(place: $0) }
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button("Sperren", systemImage: "lock") { model.lock() }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    // Milestone 4: the editor.
-                } label: {
-                    Label("Neuer Eintrag", uwuIcon: .add)
+            .navigationDestination(for: String.self) { ItemDetailView(itemId: $0) }
+            .refreshable { vault.sync() }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NewItemMenu(place: nil)
                 }
             }
-        }
-    }
-}
-
-struct PhonePlaceholder: View {
-    let title: LocalizedStringResource
-    let mood: NyuMood
-
-    var body: some View {
-        VStack(spacing: UwUSpacing.md) {
-            NyuView(mood: mood).frame(width: 110)
-            Text("Kommt bald.").uwuFont(.headline)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .navigationTitle(Text(title))
     }
 }
 #endif

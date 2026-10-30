@@ -67,3 +67,4 @@ apps/desktop/e2e/shots/
 
 # The extension's end-to-end screenshots
 apps/extension/e2e/shots/
+/build/

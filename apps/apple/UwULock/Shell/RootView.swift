@@ -45,13 +45,31 @@ struct RootView: View {
     }
 }
 
-/// iPhone: tabs. iPad and Mac: three columns.
+/// iPhone: tabs. iPad and Mac: three columns. Owns the vault on screen while it's open.
 struct VaultShell: View {
+    @Environment(AppModel.self) private var model
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
+    @State private var vault: VaultModel?
 
     var body: some View {
+        Group {
+            if let vault {
+                layout.environment(vault)
+            } else {
+                Color.clear
+            }
+        }
+        .task {
+            let vault = VaultModel(backend: Self.backend(model.core))
+            self.vault = vault
+            await vault.run(status: model.status)
+        }
+    }
+
+    @ViewBuilder
+    private var layout: some View {
         #if os(iOS)
         if sizeClass == .compact {
             PhoneTabs()
@@ -61,6 +79,13 @@ struct VaultShell: View {
         #else
         VaultSplitView()
         #endif
+    }
+
+    private static func backend(_ core: Core) -> VaultBackend {
+        #if DEBUG
+        if FixtureVaultBackend.requested { return FixtureVaultBackend() }
+        #endif
+        return core
     }
 }
 

@@ -1,109 +1,133 @@
 import SwiftUI
 import UwUDesign
 
-/// iPad and Mac: sidebar → list → detail, like Apple's Passwords app.
+/// iPad and Mac: sidebar → list → detail, like Apple's Passwords app (components/VaultScreen.tsx).
+/// The places that aren't item lists (password check, apps, extras) take list and detail together.
 struct VaultSplitView: View {
     @Environment(AppModel.self) private var model
+    @Environment(VaultModel.self) private var vault
     @State private var columns = NavigationSplitViewVisibility.all
-    @State private var search = ""
+    @FocusState private var searchFocused: Bool
+
+    private var place: SidebarItem { model.selection ?? .all }
+    /// A search always looks through the items, whatever page is on screen.
+    private var listPlace: SidebarItem {
+        place.isItemFilter ? place : .all
+    }
+    private var showsList: Bool {
+        place.isItemFilter || !vault.query.trimmingCharacters(in: .whitespaces).isEmpty
+    }
 
     var body: some View {
         @Bindable var model = model
+        @Bindable var vault = vault
         NavigationSplitView(columnVisibility: $columns) {
             VaultSidebar(selection: $model.selection)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
         } content: {
-            ItemListPlaceholder(place: model.selection ?? .all)
-                .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 420)
+            ItemListView(place: listPlace, selection: $vault.selectedItemId)
+                .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 440)
         } detail: {
-            DetailPlaceholder()
+            detail
         }
-        .searchable(text: $search, placement: .sidebar, prompt: Text("Im Tresor suchen"))
-    }
-}
-
-struct VaultSidebar: View {
-    @Binding var selection: SidebarItem?
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        List(selection: $selection) {
-            ForEach(SidebarSection.all) { section in
-                if let title = section.title {
-                    Section(title) { rows(section) }
-                } else {
-                    Section { rows(section) }
-                }
-            }
+        .searchable(text: $vault.query, placement: .sidebar, prompt: Text(vt("Im Tresor suchen")))
+        .searchFocused($searchFocused)
+        .toolbar { toolbar }
+        .background { shortcuts }
+        .onChange(of: model.selection) { _, _ in
+            vault.query = ""
+            columns = showsList ? .all : .doubleColumn
         }
-        .navigationTitle(Text("Tresor"))
-        .toolbar {
-            ToolbarItem {
-                Button("Sperren", systemImage: "lock") { model.lock() }
-                    .labelStyle(.iconOnly)
-                    .help(Text("Sperren"))
-            }
+        .onChange(of: showsList) { _, list in
+            columns = list ? .all : .doubleColumn
         }
+        .onAppear { columns = showsList ? .all : .doubleColumn }
+        .vaultDialogs(place: $model.selection)
     }
 
     @ViewBuilder
-    private func rows(_ section: SidebarSection) -> some View {
-        ForEach(section.items, id: \.self) { item in
-            Label {
-                Text(item.title)
-            } icon: {
-                UwUIcon(item.icon)
+    private var detail: some View {
+        if showsList {
+            if let id = vault.selectedItemId, vault.item(id) != nil {
+                NavigationStack {
+                    ItemDetailView(itemId: id).id(id)
+                }
+            } else {
+                ContentUnavailableView {
+                    VStack(spacing: UwUSpacing.sm) {
+                        NyuView(mood: .sleepy).frame(width: 96)
+                        Text(vt("Nichts ausgewählt")).uwuFont(.headline)
+                    }
+                } description: {
+                    Text(vt("Wähle links einen Eintrag."))
+                }
             }
-            .tag(item)
+        } else {
+            NavigationStack { VaultFeaturePage(place: place) }
         }
-        if section.id == "folders" {
+    }
+
+    @ToolbarContentBuilder
+    private var toolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
             Button {
-                // Milestone 4: create a folder.
+                vault.showGenerator = true
             } label: {
-                Label("Neuer Ordner", uwuIcon: .newFolder)
+                Label(vt("Generator"), uwuIcon: .generate)
             }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
+            .help(vt("Passwort-Generator"))
+            .keyboardShortcut("g", modifiers: [.command, .shift])
+            Button {
+                vault.sync()
+            } label: {
+                Label(vault.syncing ? vt("Synchronisiert …") : vt("Synchronisieren"), uwuIcon: .sync)
+                    .symbolEffect(.rotate, isActive: vault.syncing)
+            }
+            .help(vt("Synchronisieren"))
+            .disabled(vault.syncing)
+            .keyboardShortcut("r", modifiers: [.command, .shift])
         }
+    }
+
+    /// Keyboard shortcuts with no button of their own: a new item, the search, and copying the
+    /// selected login's username, password and code (VaultScreen.tsx's Ctrl+U/P/T).
+    private var shortcuts: some View {
+        Group {
+            Button(vt("Neuer Eintrag")) { vault.newItem(in: place) }
+                .keyboardShortcut("n", modifiers: .command)
+            Button(vt("Suchen")) { searchFocused = true }
+                .keyboardShortcut("f", modifiers: .command)
+            Button(vt("Benutzername kopieren")) { copySelected("username") }
+                .keyboardShortcut("u", modifiers: [.command, .shift])
+            Button(vt("Passwort kopieren")) { copySelected("password") }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
+            Button(vt("Code kopieren")) { copySelected("totp") }
+                .keyboardShortcut("t", modifiers: [.command, .shift])
+        }
+        .frame(width: 0, height: 0)
+        .opacity(0)
+        .accessibilityHidden(true)
+    }
+
+    private func copySelected(_ field: String) {
+        guard let item = vault.item(vault.selectedItemId), item.kind == .login, !item.deleted else { return }
+        vault.copy(item.id, field: field)
     }
 }
 
-/// The middle column until the vault arrives from the Rust core.
-struct ItemListPlaceholder: View {
+/// A page of the sidebar that isn't a list of items: the other screens' views.
+struct VaultFeaturePage: View {
     let place: SidebarItem
 
     var body: some View {
-        VStack(spacing: UwUSpacing.md) {
-            NyuView(mood: .puzzled).frame(width: 96)
-            Text("Hier ist noch nichts.")
-                .uwuFont(.headline)
-            Text("Sobald dein Tresor geladen ist, stehen die Einträge hier.")
-                .uwuFont(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(UwUSpacing.xl)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .navigationTitle(Text(place.title))
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    // Milestone 4: the editor.
-                } label: {
-                    Label("Neuer Eintrag", uwuIcon: .add)
-                }
-                .help(Text("Neuer Eintrag"))
-            }
-        }
-    }
-}
-
-struct DetailPlaceholder: View {
-    var body: some View {
-        ContentUnavailableView {
-            Label("Nichts ausgewählt", uwuIcon: .vault, size: .xl)
-        } description: {
-            Text("Wähle links einen Eintrag.")
+        switch place {
+        case .passwordCheck: PasswordCheckView()
+        case .uwuSSH: SuiteView(kind: .ssh)
+        case .uwuRDP: SuiteView(kind: .rdp)
+        case .sends: SendsView()
+        case .fileRequests: FileRequestsView()
+        case .maskedAddresses: MaskedAddressesView()
+        default: EmptyView()
         }
     }
 }

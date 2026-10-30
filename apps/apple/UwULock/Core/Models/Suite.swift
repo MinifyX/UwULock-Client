@@ -36,7 +36,7 @@ struct SuiteRecord: Codable, Sendable, Equatable, Hashable, Identifiable {
 }
 
 /// A suite space with its records; `exists` is false until an app has made it.
-struct SuiteView: Codable, Sendable, Equatable, Hashable {
+struct SuiteSpaceView: Codable, Sendable, Equatable, Hashable {
     var space: SuiteSpace
     var exists: Bool
     var records: [SuiteRecord]
@@ -45,7 +45,7 @@ struct SuiteView: Codable, Sendable, Equatable, Hashable {
 /// What a save answers: the space now, the records the server had newer copies of (taken over,
 /// nothing overwritten) and the key a generation or import made.
 struct SuiteSaved: Codable, Sendable, Equatable, Hashable {
-    var view: SuiteView
+    var view: SuiteSpaceView
     var conflicts: [String]
     var id: String?
 }

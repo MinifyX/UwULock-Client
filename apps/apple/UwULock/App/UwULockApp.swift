@@ -16,10 +16,12 @@ struct UwULockApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: "main") {
             RootView()
-                .environment(model)
+                .modifier(AuthRequestAlert())
+                .background(ActivityTracker { model.noteActivity() })
                 .themed()
+                .environment(model)
         }
         .commands {
             AppCommands(model: model)
@@ -35,12 +37,13 @@ struct UwULockApp: App {
         #if os(macOS)
         Settings {
             SettingsView()
-                .environment(model)
                 .themed()
+                .environment(model)
         }
 
         MenuBarExtra {
             MenuBarContent()
+                .themed()
                 .environment(model)
         } label: {
             UwUIcon(model.phase == .unlocked ? .unlocked : .locked, size: .md)
@@ -56,27 +59,12 @@ struct AppCommands: Commands {
 
     var body: some Commands {
         CommandGroup(after: .newItem) {
-            Button("Sperren") { model.lock() }
-                .keyboardShortcut("l", modifiers: [.command, .shift])
+            Button(prefStr("Sperren")) { model.lock() }
+                .keyboardShortcut("l", modifiers: .command)
                 .disabled(model.phase != .unlocked)
         }
         SidebarCommands()
     }
-}
-
-/// The suite's theme from the user's appearance settings (Settings → Appearance).
-private struct Themed: ViewModifier {
-    @AppStorage(AppSettingsKey.font) private var font: UwUFontChoice = .uwu
-    @AppStorage(AppSettingsKey.textSize) private var textSize: UwUTextSize = .system
-    @AppStorage(AppSettingsKey.reduceMotion) private var reduceMotion = false
-
-    func body(content: Content) -> some View {
-        content.uwuTheme(font: font, textSize: textSize, reduceMotion: reduceMotion)
-    }
-}
-
-extension View {
-    func themed() -> some View { modifier(Themed()) }
 }
 
 #if DIRECT && canImport(Sparkle)
