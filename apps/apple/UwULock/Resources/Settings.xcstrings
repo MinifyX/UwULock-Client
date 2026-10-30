@@ -1,6 +1,56 @@
 {
   "sourceLanguage": "de",
   "strings": {
+    "Mello verbinden": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect Mello"
+          }
+        }
+      }
+    },
+    "Mello sieht dann nur, ob der Tresor gesperrt ist, wie viele Einträge er hat und wie viele Passwörter schwach oder mehrfach benutzt sind – nie Namen, Adressen, Benutzernamen oder Passwörter. Nur auf diesem Computer erreichbar.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mello then only sees whether the vault is locked, how many entries it has and how many passwords are weak or reused – never names, addresses, usernames or passwords. Only reachable on this computer."
+          }
+        }
+      }
+    },
+    "Token für Mello": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Token for Mello"
+          }
+        }
+      }
+    },
+    "Neuer Token": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New token"
+          }
+        }
+      }
+    },
+    "In Mello unter Integrationen → UwULock eintragen. Adresse: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter it in Mello under Integrations → UwULock. Address: %@"
+          }
+        }
+      }
+    },
     "%@ Minuten": {
       "localizations": {
         "en": {

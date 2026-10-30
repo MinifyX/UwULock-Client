@@ -54,3 +54,15 @@ struct SafariView: Codable, Sendable, Equatable, Hashable {
     /// Switched on in Safari; nil when Safari does not say (iOS).
     var enabled: Bool?
 }
+
+/// The read-only link for Mello on 127.0.0.1 (docs/mello.md): counts only, off by default.
+struct MelloLink: Codable, Sendable, Equatable, Hashable {
+    var enabled: Bool
+    /// Listening right now.
+    var running: Bool
+    var url: String
+    /// Only while the link is on.
+    var token: String?
+    /// Why it isn't listening, e.g. the port is taken.
+    var problem: String?
+}

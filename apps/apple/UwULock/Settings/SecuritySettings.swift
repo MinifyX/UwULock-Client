@@ -10,6 +10,10 @@ struct SecuritySettings: View {
     @AppStorage(AppSettingsKey.lockWithSystem) private var lockWithSystem = true
     @State private var helloBusy = false
     @State private var helloProblem: String?
+    #if os(macOS)
+    @State private var mello: MelloLink?
+    @State private var melloProblem: String?
+    #endif
 
     var body: some View {
         Form {
@@ -59,6 +63,12 @@ struct SecuritySettings: View {
                 }
             }
 
+            #if os(macOS)
+            if let mello {
+                melloSection(mello)
+            }
+            #endif
+
             Section {
                 Button {
                     model.lock()
@@ -77,7 +87,57 @@ struct SecuritySettings: View {
         .onChange(of: autoLock) { model.applySecurity() }
         .onChange(of: clipboardClear) { model.applySecurity() }
         .onChange(of: lockWithSystem) { model.applySecurity() }
+        #if os(macOS)
+        .task { mello = try? await model.core.melloLink() }
+        #endif
     }
+
+    #if os(macOS)
+    /// Mello's read-only link (MelloSettings.tsx, docs/mello.md).
+    private func melloSection(_ link: MelloLink) -> some View {
+        Section {
+            Toggle(prefStr("Mello verbinden"), isOn: Binding(get: { link.enabled }, set: { on in
+                changeMello { try await model.core.setMelloLink(enabled: on) }
+            }))
+            if link.enabled, let token = link.token {
+                LabeledContent(prefStr("Token für Mello")) {
+                    HStack {
+                        Button(prefStr("Kopieren")) {
+                            Task { try? await model.core.copyGenerated(text: token) }
+                        }
+                        Button(prefStr("Neuer Token")) {
+                            changeMello { try await model.core.melloLinkRenew() }
+                        }
+                    }
+                }
+            }
+        } footer: {
+            VStack(alignment: .leading, spacing: UwUSpacing.xxs) {
+                Text(prefStr("Mello sieht dann nur, ob der Tresor gesperrt ist, wie viele Einträge er hat und wie viele Passwörter schwach oder mehrfach benutzt sind – nie Namen, Adressen, Benutzernamen oder Passwörter. Nur auf diesem Computer erreichbar."))
+                if link.enabled {
+                    Text(prefStr("In Mello unter Integrationen → UwULock eintragen. Adresse: \(link.url)"))
+                }
+                if link.enabled, let problem = link.problem {
+                    Text(problem).foregroundStyle(.uwuDangerInk)
+                }
+                if let melloProblem {
+                    Text(melloProblem).foregroundStyle(.uwuDangerInk)
+                }
+            }
+        }
+    }
+
+    private func changeMello(_ action: @escaping () async throws -> MelloLink) {
+        melloProblem = nil
+        Task {
+            do {
+                mello = try await action()
+            } catch {
+                melloProblem = Core.failure(error).authMessage
+            }
+        }
+    }
+    #endif
 
     private func setHello(_ enabled: Bool) {
         helloBusy = true

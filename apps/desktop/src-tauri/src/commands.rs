@@ -952,6 +952,30 @@ pub(crate) mod passkeys {
     }
 }
 
+pub(crate) mod mello {
+    #[allow(unused_imports)]
+    use super::{app, App, AppHandle, State};
+    #[allow(unused_imports)]
+    use uwulock_app::mello::*;
+    #[allow(unused_imports)]
+    use uwulock_app::{Failure, Result};
+
+    #[tauri::command]
+    pub(crate) fn mello_link(app: State<'_, App>) -> LinkView {
+        app.mello_link()
+    }
+
+    #[tauri::command]
+    pub(crate) fn set_mello_link(app: State<'_, App>, enabled: bool) -> Result<LinkView> {
+        app.set_mello_link(enabled)
+    }
+
+    #[tauri::command]
+    pub(crate) fn mello_link_renew(app: State<'_, App>) -> Result<LinkView> {
+        app.mello_link_renew()
+    }
+}
+
 pub(crate) mod safari {
     #[allow(unused_imports)]
     use super::{app, App, AppHandle, State};

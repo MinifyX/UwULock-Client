@@ -219,6 +219,9 @@ pub fn run() {
             commands::autofill::autofill_log_clear,
             commands::passkeys::passkey_provider_status,
             commands::passkeys::set_passkey_provider,
+            commands::mello::mello_link,
+            commands::mello::set_mello_link,
+            commands::mello::mello_link_renew,
             commands::safari::safari_extension_status,
             commands::safari::safari_extension_open,
         ])

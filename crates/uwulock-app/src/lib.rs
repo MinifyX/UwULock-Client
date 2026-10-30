@@ -27,6 +27,7 @@
 //!   Android), and what Apple Passwords hands over (iOS 26)
 //! - [`passkeys`] — the vault's passkeys for the system
 //! - [`safari`] — the Safari extension the Apple builds carry: switched on?
+//! - [`mello`] — counts for Mello (MelloAI-Desktop) on loopback, opt-in
 //! - [`sends`], [`wifi`] — Sends; Wi-Fi networks handed to the phone
 //! - [`host`] — what the program around it does; [`runtime`] — where the
 //!   async work runs
@@ -44,6 +45,7 @@ pub mod hello;
 pub mod host;
 pub mod importing;
 pub mod live;
+pub mod mello;
 pub mod moving;
 pub mod passkeys;
 pub mod phone;
@@ -84,6 +86,7 @@ struct Inner {
     host: Arc<dyn Host>,
     vault: VaultState,
     passkeys: Provider,
+    mello: mello::Link,
     listeners: RwLock<Vec<(ListenerId, String, Listener)>>,
     next_listener: AtomicU64,
 }
@@ -93,19 +96,22 @@ impl App {
     /// [`App::start`].
     pub fn new(storage: Storage, host: Arc<dyn Host>) -> App {
         let passkeys = Provider::new(storage.dir());
+        let mello = mello::Link::new(storage.dir());
         let vault = VaultState::new(storage);
         vault.attach(host.clone());
         App(Arc::new(Inner {
             host,
             vault,
             passkeys,
+            mello,
             listeners: RwLock::new(Vec::new()),
             next_listener: AtomicU64::new(1),
         }))
     }
 
     /// Starts the background work: syncing, live changes, the extras, the
-    /// screen lock watch, the passkey providers the settings switched on and,
+    /// screen lock watch, the passkey providers and the Mello link the settings
+    /// switched on and,
     /// on a computer, asking what biometrics there are. On a phone the
     /// biometrics are asked once the page is there (`vault_status`).
     pub fn start(&self) {
@@ -114,6 +120,7 @@ impl App {
         extras::start(self);
         session_lock::start(self);
         passkeys::start(self);
+        mello::start(self);
         #[cfg(desktop)]
         hello::probe(self);
     }
@@ -132,6 +139,10 @@ impl App {
 
     pub fn passkeys(&self) -> &Provider {
         &self.0.passkeys
+    }
+
+    pub(crate) fn mello(&self) -> &mello::Link {
+        &self.0.mello
     }
 
     /// Tells the app's own listeners, then the page. A payload that doesn't

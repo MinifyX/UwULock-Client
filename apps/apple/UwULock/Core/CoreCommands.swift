@@ -734,6 +734,23 @@ extension Core {
         try await run("safari_extension_open")
     }
 
+    // MARK: Mello
+
+    /// The read-only link for Mello (docs/mello.md).
+    func melloLink() async throws -> MelloLink {
+        try await call("mello_link")
+    }
+
+    /// Switches the link for Mello on or off; the first switch on makes the token.
+    func setMelloLink(enabled: Bool) async throws -> MelloLink {
+        try await call("set_mello_link", ["enabled": enabled])
+    }
+
+    /// A new token for Mello; Mello has to be paired again.
+    func melloLinkRenew() async throws -> MelloLink {
+        try await call("mello_link_renew")
+    }
+
     // MARK: System
 
     /// Opens a project page in the browser.

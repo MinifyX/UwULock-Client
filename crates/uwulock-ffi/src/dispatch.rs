@@ -46,6 +46,9 @@ pub(crate) enum Now {
     PasskeyRequest,
     PasskeyProviderStatus,
     SetPasskeyProvider(passkeys::SetPasskeyProvider),
+    MelloLink,
+    SetMelloLink(mello::SetMelloLink),
+    MelloLinkRenew,
     OpenProjectPage(system::OpenProjectPage),
     OpenItemUri(system::OpenItemUri),
     OpenWebVault,
@@ -264,6 +267,9 @@ pub(crate) const COMMANDS: &[&str] = &[
     "passkey_answer",
     "passkey_provider_status",
     "set_passkey_provider",
+    "mello_link",
+    "set_mello_link",
+    "mello_link_renew",
     "safari_extension_status",
     "safari_extension_open",
     "open_project_page",
@@ -421,6 +427,9 @@ pub(crate) fn parse(command: &str, json: &str) -> Result<Call, Failure> {
         "passkey_answer" => Call::Later(Later::PasskeyAnswer(args(command, json)?)),
         "passkey_provider_status" => Call::Now(Now::PasskeyProviderStatus),
         "set_passkey_provider" => Call::Now(Now::SetPasskeyProvider(args(command, json)?)),
+        "mello_link" => Call::Now(Now::MelloLink),
+        "set_mello_link" => Call::Now(Now::SetMelloLink(args(command, json)?)),
+        "mello_link_renew" => Call::Now(Now::MelloLinkRenew),
         "safari_extension_status" => Call::Later(Later::SafariExtensionStatus),
         "safari_extension_open" => Call::Later(Later::SafariExtensionOpen),
         "open_project_page" => Call::Now(Now::OpenProjectPage(args(command, json)?)),
@@ -483,6 +492,9 @@ pub(crate) fn run_now(app: &App, call: Now) -> Result<String, Failure> {
         Now::PasskeyRequest => json(app.passkey_request()),
         Now::PasskeyProviderStatus => json(app.passkey_provider_status()),
         Now::SetPasskeyProvider(a) => json(app.set_passkey_provider(a.settings)?),
+        Now::MelloLink => json(app.mello_link()),
+        Now::SetMelloLink(a) => json(app.set_mello_link(a.enabled)?),
+        Now::MelloLinkRenew => json(app.mello_link_renew()?),
         Now::OpenProjectPage(a) => json(
             app.open_project_page(a.page)
                 .map_err(|message| Failure::new("unknown", message))?,
@@ -1319,6 +1331,20 @@ pub(crate) mod passkeys {
 
 /// The arguments, with the types the Tauri command's module uses.
 #[allow(unused_imports)]
+pub(crate) mod mello {
+    use serde::Deserialize;
+    use uwulock_app::mello::*;
+    use uwulock_app::{Failure, Result};
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub(crate) struct SetMelloLink {
+        pub(crate) enabled: bool,
+    }
+}
+
+/// The arguments, with the types the Tauri command's module uses.
+#[allow(unused_imports)]
 pub(crate) mod safari {}
 
 /// The arguments, with the types the Tauri command's module uses.
@@ -1521,6 +1547,9 @@ mod tests {
         ("passkey_answer", r#"{"id": 1, "allow": true}"#),
         ("passkey_provider_status", r#"{}"#),
         ("set_passkey_provider", r#"{"settings": {}}"#),
+        ("mello_link", r#"{}"#),
+        ("set_mello_link", r#"{"enabled": true}"#),
+        ("mello_link_renew", r#"{}"#),
         ("safari_extension_status", r#"{}"#),
         ("safari_extension_open", r#"{}"#),
         ("open_project_page", r#"{"page": "x"}"#),
