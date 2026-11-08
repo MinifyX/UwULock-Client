@@ -284,7 +284,7 @@ fn args<T: serde::de::DeserializeOwned>(command: &str, json: &str) -> Result<T, 
     // serde's message may quote the value (a password), so only where it went wrong;
     // a missing field names just the field.
     serde_json::from_str(json).map_err(|error| {
-        let text = error.to_string();
+        let text = zeroize::Zeroizing::new(error.to_string());
         let detail = match text.strip_prefix("missing field ") {
             Some(rest) => format!("missing field {}", rest.split(' ').next().unwrap_or("")),
             None => format!("{:?}", error.classify()),
