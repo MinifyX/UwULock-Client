@@ -29,7 +29,7 @@ but without AutoFill, the App Group and the shared Keychain groups, which only a
 
 ## How CI builds, signs and uploads
 
-Everything Apple is in `.github/workflows/apple.yml` (Xcode 27, `macos-27` runners), driven by
+Everything Apple is in `.github/workflows/apple.yml` (Xcode 27, `xcode-27` runners), driven by
 `scripts/apple-release.sh`:
 
 | Job         | Runs on                | What it does                                                                                                                                                                                                                        |

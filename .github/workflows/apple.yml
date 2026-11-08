@@ -24,7 +24,8 @@ name: Apple
 # uploads). Without them a tag still builds: the stores are skipped and the disk image is ad-hoc
 # signed. The Sparkle key is not among them: `pnpm release` signs the disk image locally.
 #
-# Runner: macos-27 with Xcode 27 (the app needs the macOS/iOS 27 SDK and runs its tests on 27).
+# Runner: xcode-27, GitHub's macOS 27 image with Xcode 27 (a preview label): the app needs the
+# macOS/iOS 27 SDK and runs its tests on 27.
 # actionlint doesn't know that label yet: .github/actionlint.yaml.
 
 on:
@@ -70,7 +71,7 @@ jobs:
   # main's cache.
   core:
     name: Rust core
-    runs-on: macos-27
+    runs-on: xcode-27
     outputs:
       build: ${{ steps.build.outputs.build }}
     steps:
@@ -114,7 +115,7 @@ jobs:
     name: ${{ matrix.name }}
     if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
     needs: core
-    runs-on: macos-27
+    runs-on: xcode-27
     strategy:
       fail-fast: false
       matrix:
@@ -161,7 +162,7 @@ jobs:
     name: Archive (${{ matrix.product }})
     if: startsWith(github.ref, 'refs/tags/v')
     needs: core
-    runs-on: macos-27
+    runs-on: xcode-27
     strategy:
       matrix:
         product: [ios, mas, direct]
@@ -225,7 +226,7 @@ jobs:
   sign:
     name: Sign (${{ matrix.product }})
     needs: [core, archive]
-    runs-on: macos-27
+    runs-on: xcode-27
     strategy:
       fail-fast: false
       matrix:
@@ -350,7 +351,7 @@ jobs:
   migration:
     name: Migration setup (macOS universal)
     needs: sign
-    runs-on: macos-27
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
