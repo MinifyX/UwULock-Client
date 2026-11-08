@@ -72,6 +72,14 @@ node -e '
     ].join("\n"),
   );
   if (patched === text) console.error("::warning::Could not switch signing off in project.yml");
+  // -ObjC: the plugin is a static library, and without it the linker drops every file of it that
+  // nothing calls by name (Passkeys.swift) — Tauri finds those @objc commands only at runtime.
+  const unlinked = patched;
+  patched = patched.replace(
+    "        ENABLE_BITCODE: false",
+    "        ENABLE_BITCODE: false\n        OTHER_LDFLAGS: [\"$(inherited)\", \"-ObjC\"]",
+  );
+  if (patched === unlinked) { console.error("::error::Could not add -ObjC in project.yml"); process.exit(1); }
   const before = patched;
   patched = patched.replace(
     /(- script: )(pnpm tauri ios xcode-script[^\n]*)/,
@@ -171,6 +179,15 @@ add_safari_files() { # <app>
   test -f "$appex/manifest.json" || { echo "::error::No manifest.json in $appex"; exit 1; }
 }
 
+# Every command of the iOS plugin in the app (see -ObjC above): Tauri only says "No command"
+# when one is called.
+check_plugin() { # <app>
+  local bin="$1/$(plutil -extract CFBundleExecutable raw "$1/Info.plist")"
+  for call in copyText:error: passkeysStore:error: autofillLog: autofillLogNote:error:; do
+    grep -qa "$call" "$bin" || { echo "::error::The plugin command $call isn't in $bin"; exit 1; }
+  done
+}
+
 show_rust_log() {
   echo "--- what the Rust build phase printed ---"
   cat "$gen/rust-build.log" 2>/dev/null || echo "(no log written)"
@@ -186,6 +203,7 @@ if [ "$which" != iphone ]; then
   cp -R "$sim" "$out/simulator/"
   echo "Simulator app: $sim"
   test -d "$sim/PlugIns/UwULockPasskeys.appex" || { echo "::error::The AutoFill extension isn't in the simulator app"; exit 1; }
+  check_plugin "$sim"
   [ "$which" = simulator ] && { ls -la "$out"; exit 0; }
 fi
 
@@ -199,6 +217,7 @@ if [ -z "$app" ]; then
   exit 1
 fi
 echo "iPhone app: $app"
+check_plugin "$app"
 # The privacy manifest (apple/PrivacyInfo.xcprivacy) at the app's top, where iOS and App Store
 # Connect look for it. The extension's own comes in as a resource of its target.
 cp apps/desktop/src-tauri/apple/PrivacyInfo.xcprivacy "$app/"

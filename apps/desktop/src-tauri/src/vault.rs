@@ -2369,7 +2369,7 @@ pub(crate) fn copy_generated(state: State<'_, VaultState>, text: String) -> Resu
 /// Text that isn't secret (the AutoFill protocol): copied as it is, without
 /// the clearing and, on iOS, able to reach other devices.
 #[tauri::command]
-pub(crate) fn copy_text(state: State<'_, VaultState>, text: String) -> Result<()> {
+pub(crate) async fn copy_text(state: State<'_, VaultState>, text: String) -> Result<()> {
     state
         .clipboard
         .copy_plain(&text)

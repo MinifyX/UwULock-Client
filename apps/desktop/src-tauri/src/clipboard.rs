@@ -55,15 +55,13 @@ impl Clipboard {
 
     /// Text that isn't secret (the AutoFill protocol): an ordinary copy
     /// that goes to other devices and stays, untouched by the clearing.
+    /// Waits for the plugin, so a failed copy says so: only from an async
+    /// command, never the main thread the plugin waits for.
     pub fn copy_plain(&self, text: &str) -> Result<(), String> {
         let plugin = crate::phone::plugin().ok_or("No clipboard yet.")?;
-        let text = text.to_string();
-        std::thread::spawn(move || {
-            if let Err(error) = plugin.copy_text(&text) {
-                tracing::warn!(%error, "couldn't copy");
-            }
-        });
-        Ok(())
+        plugin
+            .copy_text(text)
+            .map_err(|e| format!("Couldn't copy: {e}"))
     }
 
     fn clear_if_ours(&self, generation: u64) {
