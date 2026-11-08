@@ -396,6 +396,7 @@ const health = {
   twofaSource: null,
   twofaFailed: false,
   ignored: [],
+  excluded: [],
   cards: [
     { finding: findings[0], problems: [{ kind: 'breached', count: 3, sources: ['hibp'] }] },
     {

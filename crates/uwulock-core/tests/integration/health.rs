@@ -286,12 +286,25 @@ fn the_ignore_list_keeps_what_it_does_not_know_and_drops_unknown_kinds() {
             { "itemId": "c2", "kind": "somethingNew", "since": "2026-10-01T08:00:00.000Z" },
             { "itemId": "c3" },
             "junk"
+        ],
+        "excluded": [
+            { "itemId": "c4", "since": "2026-10-02T08:00:00.000Z", "why": "work" },
+            { "since": "2026-10-02T08:00:00.000Z" }
         ]
     });
     let mut list = IgnoreList::parse(&stored.to_string());
     assert_eq!(list.ignored.len(), 1);
     assert!(list.is_ignored("c1", ProblemKind::Weak));
     assert!(!list.is_ignored("c1", ProblemKind::Reused));
+    assert_eq!(list.excluded.len(), 1);
+    assert!(list.is_excluded("c4") && !list.is_excluded("c1"));
+    assert!(
+        list.is_ignored("c4", ProblemKind::Breached) && list.is_ignored("c4", ProblemKind::Twofa)
+    );
+    assert!(!list.other.contains_key("excluded"));
+    list.exclude("c4", "later");
+    list.exclude("c5", "2026-10-02T09:00:00.000Z");
+    assert_eq!(list.excluded.len(), 2, "once per login");
     list.ignore("c1", ProblemKind::Weak, "later");
     list.ignore("c2", ProblemKind::SiteBreach, "2026-10-01T09:00:00.000Z");
     assert_eq!(list.ignored.len(), 2, "once per login and kind");
@@ -301,9 +314,18 @@ fn the_ignore_list_keeps_what_it_does_not_know_and_drops_unknown_kinds() {
     assert_eq!(out["ignored"][0]["note"], "mine");
     assert_eq!(out["ignored"][1]["kind"], "siteBreach");
     assert_eq!(out["ignored"][1]["itemId"], "c2");
+    assert_eq!(out["excluded"][0]["why"], "work");
+    assert_eq!(
+        out["excluded"][1],
+        json!({ "itemId": "c5", "since": "2026-10-02T09:00:00.000Z" })
+    );
     list.unignore("c1", ProblemKind::Weak);
+    list.include("c5");
+    assert!(!list.is_excluded("c5"));
     list.tidy(&HashSet::from(["c1"]));
-    assert!(list.ignored.is_empty());
+    assert!(list.ignored.is_empty() && list.excluded.is_empty());
+    let out: serde_json::Value = serde_json::from_str(&list.to_json()).unwrap();
+    assert!(out.get("excluded").is_none(), "no empty list written");
     assert_eq!(IgnoreList::parse("not json"), IgnoreList::default());
 }
 
@@ -367,6 +389,10 @@ fn the_cards_come_worst_first_without_what_is_ignored() {
     assert!(cards.iter().all(|c| c.finding.id != "f"));
     let a = cards.iter().find(|c| c.finding.id == "a").unwrap();
     assert_eq!(a.problems, vec![Problem::Unsecured]);
+    ignored.exclude("b", "now");
+    assert!(health::cards(&report, Some(&sites), &twofa, &ignored)
+        .iter()
+        .all(|c| c.finding.id != "b"));
     // Without the list of sites, no site breach.
     assert!(health::cards(&report, None, &twofa, &ignored)
         .iter()

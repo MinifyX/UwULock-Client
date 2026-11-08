@@ -28,7 +28,7 @@ import { getSettings } from '../lib/settings';
 import { toast } from '../lib/toast';
 import { setMaskedState, useUwu } from '../lib/uwu';
 import { ENTERPRISE_KEYS, isEnterprise, readWifi, type WifiView } from '../lib/wifi';
-import { IconMenu, ReminderCard, ShareSendDialog, VersionsCard } from './ItemExtras';
+import { CheckCard, IconMenu, ReminderCard, ShareSendDialog, VersionsCard } from './ItemExtras';
 import { ItemTile } from './ItemTile';
 import { Modal } from './Modal';
 import { PasswordInput } from './PasswordInput';
@@ -1071,6 +1071,7 @@ export function ItemDetail({
           )}
 
           <ReminderCard summary={summary} />
+          <CheckCard summary={summary} />
           <VersionsCard summary={summary} />
 
           <footer className="detail-foot">

@@ -611,11 +611,24 @@ pub struct Ignored {
     pub other: BTreeMap<String, Value>,
 }
 
+/// One whole login the check leaves out, with every problem it has now or later.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Excluded {
+    pub item_id: String,
+    pub since: String,
+    /// Keys a newer app added, kept as they are.
+    #[serde(flatten)]
+    pub other: BTreeMap<String, Value>,
+}
+
 /// The ignore list, as it is encrypted under the extras key: `version` 1.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct IgnoreList {
     pub version: u32,
     pub ignored: Vec<Ignored>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub excluded: Vec<Excluded>,
     #[serde(flatten)]
     pub other: BTreeMap<String, Value>,
 }
@@ -625,6 +638,7 @@ impl Default for IgnoreList {
         IgnoreList {
             version: 1,
             ignored: Vec::new(),
+            excluded: Vec::new(),
             other: BTreeMap::new(),
         }
     }
@@ -645,10 +659,18 @@ impl IgnoreList {
                 .collect(),
             _ => Vec::new(),
         };
+        let excluded = match object.remove("excluded") {
+            Some(Value::Array(entries)) => entries
+                .into_iter()
+                .filter_map(|entry| serde_json::from_value::<Excluded>(entry).ok())
+                .collect(),
+            _ => Vec::new(),
+        };
         object.remove("version");
         IgnoreList {
             version: 1,
             ignored,
+            excluded,
             other: object.into_iter().collect(),
         }
     }
@@ -657,15 +679,41 @@ impl IgnoreList {
         serde_json::to_string(self).unwrap_or_default()
     }
 
+    /// Whether `kind` of `item_id` is hidden, by itself or with the whole login.
     pub fn is_ignored(&self, item_id: &str, kind: ProblemKind) -> bool {
-        self.ignored
-            .iter()
-            .any(|e| e.item_id == item_id && e.kind == kind)
+        self.is_excluded(item_id)
+            || self
+                .ignored
+                .iter()
+                .any(|e| e.item_id == item_id && e.kind == kind)
+    }
+
+    pub fn is_excluded(&self, item_id: &str) -> bool {
+        self.excluded.iter().any(|e| e.item_id == item_id)
+    }
+
+    /// Leaves `item_id` out of the check altogether; once per login.
+    pub fn exclude(&mut self, item_id: &str, now: &str) {
+        if !self.is_excluded(item_id) {
+            self.excluded.push(Excluded {
+                item_id: item_id.to_string(),
+                since: now.to_string(),
+                other: BTreeMap::new(),
+            });
+        }
+    }
+
+    pub fn include(&mut self, item_id: &str) {
+        self.excluded.retain(|e| e.item_id != item_id);
     }
 
     /// Hides `kind` of `item_id`; once per login and kind.
     pub fn ignore(&mut self, item_id: &str, kind: ProblemKind, now: &str) {
-        if !self.is_ignored(item_id, kind) {
+        let known = self
+            .ignored
+            .iter()
+            .any(|e| e.item_id == item_id && e.kind == kind);
+        if !known {
             self.ignored.push(Ignored {
                 item_id: item_id.to_string(),
                 kind,
@@ -683,6 +731,8 @@ impl IgnoreList {
     /// Drops the entries of logins that are gone.
     pub fn tidy(&mut self, item_ids: &HashSet<&str>) {
         self.ignored
+            .retain(|e| item_ids.contains(e.item_id.as_str()));
+        self.excluded
             .retain(|e| item_ids.contains(e.item_id.as_str()));
     }
 }

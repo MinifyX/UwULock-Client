@@ -200,6 +200,7 @@ pub fn run() {
             sends::delete_send,
             health::health_report,
             health::health_ignore,
+            health::health_excluded,
             health::health_open_page,
             health::health_save_password,
             health::health_email_opt_in,

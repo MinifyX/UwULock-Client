@@ -20,8 +20,8 @@ use uwulock_bitwarden::health::{is_conflict, BreachSwitches, EmailOptIn, Stored,
 use uwulock_bitwarden::uwu::Info;
 use uwulock_bitwarden::{EncString, SymmetricKey};
 use uwulock_core::health::{
-    self, Card, IgnoreList, Ignored, MissingTwofa, ProblemKind, Report, SiteBreach, SiteBreachList,
-    SiteIndex, Source, TwofaDirectory, TwofaIndex,
+    self, Card, Excluded, IgnoreList, Ignored, MissingTwofa, ProblemKind, Report, SiteBreach,
+    SiteBreachList, SiteIndex, Source, TwofaDirectory, TwofaIndex,
 };
 use zeroize::Zeroizing;
 
@@ -66,6 +66,8 @@ pub struct HealthView {
     twofa_failed: bool,
     /// What isn't shown again; `None` where the server keeps no list.
     ignored: Option<Vec<Ignored>>,
+    /// The logins left out of the check altogether; `None` as `ignored`.
+    excluded: Option<Vec<Excluded>>,
     cards: Vec<Card>,
     /// The account's consent to the check of its addresses, when the admin
     /// has that check on.
@@ -334,11 +336,20 @@ pub(crate) async fn health_report(
         .collect();
     let ignore_list = ignores.clone().unwrap_or_default();
     view.cards = health::cards(&view.report, index.as_ref(), &docs, &ignore_list);
+    view.excluded = ignores.as_ref().map(|list| list.excluded.clone());
     view.ignored = ignores.map(|list| list.ignored);
     Ok(view)
 }
 
-/// Hides (or shows again) one problem of one login, on every device. Saved
+/// The ignore list as `health_ignore` answers it.
+#[derive(Debug, Serialize)]
+pub(crate) struct Ignores {
+    ignored: Vec<Ignored>,
+    excluded: Vec<Excluded>,
+}
+
+/// Hides (or shows again) one problem of one login, or with `kind` `None`
+/// the whole login, now and later, on every device. Saved
 /// only if no other device saved the list meanwhile; otherwise the newer
 /// list is read and the change made on it.
 #[tauri::command]
@@ -346,9 +357,9 @@ pub(crate) async fn health_ignore(
     app: AppHandle,
     state: State<'_, VaultState>,
     item_id: String,
-    kind: ProblemKind,
+    kind: Option<ProblemKind>,
     ignored: bool,
-) -> Result<Vec<Ignored>> {
+) -> Result<Ignores> {
     state.touch();
     let (id, _) = state.active_account()?;
     let info = info_of(&state, &id)?;
@@ -366,10 +377,11 @@ pub(crate) async fn health_ignore(
     };
     for _ in 0..3 {
         let (mut list, revision) = current;
-        if ignored {
-            list.ignore(&item_id, kind, &iso_now());
-        } else {
-            list.unignore(&item_id, kind);
+        match (kind, ignored) {
+            (Some(kind), true) => list.ignore(&item_id, kind, &iso_now()),
+            (Some(kind), false) => list.unignore(&item_id, kind),
+            (None, true) => list.exclude(&item_id, &iso_now()),
+            (None, false) => list.include(&item_id),
         }
         let ids: Vec<String> = with(&state, &id, |u| {
             Ok(u.vault.items.iter().map(|i| i.id.clone()).collect())
@@ -389,7 +401,10 @@ pub(crate) async fn health_ignore(
                     u.health.ignores = Some((list.clone(), stored.revision_date));
                     Ok(())
                 })?;
-                return Ok(list.ignored);
+                return Ok(Ignores {
+                    ignored: list.ignored,
+                    excluded: list.excluded,
+                });
             }
             Err(error) if is_conflict(&error) => {
                 current = load_ignores(&app, &state, &ctx).await?;
@@ -401,6 +416,28 @@ pub(crate) async fn health_ignore(
         "conflict",
         "The list kept changing on another device.",
     ))
+}
+
+/// Whether the check leaves the login out altogether; `None` where the server
+/// keeps no ignore list. The list as last read, else from the server.
+#[tauri::command]
+pub(crate) async fn health_excluded(
+    app: AppHandle,
+    state: State<'_, VaultState>,
+    item_id: String,
+) -> Result<Option<bool>> {
+    let (id, _) = state.active_account()?;
+    if !info_of(&state, &id)?
+        .as_ref()
+        .is_some_and(BreachSwitches::ignore_list)
+    {
+        return Ok(None);
+    }
+    let list = match with(&state, &id, |u| Ok(u.health.ignores.clone()))? {
+        Some((list, _)) => list,
+        None => load_ignores(&app, &state, &ctx(&state).await?).await?.0,
+    };
+    Ok(Some(list.is_excluded(&item_id)))
 }
 
 /// Opens the login's site to change the password, in the system browser: the

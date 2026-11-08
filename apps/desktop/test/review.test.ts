@@ -10,6 +10,8 @@ import {
   aboutThePassword,
   clampIndex,
   dragStarts,
+  ignoredEntries,
+  isExcluded,
   isIgnored,
   keyStep,
   parseLater,
@@ -73,11 +75,29 @@ test('progress counts from one', () => {
 });
 
 test('ignored problems are per login and kind', () => {
-  const list = [{ itemId: 'a', kind: 'weak' as const, since: '2026-10-01T00:00:00Z' }];
+  const list = {
+    ignored: [{ itemId: 'a', kind: 'weak' as const, since: '2026-10-01T00:00:00Z' }],
+    excluded: [{ itemId: 'c', since: '2026-10-01T00:00:00Z' }],
+  };
   assert.equal(isIgnored(list, 'a', 'weak'), true);
   assert.equal(isIgnored(list, 'a', 'reused'), false);
   assert.equal(isIgnored(list, 'b', 'weak'), false);
   assert.equal(isIgnored(null, 'a', 'weak'), false);
+  // A login left out altogether hides every kind, also ones that come later.
+  assert.equal(isIgnored(list, 'c', 'breached'), true);
+  assert.equal(isIgnored(list, 'c', 'twofa'), true);
+  assert.equal(isExcluded(list, 'c'), true);
+  assert.equal(isExcluded(list, 'a'), false);
+  assert.equal(isIgnored({ ignored: null, excluded: null }, 'c', 'weak'), false);
+  const shadowed = { ...list, ignored: [...list.ignored, { ...list.ignored[0], itemId: 'c' }] };
+  assert.deepEqual(
+    ignoredEntries(shadowed, new Set(['a', 'c'])).map((e) => [e.itemId, e.kind]),
+    [
+      ['c', null],
+      ['a', 'weak'],
+    ],
+  );
+  assert.deepEqual(ignoredEntries(list, new Set(['a'])).length, 1, 'only logins still there');
   assert.equal(aboutThePassword('weak'), true);
   assert.equal(aboutThePassword('twofa'), false);
   assert.equal(aboutThePassword('unsecured'), false);

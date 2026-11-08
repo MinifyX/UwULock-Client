@@ -78,11 +78,35 @@ export const aboutThePassword = (kind: ProblemKind) =>
 
 export type IgnoredEntry = { itemId: string; kind: ProblemKind; since: string };
 
-export const isIgnored = (
-  list: readonly IgnoredEntry[] | null,
-  itemId: string,
-  kind: ProblemKind,
-) => Boolean(list?.some((entry) => entry.itemId === itemId && entry.kind === kind));
+/** A whole login the check leaves out, with every problem it has now or later. */
+export type ExcludedEntry = { itemId: string; since: string };
+
+/** The ignore list as the report carries it; `null` where the server keeps none. */
+export type IgnoreLists = {
+  ignored: readonly IgnoredEntry[] | null;
+  excluded: readonly ExcludedEntry[] | null;
+};
+
+export const isExcluded = (lists: IgnoreLists | null, itemId: string) =>
+  Boolean(lists?.excluded?.some((entry) => entry.itemId === itemId));
+
+/** Whether the problem is hidden, by itself or with the whole login. */
+export const isIgnored = (lists: IgnoreLists | null, itemId: string, kind: ProblemKind) =>
+  isExcluded(lists, itemId) ||
+  Boolean(lists?.ignored?.some((entry) => entry.itemId === itemId && entry.kind === kind));
+
+/**
+ * What the check doesn't show: whole logins first (`kind` `null`), then single
+ * problems of the others; only logins in `known`.
+ */
+export function ignoredEntries(
+  lists: IgnoreLists | null,
+  known: { has: (itemId: string) => boolean },
+): { itemId: string; kind: ProblemKind | null }[] {
+  const excluded = (lists?.excluded ?? []).map((e) => ({ itemId: e.itemId, kind: null }));
+  const ignored = (lists?.ignored ?? []).filter((e) => !isExcluded(lists, e.itemId));
+  return [...excluded, ...ignored].filter((entry) => known.has(entry.itemId));
+}
 
 /** "3 of 12": the card on screen counted from one, never past the total. */
 export function progress(index: number, total: number): { n: number; total: number } {

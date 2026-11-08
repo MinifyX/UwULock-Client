@@ -34,7 +34,7 @@ import { note, toast } from '../../lib/toast';
 import { setMaskedState, useUwu } from '../../lib/uwu';
 import { ENTERPRISE_KEYS, isEnterprise, readWifi, type WifiView } from '../../lib/wifi';
 import { Colored } from '../../components/ItemDetail';
-import { ReminderCard, VersionsCard } from '../../components/ItemExtras';
+import { CheckCard, ReminderCard, VersionsCard } from '../../components/ItemExtras';
 import { ItemTile } from '../../components/ItemTile';
 import { playNyu } from '../../components/nyu/stage';
 import { WifiConnect } from '../../components/WifiConnect';
@@ -795,6 +795,7 @@ function ItemBody({ summary }: { summary: ItemSummary }) {
 
             <div className="m-desktop-block">
               <ReminderCard summary={summary} />
+              <CheckCard summary={summary} />
               <VersionsCard summary={summary} />
             </div>
 
