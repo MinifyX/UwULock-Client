@@ -406,6 +406,31 @@ async fn an_interrupted_move_continues_where_it_stopped() {
     assert_eq!(target.counts(), [1, 3, 1, 2, 1, 1]);
 }
 
+/// The family is made, the sync after it fails: it stays the family (no
+/// folder in its place), and the next run doesn't make it again.
+#[tokio::test]
+async fn a_family_whose_sync_failed_is_not_made_twice() {
+    let source = source_vault();
+    let target = MoveServer::start(Kind::UwuLock { families: true }, TARGET_EMAIL);
+    let token = target_token(&target).await;
+    target.break_sync_after_org();
+
+    let mut first = prepare(&source, &target, Journal::default()).await.unwrap();
+    let summary = run(&mut first, &token, None).await.unwrap();
+    assert_eq!(summary.failed.len(), 1, "{:?}", summary.failed);
+    assert_eq!(summary.orgs_as_folders, 0);
+    let [folders, .., orgs, _] = target.counts();
+    assert_eq!((folders, orgs), (1, 1));
+
+    let mut second = prepare(&source, &target, first.journal().clone())
+        .await
+        .unwrap();
+    let summary = run(&mut second, &token, None).await.unwrap();
+    assert_eq!(summary.moved.organizations, 0);
+    let [folders, .., orgs, _] = target.counts();
+    assert_eq!((folders, orgs), (1, 1));
+}
+
 #[tokio::test]
 async fn without_families_an_organisation_becomes_a_folder() {
     let source = source_vault();

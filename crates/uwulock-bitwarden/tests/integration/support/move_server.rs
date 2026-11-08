@@ -75,6 +75,9 @@ struct State {
     counter: u64,
     /// File Sends fetched through their access link.
     send_openings: u32,
+    /// The sync right after the next new organisation fails once.
+    break_sync_after_org: bool,
+    sync_broken: bool,
 }
 
 pub struct MoveServer {
@@ -113,6 +116,8 @@ impl MoveServer {
             collections: Vec::new(),
             counter: 0,
             send_openings: 0,
+            break_sync_after_org: false,
+            sync_broken: false,
         }));
         let shared = state.clone();
         let base = url.clone();
@@ -131,6 +136,11 @@ impl MoveServer {
             keys: Keys { user, private },
             state,
         }
+    }
+
+    /// The sync right after the next new organisation answers 500, once.
+    pub fn break_sync_after_org(&self) {
+        self.state.lock().unwrap().break_sync_after_org = true;
     }
 
     pub fn send_openings(&self) -> u32 {
@@ -421,6 +431,9 @@ fn route(request: &Request, path: &str, state: &mut State, base: &str) -> (u16, 
         return (401, Body::Json(json!({ "message": "Unauthorized" })));
     }
     match (method, segments.as_slice()) {
+        ("GET", ["api", "sync"]) if std::mem::take(&mut state.sync_broken) => {
+            (500, Body::Json(json!({ "message": "Something broke" })))
+        }
         ("GET", ["api", "sync"]) => ok(sync(state, base)),
         ("GET", ["uwu", "v1", "account"]) => match state.kind {
             Kind::UwuLock { families } => {
@@ -559,7 +572,10 @@ fn route(request: &Request, path: &str, state: &mut State, base: &str) -> (u16, 
             state.sends.retain(|s| s["id"] != json!(send));
             ok(Value::Null)
         }
-        ("POST", ["api", "organizations"]) => create_org(state, request.json()),
+        ("POST", ["api", "organizations"]) => {
+            state.sync_broken = std::mem::take(&mut state.break_sync_after_org);
+            create_org(state, request.json())
+        }
         ("POST", ["api", "organizations", org, "collections"]) => {
             let Some(found) = state.orgs.iter().find(|o| o.id == *org) else {
                 return not_found();

@@ -139,6 +139,38 @@ async fn a_realtime_server_that_refuses_is_a_close_not_a_hang() {
     assert_eq!(refused.code, Some(4403));
 }
 
+/// A half-open connection: the server said `ready` and then nothing, while
+/// the client's own pings keep going out. Three heartbeats of silence end it.
+#[tokio::test(start_paused = true)]
+async fn a_realtime_server_that_goes_quiet_is_noticed() {
+    let (listener, server) = listen().await;
+    tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut socket =
+            tokio_tungstenite::accept_hdr_async(stream, |_: &Request, mut response: Response| {
+                response
+                    .headers_mut()
+                    .insert("Sec-WebSocket-Protocol", "uwu.realtime.v1".parse().unwrap());
+                Ok(response)
+            })
+            .await
+            .unwrap();
+        let _ = text_of(&mut socket).await;
+        let ready = json!({ "type": "ready", "expires": 1790000000u64, "heartbeat": 5 });
+        socket
+            .send(Message::Text(ready.to_string().into()))
+            .await
+            .unwrap();
+        // Swallow the client's pings, never answer.
+        while let Some(Ok(_)) = socket.next().await {}
+    });
+    let mut channel = Channel::Realtime(Realtime::connect(&server, "t", None).await.unwrap());
+    let started = tokio::time::Instant::now();
+    let closed = channel.next().await.unwrap_err();
+    assert!(closed.to_string().contains("quiet"), "{closed}");
+    assert!(started.elapsed() <= std::time::Duration::from_secs(16));
+}
+
 /// `ReceiveMessage` with `{ContextId, Type, Payload: {Id}}`, length-prefixed.
 fn hub_frame(kind: u8, context: &str) -> Vec<u8> {
     let mut m = vec![0x95, 0x01, 0x80, 0xc0, 0xa0 | 14];
