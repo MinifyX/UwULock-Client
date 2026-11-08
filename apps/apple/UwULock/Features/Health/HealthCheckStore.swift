@@ -25,11 +25,13 @@ final class HealthCheckStore {
     @ObservationIgnored private var core: Core?
     @ObservationIgnored private var listening: Task<Void, Never>?
     @ObservationIgnored private var quietRunning = false
+    @ObservationIgnored private var accountId: String?
 
     /// Starts with `core`: the first load (without asking the sources) and the events.
     func attach(_ core: Core) async {
         guard self.core !== core else { return }
         self.core = core
+        accountId = core.status?.accountId
         #if DEBUG
         if FeatureFixtures.isOn {
             view = HealthFixtures.view
@@ -50,11 +52,14 @@ final class HealthCheckStore {
                     // A sync or a change elsewhere: the report follows, without asking the sources.
                     await self.refreshQuietly()
                 case .vaultStatus(let status):
-                    if status.state != .unlocked {
+                    // Another account starts with nothing of the one before (App.tsx `key`).
+                    if status.state != .unlocked || status.accountId != self.accountId {
+                        self.accountId = status.accountId
                         self.view = nil
                         self.emailResults = nil
                         self.renewed = []
-                    } else {
+                    }
+                    if status.state == .unlocked {
                         await self.refreshQuietly()
                     }
                 default:
@@ -120,23 +125,35 @@ final class HealthCheckStore {
         }
     }
 
-    /// Ignores a problem of a login everywhere, or stops ignoring it.
-    func setIgnored(_ itemId: String, _ kind: ProblemKind, _ ignored: Bool) async {
+    /// Ignores a problem of a login everywhere (`kind` nil: the whole login), or stops
+    /// ignoring it; false when that failed.
+    @discardableResult
+    func setIgnored(_ itemId: String, _ kind: ProblemKind?, _ ignored: Bool) async -> Bool {
         #if DEBUG
         if FeatureFixtures.isOn {
-            var list = view?.ignored ?? []
-            list.removeAll { $0.itemId == itemId && $0.kind == kind }
-            if ignored { list.append(IgnoredEntry(itemId: itemId, kind: kind, since: FeatureDate.iso(.now))) }
-            view?.ignored = list
-            return
+            if let kind {
+                var list = view?.ignored ?? []
+                list.removeAll { $0.itemId == itemId && $0.kind == kind }
+                if ignored { list.append(IgnoredEntry(itemId: itemId, kind: kind, since: FeatureDate.iso(.now))) }
+                view?.ignored = list
+            } else {
+                var list = view?.excluded ?? []
+                list.removeAll { $0.itemId == itemId }
+                if ignored { list.append(ExcludedEntry(itemId: itemId, since: FeatureDate.iso(.now))) }
+                view?.excluded = list
+            }
+            return true
         }
         #endif
-        guard let core else { return }
+        guard let core else { return false }
         do {
-            let list = try await core.setIgnored(itemId: itemId, kind: kind, ignored: ignored)
-            view?.ignored = list
+            let lists = try await core.setIgnored(itemId: itemId, kind: kind, ignored: ignored)
+            view?.ignored = lists.ignored
+            view?.excluded = lists.excluded
+            return true
         } catch {
             FeatureToasts.shared.show(error: error)
+            return false
         }
     }
 

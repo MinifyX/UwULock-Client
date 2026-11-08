@@ -170,6 +170,18 @@ struct IgnoredEntry: Codable, Sendable, Equatable, Hashable {
     var since: String
 }
 
+/// A whole login the check leaves out, with every problem it has now or later.
+struct ExcludedEntry: Codable, Sendable, Equatable, Hashable {
+    var itemId: String
+    var since: String
+}
+
+/// The ignore list as `health_ignore` answers it.
+struct HealthIgnores: Codable, Sendable, Equatable, Hashable {
+    var ignored: [IgnoredEntry]
+    var excluded: [ExcludedEntry]
+}
+
 /// The account's consent to the check of its addresses.
 struct EmailOptIn: Codable, Sendable, Equatable, Hashable {
     var optedIn: Bool
@@ -191,6 +203,8 @@ struct HealthView: Codable, Sendable, Equatable, Hashable {
     var twofaFailed: Bool
     /// Nil where the server keeps no ignore list.
     var ignored: [IgnoredEntry]?
+    /// Logins left out of the check altogether; nil as `ignored`.
+    var excluded: [ExcludedEntry]?
     var cards: [HealthCard]
     var emailOptIn: EmailOptIn?
 }

@@ -316,6 +316,9 @@ struct ItemDetailView: View {
         }
 
         ItemExtrasSection(itemId: itemId)
+        if summary.kind == .login, !summary.deleted {
+            ExtrasCheckSection(itemId: itemId)
+        }
 
         Section {
             footer(summary, detail)

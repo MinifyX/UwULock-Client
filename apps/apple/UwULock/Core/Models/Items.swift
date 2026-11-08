@@ -226,12 +226,14 @@ struct Draft: Codable, Sendable, Equatable, Hashable {
     var identity: [String: String]?
     var sshKey: SshKeyDraft?
     var fields: [FieldDraft]
+    /// The revision the editor started from; a newer item is a `conflict`.
+    var revisionDate: String?
 
     init(
         kind: DraftKind, name: String, notes: String? = nil, favorite: Bool = false,
         reprompt: Bool = false, folderId: String? = nil, login: LoginDraft? = nil,
         card: CardDraft? = nil, identity: [String: String]? = nil, sshKey: SshKeyDraft? = nil,
-        fields: [FieldDraft] = []
+        fields: [FieldDraft] = [], revisionDate: String? = nil
     ) {
         self.kind = kind
         self.name = name
@@ -244,5 +246,6 @@ struct Draft: Codable, Sendable, Equatable, Hashable {
         self.identity = identity
         self.sshKey = sshKey
         self.fields = fields
+        self.revisionDate = revisionDate
     }
 }

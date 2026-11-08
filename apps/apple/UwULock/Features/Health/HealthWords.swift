@@ -192,21 +192,26 @@ struct HealthEntry: Identifiable, Hashable {
     var documentation: URL?
 }
 
-/// One ignored hint.
+/// One ignored hint; `kind` nil: the whole login.
 struct HealthIgnoredEntry: Identifiable, Hashable {
     var itemId: String
-    var kind: ProblemKind
+    var kind: ProblemKind?
     var name: String
 
-    var id: String { "\(itemId):\(kind.rawValue)" }
+    var id: String { "\(itemId):\(kind?.rawValue ?? "item")" }
 }
 
 extension HealthView {
     /// Whether the server asks breach sources about passwords at all.
     var hasSources: Bool { switches.hibp || switches.xonPasswords }
 
+    func isExcluded(_ itemId: String) -> Bool {
+        excluded?.contains { $0.itemId == itemId } ?? false
+    }
+
+    /// Whether the problem is hidden, by itself or with the whole login.
     func isIgnored(_ itemId: String, _ kind: ProblemKind) -> Bool {
-        ignored?.contains { $0.itemId == itemId && $0.kind == kind } ?? false
+        isExcluded(itemId) || (ignored?.contains { $0.itemId == itemId && $0.kind == kind } ?? false)
     }
 
     /// The groups the check can fill on this server (the others would always be empty).
@@ -261,14 +266,19 @@ extension HealthView {
         }
     }
 
-    /// The ignored hints of logins still in the report.
+    /// What the check doesn't show, of logins still in the report: whole logins first, then
+    /// single hints of the others (review.ts's `ignoredEntries`).
     var ignoredEntries: [HealthIgnoredEntry] {
         var names: [String: String] = [:]
         for finding in report.findings { names[finding.id] = finding.name }
         for missing in twofa { names[missing.itemId] = missing.name }
-        return (ignored ?? []).compactMap { entry in
+        let whole = (excluded ?? []).compactMap { entry in
+            names[entry.itemId].map { HealthIgnoredEntry(itemId: entry.itemId, kind: nil, name: $0) }
+        }
+        let single = (ignored ?? []).filter { !isExcluded($0.itemId) }.compactMap { entry in
             names[entry.itemId].map { HealthIgnoredEntry(itemId: entry.itemId, kind: entry.kind, name: $0) }
         }
+        return whole + single
     }
 
     /// 0–100: the share of checked passwords without an open hint about the password itself.

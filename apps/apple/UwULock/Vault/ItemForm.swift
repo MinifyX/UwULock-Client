@@ -64,6 +64,8 @@ struct ItemForm: Equatable {
     var privateKey = Secret.kept(false)
     var publicKey = ""
     var fingerprint = ""
+    /// The item's revision when the form was made; nil for a new item.
+    var revisionDate: String?
     var fields: [FieldRow] = []
     var wifi = Wifi()
 
@@ -82,6 +84,7 @@ struct ItemForm: Equatable {
     init(summary: ItemSummary, detail: ItemDetail) {
         self.init(kind: summary.kind)
         name = summary.name
+        revisionDate = summary.revisionDate
         folderId = summary.folderId ?? ""
         favorite = summary.favorite
         reprompt = summary.reprompt
@@ -150,7 +153,8 @@ struct ItemForm: Equatable {
                 return FieldDraft(
                     name: clean.isEmpty ? nil : clean, kind: field.kind,
                     value: field.kind == .linked ? nil : field.value.sent, from: field.from)
-            })
+            },
+            revisionDate: revisionDate)
         switch kind {
         case .login:
             draft.login = LoginDraft(

@@ -440,12 +440,18 @@ extension Core {
         try await call("health_report", ["fresh": fresh])
     }
 
-    /// Ignores a problem of an item, or stops ignoring it; answers the ignore list.
-    func setIgnored(itemId: String, kind: ProblemKind, ignored: Bool) async throws
-        -> [IgnoredEntry]
+    /// Ignores a problem of an item (`kind` nil: the whole login, with every problem it has
+    /// now or later), or stops ignoring it; answers both lists.
+    func setIgnored(itemId: String, kind: ProblemKind?, ignored: Bool) async throws
+        -> HealthIgnores
     {
         try await call(
             "health_ignore", ["itemId": itemId, "kind": kind, "ignored": ignored])
+    }
+
+    /// Whether the check leaves the login out; nil where the server keeps no ignore list.
+    func healthExcluded(itemId: String) async throws -> Bool? {
+        try await call("health_excluded", ["itemId": itemId])
     }
 
     /// Opens the change-password page (or the login) in the browser.

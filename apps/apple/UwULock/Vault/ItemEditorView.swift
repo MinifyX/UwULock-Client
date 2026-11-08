@@ -132,8 +132,11 @@ struct ItemEditorView: View {
                 vault.selectedItemId = saved
                 dismiss()
             } catch {
-                // A conflict (changed elsewhere) and the other refusals come back as their text.
-                failure = Core.failure(error).message
+                // The other refusals come back as their text.
+                let found = Core.failure(error)
+                failure = found.kind == "conflict"
+                    ? vt("Dieser Eintrag wurde woanders geändert. UwULock hat nichts überschrieben – synchronisiere und bearbeite ihn noch einmal.")
+                    : found.message
             }
         }
     }

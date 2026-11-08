@@ -4930,6 +4930,17 @@
           }
         }
       }
+    },
+    "Dieser Eintrag wurde woanders geändert. UwULock hat nichts überschrieben – synchronisiere und bearbeite ihn noch einmal.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This item was changed elsewhere. UwULock didn't overwrite anything – sync and edit it again."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -189,7 +189,7 @@ private struct HealthReportList: View {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(verbatim: HealthWords.name(entry.name))
-                                    Text(verbatim: entry.kind.healthTitle)
+                                    Text(verbatim: entry.kind?.healthTitle ?? featureString("Ganzer Eintrag"))
                                         .uwuFont(.subheadline)
                                         .foregroundStyle(.secondary)
                                 }
@@ -197,7 +197,11 @@ private struct HealthReportList: View {
                                 Button {
                                     Task { await store.setIgnored(entry.itemId, entry.kind, false) }
                                 } label: {
-                                    Label(features: "Rückgängig", uwuIcon: .undo)
+                                    if entry.kind == nil {
+                                        Label(features: "Wieder prüfen", uwuIcon: .undo)
+                                    } else {
+                                        Label(features: "Rückgängig", uwuIcon: .undo)
+                                    }
                                 }
                                 .buttonStyle(.borderless)
                             }

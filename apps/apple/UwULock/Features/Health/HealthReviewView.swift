@@ -132,7 +132,8 @@ struct HealthReviewView: View {
             HealthReviewCard(
                 card: card, store: store, openItem: openItem,
                 onGenerate: { generatingFor = card },
-                onLater: later)
+                onLater: later,
+                onExclude: { Task { await exclude() } })
                 .id(card.finding.id)
                 .offset(x: dragX)
                 .rotationEffect(.degrees(noMotion ? 0 : Double(dragX / 40)))
@@ -208,6 +209,18 @@ struct HealthReviewView: View {
     private func later() {
         guard let card else { return }
         HealthLater.ids.insert(card.finding.id)
+        drop()
+    }
+
+    /// "Nicht mehr prüfen": the whole login leaves the check, on every device.
+    private func exclude() async {
+        guard let card, await store.setIgnored(card.finding.id, nil, true),
+              self.card?.finding.id == card.finding.id else { return }
+        drop()
+    }
+
+    /// The card on screen leaves the stack; the one after it takes its place.
+    private func drop() {
         direction = 1
         withUwUAnimation(.uwuOut(), reduceMotion: noMotion) {
             cards.remove(at: index)
@@ -224,6 +237,7 @@ private struct HealthReviewCard: View {
     let openItem: PasswordCheckOpenItem?
     let onGenerate: () -> Void
     let onLater: () -> Void
+    let onExclude: () -> Void
 
     var body: some View {
         let finding = card.finding
@@ -285,6 +299,13 @@ private struct HealthReviewCard: View {
                                 .frame(maxWidth: .infinity)
                         }
                         .uwuGlassButton()
+                        if store.view?.ignored != nil {
+                            Button(action: onExclude) {
+                                Label(features: "Nicht mehr prüfen", uwuIcon: .hide)
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .uwuGlassButton()
+                        }
                         if let openItem {
                             Button { openItem(finding.id) } label: {
                                 Label(features: "Eintrag öffnen", uwuIcon: .vault)

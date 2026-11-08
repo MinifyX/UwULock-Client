@@ -10165,6 +10165,72 @@
           }
         }
       }
+    },
+    "Nicht mehr prüfen": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop checking"
+          }
+        }
+      }
+    },
+    "Ganzer Eintrag": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Whole item"
+          }
+        }
+      }
+    },
+    "Wieder prüfen": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check again"
+          }
+        }
+      }
+    },
+    "Von der Prüfung ausnehmen": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leave out of the check"
+          }
+        }
+      }
+    },
+    "Die Prüfung zeigt Probleme dieses Eintrags.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The check shows this item's problems."
+          }
+        }
+      }
+    },
+    "Ausgenommen: die Prüfung zeigt zu diesem Eintrag nichts, auf keinem Gerät.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Left out: the check shows nothing about this item, on any device."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

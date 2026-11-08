@@ -57,6 +57,55 @@ struct ItemExtrasSection: View {
     }
 }
 
+/// Leaves a login out of the password check altogether, on every device (ItemExtras.tsx
+/// `CheckCard`); only where the server keeps the ignore list.
+struct ExtrasCheckSection: View {
+    let itemId: String
+
+    @Environment(AppModel.self) private var model
+    private var core: Core { model.core }
+
+    @State private var excluded: Bool?
+    @State private var busy = false
+
+    var body: some View {
+        Group {
+            if let excluded {
+                Section {
+                    Text(features: excluded
+                        ? "Ausgenommen: die Prüfung zeigt zu diesem Eintrag nichts, auf keinem Gerät."
+                        : "Die Prüfung zeigt Probleme dieses Eintrags.")
+                        .uwuFont(.subheadline)
+                        .foregroundStyle(Color.uwuMuted)
+                    Button { Task { await change(!excluded) } } label: {
+                        Label(features: excluded ? "Wieder prüfen" : "Von der Prüfung ausnehmen",
+                              uwuIcon: excluded ? .undo : .hide)
+                    }
+                    .disabled(busy)
+                } header: {
+                    Label(features: "Passwortprüfung", uwuIcon: .review)
+                }
+            }
+        }
+        .task(id: itemId) {
+            excluded = nil
+            guard !FeatureFixtures.isOn else { return }
+            excluded = (try? await core.healthExcluded(itemId: itemId)) ?? nil
+        }
+    }
+
+    private func change(_ exclude: Bool) async {
+        busy = true
+        defer { busy = false }
+        do {
+            let lists = try await core.setIgnored(itemId: itemId, kind: nil, ignored: exclude)
+            excluded = lists.excluded.contains { $0.itemId == itemId }
+        } catch {
+            FeatureToasts.shared.show(error: error)
+        }
+    }
+}
+
 /// The item's details and icon, loaded once per change however many sections ask.
 @MainActor
 @Observable
