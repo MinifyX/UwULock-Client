@@ -404,9 +404,10 @@ pub fn credential_id_from_bytes(bytes: &[u8]) -> String {
     )
 }
 
-/// SHA-256 of the RP id, the start of every authenticator data.
+/// SHA-256 of the RP id, the start of every authenticator data. In lower
+/// case, as sites give it (an imported passkey may keep another spelling).
 pub fn rp_id_hash(rp_id: &str) -> [u8; 32] {
-    Sha256::digest(rp_id.as_bytes()).into()
+    Sha256::digest(rp_id.to_ascii_lowercase().as_bytes()).into()
 }
 
 /// The attestation object for a new passkey: `{"fmt": "none", "attStmt": {},
@@ -780,6 +781,7 @@ mod tests {
         let plain = passkey.authenticator_data(UP | BE | BS, false).unwrap();
         assert_eq!(plain.len(), 37);
         assert_eq!(plain[..32], rp_id_hash("example.com"));
+        assert_eq!(rp_id_hash("Example.COM"), rp_id_hash("example.com"));
         assert_eq!(plain[32], UP | BE | BS);
         assert_eq!(plain[33..37], [0, 0, 0, 0]);
 

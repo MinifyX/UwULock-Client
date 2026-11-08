@@ -664,3 +664,23 @@ async fn library_icons_come_as_png_through_the_server() {
         .iter()
         .any(|c| c == "GET /uwu/v1/icons/library/selfhst/..%2Fkeys.png"));
 }
+
+// ── Redirects ──────────────────────────────────────────────
+
+/// A redirect is held to what a download may reach: within the server it is
+/// followed, to another host it is not (a 307 would carry a POST's body along).
+#[tokio::test]
+async fn redirects_stay_with_the_server() {
+    let elsewhere = FakeHttp::start(|_| Answer::bytes("text/plain", b"theirs".to_vec()));
+    let away = elsewhere.url.replace("127.0.0.1", "localhost");
+    let fake = FakeHttp::start(move |request| match request.path.as_str() {
+        "/moved" => Answer::empty(302).with_header("Location", "/file"),
+        "/file" => Answer::bytes("text/plain", b"ours".to_vec()),
+        "/away" => Answer::empty(307).with_header("Location", &format!("{away}/x")),
+        _ => Answer::empty(404),
+    });
+    let client = client(&fake.url);
+    assert_eq!(client.download("/moved", 64).await.unwrap(), b"ours");
+    assert!(client.download("/away", 64).await.is_err());
+    assert!(elsewhere.calls().is_empty());
+}

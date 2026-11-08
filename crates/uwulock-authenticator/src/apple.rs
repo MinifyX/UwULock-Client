@@ -481,13 +481,16 @@ impl Snapshot {
 }
 
 /// Whether `item`'s passkeys go into the extension's list (and the
-/// system's credential identity store) at all: not in the trash, and not
+/// system's credential identity store) at all: not in the trash or archived, and not
 /// marked "ask for the master password again". The extension only has Face
 /// ID, Touch ID or the device passcode, so such a login stays with the app
 /// and the browser extension, which ask for the master password like for
 /// any other secret of it.
 pub fn listed(item: &uwulock_core::vault::Item) -> bool {
-    !item.deleted && !item.reprompt && item.login.as_ref().is_some_and(|l| l.passkey_count() > 0)
+    !item.deleted
+        && !item.reprompt
+        && item.archived_date.is_none()
+        && item.login.as_ref().is_some_and(|l| l.passkey_count() > 0)
 }
 
 /// Whether one passkey goes into the list: the extension can't count up a
@@ -543,6 +546,9 @@ mod tests {
         item.reprompt = false;
         item.deleted = true;
         assert!(!listed(&item), "in the trash");
+        item.deleted = false;
+        item.archived_date = Some("2026-10-01T00:00:00Z".into());
+        assert!(!listed(&item), "archived");
         let mut counting = passkey();
         assert!(listed_passkey(&counting));
         counting.counter = 3;

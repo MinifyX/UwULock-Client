@@ -274,9 +274,12 @@ impl Request {
                 let params = params()?;
                 let client_data_hash = client_data_hash(params.get(1))?;
                 let rp = params.get(2).ok_or(status::MISSING_PARAMETER)?;
+                if !rp.is_map() {
+                    return Err(status::CBOR_UNEXPECTED_TYPE);
+                }
                 let rp_id = rp_id(rp.get_text("id").ok_or(status::MISSING_PARAMETER)?)?;
                 let user = params.get(3).ok_or(status::MISSING_PARAMETER)?;
-                if !rp.is_map() || !user.is_map() {
+                if !user.is_map() {
                     return Err(status::CBOR_UNEXPECTED_TYPE);
                 }
                 let user_id = bytes(user.get_text("id"))?;
@@ -740,6 +743,12 @@ mod tests {
         params.remove(2);
         let bytes = request(command::MAKE_CREDENTIAL, Value::Map(params));
         assert_eq!(authenticator.handle(&bytes), [status::MISSING_PARAMETER]);
+
+        // An rp that isn't a map.
+        let mut params = make_credential_params();
+        params[1].1 = Value::text("example.com");
+        let bytes = request(command::MAKE_CREDENTIAL, Value::Map(params));
+        assert_eq!(authenticator.handle(&bytes), [status::CBOR_UNEXPECTED_TYPE]);
 
         // up: false makes no sense for a new passkey.
         let mut params = make_credential_params();

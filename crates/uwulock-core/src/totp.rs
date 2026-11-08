@@ -225,7 +225,6 @@ fn strip_prefix_ci<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
 fn base32(text: &str) -> Option<Zeroizing<Vec<u8>>> {
     let mut out = Zeroizing::new(Vec::with_capacity(text.len() * 5 / 8));
     let (mut buffer, mut bits) = (0u64, 0u32);
-    let mut any = false;
     for c in text.chars() {
         let value = match c.to_ascii_uppercase() {
             c @ 'A'..='Z' => c as u64 - 'A' as u64,
@@ -233,7 +232,6 @@ fn base32(text: &str) -> Option<Zeroizing<Vec<u8>>> {
             ' ' | '-' | '=' => continue,
             _ => return None,
         };
-        any = true;
         buffer = (buffer << 5) | value;
         bits += 5;
         if bits >= 8 {
@@ -242,7 +240,8 @@ fn base32(text: &str) -> Option<Zeroizing<Vec<u8>>> {
             buffer &= (1 << bits) - 1;
         }
     }
-    any.then_some(out)
+    // "A" is five bits: no whole byte, so no key.
+    (!out.is_empty()).then_some(out)
 }
 
 #[cfg(test)]
@@ -335,6 +334,13 @@ mod tests {
         let slow = Totp::parse(&format!("otpauth://totp/x?secret={RFC_SECRET}&period=90")).unwrap();
         assert_eq!(slow.next_code_at(100), slow.code_at(180).0);
         let _ = totp.next_code_at(u64::MAX);
+    }
+
+    #[test]
+    fn a_secret_without_a_whole_byte_is_none() {
+        assert!(Totp::parse("A").is_err());
+        assert!(Totp::parse("otpauth://totp/x?secret=A").is_err());
+        assert!(Totp::parse("AA").is_ok());
     }
 
     #[test]
