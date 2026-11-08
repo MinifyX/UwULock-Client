@@ -16,27 +16,8 @@ export const KIND_LABEL: Record<ItemKind, string> = {
   wifi: N_('WLAN'),
 };
 
-/** The identity's fields, in the order they are shown. */
-export const IDENTITY_FIELDS: { name: string; sensitive: boolean }[] = [
-  { name: 'title', sensitive: false },
-  { name: 'firstName', sensitive: false },
-  { name: 'middleName', sensitive: false },
-  { name: 'lastName', sensitive: false },
-  { name: 'username', sensitive: false },
-  { name: 'company', sensitive: false },
-  { name: 'email', sensitive: false },
-  { name: 'phone', sensitive: false },
-  { name: 'address1', sensitive: false },
-  { name: 'address2', sensitive: false },
-  { name: 'address3', sensitive: false },
-  { name: 'postalCode', sensitive: false },
-  { name: 'city', sensitive: false },
-  { name: 'state', sensitive: false },
-  { name: 'country', sensitive: false },
-  { name: 'ssn', sensitive: true },
-  { name: 'passportNumber', sensitive: true },
-  { name: 'licenseNumber', sensitive: true },
-];
+// Kept with the form, which Node's tests load without the i18n behind this file.
+export { IDENTITY_FIELDS } from './itemForm';
 
 export const IDENTITY_LABEL: Record<string, string> = {
   title: N_('Anrede'),

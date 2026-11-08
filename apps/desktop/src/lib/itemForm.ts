@@ -6,8 +6,29 @@
  */
 
 import type { Draft, FieldKind, ItemDetail as Detail, ItemKind, ItemSummary } from './api';
-import { IDENTITY_FIELDS } from './items';
-import { isEnterprise, readWifi, wifiFields, type WifiView } from './wifi';
+import { isEnterprise, readWifi, wifiFields, type WifiView } from './wifi.ts';
+
+/** The identity's fields, in the order they are shown. */
+export const IDENTITY_FIELDS: { name: string; sensitive: boolean }[] = [
+  { name: 'title', sensitive: false },
+  { name: 'firstName', sensitive: false },
+  { name: 'middleName', sensitive: false },
+  { name: 'lastName', sensitive: false },
+  { name: 'username', sensitive: false },
+  { name: 'company', sensitive: false },
+  { name: 'email', sensitive: false },
+  { name: 'phone', sensitive: false },
+  { name: 'address1', sensitive: false },
+  { name: 'address2', sensitive: false },
+  { name: 'address3', sensitive: false },
+  { name: 'postalCode', sensitive: false },
+  { name: 'city', sensitive: false },
+  { name: 'state', sensitive: false },
+  { name: 'country', sensitive: false },
+  { name: 'ssn', sensitive: true },
+  { name: 'passportNumber', sensitive: true },
+  { name: 'licenseNumber', sensitive: true },
+];
 
 /**
  * A value the editor may not have: a password, a card number, a hidden field.
@@ -67,6 +88,8 @@ export type Form = {
   fingerprint: string;
   fields: FieldRow[];
   wifi: WifiForm;
+  /** The item's revision when the form was made; none for a new item. */
+  revisionDate: string | null;
 };
 
 export function emptyForm(kind: ItemKind): Form {
@@ -104,6 +127,7 @@ export function emptyForm(kind: ItemKind): Form {
       ca: '',
       from: {},
     },
+    revisionDate: null,
   };
 }
 
@@ -122,6 +146,7 @@ export function fieldRow(field: NonNullable<Detail['fields']>[number]): FieldRow
 export function formOf(summary: ItemSummary, detail: Detail): Form {
   const form = emptyForm(summary.kind);
   form.name = summary.name;
+  form.revisionDate = summary.revisionDate;
   form.folderId = summary.folderId ?? '';
   form.favorite = summary.favorite;
   form.reprompt = summary.reprompt;
@@ -190,6 +215,7 @@ export function draftOf(form: Form, kind: ItemKind): Draft {
     favorite: form.favorite,
     reprompt: form.reprompt,
     folderId: form.folderId || null,
+    revisionDate: form.revisionDate,
     fields: form.fields.map((field) => ({
       name: field.name.trim() || null,
       kind: field.kind,

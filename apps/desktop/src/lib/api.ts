@@ -187,6 +187,8 @@ export type Draft = {
   favorite: boolean;
   reprompt: boolean;
   folderId: string | null;
+  /** The revision the editor started from; a newer item is a conflict. */
+  revisionDate?: string | null;
   login?: {
     username?: string | null;
     password?: string | null;
