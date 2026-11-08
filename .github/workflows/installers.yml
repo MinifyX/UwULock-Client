@@ -86,13 +86,13 @@ jobs:
       - name: Everything, on Linux
         if: runner.os == 'Linux'
         run: |
-          cargo clippy --workspace --all-targets -- -D warnings
-          cargo test --workspace --no-fail-fast
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          cargo test --workspace --locked --no-fail-fast
       # On macOS only what is different there: the two apps. The crates' tests don't depend
       # on the system and ran on Linux.
       - name: The apps, on macOS
         if: runner.os == 'macOS'
-        run: cargo clippy -p uwulock-desktop -p uwulock-setup --all-targets -- -D warnings
+        run: cargo clippy -p uwulock-desktop -p uwulock-setup --all-targets --locked -- -D warnings
 
   # In parallel with the checks: `pnpm release` only takes a run where everything passed.
   installers:
