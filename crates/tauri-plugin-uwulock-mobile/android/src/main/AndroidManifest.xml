@@ -23,8 +23,11 @@
                 android:name="android.credentials.provider"
                 android:resource="@xml/uwulock_passkey_provider" />
         </service>
+        <!-- configChanges: recreated while the prompt is up, the activity would ask twice (or lose
+             the prompt's answer to the old instance). -->
         <activity
             android:name="app.uwulock.mobile.PasskeyActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:enabled="@bool/uwulock_passkeys_enabled"
             android:excludeFromRecents="true"
             android:exported="false"
@@ -46,6 +49,7 @@
         </service>
         <activity
             android:name="app.uwulock.mobile.FillActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:excludeFromRecents="true"
             android:exported="false"
             android:theme="@style/UwULockPasskeyTheme" />

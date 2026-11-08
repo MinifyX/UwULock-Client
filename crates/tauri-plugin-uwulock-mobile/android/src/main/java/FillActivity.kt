@@ -12,6 +12,7 @@ import android.view.autofill.AutofillValue
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
+import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK
 import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
@@ -159,7 +160,11 @@ class FillActivity : AppCompatActivity() {
             BiometricPrompt.PromptInfo.Builder()
                 .setTitle(getString(R.string.uwulock_passkeys_verify))
                 .setSubtitle(getString(R.string.uwulock_passwords_verify_fill, fields.shownAs))
-                .setAllowedAuthenticators(BIOMETRIC_STRONG or DEVICE_CREDENTIAL)
+                .setAllowedAuthenticators(
+                    // STRONG together with the device credential is refused below Android 11.
+                    if (Build.VERSION.SDK_INT >= 30) BIOMETRIC_STRONG or DEVICE_CREDENTIAL
+                    else BIOMETRIC_WEAK or DEVICE_CREDENTIAL,
+                )
                 .build(),
         )
     }
