@@ -8,7 +8,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const memory = new Map<string, unknown>();
-const saved: { account: string | null; name: string }[] = [];
+const saved: { account: string | null; name: string; reprompt?: boolean }[] = [];
+let index: unknown[] = [];
 let open: string | null = 'user-a';
 let active = 'user-a';
 
@@ -47,17 +48,21 @@ vi.mock('../src/background/store', () => ({
 vi.mock('../src/background/clipboard', () => ({ copy: async () => undefined }));
 vi.mock('../src/background/events', () => ({ changed: () => undefined }));
 vi.mock('../src/background/vault', () => ({
-  autofillIndex: () => [],
+  autofillIndex: () => index,
   domains: () => ({ global: [], custom: [] }),
   items: async () => [],
-  saveItem: async (_id: null, draft: { name: string }) => {
-    saved.push({ account: open, name: draft.name });
+  saveItem: async (_id: null, draft: { name: string; reprompt: boolean }) => {
+    saved.push({ account: open, name: draft.name, ...(draft.reprompt ? { reprompt: true } : {}) });
     return 'new';
   },
   savePassword: async () => undefined,
 }));
 vi.mock('../src/background/wasm', () => ({
-  callJson: async () => ({}),
+  // Like the core: an item with the re-prompt isn't read without the master password.
+  callJson: async () => {
+    if (index.length) throw { kind: 'reprompt', message: 'Re-prompt.' };
+    return {};
+  },
   call: async () => undefined,
 }));
 
@@ -74,6 +79,7 @@ const top: Sender = {
 beforeEach(() => {
   memory.clear();
   saved.length = 0;
+  index = [];
   open = 'user-a';
   active = 'user-a';
 });
@@ -118,5 +124,23 @@ describe('a login waiting to be saved', () => {
     const [still] = await autofill.pendingSaves();
     await autofill.answerPendingSave(still!.id, 'save');
     expect(saved).toEqual([{ account: 'user-a', name: 'shop.example' }]);
+  });
+
+  it("next to an item with the re-prompt it can't compare, a new one keeps the re-prompt", async () => {
+    index = [
+      {
+        id: 'guarded',
+        kind: 'login',
+        name: 'Shop',
+        reprompt: true,
+        archived: false,
+        uris: [{ uri: 'https://shop.example', match: null }],
+      },
+    ];
+    await autofill.submitted(top, 'nyu', 'old-pw', 'new-pw');
+    const prompt = autofill.pendingPrompt(top)!;
+    expect(prompt).toMatchObject({ action: 'save' });
+    await autofill.promptAnswer(top, prompt.id, 'save');
+    expect(saved).toEqual([{ account: 'user-a', name: 'shop.example', reprompt: true }]);
   });
 });

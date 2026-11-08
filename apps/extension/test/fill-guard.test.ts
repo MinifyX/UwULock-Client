@@ -392,6 +392,18 @@ describe('address matching (CL-L11)', () => {
     await fillBest({ id: 7, url: 'https://evil.example/login' } as chrome.tabs.Tab);
     expect(sent).toHaveLength(1);
   });
+
+  it("the shortcut's fill reaches no frame matched only through the account's equivalent domains", async () => {
+    equivalents = { global: [], custom: [['bank.example', 'ads.example']] };
+    sent.length = 0;
+    await fillBest({ id: 7, url: 'https://bank.example/login' } as chrome.tabs.Tab);
+    const token = sent[0]!.message.token!;
+    expect(await fill(frame('https://ads.example/frame', 3), 'bank', token)).toEqual({
+      filled: false,
+      reason: 'no-match',
+    });
+    expect((await fill(frame('https://bank.example/login'), 'bank', token)).filled).toBe(true);
+  });
 });
 
 describe('the re-prompt, per fill (CL-I3)', () => {

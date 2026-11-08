@@ -1,7 +1,7 @@
 /**
  * The generator: passwords and passphrases from uwulock-core, with the settings the popup
- * saved. The last twenty results are kept until the browser closes, so a password generated
- * for a form that then failed isn't lost.
+ * saved. The last twenty results are kept until the browser closes, the vault locks or another
+ * account is chosen (session.ts), so a password generated for a form that then failed isn't lost.
  */
 
 import type { Generated, GeneratorSettings } from '../shared/protocol';
