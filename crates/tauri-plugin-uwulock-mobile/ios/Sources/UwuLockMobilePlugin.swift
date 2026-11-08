@@ -67,6 +67,8 @@ class UwuLockMobilePlugin: Plugin {
     webview.scrollView.bouncesZoom = false
     // iOS 26: credentials another app hands over (CredentialExchange.swift).
     CredentialExchange.install()
+    // The plugin is a static library: a file nothing names is dropped, its commands with it.
+    UwuLockMobilePlugin.linkPasskeys()
   }
 
   // MARK: Privacy

@@ -72,14 +72,6 @@ node -e '
     ].join("\n"),
   );
   if (patched === text) console.error("::warning::Could not switch signing off in project.yml");
-  // -ObjC: the plugin is a static library, and without it the linker drops every file of it that
-  // nothing calls by name (Passkeys.swift) — Tauri finds those @objc commands only at runtime.
-  const unlinked = patched;
-  patched = patched.replace(
-    "        ENABLE_BITCODE: false",
-    "        ENABLE_BITCODE: false\n        OTHER_LDFLAGS: [\"$(inherited)\", \"-ObjC\"]",
-  );
-  if (patched === unlinked) { console.error("::error::Could not add -ObjC in project.yml"); process.exit(1); }
   const before = patched;
   patched = patched.replace(
     /(- script: )(pnpm tauri ios xcode-script[^\n]*)/,
@@ -179,8 +171,8 @@ add_safari_files() { # <app>
   test -f "$appex/manifest.json" || { echo "::error::No manifest.json in $appex"; exit 1; }
 }
 
-# Every command of the iOS plugin in the app (see -ObjC above): Tauri only says "No command"
-# when one is called.
+# Every command of the iOS plugin in the app: the linker drops a file of the plugin that nothing
+# names (UwuLockMobilePlugin.load), and Tauri only says "No command" when one is called.
 check_plugin() { # <app>
   local bin="$1/$(plutil -extract CFBundleExecutable raw "$1/Info.plist")"
   for call in copyText:error: passkeysStore:error: autofillLog: autofillLogNote:error:; do

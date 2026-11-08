@@ -44,6 +44,9 @@ struct PasskeysNamesArgs: Decodable {
 /// its label (`key_id` in crates/uwulock-authenticator/src/apple.rs), which takes no Face ID to
 /// read — or is gone.
 extension UwuLockMobilePlugin {
+  /// Named from load() so the linker keeps this file and its commands (scripts/ios-build.sh checks).
+  @inline(never) @_optimize(none) static func linkPasskeys() {}
+
   private static let passkeyService = "app.uwulock.passkeys"
   private static let passkeyAccount = "provider-key"
 
