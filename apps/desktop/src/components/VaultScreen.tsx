@@ -1,7 +1,7 @@
 import { listen } from '@tauri-apps/api/event';
 import { Button, Icon, IconButton, ICONS } from '@uwusuite/design';
 import type { LucideIcon } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   copyField,
   deleteFolder,
@@ -162,9 +162,11 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
 
   const counts = useMemo(() => countItems(items, due), [items, due]);
 
+  // Typing stays quick in a big vault: the list follows when React has time.
+  const deferredQuery = useDeferredValue(query);
   const visible = useMemo(
-    () => visibleItems(items, filter, query, due),
-    [items, filter, query, due],
+    () => visibleItems(items, filter, deferredQuery, due),
+    [items, filter, deferredQuery, due],
   );
 
   // Icons for what is on screen: asked of Rust, which asks the server; again
