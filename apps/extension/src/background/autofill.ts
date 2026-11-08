@@ -308,6 +308,8 @@ type Offer = {
    * go to every frame of the tab, each judged on its own address.)
    */
   frameId?: number;
+  /** Nobody picked the item (the shortcut): every frame must match it without equivalent domains. */
+  strict?: boolean;
 };
 
 const OFFER_LIFETIME = 15_000;
@@ -372,11 +374,13 @@ export type OfferOptions = {
   menu?: { frameId: number; session: string };
   /** For one frame only: the second step of a login whose first step was just filled there. */
   frameId?: number;
+  /** See `Offer.strict`. */
+  strict?: boolean;
 };
 
 /** Ask every frame of a tab to claim an item's values; each is judged on its own address. */
 export async function offer(tabId: number, itemId: string, options: OfferOptions = {}) {
-  const { explicit = false, reprompted = false, menu } = options;
+  const { explicit = false, reprompted = false, menu, strict = false } = options;
   const frameId = menu?.frameId ?? options.frameId;
   const entry = vault.autofillIndex().find((e) => e.id === itemId);
   if (!entry) throw { kind: 'not-found', message: "This item isn't in the vault any more." };
@@ -389,6 +393,7 @@ export async function offer(tabId: number, itemId: string, options: OfferOptions
     created: Date.now(),
     explicit,
     reprompted,
+    strict,
     ...(frameId !== undefined ? { frameId } : {}),
   });
   const message: BackgroundMessage = {
@@ -435,7 +440,10 @@ export async function fill(
   if (!frame) return refuse('refused');
 
   if (entry.kind === 'login') {
-    const matches = await loginMatches(entry, url, { topFrame: sender.frameId === 0 });
+    const matches = await loginMatches(entry, url, {
+      topFrame: sender.frameId === 0,
+      strict: fromOffer.strict,
+    });
     // An item picked for a page it doesn't match goes to that page itself, not into its frames.
     if (!matches && !(fromOffer.explicit && sender.frameId === 0)) return refuse('no-match');
   } else if (!(await sameOriginAsTop(sender, frame))) {
@@ -468,7 +476,7 @@ export async function copyTotp(sender: Sender, itemId: string) {
   const tabId = sender.tab?.id;
   if (tabId === undefined) return;
   const last = lastFill.get(tabId);
-  if (!last || last.itemId !== itemId || Date.now() - last.at > 30_000) return;
+  if (!last || last.itemId !== itemId || !samePlace(last, sender, 30_000)) return;
   if (!(await settings()).copyTotp) return;
   const code = await vault.reveal(itemId, 'totp').catch(() => null);
   if (code) await clipboard.copy(code);
@@ -530,7 +538,7 @@ export async function fillBest(tab: chrome.tabs.Tab) {
   const best = (await matchingLogins(url, { topFrame: true, strict: true }))[0];
   // An item with the re-prompt asks for the master password in the popup first.
   if (best?.reprompt) await session.openPopup();
-  else if (best) await offer(tab.id, best.id);
+  else if (best) await offer(tab.id, best.id, { strict: true });
 }
 
 // ── The popup's view of the tab ───────────────────────────
@@ -625,6 +633,8 @@ type Prompted = Sent & {
   action: 'save' | 'update';
   itemId: string | null;
   itemName: string | null;
+  /** A matching item has the re-prompt and couldn't be compared: a new one keeps it. */
+  reprompt?: boolean;
 };
 
 const prompts = new Map<string, Prompted>();
@@ -651,11 +661,13 @@ async function decide(sent: Sent): Promise<Prompted | null> {
 async function decideIn(sent: Sent): Promise<Prompted | null> {
   const candidates = await matchingLogins(sent.url, { topFrame: sent.frameId === 0 });
   const wanted = sent.username?.trim().toLowerCase() ?? '';
+  let reprompt = false;
   for (const entry of candidates) {
     let values: FillValues;
     try {
       values = await callJson<FillValues>((core) => core.fillValues(entry.id, Date.now() / 1000));
     } catch {
+      reprompt ||= entry.reprompt;
       continue;
     }
     if (values.kind !== 'login') continue;
@@ -672,7 +684,7 @@ async function decideIn(sent: Sent): Promise<Prompted | null> {
     if (values.password === sent.password) return null;
     return { ...sent, action: 'update', itemId: entry.id, itemName: entry.name };
   }
-  return { ...sent, action: 'save', itemId: null, itemName: null };
+  return { ...sent, action: 'save', itemId: null, itemName: null, reprompt };
 }
 
 function promptOf(prompted: Prompted): SavePrompt {
@@ -782,7 +794,7 @@ async function act(sent: Prompted, answer: SaveAnswer): Promise<void> {
     name: sent.host,
     notes: null,
     favorite: false,
-    reprompt: false,
+    reprompt: !!sent.reprompt,
     folderId: null,
     login: {
       username: sent.username ?? '',

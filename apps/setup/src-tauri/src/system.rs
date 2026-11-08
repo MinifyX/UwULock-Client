@@ -334,6 +334,10 @@ pub fn install_webview2() -> Result<(), String> {
         )
         .map_err(|e| format!("Couldn't download WebView2: {e}"))?;
     }
+    if !signed_by_microsoft(&target) {
+        let _ = std::fs::remove_dir_all(&folder);
+        return Err("The WebView2 setup isn't signed by Microsoft.".into());
+    }
     let status = std::process::Command::new(&target)
         .args(["/silent", "/install"])
         .status()
@@ -343,5 +347,73 @@ pub fn install_webview2() -> Result<(), String> {
         Ok(())
     } else {
         Err("WebView2 couldn't be installed.".into())
+    }
+}
+
+/// Whether `file` has a valid Authenticode signature whose signer is Microsoft Corporation.
+fn signed_by_microsoft(file: &Path) -> bool {
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::Security::Cryptography::{
+        CertGetNameStringW, CERT_NAME_SIMPLE_DISPLAY_TYPE,
+    };
+    use windows::Win32::Security::WinTrust::{
+        WTHelperGetProvSignerFromChain, WTHelperProvDataFromStateData, WinVerifyTrust,
+        WINTRUST_ACTION_GENERIC_VERIFY_V2, WINTRUST_DATA, WINTRUST_FILE_INFO, WTD_CHOICE_FILE,
+        WTD_REVOKE_NONE, WTD_STATEACTION_CLOSE, WTD_STATEACTION_VERIFY, WTD_UI_NONE,
+    };
+    let path = HSTRING::from(file.as_os_str());
+    let mut info = WINTRUST_FILE_INFO {
+        cbStruct: std::mem::size_of::<WINTRUST_FILE_INFO>() as u32,
+        pcwszFilePath: PCWSTR(path.as_ptr()),
+        ..Default::default()
+    };
+    let mut data = WINTRUST_DATA {
+        cbStruct: std::mem::size_of::<WINTRUST_DATA>() as u32,
+        dwUIChoice: WTD_UI_NONE,
+        fdwRevocationChecks: WTD_REVOKE_NONE,
+        dwUnionChoice: WTD_CHOICE_FILE,
+        dwStateAction: WTD_STATEACTION_VERIFY,
+        ..Default::default()
+    };
+    data.Anonymous.pFile = &mut info;
+    let mut action = WINTRUST_ACTION_GENERIC_VERIFY_V2;
+    unsafe {
+        let trusted = WinVerifyTrust(
+            HWND::default(),
+            &mut action,
+            &mut data as *mut _ as *mut c_void,
+        ) == 0;
+        let mut microsoft = false;
+        if trusted {
+            let provider = WTHelperProvDataFromStateData(data.hWVTStateData);
+            let signer = if provider.is_null() {
+                std::ptr::null_mut()
+            } else {
+                WTHelperGetProvSignerFromChain(provider, 0, false, 0)
+            };
+            if !signer.is_null() && (*signer).csCertChain > 0 && !(*signer).pasCertChain.is_null() {
+                let cert = (*(*signer).pasCertChain).pCert;
+                let mut name = [0u16; 256];
+                let len = CertGetNameStringW(
+                    cert,
+                    CERT_NAME_SIMPLE_DISPLAY_TYPE,
+                    0,
+                    None,
+                    Some(&mut name),
+                );
+                // `len` counts the closing NUL.
+                microsoft = len > 1
+                    && String::from_utf16_lossy(&name[..len as usize - 1])
+                        == "Microsoft Corporation";
+            }
+        }
+        data.dwStateAction = WTD_STATEACTION_CLOSE;
+        WinVerifyTrust(
+            HWND::default(),
+            &mut action,
+            &mut data as *mut _ as *mut c_void,
+        );
+        trusted && microsoft
     }
 }
