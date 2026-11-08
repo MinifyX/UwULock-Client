@@ -120,14 +120,16 @@ impl Host for TauriHost {
         expires: Option<Duration>,
     ) -> Result<(), String> {
         let plugin = crate::phone::plugin().ok_or("No clipboard yet.")?;
+        // Plain text waits for the plugin, so a failed copy says so: only from
+        // an async command, never the main thread the plugin waits for.
+        if !sensitive {
+            return plugin
+                .copy_text(text)
+                .map_err(|e| format!("Couldn't copy: {e}"));
+        }
         let text = Zeroizing::new(text.to_string());
         std::thread::spawn(move || {
-            let copied = if sensitive {
-                plugin.copy(&text, expires.map(|d| d.as_secs()))
-            } else {
-                plugin.copy_text(&text)
-            };
-            if let Err(error) = copied {
+            if let Err(error) = plugin.copy(&text, expires.map(|d| d.as_secs())) {
                 tracing::warn!(%error, "couldn't copy");
             }
         });

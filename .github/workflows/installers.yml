@@ -68,8 +68,8 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - run: cargo fmt --all --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace --no-fail-fast
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked --no-fail-fast
 
   # In parallel with the checks: `pnpm release` only takes a run where everything passed.
   installers:

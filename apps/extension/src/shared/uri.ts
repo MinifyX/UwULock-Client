@@ -79,6 +79,19 @@ function url(uri: string): URL | null {
  * An IP address, `localhost` or a name without a public suffix is its own domain.
  */
 export function domainOf(uri: string): string | null {
+  // Asked for every saved address of every item, per frame, whenever the vault changes.
+  let domain = domainCache.get(uri);
+  if (domain === undefined) {
+    if (domainCache.size >= 10_000) domainCache.clear();
+    domain = registrableDomain(uri);
+    domainCache.set(uri, domain);
+  }
+  return domain;
+}
+
+const domainCache = new Map<string, string | null>();
+
+function registrableDomain(uri: string): string | null {
   const parsed = url(uri);
   if (!parsed || !/^https?:$|^ftp:$/.test(parsed.protocol)) return null;
   const host = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase();
@@ -260,6 +273,17 @@ export function itemMatches(
   return uris.some((saved) => uriMatches(saved, pageUrl, domains, defaultMatch, options));
 }
 
+/** A domain as an address has it: lower case, punycode (`bücher.example` → `xn--bcher-kva.example`). */
+function asciiHost(domain: string): string | null {
+  const trimmed = domain.trim();
+  if (!trimmed) return null;
+  try {
+    return new URL(`http://${trimmed}`).hostname || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * The server's `domains` object (from the sync or `/api/settings/domains`): which of Bitwarden's
  * global groups the account switched off, and its own groups. The server's copy of the global
@@ -287,8 +311,8 @@ export function equivalentDomains(domains: unknown): EquivalentDomains {
       if (!Array.isArray(group)) continue;
       const list = group
         .filter((d): d is string => typeof d === 'string')
-        .map((d) => d.trim().toLowerCase())
-        .filter(Boolean);
+        .map(asciiHost)
+        .filter((d): d is string => !!d);
       if (list.length > 1) custom.push(list);
     }
   }

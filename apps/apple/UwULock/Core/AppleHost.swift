@@ -595,12 +595,22 @@ final class AppleHost: HostDelegate, @unchecked Sendable {
                 throw HostError.Failed(kind: "unavailable", message: "The Keychain couldn't protect the key.")
             }
             let query = passkeyQuery(keychain: groups.keychain)
-            SecItemDelete(query as CFDictionary)
-            var item = query
-            item[kSecAttrAccessControl as String] = access
-            item[kSecAttrLabel as String] = label
-            item[kSecValueData as String] = key
-            let status = SecItemAdd(item as CFDictionary, nil)
+            let changes: [String: Any] = [
+                kSecAttrAccessControl as String: access,
+                kSecAttrLabel as String: label,
+                kSecValueData as String: key,
+            ]
+            // Replaced in place: the AutoFill extension never finds no key at all in between.
+            // Without asking anybody; if that needs the person, the old way: delete, then add.
+            let context = LAContext()
+            context.interactionNotAllowed = true
+            var updating = query
+            updating[kSecUseAuthenticationContext as String] = context
+            var status = SecItemUpdate(updating as CFDictionary, changes as CFDictionary)
+            if status != errSecSuccess {
+                if status != errSecItemNotFound { SecItemDelete(query as CFDictionary) }
+                status = SecItemAdd(query.merging(changes) { $1 } as CFDictionary, nil)
+            }
             guard status == errSecSuccess else {
                 throw HostError.Failed(kind: "failed", message: "The Keychain said no (\(status)).")
             }

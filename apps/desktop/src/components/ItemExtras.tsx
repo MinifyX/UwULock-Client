@@ -8,6 +8,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button, Hint, Icon, IconButton, ICONS, Segmented } from '@uwusuite/design';
 import { copyGenerated, type ItemDetail as Detail, type ItemSummary } from '../lib/api';
 import { errorText, toastError } from '../lib/errors';
+import { isItemExcluded, setIgnored } from '../lib/health';
 import { when } from '../lib/format';
 import { ICON_ACCEPT, iconFromFile } from '../lib/iconImage';
 import { N_, locale, t, useLanguage } from '../lib/i18n';
@@ -515,6 +516,71 @@ function ChangeRow({ id, version, change }: { id: string; version: string; chang
       <Icon icon={ICONS.next} size="xs" className="text-faint" />
       <span className="version-now">{after}</span>
     </div>
+  );
+}
+
+// ── Password check ─────────────────────────────────────────
+
+/**
+ * Leaves a login out of the password check altogether, with every problem it
+ * has now or later, on every device (the ignore list, §15.6). Only where the
+ * server keeps that list.
+ */
+export function CheckCard({ summary }: { summary: ItemSummary }) {
+  useLanguage();
+  const [excluded, setExcluded] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const login = summary.kind === 'login' && !summary.deleted;
+  useEffect(() => {
+    setExcluded(null);
+    if (!login) return;
+    let live = true;
+    isItemExcluded(summary.id).then(
+      (now) => live && setExcluded(now),
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [summary.id, login]);
+  if (!login || excluded === null) return null;
+
+  const change = async () => {
+    setBusy(true);
+    try {
+      const lists = await setIgnored(summary.id, null, !excluded);
+      setExcluded(lists.excluded.some((e) => e.itemId === summary.id));
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card
+      title={
+        <>
+          <Icon icon={ICONS.review} size="xs" />
+          {t('Passwortprüfung')}
+        </>
+      }
+    >
+      <div className="detail-row">
+        <div className="detail-text">
+          <span className="detail-value">
+            {excluded
+              ? t('Ausgenommen: die Prüfung zeigt zu diesem Eintrag nichts, auf keinem Gerät.')
+              : t('Die Prüfung zeigt Probleme dieses Eintrags.')}
+          </span>
+        </div>
+        <div className="detail-actions">
+          <Button variant="ghost" size="sm" disabled={busy} onClick={() => void change()}>
+            {excluded ? t('Wieder prüfen') : t('Von der Prüfung ausnehmen')}
+          </Button>
+        </div>
+      </div>
+    </Card>
   );
 }
 

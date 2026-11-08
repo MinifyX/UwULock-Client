@@ -61,5 +61,11 @@
   "Zum Blättern wischen.": "Swipe to move through the cards.",
   "{name} {done} von {total}": "{name} {done} of {total}",
   "{count}, wartet auf den Server": "{count}, waiting for the server",
-  "Fragt nach Datenlecks … {sources}": "Checking for breaches … {sources}"
+  "Fragt nach Datenlecks … {sources}": "Checking for breaches … {sources}",
+  "Nicht mehr prüfen": "Stop checking",
+  "Ganzer Eintrag": "Whole item",
+  "Wieder prüfen": "Check again",
+  "Von der Prüfung ausnehmen": "Leave out of the check",
+  "Die Prüfung zeigt Probleme dieses Eintrags.": "The check shows this item's problems.",
+  "Ausgenommen: die Prüfung zeigt zu diesem Eintrag nichts, auf keinem Gerät.": "Left out: the check shows nothing about this item, on any device."
 }

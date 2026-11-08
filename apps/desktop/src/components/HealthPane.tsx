@@ -25,6 +25,7 @@ import {
   aboutThePassword,
   dragStarts,
   dragTransform,
+  ignoredEntries,
   isIgnored,
   keyStep,
   parseLater,
@@ -94,12 +95,14 @@ export function HealthPane({ mode, onMode, items, onOpen, phone, onMenu }: Props
     return () => void stop.then((unlisten) => unlisten());
   }, []);
 
-  const changeIgnore = async (id: string, kind: ProblemKind, on: boolean) => {
+  const changeIgnore = async (id: string, kind: ProblemKind | null, on: boolean) => {
     try {
-      const ignored = await setIgnored(id, kind, on);
-      setView((now) => (now ? { ...now, ignored } : now));
+      const lists = await setIgnored(id, kind, on);
+      setView((now) => (now ? { ...now, ...lists } : now));
+      return true;
     } catch (e) {
       toastError(e);
+      return false;
     }
   };
 
@@ -171,21 +174,20 @@ function HealthReport({
   onRun: () => void;
   onReview: () => void;
   onOpen: (id: string) => void;
-  onIgnore: (id: string, kind: ProblemKind, on: boolean) => Promise<void>;
+  onIgnore: (id: string, kind: ProblemKind | null, on: boolean) => Promise<boolean>;
 }) {
   useLanguage();
-  const ignored = view?.ignored ?? null;
-  const shown = (kind: ProblemKind) => (f: { id: string }) => !isIgnored(ignored, f.id, kind);
+  const shown = (kind: ProblemKind) => (f: { id: string }) => !isIgnored(view, f.id, kind);
   const findings = view?.report.findings ?? [];
   const breached = findings.filter((f) => (f.breached ?? 0) > 0).filter(shown('breached'));
   const siteBreached = findings.filter((f) => view?.siteBreaches[f.id]).filter(shown('siteBreach'));
   const reused = findings.filter((f) => f.reused > 0).filter(shown('reused'));
   const weak = findings.filter((f) => f.weak).filter(shown('weak'));
   const unsecured = findings.filter((f) => f.unsecured).filter(shown('unsecured'));
-  const missing = (view?.twofa ?? []).filter((m) => !isIgnored(ignored, m.itemId, 'twofa'));
+  const missing = (view?.twofa ?? []).filter((m) => !isIgnored(view, m.itemId, 'twofa'));
   const names = new Map(findings.map((f) => [f.id, f.name]));
   for (const m of view?.twofa ?? []) names.set(m.itemId, m.name);
-  const ignoredShown = (ignored ?? []).filter((entry) => names.has(entry.itemId));
+  const ignoredShown = ignoredEntries(view, names);
   const problems =
     breached.length +
     siteBreached.length +
@@ -401,10 +403,12 @@ function HealthReport({
             {t('Diese Hinweise zeigt die Prüfung nicht mehr, auf keinem Gerät.')}
           </p>
           {ignoredShown.map((entry) => (
-            <div className="detail-row" key={`${entry.itemId}:${entry.kind}`}>
+            <div className="detail-row" key={`${entry.itemId}:${entry.kind ?? 'item'}`}>
               <div className="detail-text">
                 <span className="detail-value">{names.get(entry.itemId) || t('(ohne Namen)')}</span>
-                <span className="detail-label">{problemTitle(entry.kind)}</span>
+                <span className="detail-label">
+                  {entry.kind ? problemTitle(entry.kind) : t('Ganzer Eintrag')}
+                </span>
               </div>
               <div className="detail-actions">
                 <Button
@@ -412,7 +416,7 @@ function HealthReport({
                   size="sm"
                   onClick={() => void onIgnore(entry.itemId, entry.kind, false)}
                 >
-                  {t('Rückgängig')}
+                  {entry.kind ? t('Rückgängig') : t('Wieder prüfen')}
                 </Button>
               </div>
             </div>
@@ -523,7 +527,7 @@ export function HealthReview({
   items: ItemSummary[];
   onBack: () => void;
   onOpen: (id: string) => void;
-  onIgnore: (id: string, kind: ProblemKind, on: boolean) => Promise<void>;
+  onIgnore: (id: string, kind: ProblemKind | null, on: boolean) => Promise<boolean>;
   onRenewed: () => void;
   phone: boolean;
 }) {
@@ -590,6 +594,14 @@ export function HealthReview({
     const ids = laterIds();
     ids.add(next.skipped);
     keepLater(ids);
+    setCards(next.cards);
+    setIndex(next.index);
+  };
+
+  // The whole login leaves the check, on every device; the next card follows.
+  const exclude = async () => {
+    const next = skipCard(cards, index);
+    if (!next.skipped || !(await onIgnore(next.skipped, null, true))) return;
     setCards(next.cards);
     setIndex(next.index);
   };
@@ -677,7 +689,7 @@ export function HealthReview({
               </header>
               <ul className="review-problems">
                 {card.problems.map((problem) => {
-                  const ignored = isIgnored(view.ignored, card.finding.id, problem.kind);
+                  const ignored = isIgnored(view, card.finding.id, problem.kind);
                   const solved = renewed.has(card.finding.id) && aboutThePassword(problem.kind);
                   return (
                     <li
@@ -735,6 +747,11 @@ export function HealthReview({
                 <Button variant="ghost" icon={ICONS.pending} onClick={later}>
                   {t('Später')}
                 </Button>
+                {view.ignored && (
+                  <Button variant="ghost" icon={ICONS.hide} onClick={() => void exclude()}>
+                    {t('Nicht mehr prüfen')}
+                  </Button>
+                )}
                 <Button variant="ghost" onClick={() => onOpen(card.finding.id)}>
                   {t('Eintrag öffnen')}
                 </Button>

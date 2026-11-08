@@ -68,8 +68,8 @@ jobs:
           shared-key: linux
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo fmt --all --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace --no-fail-fast
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked --no-fail-fast
 
   wasm:
     name: uwulock-core for WebAssembly
@@ -89,4 +89,4 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       # uwulock-core also runs in UwULock-Server's web vault and in the browser extension
       # (uwulock-wasm): nothing networked or browser-unsafe may creep in.
-      - run: cargo clippy -p uwulock-core -p uwulock-wasm --target wasm32-unknown-unknown -- -D warnings
+      - run: cargo clippy -p uwulock-core -p uwulock-wasm --target wasm32-unknown-unknown --locked -- -D warnings

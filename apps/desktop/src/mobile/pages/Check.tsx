@@ -25,7 +25,7 @@ import {
   type ProblemKind,
 } from '../../lib/health';
 import { t, useLanguage } from '../../lib/i18n';
-import { isIgnored } from '../../lib/review';
+import { ignoredEntries, isIgnored } from '../../lib/review';
 import { HealthReview } from '../../components/HealthPane';
 import { ItemTile } from '../../components/ItemTile';
 import { playNyu } from '../../components/nyu/stage';
@@ -102,12 +102,15 @@ async function refreshQuietly() {
   }
 }
 
-async function changeIgnore(itemId: string, kind: ProblemKind, ignored: boolean) {
+/** `kind` `null`: the whole login. */
+async function changeIgnore(itemId: string, kind: ProblemKind | null, ignored: boolean) {
   try {
-    const list = await setIgnored(itemId, kind, ignored);
-    if (health.view) setHealth({ view: { ...health.view, ignored: list } });
+    const lists = await setIgnored(itemId, kind, ignored);
+    if (health.view) setHealth({ view: { ...health.view, ...lists } });
+    return true;
   } catch (e) {
     toastError(e);
+    return false;
   }
 }
 
@@ -140,7 +143,7 @@ function useHealth(): HealthState {
 
 // ── The groups ──────────────────────────────────────────────────────────────
 
-type Entry = { id: string; name: string; kind?: ProblemKind };
+type Entry = { id: string; name: string; kind?: ProblemKind | null };
 
 type GroupInfo = {
   title: string;
@@ -220,11 +223,10 @@ function groupInfo(group: FindingGroup): GroupInfo {
 
 /** The items of each group, without what was ignored (as the desktop's report). */
 function groupsOf(view: HealthView): Record<FindingGroup, Entry[]> {
-  const ignored = view.ignored;
   const findings = view.report.findings;
   const pick = (kind: ProblemKind, test: (f: (typeof findings)[number]) => boolean): Entry[] =>
     findings
-      .filter((f) => test(f) && !isIgnored(ignored, f.id, kind))
+      .filter((f) => test(f) && !isIgnored(view, f.id, kind))
       .map((f) => ({ id: f.id, name: f.name }));
   const names = new Map(findings.map((f) => [f.id, f.name]));
   for (const m of view.twofa) names.set(m.itemId, m.name);
@@ -235,15 +237,13 @@ function groupsOf(view: HealthView): Record<FindingGroup, Entry[]> {
     weak: pick('weak', (f) => f.weak),
     unsecured: pick('unsecured', (f) => f.unsecured),
     twofa: view.twofa
-      .filter((m) => !isIgnored(ignored, m.itemId, 'twofa'))
+      .filter((m) => !isIgnored(view, m.itemId, 'twofa'))
       .map((m) => ({ id: m.itemId, name: m.name })),
-    ignored: (ignored ?? [])
-      .filter((entry) => names.has(entry.itemId))
-      .map((entry) => ({
-        id: entry.itemId,
-        name: names.get(entry.itemId) ?? '',
-        kind: entry.kind,
-      })),
+    ignored: ignoredEntries(view, names).map((entry) => ({
+      id: entry.itemId,
+      name: names.get(entry.itemId) ?? '',
+      kind: entry.kind,
+    })),
   };
 }
 
@@ -502,14 +502,14 @@ export function FindingsPage({ group }: { group: FindingGroup }) {
         <ListSection>
           {entries.map((entry) => {
             const item = data.byId(entry.id);
-            const kind = entry.kind as ProblemKind;
+            const kind = entry.kind ?? null;
             return (
               <ListRow
-                key={`${entry.id}:${kind}`}
+                key={`${entry.id}:${kind ?? 'item'}`}
                 icon={item ? <ItemTile item={item} /> : ICONS.website}
                 iconTone={item ? 'none' : 'neutral'}
                 title={item?.name || entry.name || t('(ohne Namen)')}
-                subtitle={problemTitle(kind)}
+                subtitle={kind ? problemTitle(kind) : t('Ganzer Eintrag')}
                 onClick={item ? () => nav.open({ page: 'item', id: entry.id }) : undefined}
                 trailing={
                   <button
@@ -517,7 +517,7 @@ export function FindingsPage({ group }: { group: FindingGroup }) {
                     className="m-text-button"
                     onClick={() => void changeIgnore(entry.id, kind, false)}
                   >
-                    {t('Rückgängig')}
+                    {kind ? t('Rückgängig') : t('Wieder prüfen')}
                   </button>
                 }
               />

@@ -263,11 +263,11 @@ pub fn ask(
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LoginChoice {
-    item_id: String,
-    name: String,
-    user_name: Option<String>,
+    pub item_id: String,
+    pub name: String,
+    pub user_name: Option<String>,
     /// Bitwarden keeps one passkey per login: this one is replaced.
-    has_passkey: bool,
+    pub has_passkey: bool,
 }
 
 /// A passkey that can sign in.

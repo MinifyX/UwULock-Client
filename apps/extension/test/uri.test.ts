@@ -72,6 +72,13 @@ describe('match detection', () => {
     expect(none.global.length).toBe(GLOBAL_DOMAINS.length);
   });
 
+  it("domain: the account's own groups are compared in punycode", () => {
+    const groups = equivalentDomains({ equivalentDomains: [[' Bücher.Example ', 'example.org']] });
+    expect(groups.custom).toEqual([['xn--bcher-kva.example', 'example.org']]);
+    const { wide } = pageDomains('https://bücher.example/login', groups);
+    expect(matches('https://example.org', 0, 'https://bücher.example/login', wide)).toBe(true);
+  });
+
   it('host: the same host and port', () => {
     expect(matches('https://accounts.example.com:8443', 1)).toBe(true);
     expect(matches('https://accounts.example.com', 1)).toBe(false);

@@ -773,6 +773,9 @@ impl Mover {
             match self.make_family(id, &name, token).await {
                 Ok(()) => return Ok(()),
                 Err(error) if ends_the_run(&error) => return Err(error),
+                // Made, but what came after failed: the journal has it, a
+                // folder in its place would make the organisation twice.
+                Err(error) if self.moved().organizations.contains_key(id) => return Err(error),
                 Err(error) => {
                     // No family after all (a limit, a setting): a folder instead.
                     tracing::warn!(%error, "no family; the organisation becomes a folder");
@@ -915,7 +918,7 @@ impl Mover {
             .clone();
         let old_key = item.key.clone().unwrap_or(source_outer);
 
-        let moved = self.moved().clone();
+        let moved = self.moved();
         let mut folder = item
             .folder_id
             .as_ref()

@@ -108,6 +108,8 @@ async function opened(found: Account) {
 export async function lock(): Promise<void> {
   await call((core) => core.lock()).catch(() => undefined);
   await removeSession('unlocked');
+  // Generated passwords belong to whoever used the open vault, not to the next one.
+  await removeSession('generated');
   unlockedId = null;
   vault.closed();
   changed();
@@ -692,6 +694,7 @@ export async function switchAccount(id: string): Promise<Status> {
   const found = await account(id);
   if (!found) throw { kind: 'not-found', message: 'This account is not here any more.' };
   if (unlockedId && unlockedId !== id) await lock();
+  else if ((await local('activeAccount')) !== id) await removeSession('generated');
   await setLocal('activeAccount', id);
   changed();
   return status();

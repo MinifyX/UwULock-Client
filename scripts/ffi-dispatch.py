@@ -12,7 +12,7 @@ src = open(f"{root}/apps/desktop/src-tauri/src/commands.rs").read()
 
 mod_re = re.compile(r"^pub\(crate\) mod (\w+) \{\n(.*?)^\}\n", re.S | re.M)
 fn_re = re.compile(
-    r"#\[tauri::command\]\n(?:\s*#\[allow\(clippy::too_many_arguments\)\]\n)?"
+    r"#\[tauri::command(?:\(async\))?\]\n(?:\s*#\[allow\(clippy::too_many_arguments\)\]\n)?"
     r"\s*pub\(crate\) (async )?fn (\w+)\((.*?)\)\s*(?:->\s*(.*?))?\s*\{\n(.*?)\n    \}\n",
     re.S,
 )
@@ -74,7 +74,7 @@ for m in mod_re.finditer(src):
         ret = " ".join((ret or "()").split())
         commands.append(dict(mod=mod, name=name, is_async=bool(is_async), args=args, ret=ret))
 
-assert len(commands) == 124, len(commands)
+assert len(commands) == 125, len(commands)
 
 
 def call_expr(c):

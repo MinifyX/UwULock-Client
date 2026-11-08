@@ -119,6 +119,33 @@ impl Server {
     }
 }
 
+/// See [`Client::may_download`]; also what redirects are held to.
+fn may_fetch(server: &Server, url: &url::Url) -> bool {
+    let Some(host) = url
+        .host_str()
+        .map(|h| h.trim_end_matches('.').to_ascii_lowercase())
+    else {
+        return false;
+    };
+    let own: Vec<String> = [server.web(), server.api(), server.identity()]
+        .iter()
+        .filter_map(|u| url::Url::parse(u).ok())
+        .filter_map(|u| u.host_str().map(str::to_ascii_lowercase))
+        .collect();
+    let is_own = own.contains(&host);
+    match url.scheme() {
+        "https" => {}
+        "http" if is_own && is_loopback(url) => {}
+        _ => return false,
+    }
+    let cloud = match server {
+        Server::BitwardenUs => host.ends_with(".bitwarden.com"),
+        Server::BitwardenEu => host.ends_with(".bitwarden.eu"),
+        Server::SelfHosted { .. } => false,
+    };
+    is_own || cloud || host.ends_with(".blob.core.windows.net")
+}
+
 fn is_loopback(url: &url::Url) -> bool {
     match url.host() {
         Some(url::Host::Domain(name)) => name.eq_ignore_ascii_case("localhost"),
@@ -419,6 +446,24 @@ impl Client {
             .https_only(
                 !matches!(&server, Server::SelfHosted { url } if url.starts_with("http://")),
             )
+            // A redirect may go only where a download may: otherwise it would
+            // skip `may_download`, and a 307 would re-post the login form.
+            .redirect({
+                let server = server.clone();
+                reqwest::redirect::Policy::custom(move |attempt| {
+                    let url = attempt.url();
+                    // An http server on the LAN may still redirect within itself.
+                    let same_origin = attempt
+                        .previous()
+                        .last()
+                        .is_some_and(|from| from.origin() == url.origin());
+                    if attempt.previous().len() < 5 && (same_origin || may_fetch(&server, url)) {
+                        attempt.follow()
+                    } else {
+                        attempt.stop()
+                    }
+                })
+            })
             .build()
             .map_err(|e| Error::Network(e.to_string()))?;
         Ok(Client {
@@ -1091,29 +1136,7 @@ impl Client {
     /// Bitwarden's cloud also its own domain. A hostile server can't make the
     /// app fetch from anywhere else, the local network included.
     pub fn may_download(&self, url: &url::Url) -> bool {
-        let Some(host) = url
-            .host_str()
-            .map(|h| h.trim_end_matches('.').to_ascii_lowercase())
-        else {
-            return false;
-        };
-        let own: Vec<String> = [self.server.web(), self.server.api(), self.server.identity()]
-            .iter()
-            .filter_map(|u| url::Url::parse(u).ok())
-            .filter_map(|u| u.host_str().map(str::to_ascii_lowercase))
-            .collect();
-        let is_own = own.contains(&host);
-        match url.scheme() {
-            "https" => {}
-            "http" if is_own && is_loopback(url) => {}
-            _ => return false,
-        }
-        let cloud = match self.server {
-            Server::BitwardenUs => host.ends_with(".bitwarden.com"),
-            Server::BitwardenEu => host.ends_with(".bitwarden.eu"),
-            Server::SelfHosted { .. } => false,
-        };
-        is_own || cloud || host.ends_with(".blob.core.windows.net")
+        may_fetch(&self.server, url)
     }
 
     /// Announces an attachment (`POST /api/ciphers/{id}/attachment/v2`, body
@@ -1568,8 +1591,7 @@ pub(crate) fn text_of(value: &Value, key: &str) -> Option<String> {
 /// A `multipart/form-data` body with one file in the part `data`, as
 /// Bitwarden's clients upload attachments and Send files.
 fn multipart(file_name: &str, bytes: &[u8]) -> (String, Vec<u8>) {
-    let mut random = [0u8; 12];
-    rand_bytes(&mut random);
+    let random: [u8; 12] = rand::random();
     let boundary = format!("uwulock-{}", URL_SAFE_NO_PAD.encode(random));
     // Encrypted names are base64 with `.` and `|`: nothing to quote.
     let name: String = file_name
@@ -1586,14 +1608,6 @@ fn multipart(file_name: &str, bytes: &[u8]) -> (String, Vec<u8>) {
     body.extend_from_slice(bytes);
     body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
     (format!("multipart/form-data; boundary={boundary}"), body)
-}
-
-fn rand_bytes(out: &mut [u8]) {
-    // A fresh key's bytes are as random as it gets, without another dependency.
-    let key = crate::crypto::SymmetricKey::generate();
-    let bytes = key.to_bytes();
-    let n = out.len().min(bytes.len());
-    out[..n].copy_from_slice(&bytes[..n]);
 }
 
 /// An id goes into a path; a server that hands out something odd shouldn't be

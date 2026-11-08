@@ -108,7 +108,8 @@ pub(crate) mod vault {
         app.lock()
     }
 
-    #[tauri::command]
+    // Off the main thread: on a phone this waits for the plugin, which waits for it.
+    #[tauri::command(async)]
     pub(crate) fn logout(app: State<'_, App>, id: Option<String>) -> Result<Status> {
         app.logout(id)
     }
@@ -182,7 +183,8 @@ pub(crate) mod vault {
         app.copy_generated(text)
     }
 
-    #[tauri::command]
+    // Off the main thread: on a phone this waits for the plugin, which waits for it.
+    #[tauri::command(async)]
     pub(crate) fn copy_text(app: State<'_, App>, text: String) -> Result<()> {
         app.copy_text(text)
     }
@@ -542,7 +544,7 @@ pub(crate) mod health {
     #[allow(unused_imports)]
     use uwulock_app::{Failure, Result};
     use uwulock_bitwarden::health::EmailOptIn;
-    use uwulock_core::health::{Ignored, ProblemKind};
+    use uwulock_core::health::ProblemKind;
 
     #[tauri::command]
     pub(crate) async fn health_report(handle: AppHandle, fresh: bool) -> Result<HealthView> {
@@ -553,10 +555,18 @@ pub(crate) mod health {
     pub(crate) async fn health_ignore(
         handle: AppHandle,
         item_id: String,
-        kind: ProblemKind,
+        kind: Option<ProblemKind>,
         ignored: bool,
-    ) -> Result<Vec<Ignored>> {
+    ) -> Result<Ignores> {
         app(&handle).health_ignore(item_id, kind, ignored).await
+    }
+
+    #[tauri::command]
+    pub(crate) async fn health_excluded(
+        handle: AppHandle,
+        item_id: String,
+    ) -> Result<Option<bool>> {
+        app(&handle).health_excluded(item_id).await
     }
 
     #[tauri::command]
@@ -938,12 +948,14 @@ pub(crate) mod passkeys {
             .await
     }
 
-    #[tauri::command]
+    // Off the main thread: on a phone this waits for the plugin, which waits for it.
+    #[tauri::command(async)]
     pub(crate) fn passkey_provider_status(app: State<'_, App>) -> ProviderStatus {
         app.passkey_provider_status()
     }
 
-    #[tauri::command]
+    // Off the main thread: on a phone this waits for the plugin, which waits for it.
+    #[tauri::command(async)]
     pub(crate) fn set_passkey_provider(
         app: State<'_, App>,
         settings: Settings,

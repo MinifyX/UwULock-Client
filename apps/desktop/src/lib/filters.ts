@@ -71,19 +71,38 @@ export function visibleItems(
     );
 }
 
-/** How many items each list has; the trash counts the deleted ones. */
+/**
+ * How many items each list has; the trash counts the deleted ones. One pass
+ * over the items: the sidebar asks once per folder, collection and type.
+ */
 export function countItems(items: readonly ItemSummary[], due: ReadonlySet<string>) {
-  const live = items.filter((i) => !i.deleted);
+  const bump = <K>(map: Map<K, number>, key: K) => map.set(key, (map.get(key) ?? 0) + 1);
+  const types = new Map<ItemKind, number>();
+  const folders = new Map<string | null, number>();
+  const collections = new Map<string, number>();
+  const organizations = new Map<string, number>();
+  let all = 0;
+  let favorites = 0;
+  let dueCount = 0;
+  for (const item of items) {
+    if (item.deleted) continue;
+    all += 1;
+    if (item.favorite) favorites += 1;
+    if (due.has(item.id)) dueCount += 1;
+    bump(types, item.kind);
+    if (item.organizationId) bump(organizations, item.organizationId);
+    else bump(folders, item.folderId ?? null);
+    for (const id of item.collectionIds) bump(collections, id);
+  }
   return {
-    all: live.length,
-    favorites: live.filter((i) => i.favorite).length,
-    trash: items.length - live.length,
-    type: (type: ItemKind) => live.filter((i) => i.kind === type).length,
-    folder: (id: string | null) =>
-      live.filter((i) => !i.organizationId && i.folderId === id).length,
-    collection: (id: string) => live.filter((i) => i.collectionIds.includes(id)).length,
-    organization: (id: string) => live.filter((i) => i.organizationId === id).length,
-    due: live.filter((i) => due.has(i.id)).length,
+    all,
+    favorites,
+    trash: items.length - all,
+    type: (type: ItemKind) => types.get(type) ?? 0,
+    folder: (id: string | null) => folders.get(id) ?? 0,
+    collection: (id: string) => collections.get(id) ?? 0,
+    organization: (id: string) => organizations.get(id) ?? 0,
+    due: dueCount,
   };
 }
 

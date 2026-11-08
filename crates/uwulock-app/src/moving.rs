@@ -316,8 +316,9 @@ fn load_journal(state: &VaultState, id: &str, user_key: &SymmetricKey) -> Journa
         .unwrap_or_default()
 }
 
-/// Written after every step, with the key the run started with: a vault
-/// locked in the middle of a step still gets that step written down.
+/// Written every few seconds and when the run ends, with the key the run
+/// started with: a vault locked in the middle of a step still gets that step
+/// written down.
 fn save_journal(state: &VaultState, id: &str, user_key: &SymmetricKey, mover: &Mover) {
     let text = serde_json::to_string(mover.journal()).unwrap_or_default();
     if let Err(error) = state
@@ -376,16 +377,30 @@ async fn run(app: &App) -> Result<Finished> {
         .as_mut()
         .ok_or_else(|| Failure::new("invalid", "Nothing to move yet."))?;
     let user_key = state.user_key_of(id)?;
+    // The whole journal goes out each time: after every step it would be
+    // quadratic in a big vault. A crash loses at most this much of it.
+    const EVERY: std::time::Duration = std::time::Duration::from_secs(2);
+    let mut saved = std::time::Instant::now();
     loop {
         if moves.cancel.load(Ordering::SeqCst) {
+            save_journal(state, id, &user_key, mover);
             return Ok(Finished {
                 summary: mover.summary().clone(),
                 cancelled: true,
             });
         }
-        let token = access_token(state, id).await?;
+        let token = match access_token(state, id).await {
+            Ok(token) => token,
+            Err(failure) => {
+                save_journal(state, id, &user_key, mover);
+                return Err(failure);
+            }
+        };
         let step = mover.step(&token).await;
-        save_journal(state, id, &user_key, mover);
+        if !matches!(step, Ok(Step::Working(_))) || saved.elapsed() >= EVERY {
+            save_journal(state, id, &user_key, mover);
+            saved = std::time::Instant::now();
+        }
         match step? {
             Step::Working(progress) => {
                 // Moving is what the person is doing: no auto-lock under it.

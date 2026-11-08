@@ -156,4 +156,16 @@ test('counts', () => {
   assert.equal(counts.due, 1, 'a deleted item is not due');
   assert.equal(counts.type('login'), 2);
   assert.equal(counts.folder(null), 1);
+  assert.equal(counts.folder('f'), 1);
+  assert.equal(counts.type('note'), 0);
+  assert.equal(counts.collection('k'), 1);
+  assert.equal(counts.organization('o'), 1);
+  assert.equal(counts.organization('x'), 0);
+  assert.equal(counts.favorites, 1);
+});
+
+test('a search in a folder looks outside it, but not in the trash', () => {
+  const none = new Set<string>();
+  const found = visibleItems(ITEMS, { kind: 'folder', id: 'f' }, 'a', none).map((i) => i.id);
+  assert.deepEqual(found, ['a', 'c', 'b'], 'not the deleted Alt');
 });

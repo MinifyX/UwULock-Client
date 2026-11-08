@@ -6,9 +6,9 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { t } from './i18n';
-import type { IgnoredEntry, ProblemKind } from './review';
+import type { ExcludedEntry, IgnoredEntry, ProblemKind } from './review';
 
-export type { IgnoredEntry, ProblemKind } from './review';
+export type { ExcludedEntry, IgnoredEntry, ProblemKind } from './review';
 
 export type BreachSwitches = {
   hibp: boolean;
@@ -94,6 +94,8 @@ export type HealthView = {
   twofaFailed: boolean;
   /** `null` where the server keeps no ignore list. */
   ignored: IgnoredEntry[] | null;
+  /** Logins left out of the check altogether; `null` as `ignored`. */
+  excluded: ExcludedEntry[] | null;
   cards: Card[];
   emailOptIn: EmailOptIn | null;
 };
@@ -107,8 +109,17 @@ export type EmailResult = {
 /** `fresh`: ask the breach sources again; else the last answers are reused. */
 export const healthReport = (fresh: boolean) => invoke<HealthView>('health_report', { fresh });
 
-export const setIgnored = (itemId: string, kind: ProblemKind, ignored: boolean) =>
-  invoke<IgnoredEntry[]>('health_ignore', { itemId, kind, ignored });
+/** `kind` `null`: the whole login, with every problem it has now or later. */
+export const setIgnored = (itemId: string, kind: ProblemKind | null, ignored: boolean) =>
+  invoke<{ ignored: IgnoredEntry[]; excluded: ExcludedEntry[] }>('health_ignore', {
+    itemId,
+    kind,
+    ignored,
+  });
+
+/** Whether the check leaves the login out; `null` where the server keeps no ignore list. */
+export const isItemExcluded = (itemId: string) =>
+  invoke<boolean | null>('health_excluded', { itemId });
 
 /** Opens the change-password page (or the login) in the system browser. */
 export const openChangePage = (itemId: string) => invoke<void>('health_open_page', { itemId });

@@ -171,6 +171,7 @@ pub fn run() {
             commands::sends::delete_send,
             commands::health::health_report,
             commands::health::health_ignore,
+            commands::health::health_excluded,
             commands::health::health_open_page,
             commands::health::health_save_password,
             commands::health::health_email_opt_in,

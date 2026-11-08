@@ -22,8 +22,9 @@ use futures_util::{SinkExt, StreamExt};
 use rand::Rng;
 use serde_json::{json, Value};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::net::TcpStream;
+use tokio::time::Instant;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::Message;
@@ -220,6 +221,8 @@ pub struct Realtime {
     heartbeat: Duration,
     expires: u64,
     last_ping: Instant,
+    /// When the last frame of any kind came in: silence is measured from here.
+    last_frame: Instant,
 }
 
 /// What the realtime channel said, read from one text frame.
@@ -293,6 +296,7 @@ impl Realtime {
             heartbeat: Duration::from_secs(25),
             expires: 0,
             last_ping: Instant::now(),
+            last_frame: Instant::now(),
         };
         realtime.send_auth(access_token, cursor).await?;
         let deadline = Instant::now() + Duration::from_secs(10);
@@ -321,6 +325,7 @@ impl Realtime {
     fn ready(&mut self, heartbeat: u64, expires: u64) {
         self.heartbeat = Duration::from_secs(heartbeat.clamp(5, 300));
         self.expires = expires;
+        self.last_frame = Instant::now();
     }
 
     async fn send_auth(&mut self, access_token: &str, cursor: Option<&str>) -> Result<(), Closed> {
@@ -336,11 +341,14 @@ impl Realtime {
             // The server pings every heartbeat; three without a frame and the
             // connection is gone, whatever the socket thinks. An application
             // ping in between keeps idle proxies from cutting it.
-            let silence = self.heartbeat * 3;
+            let quiet_at = self.last_frame + self.heartbeat * 3;
             let ping_due = self.last_ping + self.heartbeat;
             let frame = tokio::select! {
-                frame = tokio::time::timeout(silence, self.socket.next()) => frame,
-                _ = tokio::time::sleep_until(ping_due.into()) => {
+                frame = self.socket.next() => frame,
+                _ = tokio::time::sleep_until(quiet_at) => {
+                    return Err(Closed::new(None, "the server went quiet"));
+                }
+                _ = tokio::time::sleep_until(ping_due) => {
                     self.last_ping = Instant::now();
                     let ping = json!({ "type": "ping" }).to_string();
                     self.socket
@@ -350,7 +358,7 @@ impl Realtime {
                     continue;
                 }
             };
-            let frame = frame.map_err(|_| Closed::new(None, "the server went quiet"))?;
+            self.last_frame = Instant::now();
             match frame {
                 Some(Ok(Message::Text(text))) => match parse_realtime(&text) {
                     Some(RealtimeMessage::Event(event)) => return Ok(event),
@@ -396,6 +404,7 @@ pub struct Hub {
     /// This device's id: a change it made itself is not news here.
     device_id: String,
     last_ping: Instant,
+    last_frame: Instant,
     queue: std::collections::VecDeque<Event>,
 }
 
@@ -417,6 +426,7 @@ impl Hub {
             socket,
             device_id: device_id.to_string(),
             last_ping: Instant::now(),
+            last_frame: Instant::now(),
             queue: Default::default(),
         })
     }
@@ -428,8 +438,11 @@ impl Hub {
             }
             let ping_due = self.last_ping + HUB_PING_EVERY;
             let frame = tokio::select! {
-                frame = tokio::time::timeout(HUB_SILENCE, self.socket.next()) => frame,
-                _ = tokio::time::sleep_until(ping_due.into()) => {
+                frame = self.socket.next() => frame,
+                _ = tokio::time::sleep_until(self.last_frame + HUB_SILENCE) => {
+                    return Err(Closed::new(None, "the hub went quiet"));
+                }
+                _ = tokio::time::sleep_until(ping_due) => {
                     self.last_ping = Instant::now();
                     self.socket
                         .send(Message::Binary(HUB_PING.to_vec().into()))
@@ -438,7 +451,7 @@ impl Hub {
                     continue;
                 }
             };
-            let frame = frame.map_err(|_| Closed::new(None, "the hub went quiet"))?;
+            self.last_frame = Instant::now();
             let bytes: Vec<u8> = match frame {
                 Some(Ok(Message::Binary(bytes))) => bytes.to_vec(),
                 // The handshake's answer is JSON text: `{}` and a separator,

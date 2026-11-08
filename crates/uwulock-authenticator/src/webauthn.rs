@@ -269,7 +269,11 @@ pub fn origin_allows(origin: &str, rp_id: &str) -> bool {
         Some(parts) => parts,
         None => return false,
     };
-    let host_port = rest.split('/').next().unwrap_or_default();
+    let host_port = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    // An origin has no user info: `a.example.com@evil.test` is evil.test.
+    if host_port.contains('@') {
+        return false;
+    }
     let host = host_port
         .rsplit_once(':')
         .filter(|(_, port)| port.chars().all(|c| c.is_ascii_digit()))
@@ -466,6 +470,22 @@ mod tests {
         assert!(!origin_allows("example.com", "example.com"));
         // Public suffixes are nobody's (R3-12).
         assert!(!origin_allows("https://evil.co.uk", "co.uk"));
+        assert!(!origin_allows(
+            "https://evil.test?.example.com",
+            "example.com"
+        ));
+        assert!(!origin_allows(
+            "https://evil.test#.example.com",
+            "example.com"
+        ));
+        assert!(!origin_allows(
+            "https://evil.test@login.example.com",
+            "example.com"
+        ));
+        assert!(origin_allows(
+            "https://login.example.com?x=1",
+            "example.com"
+        ));
         assert!(!origin_allows("https://nyu.github.io", "github.io"));
         assert!(origin_allows("https://nyu.github.io", "nyu.github.io"));
     }

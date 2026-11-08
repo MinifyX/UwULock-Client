@@ -313,6 +313,8 @@ export function App() {
               <LoginScreen again={status} onDone={setStatus} onCancel={() => void lock()} />
             ) : (
               <VaultScreen
+                // A new account starts with nothing of the one before (filter, health report).
+                key={status.accountId}
                 status={status}
                 searchRef={searchRef}
                 onAddAccount={() => setAdding(true)}

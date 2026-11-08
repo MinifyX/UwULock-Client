@@ -464,7 +464,7 @@ fn unprotect(_sealed: &str) -> Result<Zeroizing<String>, String> {
 /// Like [`write_atomic`], readable by this user only where files have modes.
 fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write as _;
-    let tmp = path.with_extension("tmp");
+    let tmp = temp_path(path);
     let _ = std::fs::remove_file(&tmp);
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create_new(true);
@@ -480,9 +480,19 @@ fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 /// Written next to the target, then renamed over it: a crash in between
 /// leaves the old file, never half a new one.
 fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let tmp = path.with_extension("tmp");
+    let tmp = temp_path(path);
     std::fs::write(&tmp, bytes)?;
-    std::fs::rename(&tmp, path)
+    std::fs::rename(&tmp, path).inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp);
+    })
+}
+
+/// A temp name of its own per write: two writers of the same file never
+/// write into each other's temp file.
+fn temp_path(path: &Path) -> PathBuf {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    path.with_extension(format!("{}.{n}.tmp", std::process::id()))
 }
 
 #[cfg(test)]

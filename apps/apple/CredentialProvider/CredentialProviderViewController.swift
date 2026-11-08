@@ -627,8 +627,9 @@ class CredentialProviderViewController: ASCredentialProviderViewController {
             clientDataHash: clientDataHash, authenticatorData: authData, credentialID: id)
         guard !finished else { return }
         finishing("assertion handing over (\(path))")
-        extensionContext.completeAssertionRequest(using: credential) { @Sendable done in
-            logStep("assertion handed over (\(path)): \(done)")
+        // iOS tells whether the request had expired, not whether it worked.
+        extensionContext.completeAssertionRequest(using: credential) { @Sendable expired in
+            logStep("assertion handed over (\(path))\(expired ? ": the request had expired" : "")")
         }
     }
 

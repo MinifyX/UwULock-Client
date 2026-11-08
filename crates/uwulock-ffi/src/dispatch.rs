@@ -107,6 +107,7 @@ pub(crate) enum Later {
     ShareAsSend(extras::ShareAsSend),
     HealthReport(health::HealthReport),
     HealthIgnore(health::HealthIgnore),
+    HealthExcluded(health::HealthExcluded),
     HealthOpenPage(health::HealthOpenPage),
     HealthSavePassword(health::HealthSavePassword),
     HealthEmailOptIn,
@@ -223,6 +224,7 @@ pub(crate) const COMMANDS: &[&str] = &[
     "share_as_send",
     "health_report",
     "health_ignore",
+    "health_excluded",
     "health_open_page",
     "health_save_password",
     "health_email_opt_in",
@@ -379,6 +381,7 @@ pub(crate) fn parse(command: &str, json: &str) -> Result<Call, Failure> {
         "share_as_send" => Call::Later(Later::ShareAsSend(args(command, json)?)),
         "health_report" => Call::Later(Later::HealthReport(args(command, json)?)),
         "health_ignore" => Call::Later(Later::HealthIgnore(args(command, json)?)),
+        "health_excluded" => Call::Later(Later::HealthExcluded(args(command, json)?)),
         "health_open_page" => Call::Later(Later::HealthOpenPage(args(command, json)?)),
         "health_save_password" => Call::Later(Later::HealthSavePassword(args(command, json)?)),
         "health_email_opt_in" => Call::Later(Later::HealthEmailOptIn),
@@ -585,6 +588,7 @@ pub(crate) async fn run_later(app: App, call: Later) -> Result<String, Failure> 
         Later::ShareAsSend(a) => json(app.share_as_send(a.id, a.input).await?),
         Later::HealthReport(a) => json(app.health_report(a.fresh).await?),
         Later::HealthIgnore(a) => json(app.health_ignore(a.item_id, a.kind, a.ignored).await?),
+        Later::HealthExcluded(a) => json(app.health_excluded(a.item_id).await?),
         Later::HealthOpenPage(a) => json(app.health_open_page(a.item_id).await?),
         Later::HealthSavePassword(a) => {
             json(app.health_save_password(a.item_id, a.password).await?)
@@ -1053,7 +1057,7 @@ pub(crate) mod health {
     use uwulock_app::health::*;
     use uwulock_app::{Failure, Result};
     use uwulock_bitwarden::health::EmailOptIn;
-    use uwulock_core::health::{Ignored, ProblemKind};
+    use uwulock_core::health::ProblemKind;
 
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -1065,8 +1069,14 @@ pub(crate) mod health {
     #[serde(rename_all = "camelCase")]
     pub(crate) struct HealthIgnore {
         pub(crate) item_id: String,
-        pub(crate) kind: ProblemKind,
+        pub(crate) kind: Option<ProblemKind>,
         pub(crate) ignored: bool,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub(crate) struct HealthExcluded {
+        pub(crate) item_id: String,
     }
 
     #[derive(Deserialize)]
@@ -1475,10 +1485,8 @@ mod tests {
             r#"{"id": "x", "input": {"fields": [["password", "Password"]], "deletionDays": 7}}"#,
         ),
         ("health_report", r#"{"fresh": true}"#),
-        (
-            "health_ignore",
-            r#"{"itemId": "x", "kind": "weak", "ignored": true}"#,
-        ),
+        ("health_ignore", r#"{"itemId": "x", "ignored": true}"#),
+        ("health_excluded", r#"{"itemId": "x"}"#),
         ("health_open_page", r#"{"itemId": "x"}"#),
         (
             "health_save_password",
