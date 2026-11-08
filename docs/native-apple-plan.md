@@ -47,3 +47,28 @@ Mac App Store, TestFlight, IPA). Windows, Linux and Android stay Tauri.
        `app.uwulock.desktop(.passkeys)` with AutoFill + App Groups.
 8. [x] Docs (architecture, mobile, roadmap), security review `docs/security-review-0.7.md`
        (no High/Medium; Low fixed, Info fixed or accepted).
+
+## Stand (2026-11-08)
+
+- `origin/main` (078a46e) mit Merge-Commit eingeholt; die Logik aus `src-tauri` liegt in
+  `crates/uwulock-app`, die Tauri-Befehle sind dünne Hüllen (`ffi-dispatch.py`: 125 Befehle).
+- Version 0.7.0-beta.2 (`release-notes/0.7.0-beta.2.json`). Apple-CI läuft auf `xcode-27`
+  (`macos-27` gibt es nicht).
+- Gleichstand der nativen App mit main seit 30.10.:
+
+| Funktion                                                                | Tauri                                                                    | Swift                                                                                                                                   |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Passkey-Bogen, Logins neben Passkeys (0.6.0-beta.8)                     | `src-tauri/apple/PasskeyProvider` (entfernt)                             | `CredentialProvider/PasskeySheet.swift`, `CredentialProviderViewController.swift`                                                       |
+| AutoFill-Suche                                                          | dito                                                                     | `PasskeySheet.swift` (`searchable`, Suche über alle Logins)                                                                             |
+| Prüfung: ganzen Eintrag ausnehmen                                       | `HealthPane.tsx`, `mobile/pages/Check.tsx`, `ItemExtras.tsx` `CheckCard` | `HealthReviewView.swift` („Nicht mehr prüfen“), `PasswordCheckView.swift` („Ignoriert“), `ItemExtrasSection.swift` `ExtrasCheckSection` |
+| `health_ignore` mit beiden Listen, `health_excluded`                    | `lib/health.ts`, `lib/review.ts`                                         | `CoreCommands.swift`, `Models/Health.swift`, `HealthWords.swift`                                                                        |
+| Editor-Konflikt (`revisionDate`)                                        | `lib/itemForm.ts`                                                        | `ItemForm.swift`, `Models/Items.swift`, `ItemEditorView.swift`                                                                          |
+| Kontowechsel leert Bericht                                              | `App.tsx` `key`                                                          | `HealthCheckStore.swift` (VaultModel tat es schon)                                                                                      |
+| Passkey-Schlüssel ersetzen statt löschen                                | Plugin `Passkeys.swift` (entfernt)                                       | `AppleHost.swift` `extensionStore`                                                                                                      |
+| `completeAssertionRequest` meldet „abgelaufen“                          | `CredentialProviderViewController.swift` (entfernt)                      | `CredentialProviderViewController.swift`                                                                                                |
+| Audit-Befunde Core/Bitwarden/Authenticator, Journal-Batching, Clipboard | Rust                                                                     | gemeinsam über `uwulock-app`                                                                                                            |
+| Schnellere Filter (Desktop)                                             | `lib/filters.ts`                                                         | nicht nötig (Swift filtert selbst)                                                                                                      |
+
+- Offen beim Nutzer: Zertifikat „Developer ID Application“ → Secret `APPLE_DEVELOPER_ID_CERT`
+  (sonst bleibt das DMG ad-hoc); Identifier `app.uwulock.desktop(.passkeys/.safari)` mit AutoFill
+  und App Group registrieren; Export Compliance je Build in App Store Connect.
