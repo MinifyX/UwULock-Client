@@ -482,7 +482,8 @@ pub struct ProviderStatus {
     warning: Option<Warning>,
 }
 
-#[tauri::command]
+// Off the main thread: on iOS the status asks the plugin, which waits for it.
+#[tauri::command(async)]
 pub(crate) fn passkey_provider_status(app: AppHandle) -> ProviderStatus {
     status_of(&app)
 }
@@ -520,7 +521,8 @@ fn status_of(app: &AppHandle) -> ProviderStatus {
     }
 }
 
-#[tauri::command]
+// Off the main thread: on iOS the status asks the plugin, which waits for it.
+#[tauri::command(async)]
 pub(crate) fn set_passkey_provider(app: AppHandle, settings: Settings) -> Result<ProviderStatus> {
     let provider = app.state::<Provider>();
     *provider.settings.lock() = settings.clone();

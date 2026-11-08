@@ -154,7 +154,11 @@ impl Clipboard {
             let _ = clipboard.clear();
             tracing::debug!("clipboard cleared");
         }
-        *self.last.lock() = None;
+        // A copy made meanwhile keeps its record, and with it its own timer.
+        let mut last = self.last.lock();
+        if last.is_some_and(|(latest, _)| latest == generation) {
+            *last = None;
+        }
     }
 
     /// Locking clears a copied secret right away.

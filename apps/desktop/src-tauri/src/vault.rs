@@ -212,6 +212,9 @@ pub(crate) struct VaultState {
     /// Counts up whenever an account locks or leaves: long work on an open
     /// vault (the password check) stops when it changes.
     locks: tokio::sync::watch::Sender<u64>,
+    /// Held from reading the offline copy to writing it back (and swapping
+    /// in the vault opened from it): two writers never lose each other's change.
+    cache_write: Mutex<()>,
 }
 
 impl VaultState {
@@ -240,6 +243,7 @@ impl VaultState {
             live: Live::default(),
             moves: Arc::default(),
             locks: tokio::sync::watch::Sender::new(0),
+            cache_write: Mutex::new(()),
         }
     }
 
@@ -1389,7 +1393,9 @@ pub(crate) fn lock(app: AppHandle, state: State<'_, VaultState>) {
 
 /// Logging out: that account, its session and its cached vault leave this
 /// device. Without an id it's the account on screen; the others stay.
-#[tauri::command]
+// Off the main thread: on a phone, forgetting waits for the plugin, which
+// waits for the main thread.
+#[tauri::command(async)]
 pub(crate) fn logout(
     app: AppHandle,
     state: State<'_, VaultState>,
@@ -1773,6 +1779,7 @@ async fn sync_inner(state: &VaultState, id: &str) -> Result<()> {
     };
     let sync = parse_sync(&text)?;
     let vault = Vault::open(&sync, &user_key)?;
+    let _cache_write = state.cache_write.lock();
     state
         .storage
         .save_cache(id, &text)
@@ -2526,6 +2533,10 @@ pub struct Draft {
     ssh_key: Option<SshKeyDraft>,
     #[serde(default)]
     fields: Vec<FieldDraft>,
+    /// The item's revision the editor started from: when the item changed
+    /// since (a sync from another device), saving would undo that change.
+    #[serde(default)]
+    revision_date: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2603,6 +2614,12 @@ fn apply_keep(field: &mut Option<Secret>, value: Keep) {
 }
 
 fn apply_draft(item: &mut Item, draft: Draft, now: &str) -> Result<()> {
+    if draft.revision_date.is_some() && draft.revision_date != item.revision_date {
+        return Err(Failure::new(
+            "conflict",
+            "This item changed elsewhere since the editor opened.",
+        ));
+    }
     item.name = Zeroizing::new(draft.name.trim().to_string());
     apply_keep(&mut item.notes, draft.notes);
     item.favorite = draft.favorite;
@@ -2775,6 +2792,7 @@ fn set_field(value: &mut Value, name: &str, to: Value) {
 
 /// Writes the change into the cached sync and opens the vault again from it.
 pub(crate) fn patch_cache(state: &VaultState, account_id: &str, patch: Patch) -> Result<()> {
+    let _cache_write = state.cache_write.lock();
     let Some(text) = state.storage.load_cache(account_id) else {
         // Nothing cached yet; the next sync brings everything anyway.
         return Ok(());
@@ -2839,9 +2857,20 @@ pub(crate) fn patch_cache(state: &VaultState, account_id: &str, patch: Patch) ->
         .save_cache(account_id, &text)
         .map_err(|e| Failure::new("io", format!("Couldn't cache the vault: {e}")))?;
     let parsed = parse_sync(&text)?;
+    // Opened without the lock: decrypting a big vault takes a while, and
+    // everything else waits for the write lock meanwhile.
+    let user_key = {
+        let guard = state.unlocked.read();
+        guard
+            .get(account_id)
+            .ok_or_else(Failure::locked)?
+            .user_key
+            .clone()
+    };
+    let vault = Vault::open(&parsed, &user_key)?;
     let mut guard = state.unlocked.write();
     let unlocked = guard.get_mut(account_id).ok_or_else(Failure::locked)?;
-    unlocked.vault = Vault::open(&parsed, &unlocked.user_key)?;
+    unlocked.vault = vault;
     Ok(())
 }
 
@@ -3481,5 +3510,208 @@ mod tests {
         assert_eq!(host_of("nas.local:5001").as_deref(), Some("nas.local"));
         assert_eq!(last_four("4111 1111 1111 1234"), "1234");
         assert_eq!(last_four("12"), "12");
+    }
+
+    fn secret(text: &str) -> Option<Secret> {
+        Some(Zeroizing::new(text.into()))
+    }
+
+    fn login_item() -> Item {
+        let mut item = Item::new(ItemKind::Login);
+        item.name = Zeroizing::new("Mail".into());
+        item.notes = secret("note");
+        item.revision_date = Some("2026-11-01T00:00:00.000Z".into());
+        let login = item.login.as_mut().unwrap();
+        login.username = secret("nyu");
+        login.password = secret("old");
+        login.totp = secret("JBSWY3DP");
+        login.uris = vec![LoginUri {
+            uri: Zeroizing::new("https://mail.example.com".into()),
+            match_kind: None,
+            checksum: Some("sum".into()),
+        }];
+        item.fields = vec![
+            Field {
+                name: secret("pin"),
+                value: secret("1234"),
+                kind: FieldKind::Hidden,
+                linked_id: None,
+            },
+            Field {
+                name: secret("user"),
+                value: None,
+                kind: FieldKind::Linked,
+                linked_id: Some(100),
+            },
+        ];
+        item
+    }
+
+    fn draft(value: Value) -> Draft {
+        serde_json::from_value(value).unwrap()
+    }
+
+    #[test]
+    fn a_draft_keeps_clears_replaces_and_remaps() {
+        let base =
+            json!({ "kind": "login", "name": " Mail ", "favorite": false, "reprompt": false });
+        let with = |extra: Value| {
+            let mut value = base.clone();
+            value
+                .as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            draft(value)
+        };
+        let now = "2026-11-08T00:00:00.000Z";
+
+        // `null` keeps, `""` clears, a value replaces.
+        let mut item = login_item();
+        let login = json!({ "username": null, "password": null, "totp": "", "uris": [] });
+        apply_draft(
+            &mut item,
+            with(json!({ "notes": null, "login": login })),
+            now,
+        )
+        .unwrap();
+        assert_eq!(item.name.as_str(), "Mail");
+        assert_eq!(item.notes.as_deref().map(|s| s.as_str()), Some("note"));
+        let l = item.login.as_ref().unwrap();
+        assert_eq!(l.username.as_deref().map(|s| s.as_str()), Some("nyu"));
+        assert_eq!(l.password.as_deref().map(|s| s.as_str()), Some("old"));
+        assert!(l.totp.is_none());
+        assert!(item.password_history.is_empty());
+
+        // A new password goes in, the old one into the history; an address
+        // that stayed keeps its checksum, a new one has none.
+        let mut item = login_item();
+        let login = json!({
+            "username": "neko",
+            "password": "new",
+            "uris": [
+                { "uri": "https://mail.example.com", "match": null },
+                { "uri": "https://other.example.com", "match": 9 },
+            ],
+        });
+        apply_draft(&mut item, with(json!({ "notes": "", "login": login })), now).unwrap();
+        assert!(item.notes.is_none());
+        let l = item.login.as_ref().unwrap();
+        assert_eq!(l.username.as_deref().map(|s| s.as_str()), Some("neko"));
+        assert_eq!(l.password.as_deref().map(|s| s.as_str()), Some("new"));
+        assert_eq!(item.password_history.len(), 1);
+        assert_eq!(item.password_history[0].password.as_str(), "old");
+        assert_eq!(l.uris[0].checksum.as_deref(), Some("sum"));
+        assert_eq!(l.uris[1].checksum, None);
+        assert_eq!(l.uris[1].match_kind, None);
+
+        // `from` carries the hidden value and the link, by the old index.
+        let mut item = login_item();
+        let fields = json!([
+            { "name": "user", "kind": "linked", "value": null, "from": 1 },
+            { "name": "pin", "kind": "hidden", "value": null, "from": 0 },
+            { "name": "new", "kind": "hidden", "value": null, "from": null },
+        ]);
+        apply_draft(&mut item, with(json!({ "fields": fields })), now).unwrap();
+        assert_eq!(item.fields[0].linked_id, Some(100));
+        assert_eq!(
+            item.fields[1].value.as_deref().map(|s| s.as_str()),
+            Some("1234")
+        );
+        assert_eq!(item.fields[1].linked_id, None);
+        assert!(item.fields[2].value.is_none());
+    }
+
+    #[test]
+    fn a_draft_from_an_older_revision_is_a_conflict() {
+        let base = json!({ "kind": "login", "name": "Mail", "favorite": false, "reprompt": false });
+        let now = "2026-11-08T00:00:00.000Z";
+        let mut stale = base.clone();
+        stale["revisionDate"] = json!("2026-10-01T00:00:00.000Z");
+        let mut item = login_item();
+        let failure = apply_draft(&mut item, draft(stale), now).unwrap_err();
+        assert_eq!(failure.kind, "conflict");
+        assert_eq!(item.name.as_str(), "Mail");
+
+        let mut current = base.clone();
+        current["revisionDate"] = json!("2026-11-01T00:00:00.000Z");
+        apply_draft(&mut login_item(), draft(current), now).unwrap();
+        // Without one (a new item, an older page) nothing is compared.
+        apply_draft(&mut login_item(), draft(base), now).unwrap();
+    }
+
+    fn cached(text: Value) -> (VaultState, String, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("uwulock-test-{}", uuid::Uuid::new_v4()));
+        let (state, id, _) = remembering(&dir);
+        state.storage.save_cache(&id, &text.to_string()).unwrap();
+        open(&state, &id, &SymmetricKey::generate());
+        (state, id, dir)
+    }
+
+    fn cache_of(state: &VaultState, id: &str) -> Value {
+        serde_json::from_str(&state.storage.load_cache(id).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn each_patch_lands_in_the_cache_and_the_open_vault() {
+        let sync = json!({
+            "profile": {},
+            "Ciphers": [
+                { "Id": "a", "Type": 2, "FolderId": "f" },
+                { "Id": "b", "Type": 2 },
+            ],
+            "Folders": [{ "Id": "f" }],
+        });
+
+        let (state, id, dir) = cached(sync.clone());
+        patch_cache(&state, &id, Patch::Cipher(json!({ "id": "c", "type": 2 }))).unwrap();
+        patch_cache(
+            &state,
+            &id,
+            Patch::Cipher(json!({ "id": "b", "type": 2, "favorite": true })),
+        )
+        .unwrap();
+        let cache = cache_of(&state, &id);
+        assert_eq!(cache["Ciphers"].as_array().unwrap().len(), 3);
+        assert_eq!(cache["Ciphers"][1]["favorite"], true);
+        assert!(state.unlocked.read()[&id].vault.item("c").is_some());
+
+        patch_cache(&state, &id, Patch::Trash("a".into())).unwrap();
+        assert!(cache_of(&state, &id)["Ciphers"][0]["deletedDate"].is_string());
+        assert!(state.unlocked.read()[&id].vault.item("a").unwrap().deleted);
+
+        patch_cache(&state, &id, Patch::RemoveCipher("a".into())).unwrap();
+        assert_eq!(
+            cache_of(&state, &id)["Ciphers"].as_array().unwrap().len(),
+            2
+        );
+        assert!(state.unlocked.read()[&id].vault.item("a").is_none());
+        std::fs::remove_dir_all(dir).unwrap();
+
+        let (state, id, dir) = cached(sync.clone());
+        patch_cache(&state, &id, Patch::Folder(json!({ "id": "g" }))).unwrap();
+        assert_eq!(
+            cache_of(&state, &id)["Folders"].as_array().unwrap().len(),
+            2
+        );
+        patch_cache(&state, &id, Patch::RemoveFolder("f".into())).unwrap();
+        let cache = cache_of(&state, &id);
+        assert_eq!(cache["Folders"], json!([{ "id": "g" }]));
+        assert_eq!(cache["Ciphers"][0]["FolderId"], Value::Null);
+        assert_eq!(
+            state.unlocked.read()[&id]
+                .vault
+                .item("a")
+                .unwrap()
+                .folder_id,
+            None
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+
+        // Nothing cached: nothing to patch, and no error.
+        let dir = std::env::temp_dir().join(format!("uwulock-test-{}", uuid::Uuid::new_v4()));
+        let (state, id, _) = remembering(&dir);
+        patch_cache(&state, &id, Patch::Trash("a".into())).unwrap();
+        assert!(state.storage.load_cache(&id).is_none());
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }
