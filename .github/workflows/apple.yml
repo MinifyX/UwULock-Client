@@ -365,7 +365,7 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - run: pnpm install --frozen-lockfile --filter @uwulock/setup...
+      - run: pnpm install --frozen-lockfile --filter @uwulock/setup... --filter @uwulock/desktop # setup imports Nyu from apps/desktop/src
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
           toolchain: stable
