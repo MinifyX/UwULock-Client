@@ -68,12 +68,12 @@ build() {
     -configuration "$configuration" -destination "$destination" \
     -derivedDataPath "$derived" -skipPackagePluginValidation -skipMacroValidation \
     CODE_SIGNING_ALLOWED=NO "$action" >"$log" 2>&1; then
-    grep -E "error:|\*\* (BUILD|TEST)|Test Case .* failed" "$log" | sort -u | head -50
+    grep -E "error:|\*\* (BUILD|TEST)|Test Case .* failed|Test .* failed|recorded an issue" "$log" | sort -u | head -50
     echo "Full log: $log" >&2
     return 1
   fi
   grep -E "^$app/.*(warning|error):" "$log" | sort -u | head -30 || true
-  grep -E "\*\* (BUILD|TEST)|Executed [0-9]+ test" "$log" | tail -3
+  grep -E "\*\* (BUILD|TEST)|Executed [0-9]+ test|Test run with [0-9]+ test" "$log" | tail -4
   rm -f "$log"
 }
 
