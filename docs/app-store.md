@@ -94,10 +94,11 @@ English.
 
 ### The way over from the Tauri app
 
-The Tauri app installed on a Mac reads `stable.json` / `beta.json`. Their `darwin-aarch64` and
-`darwin-x86_64` entries point to `UwULock-update-macos-universal`, the migration setup, signed
-with the Tauri key as before. It puts the native app (the Developer ID build from the same run)
-in the old app's place; from then on Sparkle updates it. Both use the same bundle ID
+For now `stable.json` / `beta.json` carry no `darwin-*` entry: the Tauri app's updater has no
+minimum-OS check and would put the native app on a Mac below macOS 27, where it doesn't start.
+Mac users install the disk image by hand. apple.yml still builds `UwULock-update-macos-universal`,
+the migration setup, as a check; it goes back into the feeds (scripts/release.mjs, PLATFORMS)
+once it refuses macOS < 27 and CI signs it with a Developer ID. From then on Sparkle updates it. Both use the same bundle ID
 (`app.uwulock.desktop`) and the same data folder and format, so the login, the vault copy and the
 biometric keys carry over (docs/install.md).
 

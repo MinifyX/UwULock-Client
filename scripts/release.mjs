@@ -3,8 +3,8 @@
 //
 //   pnpm release                  fetch what CI built for the tag (Windows x64
 //                                 and ARM, Linux, the browser extension, the
-//                                 native Mac app's disk image and migration
-//                                 setup, the Android APK and the iPhone IPA),
+//                                 native Mac app's disk image, the Android
+//                                 APK and the iPhone IPA),
 //                                 sign what the updaters run, check everything,
 //                                 publish it
 //   pnpm release --build-windows  the same, but build the Windows x64 setup here
@@ -29,13 +29,12 @@
 // The Mac and the iPhone get the native app (apps/apple), from apple.yml's run
 // for the tag: the disk image (Developer ID and notarized when CI has the
 // certificate, else ad-hoc), the IPA for sideloading (unsigned; the store build
-// went to TestFlight from CI) and the migration setup. The native app updates
+// went to TestFlight from CI). The native app updates
 // itself with Sparkle: this script signs the disk image with the Sparkle key
 // (scripts/sparkle.mjs: the login keychain of this Mac, or SPARKLE_PRIVATE_KEY /
-// SPARKLE_KEY_FILE) and writes appcast-stable.xml / appcast-beta.xml. The Tauri
-// app still installed on a Mac finds the migration setup under darwin-* in the
-// JSON feeds, signed with the Tauri key like every setup; it puts the native
-// app in the Tauri app's place (docs/install.md).
+// SPARKLE_KEY_FILE) and writes appcast-stable.xml / appcast-beta.xml. The JSON
+// feeds carry no darwin-* entry for now (see PLATFORMS): the Tauri app on a Mac
+// is replaced by installing the disk image by hand (docs/install.md).
 //
 // android.yml signs the APK of a tag with the Android release key (a GitHub
 // secret; never on this machine), and this script checks it carries UwULock's
@@ -134,17 +133,12 @@ const PLATFORMS = [
   },
   // The native app (apple.yml): the disk image, signed for Sparkle below.
   { workflow: 'apple.yml', artifact: 'apple-macos', file: MAC_DMG },
-  {
-    // What the Tauri app on a Mac updates to: the setup that replaces it with the native app.
-    // One universal program for both Mac platforms, signed once under each name.
-    workflow: 'apple.yml',
-    artifact: 'apple-migration',
-    file: 'UwULock-update-macos-universal',
-    sign: {
-      'darwin-aarch64': `UwULock-Setup-${version}-macos-arm64-update`,
-      'darwin-x86_64': `UwULock-Setup-${version}-macos-x64-update`,
-    },
-  },
+  // shortcut: no darwin-* entries in the JSON feeds, so the Tauri app on a Mac is not swapped
+  // for the native app (the old updater has no minimum-OS check, macOS < 27 would end up with
+  // an app that won't start); Mac users install the disk image by hand. Bring back the
+  // apple-migration entry (UwULock-update-macos-universal under darwin-aarch64/darwin-x86_64)
+  // once the setup refuses kern.osproductversion < 27 and CI builds it Developer ID signed and
+  // notarized.
   ...linux('x64', 'x86_64'),
   ...linux('arm64', 'aarch64'),
   {

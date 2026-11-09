@@ -1,9 +1,8 @@
 // The update feeds installed apps look for on the `updates` branch, written
 // by `pnpm release`.
 //
-// Each platform gets what it updates itself with: the Windows setup, the bare
-// setup program from the macOS disk image (one universal file for both Mac
-// platforms), the Linux setup AppImage for copies an earlier setup installed,
+// Each platform gets what it updates itself with: the Windows setup,
+// the Linux setup AppImage for copies an earlier setup installed,
 // and the .deb / .rpm for copies dpkg or rpm installed (`linux-x86_64-deb`,
 // `linux-aarch64-rpm`, …). The URLs point at the release's file names without
 // a version; each signature was made on the same bytes under the versioned
@@ -13,9 +12,9 @@
 // The native Mac app (the disk image's Direct build, apps/apple) updates itself
 // with Sparkle instead: `appcast-stable.xml` / `appcast-beta.xml` next to the
 // JSON feeds, by the same channel rule, with the disk image, its EdDSA
-// signature (scripts/sparkle.mjs) and the notes in German and English. The
-// macOS entries of the JSON feeds stay for the Tauri app still installed: its
-// updater runs the migration setup, which puts the native app in its place.
+// signature (scripts/sparkle.mjs) and the notes in German and English. The JSON
+// feeds have no macOS entry for now (scripts/release.mjs, PLATFORMS): the Tauri
+// app still installed on a Mac is replaced with the disk image by hand.
 
 export const REPOSITORY = 'MinifyX/UwULock-Client';
 export const FEED_BRANCH = 'updates';

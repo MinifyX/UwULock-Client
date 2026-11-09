@@ -76,10 +76,12 @@ keychain. The first time macOS says it can't check the app. Then:
    confirm.
 
 **Coming from the older UwULock** (the one with **UwULock Setup**, up to
-0.7): it moves over by itself with its next update. The update puts the native
-app in its place under the same name; the login, the accounts and the
-settings stay, since both use the same data folder. Downloading the new
-`.dmg` and replacing the app in **Applications** does the same.
+0.7): it doesn't update to the native app by itself. Download the new `.dmg`
+(macOS 27 or newer) and replace the app in **Applications**. The login, the
+accounts and the vault copy stay, since both use the same data folder. The
+app's settings (language, theme, auto-lock, clipboard clearing, update
+channel, generator, haptics) start from their defaults: check them once,
+auto-lock above all.
 
 To uninstall, drag the app to the Trash. That leaves the data in
 `~/Library/Application Support/app.uwulock.desktop`; delete that folder too to
@@ -276,11 +278,13 @@ Schlüsselbund. Beim ersten Mal sagt macOS, es könne die App nicht prüfen. Dan
 2. Nach unten scrollen: neben „UwULock wurde blockiert“ auf **Trotzdem
    öffnen** klicken und bestätigen.
 
-**Vom älteren UwULock** (dem mit **UwULock Setup**, bis 0.7): Es wechselt mit
-seinem nächsten Update von selbst. Das Update setzt die native App unter
-demselben Namen an seine Stelle; Anmeldung, Konten und Einstellungen bleiben,
-weil beide denselben Datenordner nutzen. Die neue `.dmg` laden und die App in
-**Programme** ersetzen geht genauso.
+**Vom älteren UwULock** (dem mit **UwULock Setup**, bis 0.7): Es wechselt
+nicht von selbst zur nativen App. Die neue `.dmg` laden (macOS 27 oder neuer)
+und die App in **Programme** ersetzen. Anmeldung, Konten und Tresor-Kopie
+bleiben, weil beide denselben Datenordner nutzen. Die Einstellungen der App
+(Sprache, Design, automatisches Sperren, Zwischenablage leeren, Update-Kanal,
+Generator, Haptik) starten mit den Standardwerten: einmal durchsehen, vor
+allem das automatische Sperren.
 
 Deinstallieren: die App in den Papierkorb ziehen. Die Daten bleiben in
 `~/Library/Application Support/app.uwulock.desktop`; diesen Ordner auch
