@@ -48,12 +48,15 @@ Mac App Store, TestFlight, IPA). Windows, Linux and Android stay Tauri.
 8. [x] Docs (architecture, mobile, roadmap), security review `docs/security-review-0.7.md`
        (no High/Medium; Low fixed, Info fixed or accepted).
 
-## Stand (2026-11-08)
+## Stand (2026-11-09)
 
 - `origin/main` (078a46e) mit Merge-Commit eingeholt; die Logik aus `src-tauri` liegt in
   `crates/uwulock-app`, die Tauri-Befehle sind dünne Hüllen (`ffi-dispatch.py`: 125 Befehle).
 - Version 0.7.0-beta.2 (`release-notes/0.7.0-beta.2.json`). Apple-CI läuft auf `xcode-27`
   (`macos-27` gibt es nicht).
+- `UwUDesign/Sources/UwUDesign/Generated` (aus `tools/sync-design.mjs`) ist eingecheckt; das
+  `Generated/` in `apps/apple/.gitignore` gilt nur noch für die UniFFI-Ausgabe.
+- Security-Review R3 (Delta seit 30.10.) in `docs/security-review-0.7.md`: kein Medium oder höher.
 - Gleichstand der nativen App mit main seit 30.10.:
 
 | Funktion                                                                | Tauri                                                                    | Swift                                                                                                                                   |

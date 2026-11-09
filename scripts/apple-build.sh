@@ -82,7 +82,9 @@ for target in "${targets[@]}"; do
     ios) build UwULock "$config" "generic/platform=iOS Simulator" ;;
     macos) build UwULock "$config" "generic/platform=macOS" ;;
     direct) build "UwULock Direct" "$config-Direct" "generic/platform=macOS" ;;
-    test) build UwULock Debug "platform=macOS" test ;;
+    # The "Remove Sparkle" phase deletes the framework the embed step thinks is still there;
+    # a test after a macOS build would fail on its missing files (th.lproj), so start that app afresh.
+    test) rm -rf "$derived/Build/Products/Debug/UwULock.app" && build UwULock Debug "platform=macOS" test ;;
   esac
 done
 
