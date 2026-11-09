@@ -1,0 +1,5 @@
+# The Swift bindings (scripts/apple-xcframework.sh): the C module the XCFramework carries is
+# `UwuLockFFI` (apps/apple/rustcore.yml), the Swift file goes into the app's sources.
+[bindings.swift]
+ffi_module_name = "UwuLockFFI"
+ffi_module_filename = "UwuLockFFI"

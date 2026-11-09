@@ -1,7 +1,7 @@
 /**
  * Moving a vault in from Bitwarden or Vaultwarden: the calls into Rust and
  * what comes back. The source account is logged in inside the move dialog
- * and never kept; see `src-tauri/src/moving.rs`.
+ * and never kept; see `crates/uwulock-app/src/moving.rs`.
  */
 
 import { invoke } from '@tauri-apps/api/core';

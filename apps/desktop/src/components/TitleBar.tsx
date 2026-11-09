@@ -77,8 +77,8 @@ function AppBar({ onSettings, children }: Props) {
 }
 
 /**
- * macOS draws the window's title bar itself (tauri.macos.conf.json), with the
- * traffic lights, and the actions live in the menu bar (App.tsx, setMacMenu),
+ * macOS draws the window's title bar itself, with the traffic lights (only a
+ * development build on a Mac: releases there are the native app, apps/apple), and the actions live in the menu bar (App.tsx, setMacMenu),
  * so there is nothing to draw here.
  */
 export function TitleBar(props: Props) {

@@ -1,0 +1,18 @@
+// Settings of every configuration. Direct.xcconfig builds on it for the Mac's disk image.
+
+// iOS/iPadOS and the Mac App Store: the Tauri builds' identifier.
+UWULOCK_BUNDLE_ID = app.uwulock
+UWULOCK_MAC_ENTITLEMENTS = Config/UwULock-macOS.entitlements
+
+// The App Group the app and the AutoFill extension share (Info.plist UwULockAppGroup): iOS
+// names it group.…, macOS by the team (Info.ios.plist, macos/Entitlements.mas.plist).
+UWULOCK_APP_GROUP[sdk=iphone*] = group.app.uwulock
+UWULOCK_APP_GROUP[sdk=macosx*] = $(TeamIdentifierPrefix)app.uwulock
+
+// Sparkle (Info.plist SUFeedURL, SUPublicEDKey): only the disk image updates itself, so only
+// Direct.xcconfig sets them. The App Store's and the iPhone's builds carry no Sparkle.
+SPARKLE_FEED_URL =
+SPARKLE_PUBLIC_KEY =
+
+// DEVELOPMENT_TEAM and other per-machine settings (gitignored, see Local.xcconfig.example).
+#include? "Local.xcconfig"

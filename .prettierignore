@@ -8,3 +8,9 @@ apps/extension/src/wasm/pkg/
 # Google's list of privileged browsers for Credential Manager, kept as published.
 crates/tauri-plugin-uwulock-mobile/android/src/main/res/raw/privileged_browsers.json
 crates/tauri-plugin-uwulock-mobile/android/.tauri/
+# Xcode: build output and the files it writes itself (catalogs, string catalogs).
+build/
+apps/apple/build/
+*.xcassets/
+*.xcstrings
+wt/

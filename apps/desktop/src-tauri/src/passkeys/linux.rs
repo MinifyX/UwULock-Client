@@ -20,13 +20,17 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use parking_lot::Mutex;
-use tauri::{AppHandle, Manager};
 use uwulock_authenticator::broker::{self, kind};
 use uwulock_authenticator::ctap2::Authenticator;
 use uwulock_authenticator::ctaphid::{self, Event, Hid};
 use uwulock_authenticator::flight::Slot;
 
-use super::{Client, DesktopBackend, Provider, Warning};
+use uwulock_app::App;
+
+use super::{Client, DesktopBackend, Warning};
+
+/// The running key, while there is one.
+pub(crate) static DEVICE: Mutex<Option<Device>> = Mutex::new(None);
 
 /// The running key: the connection to the broker and the flag that stops it.
 pub(crate) struct Device {
@@ -119,10 +123,10 @@ fn connect_if<T, E>(
     Ok(wanted().then_some(connection))
 }
 
-pub(crate) fn start(app: &AppHandle) -> Result<(), String> {
+pub(crate) fn start(app: &App) -> Result<(), String> {
     keep_up(app);
-    let provider = app.state::<Provider>();
-    let mut device = provider.device.lock();
+    let provider = app.passkeys();
+    let mut device = DEVICE.lock();
     if device.is_some() {
         return Ok(());
     }
@@ -161,8 +165,7 @@ pub(crate) fn start(app: &AppHandle) -> Result<(), String> {
             if !stop.load(Ordering::Relaxed) {
                 // The broker went (the seat changed hands, it was restarted):
                 // forget this device, so `keep_up` connects again.
-                let provider = app.state::<Provider>();
-                let mut device = provider.device.lock();
+                let mut device = DEVICE.lock();
                 if device
                     .as_ref()
                     .is_some_and(|d| Arc::ptr_eq(&d.link.0, &ours.0))
@@ -182,7 +185,7 @@ pub(crate) fn start(app: &AppHandle) -> Result<(), String> {
 /// While the setting is on and no key is there (the broker said no, went
 /// away, or the person wasn't at the seat yet), tries again: after 5 s, then
 /// up to every minute. One such thread per process.
-fn keep_up(app: &AppHandle) {
+fn keep_up(app: &App) {
     static RUNNING: AtomicBool = AtomicBool::new(false);
     if RUNNING.swap(true, Ordering::SeqCst) {
         return;
@@ -194,8 +197,7 @@ fn keep_up(app: &AppHandle) {
             let mut wait = Duration::from_secs(5);
             loop {
                 std::thread::sleep(wait);
-                let provider = app.state::<Provider>();
-                if !provider.settings().security_key || provider.device.lock().is_some() {
+                if !app.passkeys().settings().security_key || DEVICE.lock().is_some() {
                     wait = Duration::from_secs(5);
                     continue;
                 }
@@ -213,10 +215,10 @@ fn keep_up(app: &AppHandle) {
     }
 }
 
-pub(crate) fn stop(app: &AppHandle) {
+pub(crate) fn stop(app: &App) {
     // Off: nothing to warn about any more.
     super::warn(app, None);
-    let Some(device) = app.state::<Provider>().device.lock().take() else {
+    let Some(device) = DEVICE.lock().take() else {
         return;
     };
     device.stop.store(true, Ordering::Relaxed);
@@ -226,7 +228,7 @@ pub(crate) fn stop(app: &AppHandle) {
     tracing::info!("the virtual security key is gone");
 }
 
-fn run(mut reader: UnixStream, link: Link, stop: Arc<AtomicBool>, app: AppHandle) {
+fn run(mut reader: UnixStream, link: Link, stop: Arc<AtomicBool>, app: App) {
     let hid = Arc::new(Mutex::new(Hid::default()));
     // The request with the person, by channel; cleared only by its own
     // worker (by identity, R7 L-3).
@@ -424,7 +426,7 @@ fn who_has(hidraw: &str) -> Client {
 /// One CTAP2 request through the authenticator, with keepalives while the
 /// person decides.
 fn answer(
-    app: &AppHandle,
+    app: &App,
     link: &Link,
     client: Client,
     cid: u32,

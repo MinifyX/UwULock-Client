@@ -181,7 +181,7 @@ UwULock-Server; feature `suite`, switch `suite.enabled`): hosts by workspace
 and group, logins, keys, snippets, port forwards and known hosts. Everything
 can be viewed, edited, created and deleted, on the computer and the phone.
 
-- The records are opened and sealed in Rust (`src-tauri/src/suite.rs`, over
+- The records are opened and sealed in Rust (`crates/uwulock-app/src/suite.rs`, over
   `uwulock_core::suite`), kept for the rest of the unlock and pulled again from
   the last cursor when the realtime channel says `suite` changed. A secret (a
   password, a private key, a passphrase) reaches the window only when the eye

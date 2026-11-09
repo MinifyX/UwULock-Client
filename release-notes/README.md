@@ -16,18 +16,21 @@ without it. The text appears under "Was ist neu?" in UwULock's update hint and o
    and the `package.json` files.
 2. Add `release-notes/<version>.json`.
 3. Commit, tag `v<version>` and push both. The tag starts `.github/workflows/installers.yml`, which
-   checks the workspace on macOS and Linux and builds every setup — unsigned (CI holds no update key),
-   except macOS: the app (with its Safari extension), the setup and the disk image are signed with the
-   Developer ID and notarized there (`macos-sign-app`, `macos-sign-setup`, scripts/macos-sign.mjs),
-   when the secrets `APPLE_DEVELOPER_ID_KEY` (the private key, PEM) and `APPLE_DEVELOPER_ID_CERT`
-   (the "Developer ID Application" certificate, PEM or base64 DER) are set, next to the App Store
-   Connect key (`ASC_*`, docs/app-store.md) notarytool uses. Without them the disk image stays ad-hoc
-   signed, `UwULock-macos-signing.txt` says `ad-hoc`, and `pnpm release` leaves the "notarized" line
-   out of the notes.
-4. Run `pnpm release` on the machine with the signing key, with the tag checked out.
+   checks the workspace on Linux and builds every Windows and Linux setup — unsigned (CI holds no
+   update key) — and `.github/workflows/apple.yml`, which builds the native Apple app: the iPhone IPA
+   (unsigned, plus the App Store build to TestFlight), the Mac App Store `.pkg` (TestFlight), the
+   macOS disk image and the migration setup that moves the Tauri app on a Mac over to it. The disk
+   image is signed with the Developer ID and notarized when the secrets `APPLE_DEVELOPER_ID_KEY` (the
+   private key, PEM) and `APPLE_DEVELOPER_ID_CERT` (the "Developer ID Application" certificate, PEM
+   or base64 DER) are set, next to the App Store Connect key (`ASC_*`, docs/app-store.md). Without
+   them it stays ad-hoc signed, its `UwULock-macos.json` says `ad-hoc`, and `pnpm release` leaves the
+   "notarized" line out of the notes.
+4. Run `pnpm release` on the Mac with the signing keys (the Tauri update key, and the Sparkle key in
+   the login keychain, docs/app-store.md), with the tag checked out.
 
 `pnpm release` waits for the tag's CI run and downloads what it built: the Windows setups for x64
-(`UwULock-windows-x64-setup.exe`) and ARM, the universal macOS disk image and its update program, and
+(`UwULock-windows-x64-setup.exe`) and ARM, the universal macOS disk image (signed for Sparkle here,
+into `appcast-stable.xml` / `appcast-beta.xml`), the migration setup, the iPhone IPA, and
 for Linux x64 and arm64 the `.deb`, `.rpm` and portable `.tar.gz`, plus the x64 setup AppImage for
 copies the old Linux setup installed, and the browser extension (`UwULock-extension-chromium.zip`,
 `UwULock-extension-firefox.xpi`, built by `extension.yml`, which the tag's run calls). With `--build-windows` it builds the Windows x64 setup on this

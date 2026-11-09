@@ -240,8 +240,8 @@ release image (or `UWULOCK_SERVER_BIN=<binary>`); Chromium needs its system libr
 `mcr.microsoft.com/playwright` image).
 
 `dist/safari` is what the Apple builds put into their Safari app extension (`UwULockSafari.appex`,
-native part in `apps/desktop/src-tauri/apple/SafariExtension`): `scripts/macos-safari.sh` for the
-Mac (setup and Mac App Store build), `scripts/ios-build.sh` for iPhone and iPad. Its bundle id is
+native part in `apps/apple/SafariExtension`): a build phase of the Xcode project copies it in
+(`UWULOCK_SAFARI_EXTENSION` points to a prebuilt copy, `scripts/apple-build.sh`). Its bundle id is
 the app's with `.safari`: `app.uwulock.safari` in the store apps, `app.uwulock.desktop.safari` in
 the disk image's. CI builds the extension once per run (`extension.yml`, `package-only`) and the
 Apple jobs pick up its `extension-safari` artifact (`scripts/wait-artifact.sh`).

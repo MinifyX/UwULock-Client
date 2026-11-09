@@ -4,10 +4,10 @@ name: Extension
 # tests, the packages, Mozilla's linter over the Firefox one, and the end-to-end test in Chromium
 # against a UwULock Server release. On every pull request that touches it, on main, and — called
 # by installers.yml — for a release, whose `pnpm release` takes the packages from the artifact
-# `extension`. The Safari build goes into the apps (docs/extension.md) as the artifact
-# `extension-safari`: installers.yml, mas.yml and ios.yml start their Mac builds right away and
-# pick it up when they need it (scripts/wait-artifact.sh); the last two call this with
-# `package-only`, which leaves out the tests that already ran.
+# `extension`. The Safari build goes into the native Apple app (docs/extension.md) as the artifact
+# `extension-safari`: apple.yml starts its builds right away, picks it up when it needs it
+# (scripts/wait-artifact.sh) and calls this with `package-only`, which leaves out the tests that
+# already ran.
 
 on:
   pull_request:
@@ -45,7 +45,7 @@ permissions:
 
 concurrency:
   # Called from another workflow, `github.workflow` is the caller's name: one group per caller,
-  # so the iOS, Mac App Store and installer runs of one tag don't cancel each other's.
+  # so the Apple and installer runs of one tag don't cancel each other's.
   group: extension-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 

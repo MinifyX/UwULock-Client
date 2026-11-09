@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The AutoFill extension's Info.plist (passwords and passkeys). Xcode fills in
+     the $(…) values (project.yml). -->
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>UwULock</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>UwULock</string>
+	<key>CFBundlePackageType</key>
+	<string>XPC!</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<!-- Where the app leaves the sealed passkey list, and the Keychain group of the provider key.
+	     Both only exist in a build signed with an Apple developer team (docs/passkeys.md). -->
+	<key>UwULockAppGroup</key>
+	<string>$(UWULOCK_APP_GROUP)</string>
+	<key>UwULockKeychainGroup</key>
+	<string>$(AppIdentifierPrefix)app.uwulock.passkeys</string>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionAttributes</key>
+		<dict>
+			<key>ASCredentialProviderExtensionCapabilities</key>
+			<dict>
+				<key>ProvidesPasskeys</key>
+				<true/>
+				<key>ProvidesPasswords</key>
+				<true/>
+				<!-- iOS 26 / macOS 26: Apple Passwords (and other apps) can hand their data to
+				     UwULock ("Export data to another app"); the app takes it in
+				     (ASCredentialImportManager, docs/passkeys.md). Older systems skip these keys. -->
+				<key>SupportsCredentialExchange</key>
+				<true/>
+				<key>SupportedCredentialExchangeVersions</key>
+				<array>
+					<string>1.0</string>
+				</array>
+				<key>ShowsConfigurationUI</key>
+				<true/>
+			</dict>
+		</dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.authentication-services-credential-provider-ui</string>
+		<key>NSExtensionPrincipalClass</key>
+		<string>UwULockPasskeys.CredentialProviderViewController</string>
+	</dict>
+</dict>
+</plist>

@@ -1,5 +1,5 @@
 /**
- * UwULock as the system's AutoFill provider for passwords and passkeys (src-tauri/src/autofill.rs):
+ * UwULock as the system's AutoFill provider for passwords and passkeys (crates/uwulock-app/src/autofill.rs):
  * whether it is, asking the system to make it so, and the card that asks after an unlock
  * (lib/autofillPrompt.ts decides when). iOS, iPadOS, macOS (builds with the extension) and
  * Android; Windows and Linux have no such provider.
@@ -29,7 +29,7 @@ export const autofillProviderRequest = (target: 'credentials' | 'autofill') =>
 
 /**
  * What the AutoFill extension logged on this device (iOS, and the Mac builds with the
- * extension; src-tauri/src/autofill.rs): which way the system came in, each step, error codes.
+ * extension; crates/uwulock-app/src/autofill.rs): which way the system came in, each step, error codes.
  * Hosts, counts and short id prefixes, never a password, a user name or a full address.
  */
 export type AutofillLog = { supported: boolean; lines: string[]; problem?: string };

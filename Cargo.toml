@@ -5,6 +5,8 @@ members = [
   "crates/uwulock-bitwarden",
   "crates/uwulock-wasm",
   "crates/uwulock-authenticator",
+  "crates/uwulock-app",
+  "crates/uwulock-ffi",
   "crates/uwulock-uhid-broker",
   "crates/tauri-plugin-uwulock-mobile",
   "apps/desktop/src-tauri",
@@ -12,7 +14,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.7.0-beta.1"
+version = "0.7.0-beta.2"
 edition = "2021"
 license = "GPL-3.0-only"
 repository = "https://github.com/MinifyX/UwULock-Client"
@@ -22,6 +24,7 @@ rust-version = "1.89"
 uwulock-core = { path = "crates/uwulock-core" }
 uwulock-bitwarden = { path = "crates/uwulock-bitwarden" }
 uwulock-authenticator = { path = "crates/uwulock-authenticator" }
+uwulock-app = { path = "crates/uwulock-app" }
 
 parking_lot = "0.12"
 serde = { version = "1", features = ["derive"] }

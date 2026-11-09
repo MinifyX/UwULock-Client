@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The app's own keys; Xcode adds the standard ones (GENERATE_INFOPLIST_FILE, project.yml).
+     From apps/desktop/src-tauri/Info.ios.plist. -->
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>de</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>de</string>
+		<string>en</string>
+	</array>
+	<key>NSFaceIDUsageDescription</key>
+	<string>UwULock opens your vault with Face ID instead of the master password.</string>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+	<!-- Where the app leaves the sealed passkey list for the AutoFill extension, and the
+	     Keychain group of the provider key (docs/passkeys.md). -->
+	<key>UwULockAppGroup</key>
+	<string>$(UWULOCK_APP_GROUP)</string>
+	<key>UwULockKeychainGroup</key>
+	<string>$(AppIdentifierPrefix)app.uwulock.passkeys</string>
+	<!-- Apple Passwords' "Export data to another app" (credential exchange). -->
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>ASCredentialExchangeActivity</string>
+	</array>
+	<!-- Sparkle, the disk image's updates: set in Config/Direct.xcconfig only, empty elsewhere. -->
+	<key>SUFeedURL</key>
+	<string>$(SPARKLE_FEED_URL)</string>
+	<key>SUPublicEDKey</key>
+	<string>$(SPARKLE_PUBLIC_KEY)</string>
+</dict>
+</plist>

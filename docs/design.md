@@ -73,8 +73,9 @@ installer (`apps/setup`) is always light, on the tile gradient (package
   700 px (the package's `phone:` breakpoint): the list, the item over it, the
   folders in a drawer. On a phone the title bar is an app bar without window
   buttons, and iOS keeps out of the notch and the home indicator.
-- **macOS** (package `docs/macos.md`): the system's title bar with the
-  traffic lights (`tauri.macos.conf.json`), and the title bar's actions in
+- **macOS** (package `docs/macos.md`; releases are the native app in
+  `apps/apple`, this is the Tauri development build): the system's title bar
+  with the traffic lights, and the title bar's actions in
   the menu bar (`setMacMenu()` in `App.tsx`): Einstellungen … on ⌘,, a
   **Tresor** menu with the generator (⌘G) and Sperren (⌘L), search (⌘F)
   under Bearbeiten. Travel mode, a pill in the title bar elsewhere, shows in

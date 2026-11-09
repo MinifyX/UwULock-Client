@@ -1,6 +1,6 @@
 /**
  * KeePass's key derivations for the app: Argon2d, Argon2id and AES-KDF in Rust
- * (uwulock-core's `import`, the commands in `src-tauri/src/importing.rs`), off
+ * (uwulock-core's `import`, the commands in `crates/uwulock-app/src/importing.rs`), off
  * the page's thread. With KeePassXC's defaults that takes a second or two.
  */
 

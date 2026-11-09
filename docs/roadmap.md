@@ -148,6 +148,16 @@ Later on phones:
 - [x] 0.6.0-beta.10: the security settings no longer crash the Mac app (Safari's
       and AutoFill's answers come over XPC, which needs the blocks' signatures)
 
+## 0.7 · Native Apple app
+
+- [x] iPhone, iPad and Mac as a SwiftUI app on the Rust core (`uwulock-app` via
+      UniFFI), in the suite's design on Liquid Glass; same bundle IDs and data
+      ([native-apple-plan.md](native-apple-plan.md))
+- [x] AutoFill/passkey extension and Safari extension as Xcode targets
+- [x] Mac: App Store build and a Developer ID disk image with Sparkle; Tauri's
+      Mac users move over with a migration setup
+- [ ] First signed run through TestFlight and notarization; AutoFill tried on devices
+
 ## Later · A server of its own
 
 - UwULock server: Bitwarden-compatible API, so the official apps keep

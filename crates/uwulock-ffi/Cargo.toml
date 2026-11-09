@@ -1,0 +1,39 @@
+[package]
+name = "uwulock-ffi"
+description = "UwULock's app logic for the native Apple app: uwulock-app through UniFFI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+name = "uwulock_ffi"
+# `staticlib` for the XCFramework (scripts/apple-xcframework.sh), `lib` for the tests and the
+# bindings generator.
+crate-type = ["staticlib", "lib"]
+
+# The Swift bindings from the built library: `cargo run -p uwulock-ffi --features bindgen
+# --bin uniffi-bindgen-swift -- …` (scripts/apple-xcframework.sh). Only with the feature, so the
+# library for the phone doesn't build the generator.
+[[bin]]
+name = "uniffi-bindgen-swift"
+path = "src/bin/uniffi-bindgen-swift.rs"
+required-features = ["bindgen"]
+
+[features]
+bindgen = ["uniffi/cli", "uniffi/cargo-metadata"]
+
+[dependencies]
+uwulock-app.workspace = true
+uwulock-bitwarden.workspace = true
+uwulock-core.workspace = true
+
+parking_lot.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uniffi = { version = "0.32", default-features = false }
+zeroize.workspace = true

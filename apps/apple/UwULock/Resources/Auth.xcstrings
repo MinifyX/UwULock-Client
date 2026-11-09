@@ -1,0 +1,1156 @@
+{
+  "sourceLanguage": "de",
+  "strings": {
+    "%@ (gesperrt)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (locked)"
+          }
+        }
+      }
+    },
+    "%@ wird von diesem Gerät entfernt – die Sitzung, die Schlüssel und der zwischengespeicherte Tresor. Auf dem Server bleibt alles, wie es ist.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ is removed from this device – the session, the keys and the cached vault. On the server everything stays as it is."
+          }
+        }
+      }
+    },
+    "Abbrechen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel"
+          }
+        }
+      }
+    },
+    "Abgebrochen.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancelled."
+          }
+        }
+      }
+    },
+    "Abmelden": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Log out"
+          }
+        }
+      }
+    },
+    "Alle sperren": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lock all"
+          }
+        }
+      }
+    },
+    "Angemeldet als %@. Dein Master-Passwort öffnet den Tresor.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Logged in as %@. Your master password opens the vault."
+          }
+        }
+      }
+    },
+    "Angemeldet als %@. Wähle jetzt dein Master-Passwort: Es öffnet deinen Tresor und verlässt dieses Gerät nie. Niemand kann es zurücksetzen – auch nicht der Server.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Logged in as %@. Choose your master password now: it opens your vault and never leaves this device. Nobody can reset it – not even the server."
+          }
+        }
+      }
+    },
+    "Anmelden": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Log in"
+          }
+        }
+      }
+    },
+    "Anmeldung auf einem anderen Gerät": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Login on another device"
+          }
+        }
+      }
+    },
+    "Anmeldung im Browser": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Logging in in the browser"
+          }
+        }
+      }
+    },
+    "Auf diesem Gerät ist ein Fingerabdruck oder Gesicht dazugekommen, deshalb gilt das Entsperren damit nicht mehr. Entsperre mit dem Master-Passwort und schalte es in den Einstellungen wieder ein.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A fingerprint or face was added on this device, so unlocking with it no longer works. Unlock with the master password and switch it on again in the settings."
+          }
+        }
+      }
+    },
+    "Auf diesem Gerät merken": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remember on this device"
+          }
+        }
+      }
+    },
+    "Authenticator-App": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Authenticator app"
+          }
+        }
+      }
+    },
+    "Bestätige, dass du es bist.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirm it's you."
+          }
+        }
+      }
+    },
+    "Biometrie": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Biometrics"
+          }
+        }
+      }
+    },
+    "Bitte gib die Adresse deines Servers ein.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Please enter your server's address."
+          }
+        }
+      }
+    },
+    "Bitwarden kennt dieses Gerät noch nicht und hat dir einen Code per E-Mail geschickt.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bitwarden doesn't know this device yet and sent you a code by email."
+          }
+        }
+      }
+    },
+    "Code": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Code"
+          }
+        }
+      }
+    },
+    "Code aus der E-Mail": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Code from the email"
+          }
+        }
+      }
+    },
+    "Code senden": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send code"
+          }
+        }
+      }
+    },
+    "Das Master-Passwort braucht mindestens %@ Zeichen.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The master password needs at least %@ characters."
+          }
+        }
+      }
+    },
+    "Das Master-Passwort ist falsch.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The master password is wrong."
+          }
+        }
+      }
+    },
+    "Das Master-Passwort ist zu leicht zu erraten. Dieser Server verlangt Stärke %@ von 4 – nimm ein längeres oder eine Passphrase aus mehreren Wörtern.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The master password is too easy to guess. This server asks for strength %@ of 4 – use a longer one or a passphrase of several words."
+          }
+        }
+      }
+    },
+    "Das ist keine gültige Server-Adresse.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That isn't a valid server address."
+          }
+        }
+      }
+    },
+    "Das kann diese Beta noch nicht: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This beta can't do that yet: %@"
+          }
+        }
+      }
+    },
+    "Das sieht nicht nach einer E-Mail-Adresse aus.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That doesn't look like an email address."
+          }
+        }
+      }
+    },
+    "Dein Browser hat sich geöffnet. Melde dich dort an – danach geht es hier von selbst weiter.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your browser has opened. Log in there – UwULock carries on here by itself afterwards."
+          }
+        }
+      }
+    },
+    "Dein Konto verlangt eine Methode, die UwULock noch nicht kann (%@). Richte im Web-Tresor zusätzlich eine Authenticator-App oder E-Mail-Codes ein.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your account asks for a method UwULock can't do yet (%@). Add an authenticator app or email codes in the web vault as well."
+          }
+        }
+      }
+    },
+    "Dein Tresor ist gesperrt": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your vault is locked"
+          }
+        }
+      }
+    },
+    "Deinem Konto fehlt ein Schlüsselpaar. Melde dich einmal im Web-Tresor an.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your account has no key pair. Log in to the web vault once."
+          }
+        }
+      }
+    },
+    "Der Code ist unterwegs an %@.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The code is on its way to %@."
+          }
+        }
+      }
+    },
+    "Der Code wurde nicht angenommen.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The code wasn't accepted."
+          }
+        }
+      }
+    },
+    "Der Schlüssel zum Entsperren hat sich geändert. Entsperre mit dem Master-Passwort und schalte das Entsperren mit Fingerabdruck oder Gesicht wieder ein.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The key for unlocking has changed. Unlock with the master password and switch unlocking with fingerprint or face on again."
+          }
+        }
+      }
+    },
+    "Der Server hat die Anmeldung abgelehnt: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The server refused the login: %@"
+          }
+        }
+      }
+    },
+    "Der Server hat mit einem Fehler geantwortet: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The server answered with an error: %@"
+          }
+        }
+      }
+    },
+    "Der Server ist nicht erreichbar: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can't reach the server: %@"
+          }
+        }
+      }
+    },
+    "Der Server kennt die Sitzung dieses Geräts nicht mehr. Nach der Anmeldung geht es weiter wie vorher.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The server no longer knows this device's session. After logging in, everything carries on as before."
+          }
+        }
+      }
+    },
+    "Der Server muss per https:// erreichbar sein. Unverschlüsseltes http:// geht nur zu diesem Rechner (localhost).": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The server must be reachable over https://. Unencrypted http:// only works to this computer (localhost)."
+          }
+        }
+      }
+    },
+    "Der Server verlangt für dieses Konto eine schwächere Schlüsselableitung als bei der letzten Anmeldung, deshalb hat UwULock nichts gesendet. Wenn du sie selbst gesenkt hast, melde das Konto auf diesem Gerät ab und füge es neu hinzu.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The server asks for a weaker key derivation for this account than at its last login, so UwULock sent nothing. If you lowered it yourself, log the account out of this device and add it again."
+          }
+        }
+      }
+    },
+    "Der Tresor ist gesperrt.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The vault is locked."
+          }
+        }
+      }
+    },
+    "Die Adresse, unter der du deinen Web-Tresor öffnest.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The address you open your web vault at."
+          }
+        }
+      }
+    },
+    "Die Anmeldung im Browser hat zu lange gedauert. Starte sie noch einmal.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The login in the browser took too long. Start it again."
+          }
+        }
+      }
+    },
+    "Die Anmeldung und die verschlüsselte Kopie des Tresors werden von diesem Gerät gelöscht. Dein Tresor auf dem Server bleibt, wie er ist.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The login and the encrypted copy of the vault are deleted from this device. Your vault on the server stays as it is."
+          }
+        }
+      }
+    },
+    "Die Passwörter sind verschieden.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The passwords don't match."
+          }
+        }
+      }
+    },
+    "Die Sitzung ist abgelaufen. Bitte melde dich neu an.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The session has expired. Please log in again."
+          }
+        }
+      }
+    },
+    "Dieser Server bietet keine Anmeldung mit SSO an.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This server doesn't offer logging in with SSO."
+          }
+        }
+      }
+    },
+    "Dieses Konto hat schon ein Master-Passwort – vermutlich hat ein früherer Versuch geklappt. Melde dich noch einmal mit SSO an.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This account has a master password already – an earlier try probably went through. Log in with SSO again."
+          }
+        }
+      }
+    },
+    "E-Mail": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Email"
+          }
+        }
+      }
+    },
+    "E-Mail-Adresse": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Email address"
+          }
+        }
+      }
+    },
+    "E-Mail-Adresse oder Master-Passwort stimmt nicht.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Email address or master password is wrong."
+          }
+        }
+      }
+    },
+    "Ein Dienst hinter dem Server antwortet gerade nicht: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A service behind the server isn't answering right now: %@"
+          }
+        }
+      }
+    },
+    "Ein anderes Gerät möchte sich mit deinem Konto anmelden. UwULock kann solche Anfragen noch nicht bestätigen. Warst du das nicht, ignoriere sie einfach – ohne Bestätigung passiert nichts.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Another device wants to log in with your account. UwULock can't approve such requests yet. If it wasn't you, just ignore it – nothing happens without approval."
+          }
+        }
+      }
+    },
+    "Einmal neu anmelden, bitte": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Please log in once more"
+          }
+        }
+      }
+    },
+    "Entsperren": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unlock"
+          }
+        }
+      }
+    },
+    "Entsperrt …": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unlocking …"
+          }
+        }
+      }
+    },
+    "Etwas ließ sich nicht entschlüsseln: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Something couldn't be decrypted: %@"
+          }
+        }
+      }
+    },
+    "Gesperrt": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Locked"
+          }
+        }
+      }
+    },
+    "Geöffnet": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open"
+          }
+        }
+      }
+    },
+    "Gib den sechsstelligen Code aus deiner Authenticator-App ein.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter the six-digit code from your authenticator app."
+          }
+        }
+      }
+    },
+    "Hallo! Ich bin Nyu ✧": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hi! I'm Nyu ✧"
+          }
+        }
+      }
+    },
+    "Ignorieren": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ignore"
+          }
+        }
+      }
+    },
+    "Jetzt sperren": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lock now"
+          }
+        }
+      }
+    },
+    "Konten": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Accounts"
+          }
+        }
+      }
+    },
+    "Konto hinzufügen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add account"
+          }
+        }
+      }
+    },
+    "Konto umbenennen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rename account"
+          }
+        }
+      }
+    },
+    "Konto wechseln": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switch account"
+          }
+        }
+      }
+    },
+    "Lass dir einen Code an %@ schicken und gib ihn hier ein.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Have a code sent to %@ and enter it here."
+          }
+        }
+      }
+    },
+    "Master-Passwort": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Master password"
+          }
+        }
+      }
+    },
+    "Master-Passwort festlegen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set your master password"
+          }
+        }
+      }
+    },
+    "Master-Passwort wiederholen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Repeat the master password"
+          }
+        }
+      }
+    },
+    "Methode": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Method"
+          }
+        }
+      }
+    },
+    "Mindestens %@ Zeichen und nicht leicht zu erraten: Dein Server verlangt die Stärke „%@“ (%@ von 4).": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "At least %@ characters and not easy to guess: your server asks for strength “%@” (%@ of 4)."
+          }
+        }
+      }
+    },
+    "Mindestens %@ Zeichen.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "At least %@ characters."
+          }
+        }
+      }
+    },
+    "Mit Face ID entsperren": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unlock with Face ID"
+          }
+        }
+      }
+    },
+    "Mit Fingerabdruck oder Gesicht entsperren": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unlock with fingerprint or face"
+          }
+        }
+      }
+    },
+    "Mit Optic ID entsperren": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unlock with Optic ID"
+          }
+        }
+      }
+    },
+    "Mit SSO anmelden": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Log in with SSO"
+          }
+        }
+      }
+    },
+    "Mit Touch ID entsperren": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unlock with Touch ID"
+          }
+        }
+      }
+    },
+    "Name": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Name"
+          }
+        }
+      }
+    },
+    "Neues Gerät bestätigen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirm new device"
+          }
+        }
+      }
+    },
+    "Noch ein Konto ✧": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "One more account ✧"
+          }
+        }
+      }
+    },
+    "Noch nicht unterstützt: %@.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not supported yet: %@."
+          }
+        }
+      }
+    },
+    "Nochmal senden": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send again"
+          }
+        }
+      }
+    },
+    "Nur hier auf diesem Gerät. Leer lassen: dann steht wieder %@ da.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only here on this device. Leave it empty and %@ is shown again."
+          }
+        }
+      }
+    },
+    "Nyu leitet deinen Schlüssel ab …": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nyu is deriving your key …"
+          }
+        }
+      }
+    },
+    "Privat und Arbeit nebeneinander: Jedes Konto behält seinen Server, seinen Tresor und sein eigenes Master-Passwort.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Personal and work side by side: each account keeps its server, its vault and its own master password."
+          }
+        }
+      }
+    },
+    "Prüft …": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking …"
+          }
+        }
+      }
+    },
+    "Selbst gehostet": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Self-hosted"
+          }
+        }
+      }
+    },
+    "Server": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server"
+          }
+        }
+      }
+    },
+    "Server-Adresse": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server address"
+          }
+        }
+      }
+    },
+    "Sperren": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lock"
+          }
+        }
+      }
+    },
+    "Statt des Master-Passworts. Der Schlüssel dafür liegt geschützt auf diesem Gerät und gilt nicht mehr, sobald ein Finger oder Gesicht dazukommt.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Instead of the master password. Its key is kept protected on this device and stops working as soon as a finger or face is added."
+          }
+        }
+      }
+    },
+    "Stecke deinen YubiKey ein und tippe ihn an.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plug in your YubiKey and touch it."
+          }
+        }
+      }
+    },
+    "UwULock entsperren": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unlock UwULock"
+          }
+        }
+      }
+    },
+    "UwULock öffnet deinen Tresor von Vaultwarden oder Bitwarden. Dein Master-Passwort verlässt dieses Gerät nie – der Server bekommt nur einen Hash davon.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "UwULock opens your vault from Vaultwarden or Bitwarden. Your master password never leaves this device – the server only gets a hash of it."
+          }
+        }
+      }
+    },
+    "Von diesem Gerät abmelden?": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Log out of this device?"
+          }
+        }
+      }
+    },
+    "Web-Tresor öffnen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open web vault"
+          }
+        }
+      }
+    },
+    "Weiter": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Continue"
+          }
+        }
+      }
+    },
+    "Zu viele Versuche in kurzer Zeit. Warte einen Moment.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Too many tries in a short time. Wait a moment."
+          }
+        }
+      }
+    },
+    "Zu viele Versuche: Das Gerät lässt Face ID oder Touch ID gerade nicht zu. Entsperre mit dem Master-Passwort.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Too many attempts: the device won't allow Face ID or Touch ID right now. Unlock with your master password."
+          }
+        }
+      }
+    },
+    "Zuletzt synchronisiert: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last synced: %@"
+          }
+        }
+      }
+    },
+    "Zurück": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Back"
+          }
+        }
+      }
+    },
+    "Zweistufige Anmeldung": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Two-step login"
+          }
+        }
+      }
+    },
+    "deine E-Mail-Adresse": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "your email address"
+          }
+        }
+      }
+    },
+    "deinen Tresor zu entsperren": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "unlock your vault"
+          }
+        }
+      }
+    },
+    "gerade eben": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "just now"
+          }
+        }
+      }
+    },
+    "gesperrt": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "locked"
+          }
+        }
+      }
+    },
+    "mittel": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "fair"
+          }
+        }
+      }
+    },
+    "noch nie": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "never"
+          }
+        }
+      }
+    },
+    "offen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "open"
+          }
+        }
+      }
+    },
+    "schwach": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "weak"
+          }
+        }
+      }
+    },
+    "sehr stark": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "very strong"
+          }
+        }
+      }
+    },
+    "stark": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "strong"
+          }
+        }
+      }
+    },
+    "Übernehmen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apply"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

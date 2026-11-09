@@ -46,5 +46,10 @@
   "Kleiner": "Smaller",
   "Größer": "Larger",
   "Sehr groß": "Largest",
-  "„System“ folgt der Textgröße von {system}.": "“System” follows the text size of {system}."
+  "„System“ folgt der Textgröße von {system}.": "“System” follows the text size of {system}.",
+  "Mello verbinden": "Connect Mello",
+  "Mello sieht dann nur, ob der Tresor gesperrt ist, wie viele Einträge er hat und wie viele Passwörter schwach oder mehrfach benutzt sind – nie Namen, Adressen, Benutzernamen oder Passwörter. Nur auf diesem Computer erreichbar.": "Mello then only sees whether the vault is locked, how many entries it has and how many passwords are weak or reused – never names, addresses, usernames or passwords. Only reachable on this computer.",
+  "Token für Mello": "Token for Mello",
+  "In Mello unter Integrationen → UwULock eintragen. Adresse: {url}": "Enter it in Mello under Integrations → UwULock. Address: {url}",
+  "Neuer Token": "New token"
 }

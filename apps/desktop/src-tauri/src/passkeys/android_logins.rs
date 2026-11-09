@@ -16,12 +16,11 @@
 
 use serde::Deserialize;
 use serde_json::{json, Value};
-use tauri::{AppHandle, Manager};
+use uwulock_app::App;
 use uwulock_authenticator::webauthn::from_b64;
 use uwulock_core::vault::Item;
 
 use super::logins::{self, Asker};
-use super::VaultState;
 
 #[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -46,7 +45,7 @@ struct Ask {
     verified: bool,
 }
 
-pub(super) fn call(app: &AppHandle, method: &str, argument: &str) -> Result<Value, String> {
+pub(super) fn call(app: &App, method: &str, argument: &str) -> Result<Value, String> {
     let ask: Ask = serde_json::from_str(argument).map_err(|e| e.to_string())?;
     match method {
         "logins" => {
@@ -88,18 +87,12 @@ pub(super) fn call(app: &AppHandle, method: &str, argument: &str) -> Result<Valu
 
 /// The open account's logins that may be filled at all; `None` when the
 /// vault is locked.
-fn open_items(app: &AppHandle) -> Option<Vec<Item>> {
-    let vault = app.state::<VaultState>();
-    let (account_id, _) = vault.active_account().ok()?;
-    let guard = vault.unlocked.read();
-    let unlocked = guard.get(&account_id)?;
+fn open_items(app: &App) -> Option<Vec<Item>> {
+    let (_, items) = app.vault().active_items().ok()??;
     Some(
-        unlocked
-            .vault
-            .items
-            .iter()
+        items
+            .into_iter()
             .filter(|item| logins::fillable(item))
-            .cloned()
             .collect(),
     )
 }

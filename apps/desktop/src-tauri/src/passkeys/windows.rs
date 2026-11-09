@@ -30,7 +30,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 
 use parking_lot::Mutex;
-use tauri::{AppHandle, EventId, Listener, Manager};
 use uwulock_authenticator::ctap2::{self, Authenticator, Request};
 use uwulock_authenticator::ctaphid::MAX_PAYLOAD;
 use uwulock_authenticator::flight::Slot;
@@ -44,8 +43,9 @@ use windows::Win32::System::Com::{
 };
 
 use super::registry::{self, Data, Key, Value};
-use super::{Client, DesktopBackend, Provider, Warning};
-use crate::vault::VaultState;
+use uwulock_app::{App, ListenerId};
+
+use super::{Client, DesktopBackend, Warning};
 
 /// UwULock's plugin class: random, picked once.
 const CLSID: GUID = GUID::from_u128(0x5b0c_8e7a_4f2d_4c61_9a3e_7d1b_2c6f_0e94);
@@ -303,8 +303,11 @@ static IN_FLIGHT: Slot<GUID> = Slot::new();
 /// listeners that keep Windows' passkey list current.
 pub(crate) struct Plugin {
     stop: std::sync::mpsc::Sender<()>,
-    listeners: Vec<EventId>,
+    listeners: Vec<ListenerId>,
 }
+
+/// The plugin, while it runs.
+pub(crate) static PLUGIN: Mutex<Option<Plugin>> = parking_lot::const_mutex(None);
 
 /// Bytes Windows handed over, copied.
 unsafe fn copied(data: *const u8, length: u32) -> Option<Vec<u8>> {
@@ -360,10 +363,10 @@ fn guid_bytes(guid: &GUID) -> [u8; 16] {
 
 static SYNCING: AtomicBool = AtomicBool::new(false);
 
-pub(crate) fn start(app: &AppHandle) -> Result<(), String> {
+pub(crate) fn start(app: &App) -> Result<(), String> {
     let api = api().ok_or_else(|| problem().unwrap_or_default())?;
-    let provider = app.state::<Provider>();
-    let mut plugin = provider.plugin.lock();
+    let provider = app.passkeys();
+    let mut plugin = PLUGIN.lock();
     if plugin.is_some() {
         return Ok(());
     }
@@ -453,7 +456,7 @@ pub(crate) fn start(app: &AppHandle) -> Result<(), String> {
     }
 
     // Without Windows' key no request can be checked: none is taken.
-    let Some(key) = op_sign_key(api, &provider.path, from_add) else {
+    let Some(key) = op_sign_key(api, provider.path(), from_add) else {
         let _ = stop.send(());
         unsafe {
             let _ = (api.remove_authenticator)(&CLSID);
@@ -480,9 +483,9 @@ pub(crate) fn start(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-pub(crate) fn stop(app: &AppHandle) {
+pub(crate) fn stop(app: &App) {
     super::warn(app, None);
-    let Some(plugin) = app.state::<Provider>().plugin.lock().take() else {
+    let Some(plugin) = PLUGIN.lock().take() else {
         return;
     };
     let _ = plugin.stop.send(());
@@ -699,39 +702,30 @@ fn unregister_server() {
 }
 
 /// Tells Windows which passkeys the open vault has: ids, sites, names.
-fn sync_credentials(app: &AppHandle) {
+fn sync_credentials(app: &App) {
     let Some(api) = api() else { return };
     if SYNCING.swap(true, Ordering::AcqRel) {
         return;
     }
-    let vault = app.state::<VaultState>();
+    let vault = app.vault();
     let mut found = Vec::new();
-    if let Ok((account_id, _)) = vault.active_account() {
-        let items: Vec<_> = vault
-            .unlocked
-            .read()
-            .get(&account_id)
-            .map(|u| {
-                u.vault
-                    .items
-                    .iter()
-                    .filter(|i| {
-                        !i.deleted && i.login.as_ref().is_some_and(|l| l.passkey_count() > 0)
-                    })
-                    .cloned()
-                    .collect()
-            })
-            .unwrap_or_default();
-        for item in &items {
-            for (_, passkey) in super::passkeys_of(&vault, &account_id, item) {
-                found.push(passkey);
+    match vault.active_items() {
+        Ok(Some((account_id, items))) => {
+            let items = items
+                .iter()
+                .filter(|i| !i.deleted && i.login.as_ref().is_some_and(|l| l.passkey_count() > 0));
+            for item in items {
+                for (_, passkey) in super::passkeys_of(vault, &account_id, item) {
+                    found.push(passkey);
+                }
             }
         }
-        if items.is_empty() && !vault.unlocked.read().contains_key(&account_id) {
+        Ok(None) => {
             // Locked: Windows keeps the list it had.
             SYNCING.store(false, Ordering::Release);
             return;
         }
+        Err(_) => {}
     }
     struct Owned {
         id: Vec<u8>,
@@ -786,7 +780,7 @@ fn sync_credentials(app: &AppHandle) {
 
 #[implement(IClassFactory)]
 struct Factory {
-    app: AppHandle,
+    app: App,
 }
 
 impl IClassFactory_Impl for Factory_Impl {
@@ -829,7 +823,7 @@ unsafe trait IPluginAuthenticator: IUnknown {
 
 #[implement(IPluginAuthenticator)]
 struct PluginAuthenticator {
-    app: AppHandle,
+    app: App,
 }
 
 /// Why a request isn't taken.
@@ -1151,7 +1145,7 @@ impl IPluginAuthenticator_Impl for PluginAuthenticator_Impl {
             return E_INVALIDARG;
         };
         // PluginLocked = 0, PluginUnlocked = 1.
-        *status = i32::from(super::is_open(&self.app.state::<VaultState>()));
+        *status = i32::from(super::is_open(self.app.vault()));
         HRESULT(0)
     }
 }
