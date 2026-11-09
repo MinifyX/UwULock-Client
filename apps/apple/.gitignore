@@ -6,7 +6,7 @@ DerivedData/
 # The Rust core: scripts/apple-xcframework.sh
 Frameworks/*.xcframework
 Frameworks/.UwuLockFFI.stamp
-Generated/
+/Generated/
 # Screenshots of scripts/apple-build.sh
 docs-screens/
 # Per-machine signing (Config/Local.xcconfig.example)
