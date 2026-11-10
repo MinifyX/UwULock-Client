@@ -1,0 +1,4 @@
+{
+  "de": "- iPhone, iPad und Mac: Das automatische Ausfüllen meldete fälschlich „Dieser Build ist nicht signiert“ und kam nicht an den Tresor – behoben\n- Beim Bearbeiten zeigt das Auge beim TOTP wieder den gespeicherten Schlüssel (otpauth-Adresse) statt nur des aktuellen Codes. Speichern überschreibt den Schlüssel nicht mehr mit dem Code\n- iPhone: Die Knöpfe auf der Prüfkarte brechen nicht mehr mitten im Wort um, sondern stehen untereinander, wenn der Platz nicht reicht",
+  "en": "- iPhone, iPad and Mac: AutoFill wrongly said “This build isn't signed” and couldn't reach the vault – fixed\n- While editing, the eye on TOTP shows the stored key (otpauth address) again instead of only the current code. Saving no longer overwrites the key with the code\n- iPhone: the buttons on the check card no longer break mid-word but stack when there isn't room"
+}

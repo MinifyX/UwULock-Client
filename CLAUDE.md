@@ -1,6 +1,6 @@
 # UwULock-Client
 
-Passwortmanager der UwUSuite (Tauri 2): Client für Vaultwarden/Bitwarden, v0.7.0-beta.2. Allgemeine Befehle/CI-Regeln siehe `~/Projects/CLAUDE.md`.
+Passwortmanager der UwUSuite (Tauri 2): Client für Vaultwarden/Bitwarden, v0.7.0-beta.3. Allgemeine Befehle/CI-Regeln siehe `~/Projects/CLAUDE.md`.
 
 ## Layout
 
