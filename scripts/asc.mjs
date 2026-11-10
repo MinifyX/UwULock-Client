@@ -35,6 +35,10 @@ const REGISTER = {
   [`${APP}.safari`]: 'UwULock Safari Extension',
   [`${DIRECT}.safari`]: 'UwULock Direct Safari Extension',
 };
+/** Capabilities the entitlements need beyond those set in the portal; added on the way. */
+const CAPABILITIES = {
+  [APP]: ['HOT_SPOT'], // Wi-Fi items: NEHotspotConfiguration (iOS)
+};
 const PLATFORMS = {
   ios: { type: 'IOS_APP_STORE', name: 'iOS App Store', extension: 'mobileprovision', app: APP },
   macos: {
@@ -131,6 +135,25 @@ async function profiles(platform, certificatePem, folder) {
     }
     if (!bundle) fail(`The identifier ${identifier} isn't registered (developer portal).`);
 
+    // A new capability leaves the old profile without it, so that one is made anew below.
+    let changed = false;
+    const wanted = CAPABILITIES[identifier] ?? [];
+    if (wanted.length) {
+      const have = await api('GET', `/v1/bundleIds/${bundle.id}/bundleIdCapabilities`);
+      for (const capabilityType of wanted) {
+        if (have.data.some((c) => c.attributes.capabilityType === capabilityType)) continue;
+        await api('POST', '/v1/bundleIdCapabilities', {
+          data: {
+            type: 'bundleIdCapabilities',
+            attributes: { capabilityType },
+            relationships: { bundleId: { data: { type: 'bundleIds', id: bundle.id } } },
+          },
+        });
+        console.log(`  ${identifier}: ${capabilityType} enabled`);
+        changed = true;
+      }
+    }
+
     const name = `UwULock ${kind.name} ${identifier}`;
     const found = await api(
       'GET',
@@ -138,12 +161,14 @@ async function profiles(platform, certificatePem, folder) {
     );
     // The name filter matches parts of names too ("… app.uwulock" finds "… app.uwulock.passkeys").
     found.data = found.data.filter((p) => p.attributes.name === name);
-    let profile = found.data.find(
-      (p) =>
-        p.attributes.profileState === 'ACTIVE' &&
-        p.attributes.profileType === kind.type &&
-        p.relationships.certificates.data.some((c) => c.id === certificate.id),
-    );
+    let profile =
+      !changed &&
+      found.data.find(
+        (p) =>
+          p.attributes.profileState === 'ACTIVE' &&
+          p.attributes.profileType === kind.type &&
+          p.relationships.certificates.data.some((c) => c.id === certificate.id),
+      );
     if (!profile) {
       for (const stale of found.data) {
         console.log(`  ${name}: ${stale.attributes.profileState}, replaced`);
