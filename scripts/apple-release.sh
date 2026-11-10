@@ -186,7 +186,10 @@ cmd_archive() {
   # Unsigned: Xcode won't sign the targets with AutoFill, App Group and Keychain groups without
   # their profiles, which only the signing machine has. `entitle` signs them ad-hoc afterwards.
   local signing=(CODE_SIGNING_ALLOWED=NO)
-  [ -z "${APPLE_TEAM_ID:-}" ] || signing+=(DEVELOPMENT_TEAM="$APPLE_TEAM_ID")
+  # Xcode fills the prefixes only when it signs; the Info.plist Keychain group and the Mac's App
+  # Group need them (without, AppleHost takes the build for an unsigned one).
+  [ -z "${APPLE_TEAM_ID:-}" ] || signing+=(DEVELOPMENT_TEAM="$APPLE_TEAM_ID"
+    AppIdentifierPrefix="$APPLE_TEAM_ID." TeamIdentifierPrefix="$APPLE_TEAM_ID.")
   local archs=()
   [ "$kind" = ios ] || archs=(ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO)
 
@@ -213,6 +216,8 @@ cmd_archive() {
   fi
   [ "$kind" = ios ] && plist="$app/Info.plist" || plist="$app/Contents/Info.plist"
   plutil -extract CFBundleIdentifier raw "$plist" | grep -qx "$bundle" || die "$app isn't $bundle"
+  [ -z "${APPLE_TEAM_ID:-}" ] || plutil -extract UwULockKeychainGroup raw "$plist" | grep -q "^$APPLE_TEAM_ID\\." ||
+    die "$plist: UwULockKeychainGroup has no team prefix"
   [ "$kind" = ios ] || universal "$app/Contents/MacOS/UwULock"
   echo "$app: $bundle $(plutil -extract CFBundleShortVersionString raw "$plist") ($(plutil -extract CFBundleVersion raw "$plist"))"
 }
