@@ -293,26 +293,11 @@ private struct HealthReviewCard: View {
                             .frame(maxWidth: .infinity)
                     }
                     .uwuGlassButton()
-                    HStack(spacing: UwUSpacing.xs) {
-                        Button(action: onLater) {
-                            Label(features: "Später", uwuIcon: .pending)
-                                .frame(maxWidth: .infinity)
-                        }
-                        .uwuGlassButton()
-                        if store.view?.ignored != nil {
-                            Button(action: onExclude) {
-                                Label(features: "Nicht mehr prüfen", uwuIcon: .hide)
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .uwuGlassButton()
-                        }
-                        if let openItem {
-                            Button { openItem(finding.id) } label: {
-                                Label(features: "Eintrag öffnen", uwuIcon: .vault)
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .uwuGlassButton()
-                        }
+                    // One row while the labels fit on one line each, else stacked (narrow phone, big text).
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: UwUSpacing.xs) { secondaryButtons(finding) }
+                            .lineLimit(1)
+                        VStack(spacing: UwUSpacing.xs) { secondaryButtons(finding) }
                     }
                 }
                 .controlSize(.large)
@@ -322,6 +307,29 @@ private struct HealthReviewCard: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(verbatim: HealthWords.name(finding.name)))
         .accessibilityHint(Text(features: "Karte"))
+    }
+
+    @ViewBuilder
+    private func secondaryButtons(_ finding: Finding) -> some View {
+        Button(action: onLater) {
+            Label(features: "Später", uwuIcon: .pending)
+                .frame(maxWidth: .infinity)
+        }
+        .uwuGlassButton()
+        if store.view?.ignored != nil {
+            Button(action: onExclude) {
+                Label(features: "Nicht mehr prüfen", uwuIcon: .hide)
+                    .frame(maxWidth: .infinity)
+            }
+            .uwuGlassButton()
+        }
+        if let openItem {
+            Button { openItem(finding.id) } label: {
+                Label(features: "Eintrag öffnen", uwuIcon: .vault)
+                    .frame(maxWidth: .infinity)
+            }
+            .uwuGlassButton()
+        }
     }
 
     @ViewBuilder
