@@ -430,7 +430,7 @@ export function ItemEditor({ summary, kind, overview, onClose, onSaved }: Props)
                   secret={form.totp}
                   onChange={(totp) => set({ totp })}
                   itemId={id}
-                  field="totp"
+                  field="totp-secret"
                   hint={t('Der Schlüssel aus der App: Base32 oder eine otpauth://-Adresse.')}
                 />
 

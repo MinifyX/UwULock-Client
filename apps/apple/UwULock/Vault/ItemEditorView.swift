@@ -257,7 +257,7 @@ struct ItemEditorView: View {
                 .buttonStyle(.borderless)
                 .help(vt("Passwort-Generator"))
             }
-            SecretField(label: vt("Einmal-Code (TOTP)"), secret: $form.totp, itemId: itemId, field: "totp",
+            SecretField(label: vt("Einmal-Code (TOTP)"), secret: $form.totp, itemId: itemId, field: "totp-secret",
                         hint: vt("Der Schlüssel aus der App: Base32 oder eine otpauth://-Adresse."))
         }
         Section(vt("Websites")) {

@@ -400,7 +400,7 @@ export function ItemEditSheet({
                     secret={form.totp}
                     onChange={(totp) => set({ totp })}
                     itemId={id}
-                    field="totp"
+                    field="totp-secret"
                   />
                 </ListSection>
                 <ListSection header={t('Websites')}>

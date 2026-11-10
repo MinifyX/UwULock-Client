@@ -212,7 +212,7 @@ final class FixtureVaultBackend: VaultBackend {
 
     func revealField(id: String, field: String) async throws -> String {
         if let value = secrets[id]?[field] { return value }
-        if field == "totp" { return "JBSWY3DPEHPK3PXP" }
+        if field == "totp-secret" { return "JBSWY3DPEHPK3PXP" }
         if field.hasPrefix("field:") { return "4711" }
         if field.hasPrefix("identity:") { return "C01X00T47" }
         return "uwu-secret"

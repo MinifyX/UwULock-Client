@@ -2338,7 +2338,7 @@ impl App {
 /// `uri:<n>`, `card-number`, `card-code`, `card-name`, `card-expiry`,
 /// `identity:<name>`, `ssh-private`, `ssh-public`, `ssh-fingerprint`,
 /// `field:<n>`, `history:<n>`, `totp` (the current code), `totp-next` (the
-/// code of the next period).
+/// code of the next period), `totp-secret` (the stored key, for the editor).
 fn value_of(unlocked: &Unlocked, id: &str, field: &str) -> Result<Zeroizing<String>> {
     let item = find(unlocked, id)?;
     if item.reprompt && !unlocked.reprompt_ok.contains(id) {
@@ -2361,6 +2361,7 @@ fn value_of(unlocked: &Unlocked, id: &str, field: &str) -> Result<Zeroizing<Stri
     match field {
         "username" => clone(login.and_then(|l| l.username.as_ref())),
         "password" => clone(login.and_then(|l| l.password.as_ref())),
+        "totp-secret" => clone(login.and_then(|l| l.totp.as_ref())),
         "totp" => {
             let secret = clone(login.and_then(|l| l.totp.as_ref()))?;
             Ok(totp::Totp::parse(&secret)?.now().0)
