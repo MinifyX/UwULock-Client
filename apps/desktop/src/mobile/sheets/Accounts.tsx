@@ -5,11 +5,10 @@
  * their own keys and their own vault, as on the desktop's AccountCard.
  */
 
-import { ICONS, ListRow, ListSection } from '@uwusuite/design';
+import { AvatarBlob, ICONS, ListRow, ListSection } from '@uwusuite/design';
 import { lock, switchAccount, type AccountBrief } from '../../lib/api';
 import { toastError } from '../../lib/errors';
 import { t, useLanguage } from '../../lib/i18n';
-import { initialOf } from '../../components/AccountCard';
 import { useMobile } from '../state';
 import { Chip, ShortSheet } from '../ui';
 
@@ -27,7 +26,7 @@ export function AccountsSheet({ open, onClose }: { open: boolean; onClose: () =>
   return (
     <ShortSheet open={open} onClose={onClose} title={t('Konten')}>
       <ListSection>
-        {accounts.map((account, index) => (
+        {accounts.map((account) => (
           <button
             key={account.id}
             type="button"
@@ -35,8 +34,8 @@ export function AccountsSheet({ open, onClose }: { open: boolean; onClose: () =>
             aria-current={account.active || undefined}
             onClick={() => choose(account)}
           >
-            <span className="m-avatar" data-size="small" data-alt={index % 2 ? '' : undefined}>
-              {initialOf(account)}
+            <span className="m-avatar" data-size="small">
+              <AvatarBlob seed={account.email || account.label} />
             </span>
             <span className="m-account-text">
               <b>{account.label}</b>

@@ -667,27 +667,20 @@
   text-align: left;
 }
 
+/* The account's blobatar (AvatarBlob fills it); it brings no backdrop. */
 .m-avatar {
   display: grid;
   flex: none;
   place-items: center;
   width: 58px;
   height: 58px;
+  overflow: hidden;
   border-radius: 50%;
-  background: linear-gradient(140deg, #ff6aa2, #c8165f);
-  color: #fff;
-  font-size: 22px; /* fixed: sized with its tile/ring */
-  font-weight: 750;
 }
 
 .m-avatar[data-size='small'] {
   width: 44px;
   height: 44px;
-  font-size: 17px; /* fixed: sized with its tile/ring */
-}
-
-.m-avatar[data-alt] {
-  background: linear-gradient(140deg, #8b7cf6, #4c3bb8);
 }
 
 .m-avatar-button {
@@ -695,17 +688,15 @@
   place-items: center;
   width: 44px;
   height: 44px;
+  padding: 0;
+  overflow: hidden;
   border-radius: 50%;
-  background: linear-gradient(140deg, #ff6aa2, #c8165f) !important;
-  color: #fff !important;
-  font-size: 16px; /* fixed: sized with its tile/ring */
-  font-weight: 750;
+  background: none !important;
 }
 
 .m-app[data-platform='android'] .m-avatar-button {
   width: 38px;
   height: 38px;
-  font-size: 14px; /* fixed: sized with its tile/ring */
 }
 
 /* ── Edit sheet ──────────────────────────────────────────── */

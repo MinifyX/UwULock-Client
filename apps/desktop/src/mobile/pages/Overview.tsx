@@ -6,6 +6,7 @@
  */
 
 import {
+  AvatarBlob,
   ContextMenu,
   Fab,
   haptic,
@@ -30,7 +31,6 @@ import { sendsAvailable } from '../../lib/sends';
 import { useSettings } from '../../lib/settings';
 import { note } from '../../lib/toast';
 import { has, useUwu } from '../../lib/uwu';
-import { initialOf } from '../../components/AccountCard';
 import { SPACE_TITLE } from '../../components/SuitePane';
 import { TravelDialog, travelLabel, useTravel } from '../../components/TravelBadge';
 import type { Route } from '../nav';
@@ -47,15 +47,10 @@ export const TYPES: { type: ItemKind; label: string; icon: LucideIcon }[] = [
   { type: 'wifi', label: N_('WLAN'), icon: ICONS.wifi },
 ];
 
-/** The account's round initial; it opens the account switcher. */
+/** The account's blobatar; it opens the account switcher. */
 export function AvatarButton() {
   useLanguage();
   const { status, openSheet } = useMobile();
-  const initial = initialOf({
-    name: status.name,
-    label: status.label ?? undefined,
-    email: status.email ?? '?',
-  });
   return (
     <button
       type="button"
@@ -63,7 +58,7 @@ export function AvatarButton() {
       aria-label={t('Konto wechseln')}
       onClick={() => openSheet({ kind: 'accounts' })}
     >
-      {initial}
+      <AvatarBlob seed={status.email || status.label || ''} />
     </button>
   );
 }
