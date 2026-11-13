@@ -1,4 +1,4 @@
-import { Avatar, avatarColor, Button, Icon, IconButton, ICONS } from '@uwusuite/design';
+import { Avatar, Button, Icon, IconButton, ICONS } from '@uwusuite/design';
 import { useEffect, useState } from 'react';
 import {
   lock,
@@ -15,10 +15,6 @@ import { t, useLanguage } from '../lib/i18n';
 import { toast } from '../lib/toast';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { Modal } from './Modal';
-
-export function initialOf(account: { name?: string | null; label?: string; email: string }) {
-  return (account.name || account.label || account.email || '?').trim().charAt(0).toUpperCase();
-}
 
 /**
  * The account at the foot of the sidebar: whose vault this is, when it was
@@ -86,12 +82,8 @@ export function AccountCard({
           onClick={open}
         >
           <Avatar
-            name={initialOf({
-              name: status.name,
-              label: status.label ?? '',
-              email: status.email ?? '',
-            })}
-            color={avatarColor(status.email ?? status.label ?? '')}
+            name={status.name || status.label || status.email || ''}
+            seed={status.email || status.label || ''}
             size="sm"
             className="size-8"
           />

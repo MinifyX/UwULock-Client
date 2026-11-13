@@ -6,6 +6,7 @@
  */
 
 import {
+  AvatarBlob,
   FONT_CHOICES,
   FONT_NAMES,
   ICONS,
@@ -61,7 +62,6 @@ import {
 import { textSizeOptions } from '../../lib/appearance';
 import { useSafariStatus } from '../../lib/safari';
 import { unlockDescription, unlockLabel, unlockPrompt } from '../../lib/unlock';
-import { initialOf } from '../../components/AccountCard';
 import { MoveDialog } from '../../components/MoveDialog';
 import { SettingsImportPage } from './Import';
 import type { SettingsPage as Section } from '../nav';
@@ -205,11 +205,7 @@ export function SettingsPage() {
           onClick={() => openSheet({ kind: 'accounts' })}
         >
           <span className="m-avatar" aria-hidden>
-            {initialOf({
-              name: status.name,
-              label: status.label ?? '',
-              email: status.email ?? '',
-            })}
+            <AvatarBlob seed={status.email || status.label || ''} />
           </span>
           <span className="m-account-text">
             <b>{name}</b>
