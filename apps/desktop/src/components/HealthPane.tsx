@@ -128,7 +128,7 @@ export function HealthPane({ mode, onMode, items, onOpen, phone, onMenu }: Props
 
   return (
     <section
-      className="report-pane"
+      className="report-pane uwu-page"
       aria-label={mode === 'review' ? t('Passwörter durchgehen') : t('Passwortprüfung')}
     >
       {bar}
