@@ -352,7 +352,7 @@ export function SuitePane({ space, phone, detailOpen, onDetail, onMenu, searchRe
 
   return (
     <>
-      <section className="list-pane" aria-label={title}>
+      <section className="list-pane uwu-page" aria-label={title}>
         <div className="list-head">
           <div className="search-row">
             {phone && (

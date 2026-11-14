@@ -1,5 +1,5 @@
 import { listen } from '@tauri-apps/api/event';
-import { Button, Icon, IconButton, ICONS } from '@uwusuite/design';
+import { Button, Icon, IconButton, ICONS, NavIndicator } from '@uwusuite/design';
 import type { LucideIcon } from 'lucide-react';
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -325,6 +325,7 @@ export function VaultScreen({ status, searchRef, onAddAccount }: Props) {
           if (phone && (event.target as HTMLElement).closest('.nav-row')) setDrawer(false);
         }}
       >
+        <NavIndicator />
         <ul className="nav-list">
           {nav({ kind: 'all' }, ICONS.vault, t('Alle Einträge'), counts.all)}
           {nav({ kind: 'favorites' }, ICONS.favorite, t('Favoriten'), counts.favorites)}

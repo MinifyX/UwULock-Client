@@ -1,6 +1,14 @@
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { Icon, ICONS, TitleBarAction, Toaster, useDeviceKind, UwuLabels } from '@uwusuite/design';
+import {
+  Icon,
+  ICONS,
+  revealFrom,
+  TitleBarAction,
+  Toaster,
+  useDeviceKind,
+  UwuLabels,
+} from '@uwusuite/design';
 import { hideWindowOnClose, onMacQuit, setMacMenu } from '@uwusuite/design/tauri';
 import { useEffect, useRef, useState } from 'react';
 import { AutofillCard } from './components/AutofillCard';
@@ -128,6 +136,12 @@ export function App() {
 
   const unlocked = status?.state === 'unlocked';
   const mobileVault = touchLayout && unlocked && !adding && !status.sessionExpired;
+
+  // Opening the vault (start, unlock, sign-in) uncovers it from the lock icon, once each time.
+  useEffect(() => {
+    const vault = unlocked && document.querySelector<HTMLElement>('.m-root, .stage');
+    if (vault) revealFrom(vault);
+  }, [unlocked]);
   // The dialogs are native <dialog>s: the page behind them is inert while they are open.
   const modalOpen = Boolean(settingsOpen || generator || importing);
   // A locked vault ends the import dialog: the file's contents go with it.
@@ -282,7 +296,7 @@ export function App() {
                 label={withKeys(t('Sperren'), 'CmdOrCtrl+L')}
                 onClick={() => void lock()}
               >
-                <Icon icon={ICONS.locked} size="md" />
+                <Icon icon={ICONS.locked} size="md" data-uwu-reveal-origin />
               </TitleBarAction>
             )}
           </TitleBar>
