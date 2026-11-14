@@ -5337,7 +5337,7 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-uwulock-mobile"
-version = "0.7.0-beta.5"
+version = "0.7.0-beta.6"
 dependencies = [
  "base64 0.22.1",
  "serde",
@@ -6186,7 +6186,7 @@ dependencies = [
 
 [[package]]
 name = "uwulock-app"
-version = "0.7.0-beta.5"
+version = "0.7.0-beta.6"
 dependencies = [
  "base64 0.22.1",
  "libc",
@@ -6208,7 +6208,7 @@ dependencies = [
 
 [[package]]
 name = "uwulock-authenticator"
-version = "0.7.0-beta.5"
+version = "0.7.0-beta.6"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
@@ -6226,7 +6226,7 @@ dependencies = [
 
 [[package]]
 name = "uwulock-bitwarden"
-version = "0.7.0-beta.5"
+version = "0.7.0-beta.6"
 dependencies = [
  "base64 0.22.1",
  "futures-util",
@@ -6252,7 +6252,7 @@ dependencies = [
 
 [[package]]
 name = "uwulock-core"
-version = "0.7.0-beta.5"
+version = "0.7.0-beta.6"
 dependencies = [
  "aes",
  "argon2",
@@ -6282,7 +6282,7 @@ dependencies = [
 
 [[package]]
 name = "uwulock-desktop"
-version = "0.7.0-beta.5"
+version = "0.7.0-beta.6"
 dependencies = [
  "arboard",
  "base64 0.22.1",
@@ -6320,7 +6320,7 @@ dependencies = [
 
 [[package]]
 name = "uwulock-ffi"
-version = "0.7.0-beta.5"
+version = "0.7.0-beta.6"
 dependencies = [
  "parking_lot",
  "serde",
@@ -6336,7 +6336,7 @@ dependencies = [
 
 [[package]]
 name = "uwulock-setup"
-version = "0.7.0-beta.5"
+version = "0.7.0-beta.6"
 dependencies = [
  "libc",
  "semver",
@@ -6354,7 +6354,7 @@ dependencies = [
 
 [[package]]
 name = "uwulock-uhid-broker"
-version = "0.7.0-beta.5"
+version = "0.7.0-beta.6"
 dependencies = [
  "libc",
  "uwulock-authenticator",
@@ -6362,7 +6362,7 @@ dependencies = [
 
 [[package]]
 name = "uwulock-wasm"
-version = "0.7.0-beta.5"
+version = "0.7.0-beta.6"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.2.17",

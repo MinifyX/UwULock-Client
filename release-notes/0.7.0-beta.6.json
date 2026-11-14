@@ -1,0 +1,4 @@
+{
+  "de": "- Tastatur: SSH- und RDP-Listen und die Einträge zum aktuellen Tab im Popup lassen sich mit der Tastatur öffnen\n- Dialoge setzen den Fokus beim Öffnen nicht mehr auf das X, Menüs schließen mit Tab, und Hinweise unten bleiben stehen, solange die Maus oder der Fokus darauf liegt\n- Eingabefelder mit Fehler bekommen einen roten Rahmen, und Screenreader lesen Hinweis und Fehler zum Feld vor\n- Handy: Hinter offenen Bögen bleibt der Hintergrund für Screenreader stumm",
+  "en": "- Keyboard: the SSH and RDP lists and the entries for the current tab in the popup open with the keyboard\n- Dialogs no longer put the focus on the X when they open, menus close on Tab, and notes at the bottom stay while the pointer or focus is on them\n- Fields with an error get a red border, and screen readers read out the field's hint and error\n- Phone: the background behind an open sheet stays silent for screen readers"
+}

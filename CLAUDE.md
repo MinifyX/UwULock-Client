@@ -1,6 +1,6 @@
 # UwULock-Client
 
-Passwortmanager der UwUSuite (Tauri 2): Client für Vaultwarden/Bitwarden, v0.7.0-beta.5. Allgemeine Befehle/CI-Regeln siehe `~/Projects/CLAUDE.md`.
+Passwortmanager der UwUSuite (Tauri 2): Client für Vaultwarden/Bitwarden, v0.7.0-beta.6. Allgemeine Befehle/CI-Regeln siehe `~/Projects/CLAUDE.md`.
 
 ## Layout
 
@@ -25,7 +25,7 @@ Passwortmanager der UwUSuite (Tauri 2): Client für Vaultwarden/Bitwarden, v0.7.
 ## Fallen
 
 - Nie von Hand bearbeiten: `Cargo.lock`, `pnpm-lock.yaml`, `apps/*/src-tauri/gen/schemas/`, `apps/*/src-tauri/gen/apple/` (gitignored, generiert)
-- `@uwusuite/design` kommt als Release-Tarball-URL (aktuell 1.13.0 in `apps/desktop/package.json`); UI-Änderungen zuerst in UwUSuite-Design
+- `@uwusuite/design` kommt als Release-Tarball-URL (aktuell 1.16.0 in den `package.json` von desktop, setup, extension); UI-Änderungen zuerst in UwUSuite-Design
 - Versionen müssen synchron sein: `Cargo.toml` (Workspace), `tauri.conf.json` von `apps/desktop` und `apps/setup`, alle `package.json`
 
 ## Plan/Stand
