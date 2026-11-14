@@ -13,6 +13,7 @@ import {
   shellQuote,
   siblingsOf,
   sshCommand,
+  stepId,
   tunnelSpec,
   workspaces,
   type SuiteRecord,
@@ -188,4 +189,15 @@ test('new ids are random v4 UUIDs', () => {
   const a = newId();
   assert.match(a, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   assert.notEqual(a, newId());
+});
+
+test('arrow keys step through the rows and stop at the ends', () => {
+  const ids = ['a', 'b', 'c'];
+  assert.equal(stepId(ids, null, 1), 'a');
+  assert.equal(stepId(ids, 'a', 1), 'b');
+  assert.equal(stepId(ids, 'a', -1), 'a');
+  assert.equal(stepId(ids, 'b', ids.length), 'c');
+  assert.equal(stepId(ids, 'c', -ids.length), 'a');
+  assert.equal(stepId(ids, 'gone', 1), 'a');
+  assert.equal(stepId([], 'a', 1), null);
 });

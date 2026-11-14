@@ -81,7 +81,13 @@ export function TabView({
   if (!items) return <div className="popup-scroll" aria-busy />;
 
   const row = (item: ItemSummary, fillable: boolean) => (
-    <li key={item.id} className="item-row" onClick={() => onOpen(item.id)}>
+    <li
+      key={item.id}
+      className="item-row"
+      tabIndex={0}
+      onClick={() => onOpen(item.id)}
+      onKeyDown={(e) => e.key === 'Enter' && e.target === e.currentTarget && onOpen(item.id)}
+    >
       <ItemIcon item={item} />
       <span className="item-text">
         <span className="item-name">{item.name || t('(ohne Namen)')}</span>

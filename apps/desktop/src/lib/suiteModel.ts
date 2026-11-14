@@ -273,3 +273,10 @@ export function tunnelSpec(tunnel: Json | null): string {
   const listen = (bind ? `${bind}:` : '') + num(tunnel, 'bind_port');
   return `${flag} ${listen}:${str(tunnel, 'target_host')}:${num(tunnel, 'target_port')}`;
 }
+
+/** The id `step` rows away from `current` in a list, clamped to its ends (the first row when nothing is picked). */
+export function stepId(ids: string[], current: string | null, step: number): string | null {
+  if (!ids.length) return null;
+  const at = current === null ? -1 : ids.indexOf(current);
+  return ids[Math.max(0, Math.min(ids.length - 1, at + step))] ?? null;
+}

@@ -1,7 +1,7 @@
 import { listen } from '@tauri-apps/api/event';
 import { Button, Icon, IconButton, ICONS } from '@uwusuite/design';
 import type { LucideIcon } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { copyGenerated, failure } from '../lib/api';
 import { errorText, toastError } from '../lib/errors';
 import { copiedText } from '../lib/format';
@@ -32,6 +32,7 @@ import {
   ref,
   siblingsOf,
   sshCommand,
+  stepId,
   str,
   titleOf,
   tunnelSpec,
@@ -192,6 +193,41 @@ export function SuitePane({ space, phone, detailOpen, onDetail, onMenu, searchRe
     setSelected(id);
     onDetail(true);
   };
+
+  // Keyboard for the listbox, as in VaultScreen: arrows/Home/End pick a row, Enter opens it.
+  const listRef = useRef<HTMLUListElement>(null);
+  const rows =
+    tab === 'host'
+      ? grouped.flatMap((ws) => ws.groups.flatMap((g) => g.hosts.map((h) => h.id)))
+      : flat.map((r) => r.id);
+  const move = (step: number) => {
+    const next = stepId(rows, selected, step);
+    if (!next) return;
+    setSelected(next);
+    listRef.current
+      ?.querySelector<HTMLElement>(`[data-id="${CSS.escape(next)}"]`)
+      ?.scrollIntoView({ block: 'nearest' });
+  };
+  const listbox = {
+    ref: listRef,
+    className: 'item-list',
+    role: 'listbox',
+    tabIndex: 0,
+    'aria-activedescendant': selected && rows.includes(selected) ? `suite-${selected}` : undefined,
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.target !== e.currentTarget) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        move(e.key === 'ArrowDown' ? 1 : -1);
+      } else if (e.key === 'Home' || e.key === 'End') {
+        e.preventDefault();
+        move(e.key === 'Home' ? -rows.length : rows.length);
+      } else if (e.key === 'Enter' && selected && rows.includes(selected)) {
+        e.preventDefault();
+        show(selected);
+      }
+    },
+  };
   const title = t(SPACE_TITLE[space]);
 
   const create = async () => {
@@ -225,6 +261,7 @@ export function SuitePane({ space, phone, detailOpen, onDetail, onMenu, searchRe
   const row = (record: SuiteRecord, sub: ReactNode, icon: LucideIcon, indent = false) => (
     <li
       key={record.id}
+      id={`suite-${record.id}`}
       data-id={record.id}
       role="option"
       aria-selected={record.id === selected}
@@ -298,7 +335,7 @@ export function SuitePane({ space, phone, detailOpen, onDetail, onMenu, searchRe
     </div>
   ) : tab === 'host' ? (
     grouped.length ? (
-      <ul className="item-list" role="listbox" aria-label={title}>
+      <ul {...listbox} aria-label={title}>
         {grouped.map((ws) => (
           <li key={ws.workspace} className="not-first:mt-3" role="presentation">
             <h3 className="mx-3 mt-2 mb-1 text-caption font-bold tracking-[0.06em] text-muted uppercase">
@@ -343,7 +380,7 @@ export function SuitePane({ space, phone, detailOpen, onDetail, onMenu, searchRe
       <EmptyList query={query} empty={empty} />
     )
   ) : flat.length ? (
-    <ul className="item-list" role="listbox" aria-label={title}>
+    <ul {...listbox} aria-label={title}>
       {flat.map((r) => row(r, subOf(r), TABS.find((x) => x.tab === tab)?.icon ?? ICONS.sshKey))}
     </ul>
   ) : (
