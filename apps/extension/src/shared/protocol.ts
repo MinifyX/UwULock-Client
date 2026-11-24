@@ -215,6 +215,8 @@ export type ContentRequest =
       password: string | null;
       /** A change-password form: the new one. */
       newPassword: string | null;
+      /** The sending document's origins (content/frame.ts), read before the page navigates. */
+      frame?: unknown;
     }
   /** A page loaded: is a save prompt waiting for this tab? (top frame only) */
   | { type: 'content:pending-prompt' }

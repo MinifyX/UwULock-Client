@@ -552,10 +552,15 @@ impl Vault {
 
     /// Opens a sync with the account's user key.
     pub fn open(sync: &wire::Sync, user_key: &SymmetricKey) -> Result<Vault, Error> {
+        // A private key that isn't one only costs the organisations (they're skipped below), not
+        // the vault. One that doesn't decrypt is a wrong user key: that still fails, or new items
+        // would be sealed under a key no other device has.
         let private = match &sync.profile.private_key {
             Some(text) => {
                 let der = text.parse::<EncString>()?.decrypt(user_key)?;
-                Some(PrivateKey::from_der(&der)?)
+                PrivateKey::from_der(&der)
+                    .inspect_err(|error| tracing::warn!(%error, "private key didn't open"))
+                    .ok()
             }
             None => None,
         };

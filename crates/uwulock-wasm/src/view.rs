@@ -4,6 +4,7 @@
 
 use serde::Serialize;
 use serde_json::{json, Value};
+use uwulock_core::health::host_of;
 use uwulock_core::totp::Totp;
 use uwulock_core::vault::{FieldKind, Item, ItemKind, Secret, WIFI_SSID};
 use zeroize::Zeroizing;
@@ -15,20 +16,6 @@ pub fn text(value: &Option<Secret>) -> Option<String> {
         .as_ref()
         .map(|s| s.to_string())
         .filter(|s| !s.trim().is_empty())
-}
-
-/// The host of an address, for the list: `example.com` from
-/// `https://www.example.com/login`.
-pub fn host_of(uri: &str) -> Option<String> {
-    let with_scheme = if uri.contains("://") {
-        uri.to_string()
-    } else {
-        format!("https://{uri}")
-    };
-    url::Url::parse(&with_scheme)
-        .ok()?
-        .host_str()
-        .map(|host| host.trim_start_matches("www.").to_string())
 }
 
 fn last_four(number: &str) -> String {

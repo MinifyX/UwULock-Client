@@ -565,7 +565,7 @@ pub struct MissingTwofa {
     pub entry: TwofaEntry,
 }
 
-/// Every login (in the vault, readable) for a site that offers `totp`
+/// Every login (in the vault, not archived, readable) for a site that offers `totp`
 /// without one stored, by name.
 pub fn missing_twofa<'a>(
     items: impl IntoIterator<Item = &'a Item>,
@@ -573,7 +573,12 @@ pub fn missing_twofa<'a>(
 ) -> Vec<MissingTwofa> {
     let mut out: Vec<MissingTwofa> = items
         .into_iter()
-        .filter(|item| item.kind == ItemKind::Login && !item.deleted && !item.broken)
+        .filter(|item| {
+            item.kind == ItemKind::Login
+                && !item.deleted
+                && item.archived_date.is_none()
+                && !item.broken
+        })
         .filter_map(|item| {
             let login = item.login.as_ref()?;
             if login.totp.as_ref().is_some_and(|t| !t.is_empty()) {

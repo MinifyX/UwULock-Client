@@ -52,6 +52,8 @@ describe('save detection', () => {
       username: 'anna',
       password: 'geheim',
       newPassword: null,
+      // Read now: after the submit the page may be gone before the background could ask.
+      frame: expect.objectContaining({ origin: String(window.origin) }),
     });
   });
 
@@ -81,6 +83,16 @@ describe('save detection', () => {
     $<HTMLFormElement>('#change').requestSubmit();
     expect(sent).toEqual([
       { type: 'content:submitted', username: null, password: 'alt', newPassword: 'neu-und-lang' },
+    ]);
+  });
+
+  it('sends a login from a form that also holds a sign-up (new passwords left empty)', () => {
+    load('change-password');
+    install();
+    $('#old').value = 'alt';
+    $<HTMLFormElement>('#change').requestSubmit();
+    expect(sent).toEqual([
+      { type: 'content:submitted', username: null, password: 'alt', newPassword: null },
     ]);
   });
 
