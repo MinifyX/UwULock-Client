@@ -9,7 +9,8 @@
  * address matches one of its addresses (Bitwarden's match detection, see shared/uri.ts). So a
  * login for `bank.example` never reaches an iframe from `ads.example` on the bank's page. Only
  * when somebody explicitly picks an item in the popup for a page it doesn't match, the top
- * frame may have it — never an iframe. Plain http pages ask first.
+ * frame may have it — never an iframe. Plain http pages are filled too; the menu and the popup
+ * warn about them.
  *
  * Cards and addresses have no address to match. They are listed to, and filled into, only the
  * page itself and frames from the same origin as it and as every frame in between — never an
@@ -158,9 +159,27 @@ function strings(value: unknown): string[] | null {
  * where the browser has it, so the answer is from that very document.
  */
 export async function frameDocument(sender: Sender): Promise<CheckedFrame | null> {
-  const url = sender.url;
   const tabId = sender.tab?.id;
-  if (!url || tabId === undefined || sender.frameId === undefined) return null;
+  if (tabId === undefined || sender.frameId === undefined) return null;
+  // Chromium: that very document (verified on Chromium); Firefox: by frame.
+  const target =
+    !isFirefox && typeof sender.documentId === 'string'
+      ? { documentId: sender.documentId }
+      : { frameId: sender.frameId };
+  const reply = await ext.tabs
+    .sendMessage(tabId, { type: FRAME_DOCUMENT }, target)
+    .catch(() => null);
+  return checkedFrame(sender, reply);
+}
+
+/**
+ * The sender's document as its content script reported it (`frameDocument` above, or sent along
+ * with a message), checked against what the browser says about the sender: the report can only
+ * turn a frame down, never let one in that the sender's address and origin wouldn't.
+ */
+export function checkedFrame(sender: Sender, report: unknown): CheckedFrame | null {
+  const url = sender.url;
+  if (!url || sender.tab?.id === undefined || sender.frameId === undefined) return null;
   let origin: string;
   try {
     origin = new URL(url).origin;
@@ -169,14 +188,7 @@ export async function frameDocument(sender: Sender): Promise<CheckedFrame | null
   }
   if (origin === 'null') return null;
   if (sender.origin !== undefined && sender.origin !== origin) return null;
-  // Chromium: that very document (verified on Chromium); Firefox: by frame.
-  const target =
-    !isFirefox && typeof sender.documentId === 'string'
-      ? { documentId: sender.documentId }
-      : { frameId: sender.frameId };
-  const reply = (await ext.tabs
-    .sendMessage(tabId, { type: FRAME_DOCUMENT }, target)
-    .catch(() => null)) as Partial<FrameDocument> | null | undefined;
+  const reply = report as Partial<FrameDocument> | null | undefined;
   if (!reply || typeof reply !== 'object' || reply.origin !== origin) return null;
   return {
     origin,
@@ -661,6 +673,8 @@ async function decide(sent: Sent): Promise<Prompted | null> {
 async function decideIn(sent: Sent): Promise<Prompted | null> {
   const candidates = await matchingLogins(sent.url, { topFrame: sent.frameId === 0 });
   const wanted = sent.username?.trim().toLowerCase() ?? '';
+  // A new password without a username (a reset page): the site's only login is the one it's for.
+  const only = wanted === '' && sent.previous === null && candidates.length === 1;
   let reprompt = false;
   for (const entry of candidates) {
     let values: FillValues;
@@ -680,7 +694,7 @@ async function decideIn(sent: Sent): Promise<Prompted | null> {
       if (sameUser && values.password === sent.password) return null;
       continue;
     }
-    if (!sameUser) continue;
+    if (!sameUser && !only) continue;
     if (values.password === sent.password) return null;
     return { ...sent, action: 'update', itemId: entry.id, itemName: entry.name };
   }
@@ -702,6 +716,8 @@ export async function submitted(
   username: string | null,
   password: string | null,
   newPassword: string | null,
+  /** The content script's `frameDocument()`, read when it was sent: the page may have gone since. */
+  frame?: unknown,
 ) {
   forgetOld();
   const url = sender.url ?? '';
@@ -713,7 +729,7 @@ export async function submitted(
   const host = hostnameOf(url);
   if (!host || config.neverSave.includes(host)) return;
   // Nothing typed into a sandboxed document is the site's login.
-  if (!(await frameDocument(sender))) return;
+  if (!(frame === undefined ? await frameDocument(sender) : checkedFrame(sender, frame))) return;
   const typed = username?.trim() || null;
   if (!password && !newPassword) {
     // The first step of a login in two: remember who, for the password on the next page.

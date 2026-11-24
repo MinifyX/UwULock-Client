@@ -10,6 +10,7 @@
 
 import { ask } from '../shared/messages';
 import type { ContentRequest } from '../shared/protocol';
+import { frameDocument } from './frame';
 import { findLoginFields, hintText, isPasswordField, type LoginFields } from './forms';
 
 export type Submission = Extract<ContentRequest, { type: 'content:submitted' }>;
@@ -37,10 +38,11 @@ export function readSubmission(login: LoginFields): Submission | null {
     case 'change-password': {
       const [fresh, confirm] = login.newPasswords;
       const value = fresh?.value ?? '';
+      const current = login.password?.value ?? '';
+      // One form with a login and a sign-up in it, sent from the login: a plain login.
+      if (login.kind === 'change-password' && !value && current) return submission(current, null);
       if (!value || (confirm && confirm.value !== value)) return null;
-      return login.kind === 'signup'
-        ? submission(value, null)
-        : submission(login.password?.value || null, value);
+      return login.kind === 'signup' ? submission(value, null) : submission(current || null, value);
     }
   }
 }
@@ -122,7 +124,8 @@ export function installSaveDetection(doc: Document, options: SaveDetectOptions):
   const send =
     options.send ??
     ((submission: Submission) => {
-      void ask<unknown>(submission).catch(() => undefined);
+      // The page may navigate before the background could ask about this document.
+      void ask<unknown>({ ...submission, frame: frameDocument() }).catch(() => undefined);
     });
   const trusted = options.trusted ?? ((event: Event) => event.isTrusted);
   const now = options.now ?? (() => Date.now());

@@ -233,7 +233,13 @@ async function handleContent(message: ContentRequest, sender: Sender): Promise<u
     case 'content:menu-focus':
       return menu.focusFromContent(sender, message.session);
     case 'content:submitted':
-      return autofill.submitted(sender, message.username, message.password, message.newPassword);
+      return autofill.submitted(
+        sender,
+        message.username,
+        message.password,
+        message.newPassword,
+        message.frame,
+      );
     case 'content:pending-prompt':
       return autofill.pendingPrompt(sender);
     case 'content:prompt-answer':

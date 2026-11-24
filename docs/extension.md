@@ -77,7 +77,8 @@ release checks the download (see the [install guide](install.md)). What it sends
   the item's values, and only if the item's address matches **that frame's own address** — a login
   never reaches an iframe of another site. Picking an item in the popup for a page it doesn't
   match fills the page itself, never its frames. Cards and addresses reach only the page itself
-  and frames of its own origin. Plain `http://` pages ask before filling.
+  and frames of its own origin. Plain `http://` pages are filled
+  too, and the menu and the popup warn that they are not encrypted.
 - An item with the master-password re-prompt asks for the master password every time it is
   filled, as Bitwarden does: in the popup, and the page's menu, the context menu and the
   shortcut open the popup for it. Seeing or copying its values in the popup asks once until the

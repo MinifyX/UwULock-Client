@@ -175,9 +175,15 @@ struct ActivityTracker: View {
             super.init(frame: .zero)
             isUserInteractionEnabled = false
             watcher.onTouch = { [weak self] in self?.onActivity() }
+            // Typing touches nothing (a hardware keyboard, or long notes): text changes count too.
+            for name in [UITextField.textDidChangeNotification, UITextView.textDidChangeNotification] {
+                NotificationCenter.default.addObserver(self, selector: #selector(typed), name: name, object: nil)
+            }
         }
 
         required init?(coder: NSCoder) { fatalError("not used") }
+
+        @objc private func typed() { onActivity() }
 
         override func didMoveToWindow() {
             super.didMoveToWindow()
