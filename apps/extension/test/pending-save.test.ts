@@ -160,8 +160,11 @@ describe('a login waiting to be saved', () => {
       },
     ];
     values = { kind: 'login', username: 'nyu', password: 'old-pw' };
-    await autofill.submitted(top, null, 'new-pw', null);
+    await autofill.submitted(top, null, null, 'new-pw');
     expect(autofill.pendingPrompt(top)).toMatchObject({ action: 'update', itemName: 'Shop' });
+    // A password alone (a share's or room's password) is not that login's new one.
+    await autofill.submitted(top, null, 'room-pw', null);
+    expect(autofill.pendingPrompt(top)).toMatchObject({ action: 'save' });
   });
 
   it('goes by what the content script sent along, not a document that loaded since', async () => {

@@ -638,6 +638,8 @@ type Sent = {
   password: string;
   /** For a change of password: the one it was. */
   previous: string | null;
+  /** A new password alone, without the one it was: a reset page. */
+  reset?: boolean;
   at: number;
 };
 
@@ -674,7 +676,7 @@ async function decideIn(sent: Sent): Promise<Prompted | null> {
   const candidates = await matchingLogins(sent.url, { topFrame: sent.frameId === 0 });
   const wanted = sent.username?.trim().toLowerCase() ?? '';
   // A new password without a username (a reset page): the site's only login is the one it's for.
-  const only = wanted === '' && sent.previous === null && candidates.length === 1;
+  const only = !!sent.reset && wanted === '' && candidates.length === 1;
   let reprompt = false;
   for (const entry of candidates) {
     let values: FillValues;
@@ -750,6 +752,7 @@ export async function submitted(
     username: typed ?? (seen && seen.host === host ? seen.username : null),
     password: (newPassword ?? password)!,
     previous: newPassword ? password : null,
+    reset: !!newPassword && !password,
     at: Date.now(),
   };
   if (!open) {

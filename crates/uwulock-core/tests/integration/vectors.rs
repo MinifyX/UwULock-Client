@@ -402,4 +402,6 @@ fn a_broken_private_key_skips_the_organisations_not_the_vault() {
     assert!(vault.private_key().is_none());
     assert!(vault.organizations.is_empty());
     assert_eq!(vault.skipped, 1);
+    // A wrong user key is not a broken private key: it must not open.
+    assert!(uwulock_core::vault::Vault::open(&sync, &SymmetricKey::generate()).is_err());
 }
