@@ -12,6 +12,9 @@ const saved: { account: string | null; name: string; reprompt?: boolean }[] = []
 let index: unknown[] = [];
 let open: string | null = 'user-a';
 let active = 'user-a';
+/** What the core reads from an item; null: the item has the re-prompt. */
+let values: unknown = null;
+let frameReply: unknown = { origin: 'https://shop.example', ancestors: [], parents: [] };
 
 vi.mock('../src/shared/browser', () => ({
   isFirefox: false,
@@ -20,9 +23,7 @@ vi.mock('../src/shared/browser', () => ({
       onRemoved: { addListener: () => undefined },
       // Only the content script's answer about its document (content/frame.ts) matters here.
       sendMessage: async (_tab: number, message: { type?: string }) =>
-        message.type === 'bg:frame-document'
-          ? { origin: 'https://shop.example', ancestors: [], parents: [] }
-          : undefined,
+        message.type === 'bg:frame-document' ? frameReply : undefined,
     },
     runtime: { getURL: (path: string) => `chrome-extension://test${path}` },
   },
@@ -60,6 +61,7 @@ vi.mock('../src/background/vault', () => ({
 vi.mock('../src/background/wasm', () => ({
   // Like the core: an item with the re-prompt isn't read without the master password.
   callJson: async () => {
+    if (values) return values;
     if (index.length) throw { kind: 'reprompt', message: 'Re-prompt.' };
     return {};
   },
@@ -82,6 +84,8 @@ beforeEach(() => {
   index = [];
   open = 'user-a';
   active = 'user-a';
+  values = null;
+  frameReply = { origin: 'https://shop.example', ancestors: [], parents: [] };
 });
 
 describe('a login waiting to be saved', () => {
@@ -142,5 +146,39 @@ describe('a login waiting to be saved', () => {
     expect(prompt).toMatchObject({ action: 'save' });
     await autofill.promptAnswer(top, prompt.id, 'save');
     expect(saved).toEqual([{ account: 'user-a', name: 'shop.example', reprompt: true }]);
+  });
+
+  it("a new password without a username updates the site's only login (a reset page)", async () => {
+    index = [
+      {
+        id: 'only',
+        kind: 'login',
+        name: 'Shop',
+        reprompt: false,
+        archived: false,
+        uris: [{ uri: 'https://shop.example', match: null }],
+      },
+    ];
+    values = { kind: 'login', username: 'nyu', password: 'old-pw' };
+    await autofill.submitted(top, null, 'new-pw', null);
+    expect(autofill.pendingPrompt(top)).toMatchObject({ action: 'update', itemName: 'Shop' });
+  });
+
+  it('goes by what the content script sent along, not a document that loaded since', async () => {
+    const page = { origin: 'https://shop.example', ancestors: [], parents: [] };
+    // The page navigated: asking the tab now reaches nothing.
+    frameReply = undefined;
+    await autofill.submitted(top, 'nyu', 'pw', null, page);
+    expect(autofill.pendingPrompt(top)).toMatchObject({ action: 'save' });
+  });
+
+  it('sent along, a sandboxed document still gets no prompt', async () => {
+    const other: Sender = { ...top, tab: { id: 8 } as chrome.tabs.Tab };
+    await autofill.submitted(other, 'nyu', 'pw', null, {
+      ancestors: [],
+      parents: [],
+      origin: 'null',
+    });
+    expect(autofill.pendingPrompt(other)).toBeNull();
   });
 });
