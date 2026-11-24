@@ -196,12 +196,17 @@ struct Index {
 
 pub struct Storage {
     dir: PathBuf,
+    /// Held across each read-modify-write of index.json.
+    index_lock: parking_lot::Mutex<()>,
 }
 
 impl Storage {
     pub fn new(dir: PathBuf) -> std::io::Result<Self> {
         std::fs::create_dir_all(dir.join(ACCOUNTS))?;
-        let storage = Storage { dir };
+        let storage = Storage {
+            dir,
+            index_lock: parking_lot::Mutex::new(()),
+        };
         storage.adopt_single_account()?;
         Ok(storage)
     }
@@ -295,6 +300,7 @@ impl Storage {
         std::fs::create_dir_all(&home)?;
         let text = serde_json::to_string_pretty(account).map_err(std::io::Error::other)?;
         write_atomic(&home.join(ACCOUNT), text.as_bytes())?;
+        let _index = self.index_lock.lock();
         let mut index = self.index();
         if !index.order.iter().any(|known| known == id) {
             index.order.push(id.to_string());
@@ -322,6 +328,7 @@ impl Storage {
     }
 
     pub fn set_active(&self, id: Option<&str>) -> std::io::Result<()> {
+        let _index = self.index_lock.lock();
         let mut index = self.index();
         index.version = 1;
         index.active = id.map(str::to_string);
@@ -397,6 +404,7 @@ impl Storage {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(e),
         }
+        let _index = self.index_lock.lock();
         let mut index = self.index();
         index.version = 1;
         index.order.retain(|known| known != id);
@@ -480,8 +488,13 @@ fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 /// Written next to the target, then renamed over it: a crash in between
 /// leaves the old file, never half a new one.
 fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write as _;
     let tmp = temp_path(path);
-    std::fs::write(&tmp, bytes)?;
+    let mut file = std::fs::File::create(&tmp)?;
+    file.write_all(bytes)?;
+    // On disk before the rename: after a power cut the file is old or new, never empty.
+    file.sync_all()?;
+    drop(file);
     std::fs::rename(&tmp, path).inspect_err(|_| {
         let _ = std::fs::remove_file(&tmp);
     })

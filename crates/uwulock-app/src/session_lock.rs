@@ -51,7 +51,7 @@ impl App {
 fn poll(app: App) {
     let mut last_instant = Instant::now();
     let mut last_wall = SystemTime::now();
-    let mut was_locked = false;
+    let mut locked_reads = 0u8;
     loop {
         std::thread::sleep(EVERY);
         let now_instant = Instant::now();
@@ -64,11 +64,9 @@ fn poll(app: App) {
         last_instant = now_instant;
         last_wall = now_wall;
 
-        let locked = app.host().screen_locked();
-        if locked && !was_locked {
+        if screen_just_locked(&mut locked_reads, app.host().screen_locked()) {
             app.system_locked("screen lock");
         }
-        was_locked = locked;
     }
 }
 
@@ -89,6 +87,17 @@ fn slept(monotonic: Duration, wall: Duration) -> bool {
     wall > monotonic + SLEPT
 }
 
+/// The screen counts as locked on the second "locked" read in a row: on
+/// Windows a UAC prompt's secure desktop reads as locked for a moment too.
+fn screen_just_locked(locked_reads: &mut u8, locked: bool) -> bool {
+    *locked_reads = if locked {
+        locked_reads.saturating_add(1)
+    } else {
+        0
+    };
+    *locked_reads == 2
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,6 +110,16 @@ mod tests {
         assert!(!slept(s(15), s(15)));
         assert!(!slept(s(2), s(10)));
         assert!(slept(s(2), s(3600)));
+    }
+
+    #[test]
+    fn the_screen_locks_on_the_second_locked_read() {
+        let mut reads = 0;
+        let seen: Vec<bool> = [true, false, true, true, true, false, true, true]
+            .into_iter()
+            .map(|locked| screen_just_locked(&mut reads, locked))
+            .collect();
+        assert_eq!(seen, [false, false, false, true, false, false, false, true]);
     }
 
     #[test]

@@ -2322,15 +2322,16 @@ impl App {
     pub async fn verify_reprompt(&self, id: String, password: String) -> Result<()> {
         let state = self.vault();
         let password = Zeroizing::new(password);
-        let (_, account) = state.active_account()?;
+        let (account_id, account) = state.active_account()?;
         let master_key = derive_off_thread(password, account.email.clone(), account.kdf).await?;
         let protected: EncString = account.protected_user_key.parse()?;
         decrypt_user_key(&master_key, &protected)
             .map_err(|_| Failure::new("wrong-password", "The master password is wrong."))?;
-        state.with_unlocked(|u| {
-            u.reprompt_ok.insert(id);
-            Ok(())
-        })
+        // The account the password was checked for, even if another became active meanwhile.
+        let mut unlocked = state.unlocked.write();
+        let unlocked = unlocked.get_mut(&account_id).ok_or_else(Failure::locked)?;
+        unlocked.reprompt_ok.insert(id);
+        Ok(())
     }
 }
 

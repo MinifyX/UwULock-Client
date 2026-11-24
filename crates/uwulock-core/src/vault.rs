@@ -552,13 +552,14 @@ impl Vault {
 
     /// Opens a sync with the account's user key.
     pub fn open(sync: &wire::Sync, user_key: &SymmetricKey) -> Result<Vault, Error> {
-        let private = match &sync.profile.private_key {
-            Some(text) => {
-                let der = text.parse::<EncString>()?.decrypt(user_key)?;
-                Some(PrivateKey::from_der(&der)?)
-            }
-            None => None,
-        };
+        // A broken private key only costs the organisations (they're skipped below), not the vault.
+        let private = sync.profile.private_key.as_ref().and_then(|text| {
+            text.parse::<EncString>()
+                .and_then(|enc| enc.decrypt(user_key))
+                .and_then(|der| PrivateKey::from_der(&der))
+                .inspect_err(|error| tracing::warn!(%error, "private key didn't open"))
+                .ok()
+        });
 
         let mut skipped = 0;
         let mut org_keys: HashMap<String, SymmetricKey> = HashMap::new();

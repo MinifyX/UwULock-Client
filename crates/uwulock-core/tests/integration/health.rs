@@ -264,9 +264,12 @@ fn logins_for_sites_with_authenticator_codes_but_none_stored() {
     );
     let mut with_code = login("c2", "Has code", "x", "https://example.com");
     with_code.login.as_mut().unwrap().totp = Some(Zeroizing::new("JBSWY3DPEHPK3PXP".into()));
+    let mut archived = login("c5", "Archived", "x", "https://example.com");
+    archived.archived_date = Some("2026-01-01T00:00:00Z".into());
     let items = [
         login("c1", "Zeta", "x", "https://login.example.com"),
         with_code,
+        archived,
         login("c3", "Alpha", "x", "https://example.net"),
         login("c4", "SMS", "x", "https://example.org"),
     ];

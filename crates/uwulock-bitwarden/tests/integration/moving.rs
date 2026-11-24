@@ -417,18 +417,20 @@ async fn a_family_whose_sync_failed_is_not_made_twice() {
 
     let mut first = prepare(&source, &target, Journal::default()).await.unwrap();
     let summary = run(&mut first, &token, None).await.unwrap();
-    assert_eq!(summary.failed.len(), 1, "{:?}", summary.failed);
+    // The family, then its collection and its item wait for a sync.
+    assert_eq!(summary.failed.len(), 3, "{:?}", summary.failed);
     assert_eq!(summary.orgs_as_folders, 0);
-    let [folders, .., orgs, _] = target.counts();
-    assert_eq!((folders, orgs), (1, 1));
+    let [folders, .., orgs, collections] = target.counts();
+    assert_eq!((folders, orgs, collections), (1, 1, 1));
 
     let mut second = prepare(&source, &target, first.journal().clone())
         .await
         .unwrap();
     let summary = run(&mut second, &token, None).await.unwrap();
+    assert!(summary.failed.is_empty(), "{:?}", summary.failed);
     assert_eq!(summary.moved.organizations, 0);
-    let [folders, .., orgs, _] = target.counts();
-    assert_eq!((folders, orgs), (1, 1));
+    // The server-made first collection is taken, not made a second time.
+    assert_eq!(target.counts(), [1, 3, 1, 2, 1, 1]);
 }
 
 #[tokio::test]
@@ -475,4 +477,71 @@ async fn only_a_uwulock_server_takes_a_move() {
     let target = MoveServer::start(Kind::Bitwarden, TARGET_EMAIL);
     let refused = prepare(&source, &target, Journal::default()).await;
     assert!(matches!(refused, Err(Error::Refused(_))));
+}
+
+/// The folder didn't move: its item waits instead of landing outside a
+/// folder, and the next run puts it in.
+#[tokio::test]
+async fn an_item_waits_for_its_folder() {
+    let source = source_vault();
+    let target = MoveServer::start(Kind::UwuLock { families: true }, TARGET_EMAIL);
+    let token = target_token(&target).await;
+    target.fail_once("POST /api/folders", 400);
+
+    let mut first = prepare(&source, &target, Journal::default()).await.unwrap();
+    let summary = run(&mut first, &token, None).await.unwrap();
+    assert!(
+        summary
+            .failed
+            .iter()
+            .any(|f| f.message.contains("folder didn't move")),
+        "{:?}",
+        summary.failed
+    );
+    let [folders, items, ..] = target.counts();
+    assert_eq!((folders, items), (0, 2), "the vet login waits");
+
+    let mut second = prepare(&source, &target, first.journal().clone())
+        .await
+        .unwrap();
+    let summary = run(&mut second, &token, None).await.unwrap();
+    assert!(summary.failed.is_empty(), "{:?}", summary.failed);
+    assert_eq!(target.counts(), [1, 3, 1, 2, 1, 1]);
+
+    let (client, session, key) = log_in(&target).await;
+    let vault = Vault::open(
+        &parse_sync(&client.sync(&session.access_token).await.unwrap()).unwrap(),
+        &key,
+    )
+    .unwrap();
+    let vet = vault
+        .items
+        .iter()
+        .find(|i| i.name.as_str() == "Tierarzt")
+        .unwrap();
+    assert_eq!(vet.folder_id.as_deref(), Some(vault.folders[0].id.as_str()));
+}
+
+/// A family that failed for another reason than a no (here a 500) is tried
+/// again on the next run, not turned into a folder.
+#[tokio::test]
+async fn a_family_that_failed_is_tried_again_not_made_a_folder() {
+    let source = source_vault();
+    let target = MoveServer::start(Kind::UwuLock { families: true }, TARGET_EMAIL);
+    let token = target_token(&target).await;
+    target.fail_once("POST /api/organizations", 500);
+
+    let mut first = prepare(&source, &target, Journal::default()).await.unwrap();
+    let summary = run(&mut first, &token, None).await.unwrap();
+    assert_eq!(summary.orgs_as_folders, 0);
+    let [folders, .., orgs, _] = target.counts();
+    assert_eq!((folders, orgs), (1, 0));
+
+    let mut second = prepare(&source, &target, first.journal().clone())
+        .await
+        .unwrap();
+    let summary = run(&mut second, &token, None).await.unwrap();
+    assert!(summary.failed.is_empty(), "{:?}", summary.failed);
+    assert_eq!(summary.moved.organizations, 1);
+    assert_eq!(target.counts(), [1, 3, 1, 2, 1, 1]);
 }

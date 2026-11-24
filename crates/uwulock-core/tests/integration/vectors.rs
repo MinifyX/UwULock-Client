@@ -385,3 +385,21 @@ fn a_passkeys_attested_data_as_a_site_reads_it() {
 fn key(base64: &str) -> SymmetricKey {
     SymmetricKey::from_bytes(&B64.decode(base64).unwrap()).unwrap()
 }
+
+#[test]
+fn a_broken_private_key_skips_the_organisations_not_the_vault() {
+    let user = SymmetricKey::generate();
+    let not_der = EncString::encrypt(b"not a key", &user).to_string();
+    let sync: uwulock_core::wire::Sync = serde_json::from_value(serde_json::json!({
+        "profile": {
+            "email": "someone@example.com",
+            "privatekey": not_der,
+            "organizations": [{ "id": "org-1", "key": "2.AAAA|AAAA|AAAA" }],
+        },
+    }))
+    .unwrap();
+    let vault = uwulock_core::vault::Vault::open(&sync, &user).unwrap();
+    assert!(vault.private_key().is_none());
+    assert!(vault.organizations.is_empty());
+    assert_eq!(vault.skipped, 1);
+}

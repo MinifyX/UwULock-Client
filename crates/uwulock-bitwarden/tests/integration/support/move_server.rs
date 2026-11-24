@@ -78,6 +78,8 @@ struct State {
     /// The sync right after the next new organisation fails once.
     break_sync_after_org: bool,
     sync_broken: bool,
+    /// The next request to this "METHOD /path" answers with this status, once.
+    fail_once: Option<(String, u16)>,
 }
 
 pub struct MoveServer {
@@ -118,6 +120,7 @@ impl MoveServer {
             send_openings: 0,
             break_sync_after_org: false,
             sync_broken: false,
+            fail_once: None,
         }));
         let shared = state.clone();
         let base = url.clone();
@@ -141,6 +144,11 @@ impl MoveServer {
     /// The sync right after the next new organisation answers 500, once.
     pub fn break_sync_after_org(&self) {
         self.state.lock().unwrap().break_sync_after_org = true;
+    }
+
+    /// The next `method path` (e.g. "POST /api/folders") answers `status`, once.
+    pub fn fail_once(&self, at: &str, status: u16) {
+        self.state.lock().unwrap().fail_once = Some((at.to_string(), status));
     }
 
     pub fn send_openings(&self) -> u32 {
@@ -429,6 +437,12 @@ fn route(request: &Request, path: &str, state: &mut State, base: &str) -> (u16, 
         .unwrap_or_default();
     if !state.tokens.iter().any(|t| t == bearer) {
         return (401, Body::Json(json!({ "message": "Unauthorized" })));
+    }
+    if let Some((_, status)) = state
+        .fail_once
+        .take_if(|(at, _)| *at == format!("{method} {path}"))
+    {
+        return (status, Body::Json(json!({ "message": "Not now" })));
     }
     match (method, segments.as_slice()) {
         ("GET", ["api", "sync"]) if std::mem::take(&mut state.sync_broken) => {

@@ -776,12 +776,14 @@ impl Mover {
                 // Made, but what came after failed: the journal has it, a
                 // folder in its place would make the organisation twice.
                 Err(error) if self.moved().organizations.contains_key(id) => return Err(error),
-                Err(error) => {
-                    // No family after all (a limit, a setting): a folder instead.
+                // No family after all (a limit, a setting): a folder instead.
+                Err(error) if refuses_a_family(&error) => {
                     tracing::warn!(%error, "no family; the organisation becomes a folder");
                     self.family_room = Some(0);
                     self.summary.orgs_as_folders += 1;
                 }
+                // Anything else (a 500, a key that didn't seal): the step is tried again.
+                Err(error) => return Err(error),
             }
         }
         let made = self
@@ -876,6 +878,37 @@ impl Mover {
             // Its organisation became a folder, or didn't move.
             return Ok(());
         };
+        // The server made the family's first collection: take that one, once a
+        // sync after the family has shown it (the one in make_family may have failed).
+        let is_first = self
+            .vault
+            .collections
+            .iter()
+            .find(|c| c.organization_id == collection.organization_id)
+            .is_some_and(|c| c.id == id);
+        if is_first {
+            if !self.snapshot.orgs.contains_key(&org) {
+                return Err(Error::Refused(
+                    "the new family isn't in the sync yet, so its collection waits for the next run"
+                        .into(),
+                ));
+            }
+            let taken: HashSet<&String> = self.moved().collections.values().collect();
+            let made_first = self
+                .snapshot
+                .collections
+                .iter()
+                .filter(|(c, o)| **o == org && !taken.contains(c))
+                .map(|(c, _)| c.clone())
+                .min();
+            if let Some(made_first) = made_first {
+                self.moved_mut()
+                    .collections
+                    .insert(id.to_string(), made_first);
+                self.summary.moved.collections += 1;
+                return Ok(());
+            }
+        }
         let org_key = self.target_org_key(&org)?;
         let users = match self.snapshot.orgs.get(&org).and_then(|(_, m)| m.clone()) {
             Some(membership) => json!([{ "id": membership, "readOnly": false,
@@ -928,6 +961,16 @@ impl Mover {
             None => (None, Vec::new(), self.target.user_key.clone()),
             Some(org) => match moved.organizations.get(org) {
                 Some(OrgMove::Family { id }) => {
+                    let waiting = item.collection_ids.iter().any(|c| {
+                        !moved.collections.contains_key(c)
+                            && self.vault.collections.iter().any(|v| v.id == *c)
+                    });
+                    if waiting {
+                        return Err(Error::Refused(
+                            "one of its collections didn't move, so the item waits for the next run"
+                                .into(),
+                        ));
+                    }
                     let mut collections: Vec<String> = item
                         .collection_ids
                         .iter()
@@ -957,6 +1000,16 @@ impl Mover {
                 }
             },
         };
+        let folder_waits = folder.is_none()
+            && item
+                .folder_id
+                .as_ref()
+                .is_some_and(|f| self.vault.folders.iter().any(|v| v.id == *f));
+        if folder_waits {
+            return Err(Error::Refused(
+                "its folder didn't move, so the item waits for the next run".into(),
+            ));
+        }
 
         let new_key = SymmetricKey::generate();
         let fresh = reseal_item(&item, &old_key, &new_key, &outer)?;
@@ -1253,6 +1306,19 @@ fn ends_the_run(error: &Error) -> bool {
     matches!(
         error,
         Error::SessionExpired | Error::Network(_) | Error::Server { status: 429, .. }
+    )
+}
+
+/// The server said no to a family (a plan limit, a setting), as opposed to
+/// failing: only then does the organisation become a folder.
+fn refuses_a_family(error: &Error) -> bool {
+    matches!(
+        error,
+        Error::Refused(_)
+            | Error::Server {
+                status: 400 | 402 | 403 | 409,
+                ..
+            }
     )
 }
 
